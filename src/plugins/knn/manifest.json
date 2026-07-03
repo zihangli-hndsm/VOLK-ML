@@ -1,0 +1,10 @@
+{
+  "id": "knn_node",
+  "name": { "en": "K-Nearest Neighbors", "zh": "K-近邻算法" },
+  "category": "Classification",
+  "description": { "en": "Classifies points by voting among nearby examples.", "zh": "通过附近样本投票对数据点分类。" },
+  "inputs": [{ "name": "dataset", "type": "Table" }],
+  "outputs": [{ "name": "model", "type": "Model" }, { "name": "boundary", "type": "Mesh" }],
+  "properties": [{ "key": "k_value", "label": { "en": "Number of Neighbors (K)", "zh": "邻居数量 (K)" }, "type": "slider", "min": 1, "max": 21, "step": 2, "default": 3 }],
+  "pytorch_template": "from sklearn.neighbors import KNeighborsClassifier\nmodel = KNeighborsClassifier(n_neighbors={k_value})"
+}

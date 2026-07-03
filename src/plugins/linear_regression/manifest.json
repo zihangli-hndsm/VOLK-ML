@@ -1,0 +1,10 @@
+{
+  "id": "linear_regression_node",
+  "name": { "en": "Linear Regression", "zh": "线性回归" },
+  "category": "Regression",
+  "description": { "en": "Fits a straight line to predict continuous values.", "zh": "拟合直线来预测连续数值。" },
+  "inputs": [{ "name": "dataset", "type": "Table" }],
+  "outputs": [{ "name": "model", "type": "Model" }],
+  "properties": [{ "key": "learning_rate", "label": { "en": "Learning Rate", "zh": "学习率" }, "type": "slider", "min": 0.001, "max": 0.2, "step": 0.001, "default": 0.01 }],
+  "pytorch_template": "import torch\nmodel = torch.nn.Linear(in_features=1, out_features=1)\noptimizer = torch.optim.SGD(model.parameters(), lr={learning_rate})"
+}
