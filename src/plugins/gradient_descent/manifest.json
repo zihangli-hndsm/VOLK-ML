@@ -1,0 +1,10 @@
+{
+  "id": "gradient_descent_node",
+  "name": { "en": "Gradient Descent", "zh": "梯度下降" },
+  "category": "Optimization",
+  "description": { "en": "Iteratively updates parameters in the direction that reduces loss.", "zh": "沿着降低损失的方向迭代更新参数。" },
+  "inputs": [{ "name": "model", "type": "Model" }],
+  "outputs": [{ "name": "trained_model", "type": "Model" }],
+  "properties": [{ "key": "epochs", "label": { "en": "Training Epochs", "zh": "训练轮数" }, "type": "slider", "min": 10, "max": 500, "step": 10, "default": 100 }],
+  "pytorch_template": "for epoch in range({epochs}):\n    optimizer.zero_grad()\n    loss.backward()\n    optimizer.step()"
+}
