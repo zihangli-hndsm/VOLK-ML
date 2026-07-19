@@ -4,7 +4,7 @@ import { ReactFlow, Background, Controls, Handle, MiniMap, Position, addEdge, us
 import { motion } from 'framer-motion';
 import '@xyflow/react/dist/style.css';
 
-const PROJECT_VERSION = 1;
+const PROJECT_VERSION = 2;
 const languages = [
   { code: 'en', label: 'English' },
   { code: 'zh', label: '中文' },
@@ -115,6 +115,84 @@ function LossChart({ values }) {
   </svg>;
 }
 
+function parseCsv(text) {
+  const rows = [];
+  let row = [];
+  let value = '';
+  let quoted = false;
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (character === '"') {
+      if (quoted && text[index + 1] === '"') { value += '"'; index += 1; } else quoted = !quoted;
+    } else if (character === ',' && !quoted) { row.push(value.trim()); value = ''; }
+    else if ((character === '\n' || character === '\r') && !quoted) {
+      if (character === '\r' && text[index + 1] === '\n') index += 1;
+      row.push(value.trim());
+      if (row.some((cell) => cell !== '')) rows.push(row);
+      row = []; value = '';
+    } else value += character;
+  }
+  row.push(value.trim());
+  if (row.some((cell) => cell !== '')) rows.push(row);
+  if (rows.length < 2) throw new Error('CSV needs a header and at least one data row.');
+  const headers = rows[0].map((header, index) => header || `column_${index + 1}`);
+  return rows.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ''])));
+}
+
+function describeRows(rows) {
+  if (!rows.length || typeof rows[0] !== 'object' || Array.isArray(rows[0])) throw new Error('Data must be an array of objects.');
+  const names = [...new Set(rows.flatMap((row) => Object.keys(row)))];
+  return names.map((name) => {
+    const present = rows.map((row) => row[name]).filter((value) => value !== '' && value !== null && value !== undefined);
+    const numericCount = present.filter((value) => Number.isFinite(Number(value))).length;
+    return { name, type: present.length > 0 && numericCount === present.length ? 'number' : 'text', missing: rows.length - present.length };
+  });
+}
+
+function makeSampleDataset() {
+  const rows = Array.from({ length: 100 }, (_, index) => {
+    const studyHours = 1 + (index % 20) * 0.45;
+    const practiceTests = (index * 7) % 11;
+    const score = 35 + studyHours * 4.8 + practiceTests * 1.7 + Math.sin(index * 1.9) * 2;
+    return { study_hours: Number(studyHours.toFixed(2)), practice_tests: practiceTests, exam_score: Number(score.toFixed(2)) };
+  });
+  return { name: 'exam_scores_sample', rows, columns: describeRows(rows), featureColumns: ['study_hours', 'practice_tests'], targetColumn: 'exam_score', task: 'regression', trainRatio: 0.8 };
+}
+
+function DataDialog({ open, onClose, dataset, onDataset }) {
+  const { t } = useVividTranslation();
+  const fileRef = useRef(null);
+  if (!open) return null;
+  const loadFile = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parsed = file.name.toLowerCase().endsWith('.csv') ? parseCsv(text) : JSON.parse(text);
+      const rows = Array.isArray(parsed) ? parsed : parsed.data;
+      if (!Array.isArray(rows) || !rows.length) throw new Error('No rows found.');
+      const columns = describeRows(rows);
+      const numeric = columns.filter((column) => column.type === 'number').map((column) => column.name);
+      onDataset({ name: file.name, rows, columns, featureColumns: numeric.slice(0, -1), targetColumn: numeric.at(-1) ?? '', task: 'regression', trainRatio: 0.8 });
+    } catch (error) { window.alert(`Data import failed: ${error.message}`); }
+  };
+  const toggleFeature = (name) => onDataset({ ...dataset, featureColumns: dataset.featureColumns.includes(name) ? dataset.featureColumns.filter((column) => column !== name) : [...dataset.featureColumns, name] });
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" onMouseDown={onClose}>
+    <section className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t({ en: 'Data workspace', zh: '数据工作区' })}</h2><p className="mt-1 text-sm text-slate-500">CSV and JSON stay in this browser and are never uploaded.</p></div><button className="rounded-full p-2 hover:bg-slate-100" onClick={onClose}>✕</button></div>
+      <div className="mt-5 flex flex-wrap gap-2"><button onClick={() => fileRef.current?.click()} className="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">↑ Upload CSV / JSON</button><button onClick={() => onDataset(makeSampleDataset())} className="rounded-xl bg-slate-100 px-4 py-2 font-bold">Use sample dataset</button><input ref={fileRef} type="file" accept=".csv,.json,text/csv,application/json" className="hidden" onChange={loadFile} /></div>
+      {!dataset ? <div className="mt-8 grid min-h-56 place-items-center rounded-3xl border-2 border-dashed border-slate-200 text-center text-slate-400"><div><p className="text-4xl">▦</p><p className="mt-3 font-bold">Choose a local file or start with the sample</p></div></div> : <>
+        <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_300px]">
+          <div className="overflow-hidden rounded-2xl border"><div className="flex items-center justify-between bg-slate-50 px-4 py-3"><div><p className="font-bold">{dataset.name}</p><p className="text-xs text-slate-500">{dataset.rows.length} rows · {dataset.columns.length} columns</p></div></div><div className="overflow-x-auto"><table className="min-w-full text-left text-xs"><thead className="bg-slate-100"><tr>{dataset.columns.map((column) => <th key={column.name} className="whitespace-nowrap px-3 py-2"><span className="font-bold">{column.name}</span><span className="ml-2 text-[10px] font-normal text-slate-400">{column.type}</span></th>)}</tr></thead><tbody>{dataset.rows.slice(0, 8).map((row, index) => <tr key={index} className="border-t">{dataset.columns.map((column) => <td key={column.name} className="max-w-40 truncate px-3 py-2">{String(row[column.name] ?? '')}</td>)}</tr>)}</tbody></table></div></div>
+          <div className="space-y-4 rounded-2xl bg-slate-50 p-4"><div><p className="text-sm font-black">Input features</p><div className="mt-2 max-h-36 space-y-2 overflow-auto">{dataset.columns.filter((column) => column.type === 'number' && column.name !== dataset.targetColumn).map((column) => <label key={column.name} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={dataset.featureColumns.includes(column.name)} onChange={() => toggleFeature(column.name)} />{column.name}</label>)}</div></div><label className="block text-sm font-black">Prediction target<select value={dataset.targetColumn} onChange={(event) => onDataset({ ...dataset, targetColumn: event.target.value, featureColumns: dataset.featureColumns.filter((column) => column !== event.target.value) })} className="mt-2 w-full rounded-xl border bg-white p-2">{dataset.columns.filter((column) => column.type === 'number').map((column) => <option key={column.name}>{column.name}</option>)}</select></label><label className="block text-sm font-black">Train / test split <span className="font-mono text-blue-600">{Math.round(dataset.trainRatio * 100)} / {Math.round((1 - dataset.trainRatio) * 100)}</span><input type="range" min="0.5" max="0.9" step="0.05" value={dataset.trainRatio} onChange={(event) => onDataset({ ...dataset, trainRatio: Number(event.target.value) })} className="mt-2 w-full accent-blue-600" /></label><div className="rounded-xl bg-white p-3 text-xs text-slate-500"><p>Task: <strong className="text-slate-900">Regression</strong></p><p className="mt-1">Missing values are skipped during training.</p></div></div>
+        </div>
+        <button disabled={!dataset.featureColumns.length || !dataset.targetColumn} onClick={onClose} className="mt-5 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-40">Use this dataset · 使用此数据</button>
+      </>}
+    </section>
+  </div>;
+}
+
 function LanguageDialog({ open, onClose }) {
   const { primary, secondary, setLanguages } = useVividTranslation();
   const [draftPrimary, setDraftPrimary] = useState(primary);
@@ -146,57 +224,81 @@ function LanguageDialog({ open, onClose }) {
   </div>;
 }
 
-function RunnerDialog({ open, onClose, nodes }) {
+function RunnerDialog({ open, onClose, nodes, dataset, model, onModel, onOpenData }) {
   const { t } = useVividTranslation();
   const [running, setRunning] = useState(false);
-  const [losses, setLosses] = useState([]);
-  const [result, setResult] = useState(null);
+  const [losses, setLosses] = useState(model?.lossHistory ?? []);
+  const [inputs, setInputs] = useState({});
+  const [prediction, setPrediction] = useState(null);
+  useEffect(() => { if (open) { setLosses(model?.lossHistory ?? []); setPrediction(null); } }, [open, model]);
   if (!open) return null;
   const run = async () => {
-    if (running) return;
+    if (running || !dataset) return;
     setRunning(true);
     setLosses([]);
-    setResult(null);
     const linear = nodes.find((node) => node.data.manifest.id === 'linear_regression_node');
     const optimizer = nodes.find((node) => node.data.manifest.id === 'gradient_descent_node');
     const learningRate = linear?.data.parameters.learning_rate ?? 0.03;
     const epochs = optimizer?.data.parameters.epochs ?? 100;
-    const samples = Array.from({ length: 60 }, (_, index) => {
-      const x = -1 + (index / 59) * 2;
-      return { x, y: 2 * x + 1 + Math.sin(index * 1.7) * 0.08 };
-    });
-    let weight = -0.5;
+    const valid = dataset.rows.map((row, index) => ({ index, x: dataset.featureColumns.map((column) => Number(row[column])), y: Number(row[dataset.targetColumn]) })).filter((sample) => sample.x.every(Number.isFinite) && Number.isFinite(sample.y));
+    if (valid.length < 3) { window.alert('At least three complete numeric rows are required.'); setRunning(false); return; }
+    const shuffled = [...valid];
+    let seed = 2026;
+    for (let index = shuffled.length - 1; index > 0; index -= 1) { seed = (seed * 1664525 + 1013904223) % 4294967296; const target = seed % (index + 1); [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]]; }
+    const split = Math.max(1, Math.min(shuffled.length - 1, Math.floor(shuffled.length * dataset.trainRatio)));
+    const train = shuffled.slice(0, split);
+    const test = shuffled.slice(split);
+    const xMeans = dataset.featureColumns.map((_, feature) => train.reduce((sum, sample) => sum + sample.x[feature], 0) / train.length);
+    const xStds = dataset.featureColumns.map((_, feature) => Math.sqrt(train.reduce((sum, sample) => sum + (sample.x[feature] - xMeans[feature]) ** 2, 0) / train.length) || 1);
+    const yMean = train.reduce((sum, sample) => sum + sample.y, 0) / train.length;
+    const yStd = Math.sqrt(train.reduce((sum, sample) => sum + (sample.y - yMean) ** 2, 0) / train.length) || 1;
+    const normalized = train.map((sample) => ({ x: sample.x.map((value, feature) => (value - xMeans[feature]) / xStds[feature]), y: (sample.y - yMean) / yStd }));
+    let weights = dataset.featureColumns.map(() => 0);
     let bias = 0;
     const history = [];
     for (let epoch = 0; epoch < epochs; epoch += 1) {
       let loss = 0;
-      let dw = 0;
+      const dw = weights.map(() => 0);
       let db = 0;
-      samples.forEach(({ x, y }) => {
-        const error = weight * x + bias - y;
+      normalized.forEach(({ x, y }) => {
+        const error = weights.reduce((sum, weight, feature) => sum + weight * x[feature], bias) - y;
         loss += error * error;
-        dw += 2 * error * x;
+        dw.forEach((_, feature) => { dw[feature] += 2 * error * x[feature]; });
         db += 2 * error;
       });
-      loss /= samples.length;
-      weight -= learningRate * (dw / samples.length);
-      bias -= learningRate * (db / samples.length);
+      loss /= normalized.length;
+      weights = weights.map((weight, feature) => weight - learningRate * (dw[feature] / normalized.length));
+      bias -= learningRate * (db / normalized.length);
       history.push(loss);
       if (epoch % Math.max(1, Math.floor(epochs / 50)) === 0 || epoch === epochs - 1) {
         setLosses([...history]);
         await new Promise((resolve) => requestAnimationFrame(resolve));
       }
     }
-    setResult({ weight, bias, loss: history.at(-1), epochs, learningRate });
+    const predict = (sample) => (weights.reduce((sum, weight, feature) => sum + weight * ((sample.x[feature] - xMeans[feature]) / xStds[feature]), bias) * yStd) + yMean;
+    const predictions = test.map((sample) => ({ actual: sample.y, predicted: predict(sample) }));
+    const mse = predictions.reduce((sum, item) => sum + (item.predicted - item.actual) ** 2, 0) / predictions.length;
+    const testMean = predictions.reduce((sum, item) => sum + item.actual, 0) / predictions.length;
+    const total = predictions.reduce((sum, item) => sum + (item.actual - testMean) ** 2, 0);
+    const residual = predictions.reduce((sum, item) => sum + (item.actual - item.predicted) ** 2, 0);
+    onModel({ type: 'linear_regression', featureColumns: dataset.featureColumns, targetColumn: dataset.targetColumn, weights, bias, normalization: { xMeans, xStds, yMean, yStd }, metrics: { rmse: Math.sqrt(mse), r2: total ? 1 - residual / total : 0, trainRows: train.length, testRows: test.length }, lossHistory: history, epochs, learningRate, trainedAt: new Date().toISOString() });
     setRunning(false);
   };
+  const tryPrediction = () => {
+    if (!model) return;
+    const x = model.featureColumns.map((column) => Number(inputs[column]));
+    if (!x.every(Number.isFinite)) { setPrediction('Please enter every feature.'); return; }
+    const { xMeans, xStds, yMean, yStd } = model.normalization;
+    const normalizedPrediction = model.weights.reduce((sum, weight, feature) => sum + weight * ((x[feature] - xMeans[feature]) / xStds[feature]), model.bias);
+    setPrediction(normalizedPrediction * yStd + yMean);
+  };
   return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" onMouseDown={onClose}>
-    <section className="max-h-[90vh] w-full max-w-2xl overflow-auto rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
-      <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-black">{t({ en: 'Local CPU Lab', zh: '本地 CPU 实验室' })}</h2><p className="mt-1 text-sm text-slate-500">Real gradient descent in your browser. No data leaves this device.</p></div><button className="rounded-full p-2 hover:bg-slate-100" onClick={onClose}>✕</button></div>
-      <div className="mt-5"><LossChart values={losses} /></div>
-      {result && <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-4">{Object.entries(result).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-xs uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' ? value.toFixed(4) : value}</p></div>)}</div>}
-      <p className="mt-4 text-xs text-slate-500">Prototype executor: linear regression + gradient descent. The execution registry can later add classification, neural-network layers, TensorFlow.js and WebGPU backends.</p>
-      <button disabled={running} onClick={run} className="mt-5 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-60">{running ? 'Training…' : '▶ Run locally on CPU'}</button>
+    <section className="max-h-[92vh] w-full max-w-4xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
+      <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-black">{t({ en: 'Train, evaluate & try', zh: '训练、评估与试用' })}</h2><p className="mt-1 text-sm text-slate-500">Real local CPU training. No data leaves this device.</p></div><button className="rounded-full p-2 hover:bg-slate-100" onClick={onClose}>✕</button></div>
+      {!dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">Import data before training.</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">Open data workspace</button></div> : <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset.name}</p><p className="mt-1 text-xs text-slate-500">{dataset.featureColumns.join(', ')} → {dataset.targetColumn}</p></div><div className="mt-4"><LossChart values={losses} /></div><button disabled={running || !dataset.featureColumns.length} onClick={run} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? 'Training…' : model ? '↻ Train again' : '▶ Train locally on CPU'}</button></div>
+        <div className="space-y-4">{model ? <><div><h3 className="font-black">Test-set evaluation</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div><div className="rounded-2xl border p-4"><h3 className="font-black">Try the trained model</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">Predict {model.targetColumn}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">Prediction</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}</div><p className="text-xs text-slate-400">Trained {new Date(model.trainedAt).toLocaleString()} · weights are saved in project JSON.</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">Train the model to unlock evaluation and interactive prediction.</p></div></div>}</div>
+      </div>}
     </section>
   </div>;
 }
@@ -213,7 +315,10 @@ function Workspace() {
   const [libraryMode, setLibraryMode] = useState('detailed');
   const [query, setQuery] = useState('');
   const [languageOpen, setLanguageOpen] = useState(false);
+  const [dataOpen, setDataOpen] = useState(false);
   const [runnerOpen, setRunnerOpen] = useState(false);
+  const [dataset, setDataset] = useState(null);
+  const [model, setModel] = useState(null);
   const [notice, setNotice] = useState('');
   const importRef = useRef(null);
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? nodes[0];
@@ -227,7 +332,7 @@ function Workspace() {
   const updateParameter = (key, value) => setNodes((current) => current.map((node) => node.id === selectedNode?.id ? { ...node, data: { ...node.data, parameters: { ...node.data.parameters, [key]: value } } } : node));
   const exportCode = () => downloadText('volk_ml_pipeline.py', compilePipelineToPyTorch(nodes, edges), 'text/x-python');
   const exportProject = () => {
-    const project = { format: 'VOLK-ML', version: PROJECT_VERSION, savedAt: new Date().toISOString(), language: { primary, secondary }, workspace: { libraryMode, leftWidth, rightWidth }, graph: { nodes, edges } };
+    const project = { format: 'VOLK-ML', version: PROJECT_VERSION, savedAt: new Date().toISOString(), language: { primary, secondary }, workspace: { libraryMode, leftWidth, rightWidth }, graph: { nodes, edges }, data: dataset, trainedModel: model };
     downloadText('volk_ml_project.json', JSON.stringify(project, null, 2), 'application/json');
     setNotice(t({ en: 'Project JSON saved', zh: '项目 JSON 已保存' }));
   };
@@ -251,6 +356,8 @@ function Workspace() {
       if (project.workspace?.libraryMode) setLibraryMode(project.workspace.libraryMode);
       if (Number.isFinite(project.workspace?.leftWidth)) setLeftWidth(project.workspace.leftWidth);
       if (Number.isFinite(project.workspace?.rightWidth)) setRightWidth(project.workspace.rightWidth);
+      setDataset(project.data ?? null);
+      setModel(project.trainedModel ?? null);
       setNotice(t({ en: 'Project imported successfully', zh: '项目导入成功' }));
     } catch (error) {
       setNotice(`${t({ en: 'Import failed', zh: '导入失败' })}: ${error.message}`);
@@ -277,6 +384,7 @@ function Workspace() {
       <nav className="flex items-center gap-1.5 overflow-x-auto text-sm">
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setLeftOpen((value) => !value)}>☰ <span className="hidden sm:inline">Blocks</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setRightOpen((value) => !value)}>⚙ <span className="hidden sm:inline">Params</span></button>
+        <button className={`rounded-xl px-3 py-2 font-bold ${dataset ? 'bg-blue-100 text-blue-700' : 'bg-slate-100'}`} onClick={() => setDataOpen(true)}>▦ <span className="hidden sm:inline">Data</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={exportProject}>↓ <span className="hidden md:inline">JSON</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => importRef.current?.click()}>↑ <span className="hidden md:inline">Import</span></button>
         <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={importProject} />
@@ -306,7 +414,8 @@ function Workspace() {
     </main>
     {notice && <button onClick={() => setNotice('')} className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice} · ✕</button>}
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
-    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} />
+    <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
+    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} dataset={dataset} model={model} onModel={setModel} onOpenData={() => setDataOpen(true)} />
   </div>;
 }
 
