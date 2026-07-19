@@ -240,7 +240,13 @@ function RunnerDialog({ open, onClose, nodes, dataset, model, onModel, onOpenDat
     const optimizer = nodes.find((node) => node.data.manifest.id === 'gradient_descent_node');
     const learningRate = linear?.data.parameters.learning_rate ?? 0.03;
     const epochs = optimizer?.data.parameters.epochs ?? 100;
-    const valid = dataset.rows.map((row, index) => ({ index, x: dataset.featureColumns.map((column) => Number(row[column])), y: Number(row[dataset.targetColumn]) })).filter((sample) => sample.x.every(Number.isFinite) && Number.isFinite(sample.y));
+    const valid = dataset.rows.map((row, index) => {
+      const rawFeatures = dataset.featureColumns.map((column) => row[column]);
+      const rawTarget = row[dataset.targetColumn];
+      const isMissing = (value) => value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+      if (rawFeatures.some(isMissing) || isMissing(rawTarget)) return null;
+      return { index, x: rawFeatures.map(Number), y: Number(rawTarget) };
+    }).filter((sample) => sample && sample.x.every(Number.isFinite) && Number.isFinite(sample.y));
     if (valid.length < 3) { window.alert('At least three complete numeric rows are required.'); setRunning(false); return; }
     const shuffled = [...valid];
     let seed = 2026;
