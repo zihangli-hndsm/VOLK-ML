@@ -9,6 +9,7 @@ const languages = [
   { code: 'en', label: 'English' },
   { code: 'zh', label: '中文' },
 ];
+const LANGUAGE_STORAGE_KEY = 'volk-ml-language-settings';
 
 const pluginRegistry = [
   {
@@ -60,9 +61,22 @@ const pluginRegistry = [
 ];
 
 const LanguageContext = createContext(null);
+const ConnectionContext = createContext({ pendingConnection: null, onPortTap: () => {} });
 function LanguageProvider({ children }) {
-  const [primary, setPrimary] = useState('en');
-  const [secondary, setSecondary] = useState(null);
+  const storedLanguage = useMemo(() => {
+    try {
+      const saved = JSON.parse(window.localStorage.getItem(LANGUAGE_STORAGE_KEY));
+      const available = new Set(languages.map((language) => language.code));
+      const primary = available.has(saved?.primary) ? saved.primary : 'en';
+      const secondary = available.has(saved?.secondary) && saved.secondary !== primary ? saved.secondary : null;
+      return { primary, secondary };
+    } catch { return { primary: 'en', secondary: null }; }
+  }, []);
+  const [primary, setPrimary] = useState(storedLanguage.primary);
+  const [secondary, setSecondary] = useState(storedLanguage.secondary);
+  useEffect(() => {
+    try { window.localStorage.setItem(LANGUAGE_STORAGE_KEY, JSON.stringify({ primary, secondary })); } catch { /* Storage may be unavailable in private contexts. */ }
+  }, [primary, secondary]);
   const t = useCallback((value) => {
     if (typeof value === 'string') return value;
     const first = value?.[primary] ?? value?.en ?? Object.values(value ?? {})[0] ?? '';
@@ -181,16 +195,24 @@ function downloadText(filename, content, type) {
   URL.revokeObjectURL(url);
 }
 
-function PipelineNode({ data, selected }) {
+function PipelineNode({ id, data, selected }) {
   const { t } = useVividTranslation();
+  const { pendingConnection, onPortTap } = useContext(ConnectionContext);
   const statusStyle = data.status === 'success' ? 'border-emerald-500' : data.status === 'running' ? 'border-amber-400' : data.status === 'error' ? 'border-red-500' : selected ? 'border-blue-500' : 'border-slate-200';
   return <div className={`min-w-52 max-w-72 rounded-2xl border-2 bg-white p-4 shadow-lg ${statusStyle}`}>
-    {data.manifest.inputs.map((input, index) => <Handle key={input.name} type="target" position={Position.Left} id={input.name} style={{ top: 44 + index * 22 }} />)}
+    {data.manifest.inputs.map((input, index) => <Handle key={input.name} type="target" position={Position.Left} id={input.name} style={{ top: 44 + index * 32, width: 20, height: 20, borderWidth: 3 }} />)}
+    {data.manifest.inputs.length > 0 && <div className="mb-3 flex flex-wrap gap-1">{data.manifest.inputs.map((input) => {
+      const compatible = pendingConnection?.type === input.type;
+      return <button key={input.name} title={`Input: ${input.type}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'input', nodeId: id, port: input }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-xs font-bold transition ${pendingConnection ? compatible ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-400' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>◀ {input.name}: {input.type}</button>;
+    })}</div>}
     <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{data.manifest.category}</p>{data.status && data.status !== 'idle' && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${data.status === 'success' ? 'bg-emerald-100 text-emerald-700' : data.status === 'running' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{data.status}</span>}</div>
     <h3 className="mt-1 break-words text-base font-bold text-slate-900">{t(data.label)}</h3>
     <p className="mt-2 break-words text-sm text-slate-600">{t(data.manifest.description)}</p>
-    <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-slate-500">{data.manifest.outputs.map((output) => <span className="rounded-full bg-slate-100 px-2 py-1" key={output.name}>{output.name}: {output.type}</span>)}</div>
-    {data.manifest.outputs.map((output, index) => <Handle key={output.name} type="source" position={Position.Right} id={output.name} style={{ top: 44 + index * 22 }} />)}
+    <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-slate-500">{data.manifest.outputs.map((output) => {
+      const active = pendingConnection?.nodeId === id && pendingConnection?.port.name === output.name;
+      return <button key={output.name} title={`Output: ${output.type}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'output', nodeId: id, port: output }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-left text-xs font-bold transition ${active ? 'border-amber-400 bg-amber-100 text-amber-800 ring-2 ring-amber-200' : 'border-slate-200 bg-slate-100 hover:border-blue-400'}`}>{output.name}: {output.type} ▶</button>;
+    })}</div>
+    {data.manifest.outputs.map((output, index) => <Handle key={output.name} type="source" position={Position.Right} id={output.name} style={{ top: 44 + index * 32, width: 20, height: 20, borderWidth: 3 }} />)}
   </div>;
 }
 
@@ -491,6 +513,7 @@ function Workspace() {
   const [runnerOpen, setRunnerOpen] = useState(false);
   const [dataset, setDataset] = useState(null);
   const [model, setModel] = useState(null);
+  const [pendingConnection, setPendingConnection] = useState(null);
   const [notice, setNotice] = useState('');
   const importRef = useRef(null);
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? nodes[0];
@@ -509,8 +532,22 @@ function Workspace() {
   const onConnect = useCallback((connection) => {
     if (!isValidConnection(connection)) { setNotice(t({ en: 'These port types are incompatible', zh: '这些端口类型不兼容' })); return; }
     setEdges((current) => addEdge({ ...connection, type: 'smoothstep' }, current));
+    setPendingConnection(null);
     setModel(null);
   }, [isValidConnection, setEdges, t]);
+  const onPortTap = useCallback(({ direction, nodeId, port }) => {
+    if (direction === 'output') {
+      setPendingConnection((current) => current?.nodeId === nodeId && current?.port.name === port.name ? null : { nodeId, port, type: port.type });
+      return;
+    }
+    if (!pendingConnection) { setNotice(t({ en: 'Tap an output port first', zh: '请先点按一个输出端口' })); return; }
+    const connection = { source: pendingConnection.nodeId, sourceHandle: pendingConnection.port.name, target: nodeId, targetHandle: port.name };
+    if (!isValidConnection(connection)) { setNotice(`${t({ en: 'Incompatible port types', zh: '端口类型不兼容' })}: ${pendingConnection.type} → ${port.type}`); return; }
+    setEdges((current) => addEdge({ ...connection, id: `tap-${crypto.randomUUID()}`, type: 'smoothstep' }, current.filter((edge) => !(edge.target === nodeId && edge.targetHandle === port.name))));
+    setPendingConnection(null);
+    setModel(null);
+    setNotice(t({ en: 'Components connected', zh: '组件已连接' }));
+  }, [pendingConnection, isValidConnection, setEdges, t]);
   const handleEdgesChange = useCallback((changes) => {
     if (changes.some((change) => change.type === 'remove' || change.type === 'add')) setModel(null);
     onEdgesChange(changes);
@@ -595,7 +632,10 @@ function Workspace() {
         <div className="absolute bottom-8 right-0 top-8 hidden w-2 cursor-col-resize touch-none lg:block" onPointerDown={(event) => startResize('left', event)} />
       </motion.aside>
 
-      <section className="col-start-2 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-xl"><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onNodeClick={(_, node) => setSelectedId(node.id)} nodeTypes={{ pipelineNode: PipelineNode }} fitView><Background /><MiniMap pannable zoomable /><Controls /></ReactFlow></section>
+      <section className="relative col-start-2 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-xl">
+        {pendingConnection && <div className="absolute left-1/2 top-3 z-20 flex max-w-[calc(100%_-_24px)] -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-xl"><span className="truncate">{pendingConnection.port.name}: {pendingConnection.type} → {t({ en: 'tap a matching input', zh: '点按匹配的输入端口' })}</span><button className="nodrag rounded-full bg-white/20 px-2 py-1" onClick={() => setPendingConnection(null)}>✕</button></div>}
+        <ConnectionContext.Provider value={{ pendingConnection, onPortTap }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onNodeClick={(_, node) => setSelectedId(node.id)} nodeTypes={{ pipelineNode: PipelineNode }} fitView><Background /><MiniMap pannable zoomable /><Controls /></ReactFlow></ConnectionContext.Provider>
+      </section>
 
       <motion.aside initial={false} animate={{ x: rightOpen ? 0 : '110%' }} style={{ width: `min(${rightWidth}px, calc(100vw - 24px))` }} className={`${asideBase} right-3 lg:transform-none ${rightOpen ? 'lg:block' : 'lg:hidden'}`}>
         <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-black">{t({ en: 'Parameters', zh: '参数设置' })}</h2><button className="rounded-lg p-2 hover:bg-slate-100" onClick={() => setRightOpen(false)}>✕</button></div>
