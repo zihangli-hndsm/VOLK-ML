@@ -1,4 +1,4 @@
-import React, { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { ReactFlow, Background, Controls, Handle, MiniMap, Position, addEdge, useEdgesState, useNodesState } from '@xyflow/react';
 import { motion } from 'framer-motion';
@@ -119,6 +119,12 @@ function LanguageDialog({ open, onClose }) {
   const { primary, secondary, setLanguages } = useVividTranslation();
   const [draftPrimary, setDraftPrimary] = useState(primary);
   const [draftSecondary, setDraftSecondary] = useState(secondary ?? 'none');
+  useEffect(() => {
+    if (open) {
+      setDraftPrimary(primary);
+      setDraftSecondary(secondary ?? 'none');
+    }
+  }, [open, primary, secondary]);
   if (!open) return null;
   return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/45 p-4" onMouseDown={onClose}>
     <section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
