@@ -1,7 +1,8 @@
-import React, { createContext, useCallback, useContext, useMemo, useState } from 'https://esm.sh/react@19';
-import { createRoot } from 'https://esm.sh/react-dom@19/client';
-import { ReactFlow, Background, Controls, Handle, Position, addEdge, useEdgesState, useNodesState } from 'https://esm.sh/@xyflow/react@12';
-import { motion } from 'https://esm.sh/framer-motion@12';
+import React, { createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { createRoot } from 'react-dom/client';
+import { ReactFlow, Background, Controls, Handle, Position, addEdge, useEdgesState, useNodesState } from '@xyflow/react';
+import { motion } from 'framer-motion';
+import '@xyflow/react/dist/style.css';
 
 const pluginRegistry = [
   {
