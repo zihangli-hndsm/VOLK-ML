@@ -322,6 +322,10 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
   const [prediction, setPrediction] = useState(null);
   const [graphError, setGraphError] = useState('');
   const [planNames, setPlanNames] = useState([]);
+  const graphSignature = useMemo(() => JSON.stringify({
+    nodes: nodes.map((node) => ({ id: node.id, manifestId: node.data.manifest.id, parameters: node.data.parameters })),
+    edges: edges.map((edge) => ({ source: edge.source, sourceHandle: edge.sourceHandle, target: edge.target, targetHandle: edge.targetHandle })),
+  }), [nodes, edges]);
   useEffect(() => {
     if (open) {
       setLosses(model?.lossHistory ?? []);
@@ -330,7 +334,7 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
       try { setPlanNames(compileExecutionGraph(nodes, edges).order.map((node) => node.data.manifest.name.en)); }
       catch (error) { setPlanNames([]); setGraphError(error.message); }
     }
-  }, [open, model, nodes, edges]);
+  }, [open, model, graphSignature]);
   if (!open) return null;
 
   const run = async () => {
