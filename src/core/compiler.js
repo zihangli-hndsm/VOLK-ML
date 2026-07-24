@@ -156,15 +156,23 @@ function tensorflowForwardExpression(node, inputs) {
   }
 }
 
+function binaryOutputUsesProbabilities(ir) {
+  const nodeById = new Map(ir.nodes.map((node) => [node.id, node]));
+  return ir.nodes
+    .filter((node) => node.op === 'model_output')
+    .some((node) => node.inputs.some((connection) => nodeById.get(connection.source)?.op === 'sigmoid'));
+}
+
 function trainingConfiguration(ir, framework) {
   const nodes = ir.nodes;
   const loss = nodes.find((node) => node.kind === 'loss');
   const optimizer = nodes.find((node) => node.kind === 'optimizer');
+  const probabilityOutput = binaryOutputUsesProbabilities(ir);
   if (framework === 'pytorch') {
     const lossLine = {
       mse_loss: 'criterion = nn.MSELoss()',
       cross_entropy_loss: 'criterion = nn.CrossEntropyLoss()',
-      binary_cross_entropy_loss: 'criterion = nn.BCEWithLogitsLoss()',
+      binary_cross_entropy_loss: probabilityOutput ? 'criterion = nn.BCELoss()' : 'criterion = nn.BCEWithLogitsLoss()',
     }[loss?.op] ?? 'criterion = nn.MSELoss()';
     const optimizerLine = {
       sgd_optimizer: `optimizer = torch.optim.SGD(model.parameters(), lr=${optimizer?.parameters.learning_rate ?? 0.01}, momentum=${optimizer?.parameters.momentum ?? 0})`,
@@ -176,7 +184,7 @@ function trainingConfiguration(ir, framework) {
   const lossName = {
     mse_loss: '"mse"',
     cross_entropy_loss: 'keras.losses.SparseCategoricalCrossentropy(from_logits=True)',
-    binary_cross_entropy_loss: 'keras.losses.BinaryCrossentropy(from_logits=True)',
+    binary_cross_entropy_loss: `keras.losses.BinaryCrossentropy(from_logits=${pythonBoolean(!probabilityOutput)})`,
   }[loss?.op] ?? '"mse"';
   const optimizerName = {
     sgd_optimizer: `keras.optimizers.SGD(learning_rate=${optimizer?.parameters.learning_rate ?? 0.01}, momentum=${optimizer?.parameters.momentum ?? 0})`,
@@ -187,9 +195,32 @@ function trainingConfiguration(ir, framework) {
 }
 
 function compileArchitecture(ir, framework) {
-  const architecture = ir.nodes.filter((node) => architectureKinds.has(node.kind));
+  const candidates = ir.nodes.filter((node) => architectureKinds.has(node.kind));
+  if (!candidates.length) return null;
+  const nodeById = new Map(candidates.map((node) => [node.id, node]));
+  const outputs = candidates.filter((node) => node.op === 'model_output');
+  if (!outputs.length) {
+    const error = new Error('error.modelOutputRequired');
+    error.translationKey = 'error.modelOutputRequired';
+    throw error;
+  }
+  const activeIds = new Set();
+  const pending = outputs.map((node) => node.id);
+  while (pending.length) {
+    const id = pending.pop();
+    if (activeIds.has(id)) continue;
+    activeIds.add(id);
+    nodeById.get(id)?.inputs.forEach((connection) => {
+      if (nodeById.has(connection.source)) pending.push(connection.source);
+    });
+  }
+  const architecture = candidates.filter((node) => activeIds.has(node.id));
   const inputs = architecture.filter((node) => node.op === 'tensor_input');
-  if (!inputs.length) return null;
+  if (!inputs.length) {
+    const error = new Error('error.modelInputRequired');
+    error.translationKey = 'error.modelInputRequired';
+    throw error;
+  }
   const variableByNode = new Map();
   const outputCandidates = [];
 
