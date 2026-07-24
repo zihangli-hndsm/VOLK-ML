@@ -20,3 +20,9 @@
 - Component names, descriptions, and property labels remain localized objects in the manifest because plugins own this metadata.
 - Categories shown in the interface must be resolved through `category.*` keys.
 - Keep internal IDs and port/type names stable across languages so project JSON and graph connections remain portable.
+- Treat `src/core/components.js` as the canonical component registry. Every manifest declares a semantic operation, typed ports, property schema, framework compatibility, and minimum execution tier.
+- Keep graph storage framework-neutral. `src/core/compiler.js` converts the graph to versioned VOLK IR before a PyTorch or TensorFlow backend generates source code.
+- Mark conversion quality explicitly as `exact`, `adapted`, `approximate`, or `unsupported`; never silently change framework semantics.
+- Define reusable structures as composite subgraphs of registered basic components. A composite must provide internal edges plus external input/output mappings and remain expandable on the canvas.
+- Keep browser execution separate from source compilation. Components without a browser backend can still be designed and exported, while `src/core/runtimeTiers.js` recommends Browser CPU, Browser WebGPU, Local Python, or Remote GPU from estimated workload.
+- Validate registry IDs, localized metadata, port mappings, composite references, both compiler backends, and execution-tier estimates before publishing component changes.
