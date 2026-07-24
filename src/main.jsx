@@ -4,58 +4,12 @@ import { ReactFlow, Background, Controls, Handle, MiniMap, Position, addEdge, us
 import { motion } from 'framer-motion';
 import '@xyflow/react/dist/style.css';
 import { languages, localizedError, resolveMessage, translateError } from './i18n';
+import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
+import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
+import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
 
-const PROJECT_VERSION = 3;
+const PROJECT_VERSION = 4;
 const LANGUAGE_STORAGE_KEY = 'volk-ml-language-settings';
-
-const pluginRegistry = [
-  {
-    id: 'tabular_data_node', name: { en: 'Tabular Data', zh: '表格数据' }, category: 'Data',
-    description: { en: 'Provides the CSV or JSON dataset configured in the Data workspace.', zh: '提供在数据工作区配置的 CSV 或 JSON 数据集。' },
-    inputs: [], outputs: [{ name: 'dataset', type: 'Table' }], properties: [],
-    pytorch_template: '# Load the configured tabular dataset',
-  },
-  {
-    id: 'train_test_split_node', name: { en: 'Train/Test Split', zh: '训练/测试集划分' }, category: 'Preprocessing',
-    description: { en: 'Cleans numeric rows and creates a deterministic train/test split.', zh: '清理数值行并确定性划分训练集与测试集。' },
-    inputs: [{ name: 'dataset', type: 'Table' }], outputs: [{ name: 'split', type: 'DatasetSplit' }],
-    properties: [{ key: 'train_ratio', label: { en: 'Training Ratio', zh: '训练集比例' }, type: 'slider', min: 0.5, max: 0.9, step: 0.05, default: 0.8 }],
-    pytorch_template: 'train_set, test_set = train_test_split(dataset, train_size={train_ratio}, random_state=2026)',
-  },
-  {
-    id: 'knn_node', name: { en: 'K-Nearest Neighbors', zh: 'K-近邻算法' }, category: 'Classification',
-    description: { en: 'Classifies points by voting among nearby examples.', zh: '通过附近样本投票对数据点分类。' },
-    inputs: [{ name: 'dataset', type: 'Table' }], outputs: [{ name: 'model', type: 'Model' }, { name: 'boundary', type: 'Mesh' }],
-    properties: [{ key: 'k_value', label: { en: 'Number of Neighbors (K)', zh: '邻居数量 (K)' }, type: 'slider', min: 1, max: 21, step: 2, default: 3 }],
-    pytorch_template: 'from sklearn.neighbors import KNeighborsClassifier\nmodel = KNeighborsClassifier(n_neighbors={k_value})',
-  },
-  {
-    id: 'linear_regression_node', name: { en: 'Linear Regression', zh: '线性回归' }, category: 'Regression',
-    description: { en: 'Fits a straight line to predict continuous values.', zh: '拟合直线来预测连续数值。' },
-    inputs: [{ name: 'split', type: 'DatasetSplit' }], outputs: [{ name: 'model', type: 'ModelSpec' }],
-    properties: [{ key: 'learning_rate', label: { en: 'Learning Rate', zh: '学习率' }, type: 'slider', min: 0.001, max: 0.2, step: 0.001, default: 0.01 }],
-    pytorch_template: 'import torch\nmodel = torch.nn.Linear(in_features=1, out_features=1)\noptimizer = torch.optim.SGD(model.parameters(), lr={learning_rate})',
-  },
-  {
-    id: 'gradient_descent_node', name: { en: 'Gradient Descent', zh: '梯度下降' }, category: 'Optimization',
-    description: { en: 'Iteratively updates parameters in the direction that reduces loss.', zh: '沿着降低损失的方向迭代更新参数。' },
-    inputs: [{ name: 'model', type: 'ModelSpec' }], outputs: [{ name: 'trained_model', type: 'TrainedModel' }],
-    properties: [{ key: 'epochs', label: { en: 'Training Epochs', zh: '训练轮数' }, type: 'slider', min: 10, max: 500, step: 10, default: 100 }],
-    pytorch_template: 'for epoch in range({epochs}):\n    optimizer.zero_grad()\n    loss.backward()\n    optimizer.step()',
-  },
-  {
-    id: 'evaluate_node', name: { en: 'Evaluate Regression', zh: '回归评估' }, category: 'Evaluation',
-    description: { en: 'Computes RMSE and R² on the connected test set.', zh: '在连接的测试集上计算 RMSE 和 R²。' },
-    inputs: [{ name: 'trained_model', type: 'TrainedModel' }], outputs: [{ name: 'metrics', type: 'Metrics' }], properties: [],
-    pytorch_template: '# Evaluate RMSE and R2 on the test set',
-  },
-  {
-    id: 'predictor_node', name: { en: 'Interactive Predictor', zh: '交互预测器' }, category: 'Inference',
-    description: { en: 'Creates an input form for trying the connected trained model.', zh: '为连接的已训练模型创建交互输入表单。' },
-    inputs: [{ name: 'trained_model', type: 'TrainedModel' }], outputs: [{ name: 'prediction', type: 'Prediction' }], properties: [],
-    pytorch_template: '# Run inference with the trained model',
-  },
-];
 
 const LanguageContext = createContext(null);
 const ConnectionContext = createContext({ pendingConnection: null, onPortTap: () => {} });
@@ -87,7 +41,6 @@ function LanguageProvider({ children }) {
 }
 function useVividTranslation() { return useContext(LanguageContext); }
 
-const defaults = (manifest) => Object.fromEntries(manifest.properties.map((property) => [property.key, property.default]));
 const createNode = (manifest, index) => ({
   id: `${manifest.id}-${crypto.randomUUID()}`,
   type: 'pipelineNode',
@@ -105,7 +58,7 @@ function makeDefaultGraph() {
     ['pipeline-predictor', 'predictor_node', 1270, 300],
   ];
   const nodes = specs.map(([id, manifestId, x, y]) => {
-    const manifest = pluginRegistry.find((plugin) => plugin.id === manifestId);
+    const manifest = componentById.get(manifestId);
     return { id, type: 'pipelineNode', position: { x, y }, data: { label: manifest.name, manifest, parameters: defaults(manifest), status: 'idle' } };
   });
   const edge = (id, source, sourceHandle, target, targetHandle) => ({ id, source, sourceHandle, target, targetHandle, type: 'smoothstep' });
@@ -159,29 +112,6 @@ function compileExecutionGraph(nodes, edges) {
   return { order, incoming };
 }
 
-function compilePipelineToPyTorch(nodes, edges) {
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const indegree = new Map(nodes.map((node) => [node.id, 0]));
-  const outgoing = new Map();
-  edges.forEach((edge) => {
-    outgoing.set(edge.source, [...(outgoing.get(edge.source) ?? []), edge.target]);
-    indegree.set(edge.target, (indegree.get(edge.target) ?? 0) + 1);
-  });
-  const queue = nodes.filter((node) => indegree.get(node.id) === 0).map((node) => node.id);
-  const ordered = [];
-  while (queue.length) {
-    const id = queue.shift();
-    ordered.push(nodeById.get(id));
-    (outgoing.get(id) ?? []).forEach((target) => {
-      const next = indegree.get(target) - 1;
-      indegree.set(target, next);
-      if (next === 0) queue.push(target);
-    });
-  }
-  if (ordered.length !== nodes.length) throw localizedError('error.pipelineCycle');
-  return ['# Generated by VOLK-ML', '# Review tensor shapes and dataset bindings before running.', '', ...ordered.map((node, index) => `# Step ${index + 1}: ${node.data.manifest.name.en}\n${node.data.manifest.pytorch_template.replace(/\{(\w+)\}/g, (_, key) => node.data.parameters[key] ?? `{${key}}`)}`)].join('\n\n');
-}
-
 function downloadText(filename, content, type) {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const anchor = document.createElement('a');
@@ -201,9 +131,10 @@ function PipelineNode({ id, data, selected }) {
       const compatible = pendingConnection?.type === input.type;
       return <button key={input.name} title={`${t('common.input')}: ${input.type}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'input', nodeId: id, port: input }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-xs font-bold transition ${pendingConnection ? compatible ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-400' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>◀ {input.name}: {input.type}</button>;
     })}</div>}
-    <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{t(`category.${data.manifest.category}`)}</p>{data.status && data.status !== 'idle' && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${data.status === 'success' ? 'bg-emerald-100 text-emerald-700' : data.status === 'running' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{t(`status.${data.status}`)}</span>}</div>
+    <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{t(`category.${data.manifest.category}`)}</p><div className="flex gap-1">{data.manifest.kind === 'composite' && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{t('component.composite')}</span>}{data.status && data.status !== 'idle' && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${data.status === 'success' ? 'bg-emerald-100 text-emerald-700' : data.status === 'running' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{t(`status.${data.status}`)}</span>}</div></div>
     <h3 className="mt-1 break-words text-base font-bold text-slate-900">{t(data.label)}</h3>
     <p className="mt-2 break-words text-sm text-slate-600">{t(data.manifest.description)}</p>
+    <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{t('framework.pytorch')} {t(`compatibility.${data.manifest.compatibility?.pytorch ?? 'unsupported'}`)} · {t('framework.tensorflow')} {t(`compatibility.${data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</p>
     <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-slate-500">{data.manifest.outputs.map((output) => {
       const active = pendingConnection?.nodeId === id && pendingConnection?.port.name === output.name;
       return <button key={output.name} title={`${t('common.output')}: ${output.type}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'output', nodeId: id, port: output }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-left text-xs font-bold transition ${active ? 'border-amber-400 bg-amber-100 text-amber-800 ring-2 ring-amber-200' : 'border-slate-200 bg-slate-100 hover:border-blue-400'}`}>{output.name}: {output.type} ▶</button>;
@@ -333,7 +264,37 @@ function LanguageDialog({ open, onClose }) {
   </div>;
 }
 
-function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, onOpenData, onNodeStatus }) {
+function TierPanel({ plan, onExport }) {
+  const { t } = useVividTranslation();
+  const tone = plan.recommendedTier === 'L0' ? 'border-emerald-200 bg-emerald-50' : plan.recommendedTier === 'L1' ? 'border-blue-200 bg-blue-50' : plan.recommendedTier === 'L2' ? 'border-amber-200 bg-amber-50' : 'border-rose-200 bg-rose-50';
+  return <div className={`mt-4 rounded-3xl border p-4 ${tone}`}>
+    <div className="flex flex-wrap items-start justify-between gap-3">
+      <div><p className="text-xs font-bold uppercase tracking-wide text-slate-500">{t('tier.recommended')}</p><h3 className="mt-1 text-lg font-black">{plan.recommendedTier} · {t(`tier.${plan.recommendedTier}.name`)}</h3><p className="mt-1 text-xs text-slate-600">{t(`tier.${plan.recommendedTier}.description`)}</p></div>
+      <div className="grid grid-cols-3 gap-2 text-center text-xs">
+        <div className="rounded-xl bg-white/80 px-3 py-2"><p className="text-slate-400">{t('tier.parameters')}</p><p className="font-black">{plan.parameters.toLocaleString()}</p></div>
+        <div className="rounded-xl bg-white/80 px-3 py-2"><p className="text-slate-400">{t('tier.memory')}</p><p className="font-black">{plan.peakMemoryMB} MB</p></div>
+        <div className="rounded-xl bg-white/80 px-3 py-2"><p className="text-slate-400">{t('tier.operations')}</p><p className="font-black">{plan.operationsPerStep.toLocaleString()}</p></div>
+      </div>
+    </div>
+    <div className="mt-3 grid gap-2 sm:grid-cols-4">{executionTiers.map((tier) => <div key={tier.id} className={`rounded-2xl border p-3 ${tier.id === plan.recommendedTier ? 'border-slate-900 bg-white shadow-sm' : 'border-white/80 bg-white/50'}`}><div className="flex items-center justify-between"><span className="font-black">{tier.id}</span><span className={`h-2 w-2 rounded-full ${tier.available ? 'bg-emerald-500' : 'bg-slate-300'}`} /></div><p className="mt-1 text-xs font-bold">{t(tier.nameKey)}</p><p className="mt-1 text-[10px] text-slate-500">{tier.available ? t('tier.available') : t('tier.exportOnly')}</p></div>)}</div>
+    {plan.reasons.length > 0 && <ul className="mt-3 space-y-1 text-xs text-slate-600">{plan.reasons.map((reason) => <li key={reason}>• {t(reason)}</li>)}</ul>}
+    {!plan.canRunHere && <div className="mt-3 grid grid-cols-2 gap-2"><button onClick={() => onExport('pytorch')} className="rounded-xl bg-slate-950 px-3 py-2 text-sm font-bold text-white">{t('compiler.exportPyTorch')}</button><button onClick={() => onExport('tensorflow')} className="rounded-xl bg-orange-500 px-3 py-2 text-sm font-bold text-white">{t('compiler.exportTensorFlow')}</button></div>}
+  </div>;
+}
+
+function PropertyControl({ property, value, onChange }) {
+  const { t } = useVividTranslation();
+  const inputClass = 'mt-3 w-full rounded-xl border border-slate-200 bg-white p-2 text-sm accent-blue-600';
+  if (property.type === 'select') {
+    return <select className={inputClass} value={value} onChange={(event) => onChange(event.target.value)}>{property.options.map((option) => <option key={option} value={option}>{option}</option>)}</select>;
+  }
+  if (property.type === 'boolean') {
+    return <select className={inputClass} value={String(value)} onChange={(event) => onChange(event.target.value === 'true')}><option value="true">{t('common.enabled')}</option><option value="false">{t('common.disabled')}</option></select>;
+  }
+  return <><input className={property.type === 'slider' ? 'mt-3 w-full accent-blue-600' : inputClass} type={property.type === 'slider' ? 'range' : property.type === 'number' ? 'number' : 'text'} min={property.min} max={property.max} step={property.step} value={value} onChange={(event) => onChange(property.type === 'text' ? event.target.value : Number(event.target.value))} />{property.type === 'slider' && <span className="mt-2 block text-sm text-slate-500">{value}</span>}</>;
+}
+
+function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, onOpenData, onNodeStatus, onExport }) {
   const { t } = useVividTranslation();
   const [running, setRunning] = useState(false);
   const [losses, setLosses] = useState(model?.lossHistory ?? []);
@@ -345,12 +306,22 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
     nodes: nodes.map((node) => ({ id: node.id, manifestId: node.data.manifest.id, parameters: node.data.parameters })),
     edges: edges.map((edge) => ({ source: edge.source, sourceHandle: edge.sourceHandle, target: edge.target, targetHandle: edge.targetHandle })),
   }), [nodes, edges]);
+  const executionPlan = useMemo(() => {
+    const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+    const connectedNodes = nodes.filter((node) => connectedIds.has(node.id));
+    return estimateExecutionPlan(connectedNodes, dataset, { webgpu: typeof navigator !== 'undefined' && Boolean(navigator.gpu) });
+  }, [graphSignature, dataset]);
+  const needsDataset = nodes.some((node) => node.data.manifest.op === 'tabular_data');
   useEffect(() => {
     if (open) {
       setLosses(model?.lossHistory ?? []);
       setPrediction(null);
       setGraphError('');
-      try { setPlanNames(compileExecutionGraph(nodes, edges).order.map((node) => t(node.data.manifest.name))); }
+      try {
+        const ir = graphToIR(nodes, edges);
+        const nodeById = new Map(nodes.map((node) => [node.id, node]));
+        setPlanNames(ir.nodes.filter((node) => edges.some((edge) => edge.source === node.id || edge.target === node.id)).map((node) => t(nodeById.get(node.id).data.manifest.name)));
+      }
       catch (error) { setPlanNames([]); setGraphError(translateError(error, t)); }
     }
   }, [open, model, graphSignature, t]);
@@ -364,6 +335,7 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
     onNodeStatus(nodes.map((node) => node.id), 'idle');
     let currentNode = null;
     try {
+      if (!executionPlan.canRunHere) throw localizedError('error.higherTierRequired', { tier: executionPlan.recommendedTier });
       const plan = compileExecutionGraph(nodes, edges);
       if (!dataset) throw localizedError('error.datasetMissing');
       setRunning(true);
@@ -485,11 +457,12 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
     <section className="max-h-[92vh] w-full max-w-4xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
       <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-black">{t('runner.title')}</h2><p className="mt-1 text-sm text-slate-500">{t('runner.description')}</p></div><button aria-label={t('common.close')} className="rounded-full p-2 hover:bg-slate-100" onClick={onClose}>✕</button></div>
       {planNames.length > 0 && <div className="mt-4 flex flex-wrap items-center gap-1 text-xs">{planNames.map((name, index) => <React.Fragment key={`${name}-${index}`}><span className="rounded-full bg-slate-100 px-2 py-1 font-bold">{name}</span>{index < planNames.length - 1 && <span className="text-slate-300">→</span>}</React.Fragment>)}</div>}
+      <TierPanel plan={executionPlan} onExport={onExport} />
       {graphError && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">⚠ {graphError}</div>}
-      {!dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset.name}</p><p className="mt-1 text-xs text-slate-500">{dataset.featureColumns.join(', ')} → {dataset.targetColumn}</p></div><div className="mt-4"><LossChart values={losses} /></div><button disabled={running || !dataset.featureColumns.length || Boolean(graphError)} onClick={run} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button></div>
+      {needsDataset && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div className="mt-4"><LossChart values={losses} /></div><button disabled={running || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={run} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button></div>
         <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="font-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
-      </div>}
+      </div> : <div className="mt-5 rounded-3xl border border-dashed border-slate-300 p-8 text-center text-slate-500"><p className="text-3xl">⇧</p><p className="mt-3 font-bold">{t('tier.useHigherTier', { tier: executionPlan.recommendedTier })}</p><p className="mt-1 text-sm">{t('tier.designStillAvailable')}</p></div>}
     </section>
   </div>;
 }
@@ -556,9 +529,43 @@ function Workspace() {
   const setNodeStatus = useCallback((ids, status) => setNodes((current) => current.map((node) => ids.includes(node.id) ? { ...node, data: { ...node.data, status } } : node)), [setNodes]);
   const addPluginNode = (manifest) => { const node = createNode(manifest, nodes.length); setNodes((current) => [...current, node]); setSelectedId(node.id); setModel(null); };
   const updateParameter = (key, value) => { setNodes((current) => current.map((node) => node.id === selectedNode?.id ? { ...node, data: { ...node.data, parameters: { ...node.data.parameters, [key]: value }, status: 'idle' } } : node)); setModel(null); };
-  const exportCode = () => {
-    try { downloadText('volk_ml_pipeline.py', compilePipelineToPyTorch(nodes, edges), 'text/x-python'); }
+  const exportCode = (framework) => {
+    try {
+      const result = framework === 'tensorflow' ? compilePipelineToTensorFlow(nodes, edges) : compilePipelineToPyTorch(nodes, edges);
+      downloadText(`volk_ml_${framework}_pipeline.py`, result.code, 'text/x-python');
+      setNotice(t('compiler.exported', { framework: t(`framework.${framework}`) }));
+    }
     catch (error) { setNotice(translateError(error, t)); }
+  };
+  const expandSelectedComposite = () => {
+    if (!selectedNode?.data.manifest.composition) return;
+    try {
+      const expansion = expandComposite(selectedNode);
+      const unrelated = edges.filter((edge) => edge.source !== selectedNode.id && edge.target !== selectedNode.id);
+      const redirected = [];
+      edges.filter((edge) => edge.target === selectedNode.id).forEach((edge) => {
+        (expansion.inputs[edge.targetHandle] ?? []).forEach((target) => redirected.push({
+          ...edge,
+          id: `expanded-input-${crypto.randomUUID()}`,
+          target: target.nodeId,
+          targetHandle: target.port,
+        }));
+      });
+      edges.filter((edge) => edge.source === selectedNode.id).forEach((edge) => {
+        const source = expansion.outputs[edge.sourceHandle];
+        if (source) redirected.push({
+          ...edge,
+          id: `expanded-output-${crypto.randomUUID()}`,
+          source: source.nodeId,
+          sourceHandle: source.port,
+        });
+      });
+      setNodes((current) => [...current.filter((node) => node.id !== selectedNode.id), ...expansion.nodes]);
+      setEdges([...unrelated, ...expansion.edges, ...redirected]);
+      setSelectedId(expansion.nodes[0]?.id);
+      setModel(null);
+      setNotice(t('component.expanded'));
+    } catch (error) { setNotice(translateError(error, t)); }
   };
   const exportProject = () => {
     const project = { format: 'VOLK-ML', version: PROJECT_VERSION, savedAt: new Date().toISOString(), language: { primary, secondary }, workspace: { libraryMode, leftWidth, rightWidth }, graph: { nodes, edges }, data: dataset, trainedModel: model };
@@ -574,7 +581,7 @@ function Workspace() {
       if (project.format !== 'VOLK-ML' || !Array.isArray(project.graph?.nodes) || !Array.isArray(project.graph?.edges)) throw localizedError('error.invalidProject');
       const restoredNodes = project.graph.nodes.map((node) => {
         const manifestId = node.data?.manifest?.id;
-        const currentManifest = pluginRegistry.find((plugin) => plugin.id === manifestId) ?? node.data?.manifest;
+        const currentManifest = componentById.get(manifestId) ?? node.data?.manifest;
         if (!currentManifest) throw localizedError('error.unknownComponent', { component: manifestId });
         return { ...node, type: 'pipelineNode', data: { ...node.data, label: currentManifest.name, manifest: currentManifest, parameters: { ...defaults(currentManifest), ...node.data?.parameters } } };
       });
@@ -640,14 +647,14 @@ function Workspace() {
       <motion.aside initial={false} animate={{ x: rightOpen ? 0 : '110%' }} style={{ width: `min(${rightWidth}px, calc(100vw - 24px))` }} className={`${asideBase} right-3 lg:transform-none ${rightOpen ? 'lg:block' : 'lg:hidden'}`}>
         <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-black">{t('parameters.title')}</h2><button aria-label={t('common.close')} className="rounded-lg p-2 hover:bg-slate-100" onClick={() => setRightOpen(false)}>✕</button></div>
         <label className="mt-3 flex items-center gap-3 text-xs text-slate-500"><span>{t('common.width')}</span><input type="range" min="220" max="520" value={rightWidth} onChange={(event) => setRightWidth(Number(event.target.value))} className="min-w-0 flex-1 accent-blue-600" /><span>{rightWidth}px</span></label>
-        {selectedNode ? <div className="mt-4 space-y-5"><div className="rounded-2xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-600">{t(`category.${selectedNode.data.manifest.category}`)}</p><h3 className="break-words text-xl font-black text-slate-900">{t(selectedNode.data.label)}</h3></div>{selectedNode.data.manifest.properties.map((property) => <label key={property.key} className="block rounded-2xl border border-slate-200 bg-white p-4"><span className="block break-words text-sm font-bold text-slate-800">{t(property.label)}</span><input className="mt-3 w-full accent-blue-600" type={property.type === 'slider' ? 'range' : 'text'} min={property.min} max={property.max} step={property.step} value={selectedNode.data.parameters[property.key]} onChange={(event) => updateParameter(property.key, property.type === 'text' ? event.target.value : Number(event.target.value))} /><span className="mt-2 block text-sm text-slate-500">{selectedNode.data.parameters[property.key]}</span></label>)}<button onClick={exportCode} className="w-full rounded-2xl bg-slate-950 px-4 py-3 font-bold text-white shadow-lg transition hover:bg-blue-700">🛠️ {t('parameters.export')}</button></div> : <p className="mt-6 text-sm text-slate-500">{t('parameters.empty')}</p>}
+        {selectedNode ? <div className="mt-4 space-y-5"><div className="rounded-2xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-600">{t(`category.${selectedNode.data.manifest.category}`)}</p><h3 className="break-words text-xl font-black text-slate-900">{t(selectedNode.data.label)}</h3><div className="mt-2 flex gap-2 text-[10px] font-bold uppercase"><span className="rounded-full bg-slate-900 px-2 py-1 text-white">{t('framework.pytorch')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.pytorch ?? 'unsupported'}`)}</span><span className="rounded-full bg-orange-100 px-2 py-1 text-orange-700">{t('framework.tensorflow')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</span></div></div>{selectedNode.data.manifest.properties.map((property) => <label key={property.key} className="block rounded-2xl border border-slate-200 bg-white p-4"><span className="block break-words text-sm font-bold text-slate-800">{t(property.label)}</span><PropertyControl property={property} value={selectedNode.data.parameters[property.key]} onChange={(value) => updateParameter(property.key, value)} /></label>)}{selectedNode.data.manifest.composition && <button onClick={expandSelectedComposite} className="w-full rounded-2xl bg-violet-600 px-4 py-3 font-bold text-white shadow-lg">{t('component.expand')}</button>}<div className="grid grid-cols-2 gap-2"><button onClick={() => exportCode('pytorch')} className="rounded-2xl bg-slate-950 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-700">{t('compiler.exportPyTorch')}</button><button onClick={() => exportCode('tensorflow')} className="rounded-2xl bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-orange-600">{t('compiler.exportTensorFlow')}</button></div></div> : <p className="mt-6 text-sm text-slate-500">{t('parameters.empty')}</p>}
         <div className="absolute bottom-8 left-0 top-8 hidden w-2 cursor-col-resize touch-none lg:block" onPointerDown={(event) => startResize('right', event)} />
       </motion.aside>
     </main>
     {notice && <button onClick={() => setNotice('')} className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice} · ✕</button>}
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
-    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} onModel={setModel} onOpenData={() => setDataOpen(true)} onNodeStatus={setNodeStatus} />
+    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} onModel={setModel} onOpenData={() => setDataOpen(true)} onNodeStatus={setNodeStatus} onExport={exportCode} />
   </div>;
 }
 
