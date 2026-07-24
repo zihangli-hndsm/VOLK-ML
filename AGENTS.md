@@ -1,5 +1,14 @@
 # VOLK-ML development standards
 
+## Read only what the task needs
+
+- Treat code as the final source of truth and keep the matching architecture document current whenever a contract changes.
+- Read `docs/architecture/overview.md` for cross-cutting changes or when the affected subsystem is unclear.
+- Read `docs/architecture/component-manifest.md` before adding or changing components, ports, properties, compatibility metadata, or composites.
+- Read `docs/architecture/compiler-ir.md` before changing VOLK IR, graph selection, generated PyTorch/TensorFlow code, loss semantics, or conversion behavior.
+- Read `docs/architecture/execution-tiers.md` before changing browser execution, workload estimates, tier thresholds, or backend availability.
+- Do not scan unrelated legacy TypeScript files. The active application entry point is `src/main.jsx`.
+
 ## Localized UI is the default
 
 - Put every user-visible interface string in the active resource file `src/locales/ui.js` and reference it with a stable semantic key such as `runner.execute`.
@@ -26,3 +35,10 @@
 - Define reusable structures as composite subgraphs of registered basic components. A composite must provide internal edges plus external input/output mappings and remain expandable on the canvas.
 - Keep browser execution separate from source compilation. Components without a browser backend can still be designed and exported, while `src/core/runtimeTiers.js` recommends Browser CPU, Browser WebGPU, Local Python, or Remote GPU from estimated workload.
 - Validate registry IDs, localized metadata, port mappings, composite references, both compiler backends, and execution-tier estimates before publishing component changes.
+
+## Required validation
+
+- Run `npm run check` for component, compiler, composite, localization, and tier invariants.
+- Run `npm run build` for every application or documentation change that also touches executable code.
+- Run `git diff --check` before publishing.
+- Add a focused regression assertion to `scripts/check-core.mjs` when changing a manifest contract, compiler semantic, graph-selection rule, or tier boundary.
