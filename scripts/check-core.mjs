@@ -103,6 +103,35 @@ assert.match(tensorflow.code, /keras\.Model/);
 assert.match(tensorflow.code, /layers\.Dense\(10/);
 assert.match(tensorflow.code, /SparseCategoricalCrossentropy/);
 
+const orphan = makeNode('orphan', 'dense_node', { input_features: 999, units: 777 });
+const pytorchWithoutOrphan = compilePipelineToPyTorch([...architectureNodes, orphan], architectureEdges);
+const tensorflowWithoutOrphan = compilePipelineToTensorFlow([...architectureNodes, orphan], architectureEdges);
+assert.doesNotMatch(pytorchWithoutOrphan.code, /n_orphan/);
+assert.doesNotMatch(tensorflowWithoutOrphan.code, /n_orphan/);
+assert.doesNotMatch(pytorchWithoutOrphan.code, /999, 777/);
+assert.doesNotMatch(tensorflowWithoutOrphan.code, /Dense\(777/);
+
+const binaryNodes = [
+  makeNode('binary-input', 'tensor_input_node', { shape: '32' }),
+  makeNode('binary-dense', 'dense_node', { input_features: 32, units: 1 }),
+  makeNode('binary-sigmoid', 'sigmoid_node'),
+  makeNode('binary-output', 'model_output_node'),
+  makeNode('binary-loss', 'binary_cross_entropy_loss_node'),
+];
+const binaryProbabilityEdges = [
+  makeEdge('binary-input', 'tensor', 'binary-dense', 'input'),
+  makeEdge('binary-dense', 'output', 'binary-sigmoid', 'input'),
+  makeEdge('binary-sigmoid', 'output', 'binary-output', 'input'),
+];
+const binaryLogitEdges = [
+  makeEdge('binary-input', 'tensor', 'binary-dense', 'input'),
+  makeEdge('binary-dense', 'output', 'binary-output', 'input'),
+];
+assert.match(compilePipelineToPyTorch(binaryNodes, binaryProbabilityEdges).code, /criterion = nn\.BCELoss\(\)/);
+assert.match(compilePipelineToTensorFlow(binaryNodes, binaryProbabilityEdges).code, /BinaryCrossentropy\(from_logits=False\)/);
+assert.match(compilePipelineToPyTorch(binaryNodes, binaryLogitEdges).code, /criterion = nn\.BCEWithLogitsLoss\(\)/);
+assert.match(compilePipelineToTensorFlow(binaryNodes, binaryLogitEdges).code, /BinaryCrossentropy\(from_logits=True\)/);
+
 const composite = makeNode('block', 'mlp_block_node', { input_features: 16, hidden_units: 24, dropout: 0.3 });
 const expansion = expandComposite(composite);
 assert.equal(expansion.nodes.length, 3);
