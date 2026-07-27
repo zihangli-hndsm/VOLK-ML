@@ -18,6 +18,8 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | --- | --- | --- |
 | Application shell and browser runner | `src/main.jsx` | React Flow canvas, mobile UI, project import/export, L0 regression execution |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
+| Component tutorials | `src/core/tutorials.js` | Bilingual beginner explanations, formulas, examples, and visual type per semantic operation |
+| Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
 | Framework-neutral compiler | `src/core/compiler.js` | VOLK IR, graph selection, compatibility report, PyTorch and TensorFlow generation |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
 | Localization runtime | `src/i18n.js` | Message resolution, localized errors, parallel-language rendering |
@@ -42,6 +44,7 @@ flowchart TD
 ```
 
 - Canvas nodes retain their manifest and user parameters.
+- Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
 - Project JSON stores the graph, workspace preferences, dataset, and trained L0 model.
 - `PROJECT_VERSION` in `src/main.jsx` is currently `4`.
 - Import resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
@@ -67,6 +70,7 @@ Do not make an unavailable backend appear runnable. Update availability only whe
 | Add a browser-executable algorithm | All three documents | Manifest runtime metadata, browser runner, estimator, tests |
 | Change project JSON | This document and relevant subsystem document | `PROJECT_VERSION`, importer, exporter, compatibility behavior |
 | Change visible UI | `AGENTS.md` localization section | JSX and `src/locales/ui.js` |
+| Change a component lesson | `component-manifest.md` | Tutorial catalog, tutorial coverage tests, and dialog only when presentation changes |
 
 ## Validation baseline
 
