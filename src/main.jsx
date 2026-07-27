@@ -1,6 +1,6 @@
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ReactFlow, Background, Controls, Handle, MiniMap, Position, addEdge, useEdgesState, useNodesState } from '@xyflow/react';
+import { ReactFlow, Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, MiniMap, Position, addEdge, getSmoothStepPath, useEdgesState, useNodesState } from '@xyflow/react';
 import { motion } from 'framer-motion';
 import '@xyflow/react/dist/style.css';
 import { languages, localizedError, resolveMessage, translateError } from './i18n';
@@ -8,11 +8,19 @@ import { componentById, defaults, expandComposite, pluginRegistry } from './core
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
 
+const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
+
 const PROJECT_VERSION = 4;
 const LANGUAGE_STORAGE_KEY = 'volk-ml-language-settings';
 
 const LanguageContext = createContext(null);
-const ConnectionContext = createContext({ pendingConnection: null, onPortTap: () => {} });
+const ConnectionContext = createContext({
+  pendingConnection: null,
+  onPortTap: () => {},
+  onDeleteNode: () => {},
+  onDeleteEdge: () => {},
+  onOpenTutorial: () => {},
+});
 function LanguageProvider({ children }) {
   const storedLanguage = useMemo(() => {
     try {
@@ -61,7 +69,7 @@ function makeDefaultGraph() {
     const manifest = componentById.get(manifestId);
     return { id, type: 'pipelineNode', position: { x, y }, data: { label: manifest.name, manifest, parameters: defaults(manifest), status: 'idle' } };
   });
-  const edge = (id, source, sourceHandle, target, targetHandle) => ({ id, source, sourceHandle, target, targetHandle, type: 'smoothstep' });
+  const edge = (id, source, sourceHandle, target, targetHandle) => ({ id, source, sourceHandle, target, targetHandle, type: 'deletable' });
   return { nodes, edges: [
     edge('data-split', 'pipeline-data', 'dataset', 'pipeline-split', 'dataset'),
     edge('split-linear', 'pipeline-split', 'split', 'pipeline-linear', 'split'),
@@ -123,7 +131,7 @@ function downloadText(filename, content, type) {
 
 function PipelineNode({ id, data, selected }) {
   const { t } = useVividTranslation();
-  const { pendingConnection, onPortTap } = useContext(ConnectionContext);
+  const { pendingConnection, onPortTap, onDeleteNode, onOpenTutorial } = useContext(ConnectionContext);
   const statusStyle = data.status === 'success' ? 'border-emerald-500' : data.status === 'running' ? 'border-amber-400' : data.status === 'error' ? 'border-red-500' : selected ? 'border-blue-500' : 'border-slate-200';
   return <div className={`min-w-52 max-w-72 rounded-2xl border-2 bg-white p-4 shadow-lg ${statusStyle}`}>
     {data.manifest.inputs.map((input, index) => <Handle key={input.name} type="target" position={Position.Left} id={input.name} style={{ top: 44 + index * 32, width: 20, height: 20, borderWidth: 3 }} />)}
@@ -131,7 +139,7 @@ function PipelineNode({ id, data, selected }) {
       const compatible = pendingConnection?.type === input.type;
       return <button key={input.name} title={`${t('common.input')}: ${input.type}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'input', nodeId: id, port: input }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-xs font-bold transition ${pendingConnection ? compatible ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-400' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>◀ {input.name}: {input.type}</button>;
     })}</div>}
-    <div className="flex items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{t(`category.${data.manifest.category}`)}</p><div className="flex gap-1">{data.manifest.kind === 'composite' && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{t('component.composite')}</span>}{data.status && data.status !== 'idle' && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${data.status === 'success' ? 'bg-emerald-100 text-emerald-700' : data.status === 'running' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{t(`status.${data.status}`)}</span>}</div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{t(`category.${data.manifest.category}`)}</p><div className="flex items-center gap-1">{data.manifest.kind === 'composite' && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{t('component.composite')}</span>}{data.status && data.status !== 'idle' && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${data.status === 'success' ? 'bg-emerald-100 text-emerald-700' : data.status === 'running' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{t(`status.${data.status}`)}</span>}<button aria-label={t('tutorial.learn')} title={t('tutorial.learn')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpenTutorial(data.manifest); }} className="nodrag nopan grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-sm font-black text-blue-700 hover:bg-blue-100">?</button><button aria-label={t('component.delete')} title={t('component.delete')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onDeleteNode(id); }} className="nodrag nopan grid h-10 w-10 place-items-center rounded-full bg-red-50 text-sm font-bold text-red-600 hover:bg-red-100">⌫</button></div></div>
     <h3 className="mt-1 break-words text-base font-bold text-slate-900">{t(data.label)}</h3>
     <p className="mt-2 break-words text-sm text-slate-600">{t(data.manifest.description)}</p>
     <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{t('framework.pytorch')} {t(`compatibility.${data.manifest.compatibility?.pytorch ?? 'unsupported'}`)} · {t('framework.tensorflow')} {t(`compatibility.${data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</p>
@@ -142,6 +150,27 @@ function PipelineNode({ id, data, selected }) {
     {data.manifest.outputs.map((output, index) => <Handle key={output.name} type="source" position={Position.Right} id={output.name} style={{ top: 44 + index * 32, width: 20, height: 20, borderWidth: 3 }} />)}
   </div>;
 }
+
+function DeletableEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, markerEnd, style, selected }) {
+  const { t } = useVividTranslation();
+  const { onDeleteEdge } = useContext(ConnectionContext);
+  const [edgePath, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  return <>
+    <BaseEdge id={id} path={edgePath} markerEnd={markerEnd} style={{ ...style, stroke: selected ? '#ef4444' : '#64748b', strokeWidth: selected ? 3 : 2 }} interactionWidth={28} />
+    <EdgeLabelRenderer>
+      <button
+        aria-label={t('connection.delete')}
+        title={t('connection.delete')}
+        onPointerDown={(event) => event.stopPropagation()}
+        onClick={(event) => { event.stopPropagation(); onDeleteEdge(id); }}
+        className={`nodrag nopan absolute grid h-10 w-10 place-items-center rounded-full border bg-white text-sm font-bold text-red-600 shadow-md transition ${selected ? 'scale-110 border-red-300 opacity-100' : 'border-slate-200 opacity-70 hover:opacity-100'}`}
+        style={{ pointerEvents: 'all', transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
+      >⌫</button>
+    </EdgeLabelRenderer>
+  </>;
+}
+
+const edgeTypes = { deletable: DeletableEdge };
 
 function LossChart({ values }) {
   const { t } = useVividTranslation();
@@ -481,6 +510,7 @@ function Workspace() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const [runnerOpen, setRunnerOpen] = useState(false);
+  const [tutorialManifest, setTutorialManifest] = useState(null);
   const [dataset, setDataset] = useState(null);
   const [model, setModel] = useState(null);
   const [pendingConnection, setPendingConnection] = useState(null);
@@ -501,7 +531,7 @@ function Workspace() {
   }, [nodes]);
   const onConnect = useCallback((connection) => {
     if (!isValidConnection(connection)) { setNotice(t('connection.incompatible')); return; }
-    setEdges((current) => addEdge({ ...connection, type: 'smoothstep' }, current));
+    setEdges((current) => addEdge({ ...connection, type: 'deletable' }, current));
     setPendingConnection(null);
     setModel(null);
   }, [isValidConnection, setEdges, t]);
@@ -513,7 +543,7 @@ function Workspace() {
     if (!pendingConnection) { setNotice(t('connection.tapOutputFirst')); return; }
     const connection = { source: pendingConnection.nodeId, sourceHandle: pendingConnection.port.name, target: nodeId, targetHandle: port.name };
     if (!isValidConnection(connection)) { setNotice(t('connection.incompatibleTypes', { source: pendingConnection.type, target: port.type })); return; }
-    setEdges((current) => addEdge({ ...connection, id: `tap-${crypto.randomUUID()}`, type: 'smoothstep' }, current.filter((edge) => !(edge.target === nodeId && edge.targetHandle === port.name))));
+    setEdges((current) => addEdge({ ...connection, id: `tap-${crypto.randomUUID()}`, type: 'deletable' }, current.filter((edge) => !(edge.target === nodeId && edge.targetHandle === port.name))));
     setPendingConnection(null);
     setModel(null);
     setNotice(t('connection.connected'));
@@ -523,9 +553,28 @@ function Workspace() {
     onEdgesChange(changes);
   }, [onEdgesChange]);
   const handleNodesChange = useCallback((changes) => {
-    if (changes.some((change) => change.type === 'remove' || change.type === 'add')) setModel(null);
+    const removed = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
+    if (removed.size) {
+      setEdges((current) => current.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)));
+      setSelectedId((current) => removed.has(current) ? null : current);
+      setPendingConnection((current) => current && removed.has(current.nodeId) ? null : current);
+    }
+    if (removed.size || changes.some((change) => change.type === 'add')) setModel(null);
     onNodesChange(changes);
-  }, [onNodesChange]);
+  }, [onNodesChange, setEdges]);
+  const deleteNode = useCallback((nodeId) => {
+    setNodes((current) => current.filter((node) => node.id !== nodeId));
+    setEdges((current) => current.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
+    setSelectedId((current) => current === nodeId ? null : current);
+    setPendingConnection((current) => current?.nodeId === nodeId ? null : current);
+    setModel(null);
+    setNotice(t('component.deleted'));
+  }, [setNodes, setEdges, t]);
+  const deleteEdge = useCallback((edgeId) => {
+    setEdges((current) => current.filter((edge) => edge.id !== edgeId));
+    setModel(null);
+    setNotice(t('connection.deleted'));
+  }, [setEdges, t]);
   const setNodeStatus = useCallback((ids, status) => setNodes((current) => current.map((node) => ids.includes(node.id) ? { ...node, data: { ...node.data, status } } : node)), [setNodes]);
   const addPluginNode = (manifest) => { const node = createNode(manifest, nodes.length); setNodes((current) => [...current, node]); setSelectedId(node.id); setModel(null); };
   const updateParameter = (key, value) => { setNodes((current) => current.map((node) => node.id === selectedNode?.id ? { ...node, data: { ...node.data, parameters: { ...node.data.parameters, [key]: value }, status: 'idle' } } : node)); setModel(null); };
@@ -561,7 +610,7 @@ function Workspace() {
         });
       });
       setNodes((current) => [...current.filter((node) => node.id !== selectedNode.id), ...expansion.nodes]);
-      setEdges([...unrelated, ...expansion.edges, ...redirected]);
+      setEdges([...unrelated, ...expansion.edges, ...redirected].map((edge) => ({ ...edge, type: 'deletable' })));
       setSelectedId(expansion.nodes[0]?.id);
       setModel(null);
       setNotice(t('component.expanded'));
@@ -586,7 +635,7 @@ function Workspace() {
         return { ...node, type: 'pipelineNode', data: { ...node.data, label: currentManifest.name, manifest: currentManifest, parameters: { ...defaults(currentManifest), ...node.data?.parameters } } };
       });
       setNodes(restoredNodes);
-      setEdges(project.graph.edges);
+      setEdges(project.graph.edges.map((edge) => ({ ...edge, type: 'deletable' })));
       setSelectedId(restoredNodes[0]?.id);
       if (project.language?.primary) setLanguages(project.language);
       if (project.workspace?.libraryMode) setLibraryMode(project.workspace.libraryMode);
@@ -635,13 +684,13 @@ function Workspace() {
         <div className="mt-3 flex gap-2"><div className="relative min-w-0 flex-1"><span className="absolute left-3 top-2.5">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('library.search')} className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500" /></div><button className="rounded-xl border px-3 text-sm font-bold" onClick={() => setLibraryMode((mode) => mode === 'compact' ? 'detailed' : 'compact')}>{libraryMode === 'compact' ? '☷' : '≡'}</button></div>
         <label className="mt-3 flex items-center gap-3 text-xs text-slate-500"><span>{t('common.width')}</span><input type="range" min="220" max="520" value={leftWidth} onChange={(event) => setLeftWidth(Number(event.target.value))} className="min-w-0 flex-1 accent-blue-600" /><span>{leftWidth}px</span></label>
         <p className="mt-2 text-xs text-slate-400">{t('library.summary', { count: filteredPlugins.length, mode: `library.${libraryMode}` })}</p>
-        <div className="mt-4 space-y-5">{Object.entries(grouped).map(([category, plugins]) => <section key={category}><h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{t(`category.${category}`)}</h3><div className="space-y-2">{plugins.map((plugin) => <button key={plugin.id} onClick={() => addPluginNode(plugin)} className={`w-full rounded-2xl border border-slate-200 bg-white text-left shadow-sm transition hover:border-blue-400 hover:shadow-md ${libraryMode === 'compact' ? 'px-3 py-2' : 'p-3'}`}><span className="block break-words font-semibold text-slate-900">{t(plugin.name)}</span>{libraryMode === 'detailed' && <span className="mt-1 block break-words text-xs text-slate-500">{t(plugin.description)}</span>}</button>)}</div></section>)}</div>
+        <div className="mt-4 space-y-5">{Object.entries(grouped).map(([category, plugins]) => <section key={category}><h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{t(`category.${category}`)}</h3><div className="space-y-2">{plugins.map((plugin) => <div key={plugin.id} className={`flex items-start gap-2 rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-blue-400 hover:shadow-md ${libraryMode === 'compact' ? 'p-2' : 'p-3'}`}><button onClick={() => addPluginNode(plugin)} className="min-w-0 flex-1 text-left"><span className="block break-words font-semibold text-slate-900">{t(plugin.name)}</span>{libraryMode === 'detailed' && <span className="mt-1 block break-words text-xs text-slate-500">{t(plugin.description)}</span>}</button><button aria-label={t('tutorial.learn')} title={t('tutorial.learn')} onClick={() => setTutorialManifest(plugin)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-50 font-black text-blue-700 hover:bg-blue-100">?</button></div>)}</div></section>)}</div>
         <div className="absolute bottom-8 right-0 top-8 hidden w-2 cursor-col-resize touch-none lg:block" onPointerDown={(event) => startResize('left', event)} />
       </motion.aside>
 
       <section className="relative col-start-2 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-xl">
         {pendingConnection && <div className="absolute left-1/2 top-3 z-20 flex max-w-[calc(100%_-_24px)] -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-xl"><span className="truncate">{pendingConnection.port.name}: {pendingConnection.type} → {t('connection.tapMatching')}</span><button aria-label={t('common.close')} className="nodrag rounded-full bg-white/20 px-2 py-1" onClick={() => setPendingConnection(null)}>✕</button></div>}
-        <ConnectionContext.Provider value={{ pendingConnection, onPortTap }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onNodeClick={(_, node) => setSelectedId(node.id)} nodeTypes={{ pipelineNode: PipelineNode }} fitView><Background /><MiniMap pannable zoomable /><Controls /></ReactFlow></ConnectionContext.Provider>
+        <ConnectionContext.Provider value={{ pendingConnection, onPortTap, onDeleteNode: deleteNode, onDeleteEdge: deleteEdge, onOpenTutorial: setTutorialManifest }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onNodeClick={(_, node) => setSelectedId(node.id)} nodeTypes={{ pipelineNode: PipelineNode }} edgeTypes={edgeTypes} fitView><Background /><MiniMap pannable zoomable /><Controls /></ReactFlow></ConnectionContext.Provider>
       </section>
 
       <motion.aside initial={false} animate={{ x: rightOpen ? 0 : '110%' }} style={{ width: `min(${rightWidth}px, calc(100vw - 24px))` }} className={`${asideBase} right-3 lg:transform-none ${rightOpen ? 'lg:block' : 'lg:hidden'}`}>
@@ -655,6 +704,7 @@ function Workspace() {
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
     <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} onModel={setModel} onOpenData={() => setDataOpen(true)} onNodeStatus={setNodeStatus} onExport={exportCode} />
+    {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
   </div>;
 }
 
