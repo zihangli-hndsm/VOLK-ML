@@ -18,7 +18,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | --- | --- | --- |
 | Application shell and browser runner | `src/main.jsx` | React Flow canvas, mobile UI, project import/export, L0 regression execution |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
-| Component tutorials | `src/core/tutorials.js` | Bilingual beginner explanations, formulas, examples, and visual type per semantic operation |
+| Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
 | Framework-neutral compiler | `src/core/compiler.js` | VOLK IR, graph selection, compatibility report, PyTorch and TensorFlow generation |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
