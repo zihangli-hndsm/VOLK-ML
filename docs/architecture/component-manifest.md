@@ -61,7 +61,7 @@ Beginner lessons live separately in `src/core/tutorials.js` and are keyed by the
 
 - localized intuition;
 - localized mathematical principle;
-- a compact framework-neutral formula;
+- a compact framework-neutral formula localized for every active language (language-neutral notation may be shared);
 - a localized concrete example;
 - a supported visual type rendered by `src/components/TutorialDialog.jsx`.
 
