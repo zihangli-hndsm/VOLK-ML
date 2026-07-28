@@ -94,7 +94,7 @@ export default function TutorialDialog({ manifest, onClose, t }) {
         <div>
           <TutorialVisual kind={tutorial.visual} label={t('tutorial.visual')} />
           <p className="mt-2 text-center text-xs text-slate-400">{t('tutorial.visualHint')}</p>
-          <div className="mt-4 overflow-x-auto rounded-2xl bg-slate-950 p-4 text-center"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('tutorial.formula')}</p><p className="mt-2 whitespace-nowrap font-mono text-sm font-bold text-sky-300">{tutorial.formula}</p></div>
+          <div className="mt-4 overflow-x-auto rounded-2xl bg-slate-950 p-4 text-center"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('tutorial.formula')}</p><p className="mt-2 whitespace-nowrap font-mono text-sm font-bold text-sky-300">{t(tutorial.formula)}</p></div>
         </div>
         <div className="space-y-4">
           <section className="rounded-2xl border border-slate-200 p-4"><h3 className="text-xs font-black uppercase tracking-wider text-blue-600">{t('tutorial.purpose')}</h3><p className="mt-2 text-sm leading-6 text-slate-700">{t(manifest.description)}</p></section>

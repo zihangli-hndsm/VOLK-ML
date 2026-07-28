@@ -13,6 +13,7 @@ import {
 } from '../src/core/compiler.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
+import { resolveMessage } from '../src/i18n.js';
 import { languages, messages } from '../src/locales/ui.js';
 
 const makeNode = (id, componentId, parameters = {}) => {
@@ -56,6 +57,7 @@ for (const manifest of pluginRegistry) {
     for (const property of manifest.properties) assert.ok(property.label[language.code], `${manifest.id}.${property.key} ${language.code} label`);
     assert.ok(tutorial.intuition[language.code], `${manifest.id} ${language.code} tutorial intuition`);
     assert.ok(tutorial.principle[language.code], `${manifest.id} ${language.code} tutorial principle`);
+    assert.ok(tutorial.formula[language.code], `${manifest.id} ${language.code} tutorial formula`);
     assert.ok(tutorial.example[language.code], `${manifest.id} ${language.code} tutorial example`);
   }
   assert.equal(new Set(manifest.inputs.map((port) => port.name)).size, manifest.inputs.length, `${manifest.id} input ports`);
@@ -83,6 +85,10 @@ for (const manifest of pluginRegistry) {
 for (const [key, translations] of Object.entries(messages)) {
   for (const language of languages) assert.ok(translations[language.code], `${key} is missing ${language.code}`);
 }
+
+assert.equal(resolveMessage(tutorialByOp.model_output.formula, 'zh'), 'model(x) = 选定的输出张量');
+assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'zh'), 'L = −log p(正确类别)');
+assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'en'), 'L = −log p(correct class)');
 
 const architectureNodes = [
   makeNode('input', 'tensor_input_node', { shape: '32' }),
