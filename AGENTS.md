@@ -22,6 +22,7 @@
   2. supplying that language for all keys in `messages`;
   3. verifying both single-language and parallel-language modes.
 - Preserve the saved language preference in `localStorage`. Imported projects may update that preference only through the existing language settings API.
+- Treat tutorial formulas as visible UI metadata. Store every formula as a localized object, localize any prose inside it, and render it through `t(...)`; language-neutral mathematical notation may share the same value across languages.
 - Before publishing UI work, run `npm run build` and search changed components for newly hard-coded user-visible text.
 
 ## Component manifests
