@@ -57,6 +57,16 @@ Component-owned metadata remains in the manifest:
 
 All active languages need values. Interface copy outside manifest metadata belongs in `src/locales/ui.js`.
 
+Beginner lessons live separately in `src/core/tutorials.js` and are keyed by the stable semantic `op`. Keeping them outside the manifest prevents saved project JSON from embedding large teaching payloads. Every registered operation must have a lesson with:
+
+- localized intuition;
+- localized mathematical principle;
+- a compact framework-neutral formula;
+- a localized concrete example;
+- a supported visual type rendered by `src/components/TutorialDialog.jsx`.
+
+`scripts/check-core.mjs` enforces complete lesson coverage for every active language.
+
 ## Ports
 
 Ports are nominally typed. A connection is valid only when output and input types match exactly.
@@ -162,6 +172,7 @@ Do not hide behavior inside a composite that cannot be represented by its expand
 5. Add parameter/operation estimation when the component materially affects model size.
 6. Add browser execution only when an actual backend exists.
 7. Add registry and compiler assertions to `scripts/check-core.mjs`.
-8. Run the validation baseline in `overview.md`.
+8. Add a bilingual beginner lesson and select an appropriate visual type.
+9. Run the validation baseline in `overview.md`.
 
 For a composite, also test expansion count, port mappings, and parent-property substitution.

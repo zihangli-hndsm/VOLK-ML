@@ -12,6 +12,7 @@ import {
   graphToIR,
 } from '../src/core/compiler.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
+import { tutorialByOp } from '../src/core/tutorials.js';
 import { languages, messages } from '../src/locales/ui.js';
 
 const makeNode = (id, componentId, parameters = {}) => {
@@ -46,10 +47,16 @@ for (const manifest of pluginRegistry) {
   assert.ok(['L0', 'L1', 'L2', 'L3'].includes(manifest.runtime.minimumTier), `${manifest.id} execution tier`);
   assert.ok(['exact', 'adapted', 'approximate', 'unsupported'].includes(manifest.compatibility.pytorch), `${manifest.id} PyTorch compatibility`);
   assert.ok(['exact', 'adapted', 'approximate', 'unsupported'].includes(manifest.compatibility.tensorflow), `${manifest.id} TensorFlow compatibility`);
+  const tutorial = tutorialByOp[manifest.op];
+  assert.ok(tutorial, `${manifest.id} beginner tutorial`);
+  assert.ok(tutorial.formula && tutorial.visual, `${manifest.id} tutorial formula and visual`);
   for (const language of languages) {
     assert.ok(manifest.name[language.code], `${manifest.id} ${language.code} name`);
     assert.ok(manifest.description[language.code], `${manifest.id} ${language.code} description`);
     for (const property of manifest.properties) assert.ok(property.label[language.code], `${manifest.id}.${property.key} ${language.code} label`);
+    assert.ok(tutorial.intuition[language.code], `${manifest.id} ${language.code} tutorial intuition`);
+    assert.ok(tutorial.principle[language.code], `${manifest.id} ${language.code} tutorial principle`);
+    assert.ok(tutorial.example[language.code], `${manifest.id} ${language.code} tutorial example`);
   }
   assert.equal(new Set(manifest.inputs.map((port) => port.name)).size, manifest.inputs.length, `${manifest.id} input ports`);
   assert.equal(new Set(manifest.outputs.map((port) => port.name)).size, manifest.outputs.length, `${manifest.id} output ports`);
@@ -153,4 +160,4 @@ assert.equal(estimateExecutionPlan(architectureNodes, null).canRunHere, false);
 const largeEmbedding = makeNode('embedding', 'embedding_node', { vocab_size: 1_000_000, embedding_dim: 1024 });
 assert.equal(estimateExecutionPlan([largeEmbedding], null).recommendedTier, 'L3');
 
-console.log(`Validated ${pluginRegistry.length} components, two compiler backends, composites, localization, and execution tiers.`);
+console.log(`Validated ${pluginRegistry.length} components and tutorials, two compiler backends, composites, localization, and execution tiers.`);

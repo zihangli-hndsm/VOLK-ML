@@ -22,7 +22,6 @@ export const messages = {
   'common.apply': { en: 'Apply', zh: '应用' },
   'common.enabled': { en: 'Enabled', zh: '已启用' },
   'common.disabled': { en: 'Disabled', zh: '已停用' },
-
   'status.running': { en: 'running', zh: '运行中' },
   'status.success': { en: 'success', zh: '成功' },
   'status.error': { en: 'error', zh: '失败' },
@@ -79,6 +78,19 @@ export const messages = {
   'component.composite': { en: 'Composite', zh: '复合' },
   'component.expand': { en: 'Expand into basic components', zh: '展开为基础组件' },
   'component.expanded': { en: 'Composite expanded', zh: '复合组件已展开' },
+  'component.delete': { en: 'Delete component', zh: '删除组件' },
+  'component.deleted': { en: 'Component deleted', zh: '组件已删除' },
+
+  'tutorial.learn': { en: 'Learn this component', zh: '学习这个组件' },
+  'tutorial.loading': { en: 'Loading guide…', zh: '正在加载教学…' },
+  'tutorial.title': { en: 'Beginner guide', zh: '小白教学' },
+  'tutorial.purpose': { en: 'What it does', zh: '它有什么作用' },
+  'tutorial.intuition': { en: 'Intuition', zh: '直觉理解' },
+  'tutorial.principle': { en: 'How it works', zh: '数学原理' },
+  'tutorial.formula': { en: 'Formula', zh: '公式' },
+  'tutorial.example': { en: 'Example', zh: '例子' },
+  'tutorial.visual': { en: 'Visual explanation', zh: '可视化讲解' },
+  'tutorial.visualHint': { en: 'A simplified visual intuition, not a scale drawing.', zh: '这是用于建立直觉的简化示意图，并非按比例绘制。' },
 
   'compatibility.exact': { en: 'Exact', zh: '精确' },
   'compatibility.adapted': { en: 'Adapted', zh: '适配' },
@@ -96,6 +108,8 @@ export const messages = {
   'connection.tapOutputFirst': { en: 'Tap an output port first', zh: '请先点按一个输出端口' },
   'connection.incompatibleTypes': { en: 'Incompatible port types: {source} → {target}', zh: '端口类型不兼容：{source} → {target}' },
   'connection.connected': { en: 'Components connected', zh: '组件已连接' },
+  'connection.delete': { en: 'Delete connection', zh: '删除连线' },
+  'connection.deleted': { en: 'Connection deleted', zh: '连线已删除' },
 
   'runner.title': { en: 'Execute visual pipeline', zh: '执行可视化管线' },
   'runner.description': { en: 'Only connected components are compiled and run.', zh: '仅编译并运行已连接的组件。' },
