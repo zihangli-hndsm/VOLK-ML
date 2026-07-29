@@ -72,7 +72,7 @@ Compilation rejects cycles. Unsupported compatibility stops the selected framewo
 
 Architecture candidates have kinds `source`, `layer`, `merge`, `sink`, or `composite`.
 
-The compiler:
+When one or more connected Model Output nodes exist, the compiler:
 
 1. finds declared `model_output` nodes;
 2. walks backward through their IR inputs;
@@ -80,6 +80,8 @@ The compiler:
 4. requires at least one reachable `tensor_input`.
 
 This rule intentionally ignores disconnected experimental layers on the canvas. Do not change it to compile every architecture node: orphan nodes have no valid forward input and would produce invalid source.
+
+When a connected Tabular Data pipeline exists without a connected Model Output, compilation selects the connected tabular graph and ignores isolated architecture experiments. Unsupported or cyclic orphan nodes must not block a valid active pipeline.
 
 Loss and optimizer nodes are configuration nodes rather than architecture nodes. The first matching configured loss/optimizer is used; defaults are MSE and Adam when absent.
 
@@ -127,7 +129,9 @@ When no architecture candidates exist, compilation uses the current tabular regr
 
 Generated tabular source contains a `load_tabular_data()` placeholder. The exported project JSON remains the data source; code generation does not embed user data.
 
-The in-browser tabular executor is separate and lives in `src/main.jsx`.
+The in-browser tabular executor is separate and lives in `src/core/browserRuntime.js`.
+
+KNN classification is intentionally browser-only. Its manifest reports both framework compilers as unsupported because emitting an unrelated scikit-learn implementation would violate the PyTorch/TensorFlow compatibility contract.
 
 ## Adding an operation
 

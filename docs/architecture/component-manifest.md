@@ -109,7 +109,7 @@ Property keys are part of the compiler contract. Keep generated-source mappings 
 - `L2`: local Python
 - `L3`: remote GPU
 
-`runtime.browserBackend` is currently `cpu` or `none`. It describes actual availability, not an aspiration.
+`runtime.browserBackend` is currently `cpu` or `none`. It describes actual availability, not an aspiration. Every registered component must have at least one usable path: a browser backend or support in at least one source compiler.
 
 Each framework compatibility value must be one of:
 

@@ -5,13 +5,16 @@ import { motion } from 'framer-motion';
 import '@xyflow/react/dist/style.css';
 import { languages, localizedError, resolveMessage, translateError } from './i18n';
 import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
+import { executeBrowserGraph, predictWithModel } from './core/browserRuntime';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
+import { resolvePlatformServices } from './platform/services';
 
 const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
 
 const PROJECT_VERSION = 4;
 const LANGUAGE_STORAGE_KEY = 'volk-ml-language-settings';
+const platformServices = resolvePlatformServices();
 
 const LanguageContext = createContext(null);
 const ConnectionContext = createContext({
@@ -82,42 +85,6 @@ function makeDefaultGraph() {
 function resolvePort(manifest, direction, handleId) {
   const ports = direction === 'output' ? manifest.outputs : manifest.inputs;
   return ports.find((port) => port.name === handleId) ?? (ports.length === 1 ? ports[0] : null);
-}
-
-function compileExecutionGraph(nodes, edges) {
-  if (!edges.length) throw localizedError('error.connectBeforeRun');
-  const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const activeIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
-  const activeNodes = nodes.filter((node) => activeIds.has(node.id));
-  const incoming = new Map(activeNodes.map((node) => [node.id, []]));
-  const outgoing = new Map(activeNodes.map((node) => [node.id, []]));
-  edges.forEach((edge) => {
-    const source = nodeById.get(edge.source);
-    const target = nodeById.get(edge.target);
-    if (!source || !target) throw localizedError('error.missingConnectionNode');
-    const output = resolvePort(source.data.manifest, 'output', edge.sourceHandle);
-    const input = resolvePort(target.data.manifest, 'input', edge.targetHandle);
-    if (!output || !input) throw localizedError('error.invalidConnection', { source: source.data.manifest.name, target: target.data.manifest.name });
-    if (output.type !== input.type) throw localizedError('error.typeMismatch', { source: output.type, target: input.type });
-    incoming.get(target.id).push({ edge, source, output, input });
-    outgoing.get(source.id).push(target.id);
-  });
-  activeNodes.forEach((node) => node.data.manifest.inputs.forEach((input) => {
-    const matches = incoming.get(node.id).filter((connection) => connection.input.name === input.name);
-    if (!matches.length) throw localizedError('error.missingInput', { node: node.data.manifest.name, input: input.name });
-    if (matches.length > 1) throw localizedError('error.multipleInputs', { node: node.data.manifest.name, input: input.name });
-  }));
-  const indegree = new Map(activeNodes.map((node) => [node.id, incoming.get(node.id).length]));
-  const queue = activeNodes.filter((node) => indegree.get(node.id) === 0).map((node) => node.id);
-  const order = [];
-  while (queue.length) {
-    const id = queue.shift();
-    order.push(nodeById.get(id));
-    outgoing.get(id).forEach((targetId) => { const next = indegree.get(targetId) - 1; indegree.set(targetId, next); if (next === 0) queue.push(targetId); });
-  }
-  if (order.length !== activeNodes.length) throw localizedError('error.pipelineCycle');
-  if (!order.some((node) => node.data.manifest.id === 'tabular_data_node')) throw localizedError('error.dataNodeRequired');
-  return { order, incoming };
 }
 
 function downloadText(filename, content, type) {
@@ -228,6 +195,29 @@ function makeSampleDataset() {
   return { name: 'exam_scores_sample', rows, columns: describeRows(rows), featureColumns: ['study_hours', 'practice_tests'], targetColumn: 'exam_score', task: 'regression', trainRatio: 0.8 };
 }
 
+function makeClassificationSampleDataset() {
+  const labels = ['setosa', 'versicolor', 'virginica'];
+  const rows = Array.from({ length: 90 }, (_, index) => {
+    const group = index % labels.length;
+    const offset = Math.floor(index / labels.length);
+    return {
+      sepal_length: Number((4.8 + group * 0.9 + Math.sin(offset) * 0.18).toFixed(2)),
+      sepal_width: Number((3.5 - group * 0.35 + Math.cos(offset * 1.3) * 0.12).toFixed(2)),
+      petal_length: Number((1.4 + group * 2.05 + Math.sin(offset * 0.7) * 0.2).toFixed(2)),
+      species: labels[group],
+    };
+  });
+  return {
+    name: 'flower_classification_sample',
+    rows,
+    columns: describeRows(rows),
+    featureColumns: ['sepal_length', 'sepal_width', 'petal_length'],
+    targetColumn: 'species',
+    task: 'classification',
+    trainRatio: 0.8,
+  };
+}
+
 function DataDialog({ open, onClose, dataset, onDataset }) {
   const { t } = useVividTranslation();
   const fileRef = useRef(null);
@@ -250,11 +240,11 @@ function DataDialog({ open, onClose, dataset, onDataset }) {
   return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" onMouseDown={onClose}>
     <section className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t('data.title')}</h2><p className="mt-1 text-sm text-slate-500">{t('data.privacy')}</p></div><button aria-label={t('common.close')} className="rounded-full p-2 hover:bg-slate-100" onClick={onClose}>✕</button></div>
-      <div className="mt-5 flex flex-wrap gap-2"><button onClick={() => fileRef.current?.click()} className="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">↑ {t('data.upload')}</button><button onClick={() => onDataset(makeSampleDataset())} className="rounded-xl bg-slate-100 px-4 py-2 font-bold">{t('data.sample')}</button><input ref={fileRef} type="file" accept=".csv,.json,text/csv,application/json" className="hidden" onChange={loadFile} /></div>
+      <div className="mt-5 flex flex-wrap gap-2"><button onClick={() => fileRef.current?.click()} className="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">↑ {t('data.upload')}</button><button onClick={() => onDataset(makeSampleDataset())} className="rounded-xl bg-slate-100 px-4 py-2 font-bold">{t('data.regressionSample')}</button><button onClick={() => onDataset(makeClassificationSampleDataset())} className="rounded-xl bg-slate-100 px-4 py-2 font-bold">{t('data.classificationSample')}</button><input ref={fileRef} type="file" accept=".csv,.json,text/csv,application/json" className="hidden" onChange={loadFile} /></div>
       {!dataset ? <div className="mt-8 grid min-h-56 place-items-center rounded-3xl border-2 border-dashed border-slate-200 text-center text-slate-400"><div><p className="text-4xl">▦</p><p className="mt-3 font-bold">{t('data.empty')}</p></div></div> : <>
         <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_300px]">
           <div className="overflow-hidden rounded-2xl border"><div className="flex items-center justify-between bg-slate-50 px-4 py-3"><div><p className="font-bold">{dataset.name}</p><p className="text-xs text-slate-500">{t('data.shape', { rows: dataset.rows.length, columns: dataset.columns.length })}</p></div></div><div className="overflow-x-auto"><table className="min-w-full text-left text-xs"><thead className="bg-slate-100"><tr>{dataset.columns.map((column) => <th key={column.name} className="whitespace-nowrap px-3 py-2"><span className="font-bold">{column.name}</span><span className="ml-2 text-[10px] font-normal text-slate-400">{column.type}</span></th>)}</tr></thead><tbody>{dataset.rows.slice(0, 8).map((row, index) => <tr key={index} className="border-t">{dataset.columns.map((column) => <td key={column.name} className="max-w-40 truncate px-3 py-2">{String(row[column.name] ?? '')}</td>)}</tr>)}</tbody></table></div></div>
-          <div className="space-y-4 rounded-2xl bg-slate-50 p-4"><div><p className="text-sm font-black">{t('data.inputFeatures')}</p><div className="mt-2 max-h-36 space-y-2 overflow-auto">{dataset.columns.filter((column) => column.type === 'number' && column.name !== dataset.targetColumn).map((column) => <label key={column.name} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={dataset.featureColumns.includes(column.name)} onChange={() => toggleFeature(column.name)} />{column.name}</label>)}</div></div><label className="block text-sm font-black">{t('data.target')}<select value={dataset.targetColumn} onChange={(event) => onDataset({ ...dataset, targetColumn: event.target.value, featureColumns: dataset.featureColumns.filter((column) => column !== event.target.value) })} className="mt-2 w-full rounded-xl border bg-white p-2">{dataset.columns.filter((column) => column.type === 'number').map((column) => <option key={column.name}>{column.name}</option>)}</select></label><div className="rounded-xl bg-white p-3 text-xs text-slate-500"><p>{t('data.task')}: <strong className="text-slate-900">{t('data.regression')}</strong></p><p className="mt-1">{t('data.splitHint')}</p><p className="mt-1">{t('data.missingHint')}</p></div></div>
+          <div className="space-y-4 rounded-2xl bg-slate-50 p-4"><label className="block text-sm font-black">{t('data.task')}<select value={dataset.task ?? 'regression'} onChange={(event) => { const task = event.target.value; const eligibleTargets = task === 'classification' ? dataset.columns : dataset.columns.filter((column) => column.type === 'number'); const targetColumn = eligibleTargets.some((column) => column.name === dataset.targetColumn) ? dataset.targetColumn : eligibleTargets.at(-1)?.name ?? ''; onDataset({ ...dataset, task, targetColumn, featureColumns: dataset.featureColumns.filter((column) => column !== targetColumn) }); }} className="mt-2 w-full rounded-xl border bg-white p-2"><option value="regression">{t('data.regression')}</option><option value="classification">{t('data.classification')}</option></select></label><div><p className="text-sm font-black">{t('data.inputFeatures')}</p><div className="mt-2 max-h-36 space-y-2 overflow-auto">{dataset.columns.filter((column) => column.type === 'number' && column.name !== dataset.targetColumn).map((column) => <label key={column.name} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={dataset.featureColumns.includes(column.name)} onChange={() => toggleFeature(column.name)} />{column.name}</label>)}</div></div><label className="block text-sm font-black">{t('data.target')}<select value={dataset.targetColumn} onChange={(event) => onDataset({ ...dataset, targetColumn: event.target.value, featureColumns: dataset.featureColumns.filter((column) => column !== event.target.value) })} className="mt-2 w-full rounded-xl border bg-white p-2">{dataset.columns.filter((column) => dataset.task === 'classification' || column.type === 'number').map((column) => <option key={column.name}>{column.name}</option>)}</select></label><div className="rounded-xl bg-white p-3 text-xs text-slate-500"><p>{t('data.task')}: <strong className="text-slate-900">{t(`data.${dataset.task ?? 'regression'}`)}</strong></p><p className="mt-1">{t('data.splitHint')}</p><p className="mt-1">{t('data.missingHint')}</p></div></div>
         </div>
         <button disabled={!dataset.featureColumns.length || !dataset.targetColumn} onClick={onClose} className="mt-5 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-40">{t('data.use')}</button>
       </>}
@@ -338,17 +328,28 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
   const executionPlan = useMemo(() => {
     const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
     const connectedNodes = nodes.filter((node) => connectedIds.has(node.id));
-    return estimateExecutionPlan(connectedNodes, dataset, { webgpu: typeof navigator !== 'undefined' && Boolean(navigator.gpu) });
+    const plan = estimateExecutionPlan(connectedNodes, dataset, { webgpu: typeof navigator !== 'undefined' && Boolean(navigator.gpu) });
+    return { ...plan, canRunHere: platformServices.compute.canExecuteInBrowser(plan) };
   }, [graphSignature, dataset]);
-  const needsDataset = nodes.some((node) => node.data.manifest.op === 'tabular_data');
+  const needsDataset = useMemo(() => {
+    const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+    return nodes.some(
+      (node) => connectedIds.has(node.id) && node.data.manifest.op === 'tabular_data',
+    );
+  }, [graphSignature]);
   useEffect(() => {
     if (open) {
       setLosses(model?.lossHistory ?? []);
       setPrediction(null);
       setGraphError('');
       try {
-        const ir = graphToIR(nodes, edges);
-        const nodeById = new Map(nodes.map((node) => [node.id, node]));
+        const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+        const connectedNodes = nodes.filter((node) => connectedIds.has(node.id));
+        const connectedEdges = edges.filter(
+          (edge) => connectedIds.has(edge.source) && connectedIds.has(edge.target),
+        );
+        const ir = graphToIR(connectedNodes, connectedEdges);
+        const nodeById = new Map(connectedNodes.map((node) => [node.id, node]));
         setPlanNames(ir.nodes.filter((node) => edges.some((edge) => edge.source === node.id || edge.target === node.id)).map((node) => t(nodeById.get(node.id).data.manifest.name)));
       }
       catch (error) { setPlanNames([]); setGraphError(translateError(error, t)); }
@@ -365,101 +366,18 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
     let currentNode = null;
     try {
       if (!executionPlan.canRunHere) throw localizedError('error.higherTierRequired', { tier: executionPlan.recommendedTier });
-      const plan = compileExecutionGraph(nodes, edges);
-      if (!dataset) throw localizedError('error.datasetMissing');
       setRunning(true);
-      const outputs = new Map();
-      let finalModel = null;
-      const inputValue = (node, inputName) => {
-        const connection = plan.incoming.get(node.id).find((item) => item.input.name === inputName);
-        return connection ? outputs.get(connection.source.id) : undefined;
-      };
-      for (const node of plan.order) {
-        currentNode = node;
-        onNodeStatus([node.id], 'running');
-        const manifestId = node.data.manifest.id;
-        let output;
-        if (manifestId === 'tabular_data_node') {
-          output = dataset;
-        } else if (manifestId === 'train_test_split_node') {
-          const sourceDataset = inputValue(node, 'dataset');
-          const valid = sourceDataset.rows.map((row, index) => {
-            const rawFeatures = sourceDataset.featureColumns.map((column) => row[column]);
-            const rawTarget = row[sourceDataset.targetColumn];
-            const isMissing = (value) => value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
-            if (rawFeatures.some(isMissing) || isMissing(rawTarget)) return null;
-            return { index, x: rawFeatures.map(Number), y: Number(rawTarget) };
-          }).filter((sample) => sample && sample.x.every(Number.isFinite) && Number.isFinite(sample.y));
-          if (valid.length < 3) throw localizedError('error.tooFewRows');
-          const shuffled = [...valid];
-          let seed = 2026;
-          for (let index = shuffled.length - 1; index > 0; index -= 1) {
-            seed = (seed * 1664525 + 1013904223) % 4294967296;
-            const target = seed % (index + 1);
-            [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
-          }
-          const trainRatio = node.data.parameters.train_ratio;
-          const splitIndex = Math.max(1, Math.min(shuffled.length - 1, Math.floor(shuffled.length * trainRatio)));
-          output = { dataset: sourceDataset, train: shuffled.slice(0, splitIndex), test: shuffled.slice(splitIndex), trainRatio };
-        } else if (manifestId === 'linear_regression_node') {
-          output = { type: 'linear_regression_spec', split: inputValue(node, 'split'), learningRate: node.data.parameters.learning_rate, modelNodeId: node.id };
-        } else if (manifestId === 'gradient_descent_node') {
-          const spec = inputValue(node, 'model');
-          const { dataset: sourceDataset, train, test } = spec.split;
-          const xMeans = sourceDataset.featureColumns.map((_, feature) => train.reduce((sum, sample) => sum + sample.x[feature], 0) / train.length);
-          const xStds = sourceDataset.featureColumns.map((_, feature) => Math.sqrt(train.reduce((sum, sample) => sum + (sample.x[feature] - xMeans[feature]) ** 2, 0) / train.length) || 1);
-          const yMean = train.reduce((sum, sample) => sum + sample.y, 0) / train.length;
-          const yStd = Math.sqrt(train.reduce((sum, sample) => sum + (sample.y - yMean) ** 2, 0) / train.length) || 1;
-          const normalized = train.map((sample) => ({ x: sample.x.map((value, feature) => (value - xMeans[feature]) / xStds[feature]), y: (sample.y - yMean) / yStd }));
-          let weights = sourceDataset.featureColumns.map(() => 0);
-          let bias = 0;
-          const history = [];
-          const epochs = node.data.parameters.epochs;
-          for (let epoch = 0; epoch < epochs; epoch += 1) {
-            let loss = 0;
-            const dw = weights.map(() => 0);
-            let db = 0;
-            normalized.forEach(({ x, y }) => {
-              const error = weights.reduce((sum, weight, feature) => sum + weight * x[feature], bias) - y;
-              loss += error * error;
-              dw.forEach((_, feature) => { dw[feature] += 2 * error * x[feature]; });
-              db += 2 * error;
-            });
-            loss /= normalized.length;
-            weights = weights.map((weight, feature) => weight - spec.learningRate * (dw[feature] / normalized.length));
-            bias -= spec.learningRate * (db / normalized.length);
-            history.push(loss);
-            if (epoch % Math.max(1, Math.floor(epochs / 50)) === 0 || epoch === epochs - 1) {
-              setLosses([...history]);
-              await new Promise((resolve) => requestAnimationFrame(resolve));
-            }
-          }
-          output = { type: 'linear_regression', sourceNodeId: node.id, modelNodeId: spec.modelNodeId, featureColumns: sourceDataset.featureColumns, targetColumn: sourceDataset.targetColumn, weights, bias, normalization: { xMeans, xStds, yMean, yStd }, test, trainRows: train.length, testRows: test.length, metrics: null, lossHistory: history, epochs, learningRate: spec.learningRate, trainedAt: new Date().toISOString(), hasPredictor: false };
-          finalModel = output;
-        } else if (manifestId === 'evaluate_node') {
-          const trained = inputValue(node, 'trained_model');
-          const { xMeans, xStds, yMean, yStd } = trained.normalization;
-          const predict = (sample) => trained.weights.reduce((sum, weight, feature) => sum + weight * ((sample.x[feature] - xMeans[feature]) / xStds[feature]), trained.bias) * yStd + yMean;
-          const predictions = trained.test.map((sample) => ({ actual: sample.y, predicted: predict(sample) }));
-          const mse = predictions.reduce((sum, item) => sum + (item.predicted - item.actual) ** 2, 0) / predictions.length;
-          const testMean = predictions.reduce((sum, item) => sum + item.actual, 0) / predictions.length;
-          const total = predictions.reduce((sum, item) => sum + (item.actual - testMean) ** 2, 0);
-          const residual = predictions.reduce((sum, item) => sum + (item.actual - item.predicted) ** 2, 0);
-          trained.metrics = { rmse: Math.sqrt(mse), r2: total ? 1 - residual / total : 0, trainRows: trained.trainRows, testRows: trained.testRows };
-          output = trained.metrics;
-          finalModel = trained;
-        } else if (manifestId === 'predictor_node') {
-          const trained = inputValue(node, 'trained_model');
-          trained.hasPredictor = true;
-          output = trained;
-          finalModel = trained;
-        } else {
-          throw localizedError('error.backendMissing', { node: node.data.manifest.name });
-        }
-        outputs.set(node.id, output);
-        onNodeStatus([node.id], 'success');
-      }
-      if (!finalModel) throw localizedError('error.noTrainedModel');
+      const finalModel = await executeBrowserGraph({
+        nodes,
+        edges,
+        dataset,
+        onNodeStatus: (ids, status) => {
+          currentNode = status === 'running' ? nodes.find((node) => ids.includes(node.id)) : currentNode;
+          onNodeStatus(ids, status);
+        },
+        onLoss: setLosses,
+        onYield: () => new Promise((resolve) => requestAnimationFrame(resolve)),
+      });
       const { test, ...persistableModel } = finalModel;
       onModel(persistableModel);
     } catch (error) {
@@ -477,9 +395,7 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
     if (raw.some(isMissing)) { setPrediction(t('runner.enterEveryFeature')); return; }
     const x = raw.map(Number);
     if (!x.every(Number.isFinite)) { setPrediction(t('runner.numericFeatures')); return; }
-    const { xMeans, xStds, yMean, yStd } = model.normalization;
-    const normalizedPrediction = model.weights.reduce((sum, weight, feature) => sum + weight * ((x[feature] - xMeans[feature]) / xStds[feature]), model.bias);
-    setPrediction(normalizedPrediction * yStd + yMean);
+    setPrediction(predictWithModel(model, x));
   };
 
   return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" onMouseDown={onClose}>

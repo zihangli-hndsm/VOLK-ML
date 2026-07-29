@@ -11,7 +11,7 @@
 | L2 | Local Python | No | Larger PyTorch/TensorFlow models on the user's machine |
 | L3 | Remote GPU | No | Large models or datasets requiring a managed accelerator |
 
-Only L0 currently executes inside VOLK-ML. L1–L3 expose design/export guidance.
+Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines. L1–L3 expose design/export guidance.
 
 ## Estimator inputs
 
