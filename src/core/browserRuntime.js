@@ -34,6 +34,34 @@ function splitSamples(samples, trainRatio) {
   };
 }
 
+function stratifiedSplit(samples, trainRatio) {
+  const groups = new Map();
+  samples.forEach((sample) => {
+    const group = groups.get(sample.y) ?? [];
+    group.push(sample);
+    groups.set(sample.y, group);
+  });
+  const train = [];
+  const test = [];
+  groups.forEach((group) => {
+    const shuffled = deterministicShuffle(group);
+    if (shuffled.length === 1) {
+      train.push(shuffled[0]);
+      return;
+    }
+    const splitIndex = Math.max(1, Math.min(
+      shuffled.length - 1,
+      Math.floor(shuffled.length * trainRatio),
+    ));
+    train.push(...shuffled.slice(0, splitIndex));
+    test.push(...shuffled.slice(splitIndex));
+  });
+  return {
+    train: deterministicShuffle(train),
+    test: deterministicShuffle(test),
+  };
+}
+
 function numericSamples(dataset) {
   return dataset.rows.map((row, index) => {
     const rawFeatures = dataset.featureColumns.map((column) => row[column]);
@@ -328,7 +356,10 @@ export async function executeBrowserGraph({
       if (new Set(valid.map((sample) => sample.y)).size < 2) {
         throw localizedError('error.classificationNeedsClasses');
       }
-      const { train, test } = splitSamples(valid, node.data.parameters.train_ratio);
+      const { train, test } = stratifiedSplit(valid, node.data.parameters.train_ratio);
+      if (new Set(train.map((sample) => sample.y)).size < 2) {
+        throw localizedError('error.classificationNeedsClasses');
+      }
       const normalization = featureNormalization(train, sourceDataset.featureColumns.length);
       const normalizedTrain = train.map((sample) => ({
         ...sample,

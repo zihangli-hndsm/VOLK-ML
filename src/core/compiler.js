@@ -15,9 +15,12 @@ const pytorchPadding = (value, kernelSize) => value === 'same' ? Math.floor(Numb
 function selectCompilationGraph(nodes, edges) {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const incomingSources = new Map(nodes.map((node) => [node.id, []]));
+  const neighbors = new Map(nodes.map((node) => [node.id, []]));
   edges.forEach((edge) => {
     if (nodeById.has(edge.source) && nodeById.has(edge.target)) {
       incomingSources.get(edge.target).push(edge.source);
+      neighbors.get(edge.source).push(edge.target);
+      neighbors.get(edge.target).push(edge.source);
     }
   });
   const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
@@ -42,7 +45,16 @@ function selectCompilationGraph(nodes, edges) {
     nodes.filter((node) => ['loss', 'optimizer'].includes(node.data.manifest.kind))
       .forEach((node) => activeIds.add(node.id));
   } else if (connectedTabular) {
-    activeIds = connectedIds;
+    activeIds = new Set();
+    const pending = nodes
+      .filter((node) => connectedIds.has(node.id) && node.data.manifest.op === 'tabular_data')
+      .map((node) => node.id);
+    while (pending.length) {
+      const id = pending.pop();
+      if (activeIds.has(id)) continue;
+      activeIds.add(id);
+      neighbors.get(id)?.forEach((neighbor) => pending.push(neighbor));
+    }
   } else {
     activeIds = connectedIds.size ? connectedIds : new Set(nodes.map((node) => node.id));
   }

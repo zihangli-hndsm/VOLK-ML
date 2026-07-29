@@ -48,8 +48,9 @@ flowchart TD
 - Canvas nodes retain their manifest and user parameters.
 - Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
 - Project JSON stores the graph, workspace preferences, dataset, and trained L0 model.
-- `PROJECT_VERSION` in `src/main.jsx` is currently `4`.
-- Import resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
+- `PROJECT_VERSION` in `src/core/project.js` is currently `5`.
+- Import first migrates legacy graph contracts, then resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
+- Version 5 migrates legacy KNN `model` edges to `trained_model`; obsolete visualization-only `boundary` edges are removed because the current KNN runtime no longer produces a mesh.
 
 ## Runtime boundaries
 

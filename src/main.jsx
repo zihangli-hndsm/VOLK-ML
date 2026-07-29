@@ -7,12 +7,12 @@ import { languages, localizedError, resolveMessage, translateError } from './i18
 import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
 import { executeBrowserGraph, predictWithModel } from './core/browserRuntime';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
+import { migrateProject, PROJECT_VERSION } from './core/project';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
 import { resolvePlatformServices } from './platform/services';
 
 const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
 
-const PROJECT_VERSION = 4;
 const LANGUAGE_STORAGE_KEY = 'volk-ml-language-settings';
 const platformServices = resolvePlatformServices();
 
@@ -542,8 +542,7 @@ function Workspace() {
     event.target.value = '';
     if (!file) return;
     try {
-      const project = JSON.parse(await file.text());
-      if (project.format !== 'VOLK-ML' || !Array.isArray(project.graph?.nodes) || !Array.isArray(project.graph?.edges)) throw localizedError('error.invalidProject');
+      const project = migrateProject(JSON.parse(await file.text()));
       const restoredNodes = project.graph.nodes.map((node) => {
         const manifestId = node.data?.manifest?.id;
         const currentManifest = componentById.get(manifestId) ?? node.data?.manifest;

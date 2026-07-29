@@ -13,6 +13,7 @@ import {
   graphToIR,
 } from '../src/core/compiler.js';
 import { executeBrowserGraph, predictWithModel } from '../src/core/browserRuntime.js';
+import { migrateProject, PROJECT_VERSION } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
 import { resolveMessage } from '../src/i18n.js';
@@ -344,12 +345,38 @@ assert.equal(regressionModel.type, 'linear_regression');
 assert.ok(Number.isFinite(regressionModel.metrics.rmse), 'regression browser backend returns RMSE');
 assert.ok(Number.isFinite(predictWithModel(regressionModel, [10, 3])), 'regression predictor returns a number');
 const tabularWithArchitectureOrphan = compilePipelineToPyTorch(
-  [...regressionGraphNodes, makeNode('unused-layer', 'dense_node')],
-  regressionGraphEdges,
+  [
+    ...regressionGraphNodes,
+    makeNode('unused-input', 'tensor_input_node'),
+    makeNode('unused-layer', 'dense_node'),
+  ],
+  [
+    ...regressionGraphEdges,
+    makeEdge('unused-input', 'tensor', 'unused-layer', 'input'),
+  ],
 );
 assert.match(tabularWithArchitectureOrphan.code, /load_tabular_data/);
 assert.doesNotMatch(tabularWithArchitectureOrphan.code, /class VOLKModel/);
 assertPythonSyntax(tabularWithArchitectureOrphan.code, 'tabular pipeline with architecture orphan');
+
+const legacyKnnProject = {
+  format: 'VOLK-ML',
+  version: 4,
+  graph: {
+    nodes: [
+      makeNode('legacy-knn', 'knn_node'),
+      makeNode('legacy-evaluate', 'evaluate_classification_node'),
+    ],
+    edges: [
+      makeEdge('legacy-knn', 'model', 'legacy-evaluate', 'trained_model'),
+      makeEdge('legacy-knn', 'boundary', 'legacy-preview', 'mesh'),
+    ],
+  },
+};
+const migratedKnnProject = migrateProject(legacyKnnProject);
+assert.equal(migratedKnnProject.version, PROJECT_VERSION);
+assert.equal(migratedKnnProject.graph.edges.length, 1);
+assert.equal(migratedKnnProject.graph.edges[0].sourceHandle, 'trained_model');
 
 const classificationGraphNodes = [
   makeNode('class-data', 'tabular_data_node'),
@@ -390,6 +417,28 @@ const classificationModel = await executeBrowserGraph({
 assert.equal(classificationModel.type, 'knn_classifier');
 assert.ok(classificationModel.metrics.accuracy >= 0.9, 'KNN browser backend classifies the separable test set');
 assert.equal(predictWithModel(classificationModel, [3.1, 1.9]), 'positive');
+
+const imbalancedClassificationModel = await executeBrowserGraph({
+  nodes: classificationGraphNodes,
+  edges: classificationGraphEdges,
+  dataset: {
+    ...classificationDataset,
+    name: 'imbalanced-classification-check',
+    rows: [
+      ...Array.from({ length: 9 }, (_, index) => ({
+        feature_a: index,
+        feature_b: index / 2,
+        label: 'majority',
+      })),
+      { feature_a: 20, feature_b: 20, label: 'minority' },
+    ],
+  },
+});
+assert.equal(
+  new Set(imbalancedClassificationModel.train.map((sample) => sample.y)).size,
+  2,
+  'stratified classification split keeps every class in training',
+);
 assert.throws(
   () => compilePipelineToPyTorch(classificationGraphNodes, classificationGraphEdges),
   (error) => error.translationKey === 'error.frameworkUnsupported',
