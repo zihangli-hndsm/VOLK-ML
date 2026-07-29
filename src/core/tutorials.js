@@ -80,6 +80,16 @@ export const tutorialByOp = {
     exampleZh: 'RMSE 为 3，表示预测通常与真实分数相差约 3 分。',
     visual: 'bars',
   }),
+  evaluate_classification: lesson({
+    intuition: 'Turn held-out class predictions into a report card for the classifier.',
+    intuitionZh: '把留出测试集上的类别预测整理成分类器成绩单。',
+    principle: 'Accuracy measures the share of correct predictions. Macro F1 gives every class equal weight by averaging class-level precision and recall.',
+    principleZh: '准确率衡量预测正确的比例；宏平均 F1 先分别计算各类别的精确率与召回率，再让每个类别获得相同权重。',
+    formula: 'accuracy = correct / total',
+    example: 'Eight correct labels among ten test samples produce 80% accuracy.',
+    exampleZh: '10 个测试样本中有 8 个类别预测正确，准确率就是 80%。',
+    visual: 'bars',
+  }),
   interactive_predictor: lesson({
     intuition: 'Give the trained model new values and immediately inspect its answer.',
     intuitionZh: '给训练好的模型输入新数值，立即查看它的回答。',

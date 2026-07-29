@@ -8,7 +8,7 @@ VOLK-ML is a mobile-friendly visual ML builder with three distinct responsibilit
 
 1. represent a model or training pipeline as a framework-neutral graph;
 2. compile supported graphs to PyTorch or TensorFlow/Keras source;
-3. execute a deliberately small L0 subset directly in the browser.
+3. execute deliberately small regression and classification L0 pipelines directly in the browser.
 
 Source compilation does not imply browser executability. L1–L3 currently guide export and environment selection rather than providing an in-app runtime.
 
@@ -16,12 +16,14 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 
 | Area | Source of truth | Responsibility |
 | --- | --- | --- |
-| Application shell and browser runner | `src/main.jsx` | React Flow canvas, mobile UI, project import/export, L0 regression execution |
+| Application shell | `src/main.jsx` | React Flow canvas, mobile UI, project import/export, runner presentation |
+| Browser runtime | `src/core/browserRuntime.js` | Typed execution validation, linear regression, KNN classification, evaluation, prediction |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
 | Framework-neutral compiler | `src/core/compiler.js` | VOLK IR, graph selection, compatibility report, PyTorch and TensorFlow generation |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
+| Hosted-service boundary | `src/platform/services.js` | Versioned account, project, collaboration, and compute provider contract with local defaults |
 | Localization runtime | `src/i18n.js` | Message resolution, localized errors, parallel-language rendering |
 | UI messages | `src/locales/ui.js` | Active English and Chinese UI copy |
 | Core contract tests | `scripts/check-core.mjs` | Registry, compiler, composite, localization, and tier regression checks |
@@ -46,14 +48,15 @@ flowchart TD
 - Canvas nodes retain their manifest and user parameters.
 - Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
 - Project JSON stores the graph, workspace preferences, dataset, and trained L0 model.
-- `PROJECT_VERSION` in `src/main.jsx` is currently `4`.
-- Import resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
+- `PROJECT_VERSION` in `src/core/project.js` is currently `5`.
+- Import first migrates legacy graph contracts, then resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
+- Version 5 migrates legacy KNN `model` edges to `trained_model`; obsolete visualization-only `boundary` edges are removed because the current KNN runtime no longer produces a mesh.
 
 ## Runtime boundaries
 
-The browser runner in `src/main.jsx` is separate from `src/core/compiler.js`.
+The browser runtime in `src/core/browserRuntime.js` is separate from `src/core/compiler.js`.
 
-- The browser runner validates typed connections and executes only implemented browser backends.
+- The browser runtime validates typed connections and executes only implemented browser backends.
 - The compiler generates Python source and never calls the browser runner.
 - The tier estimator can recommend an environment even when no runtime for that environment exists in the UI.
 - A component may be designable and exportable while having `browserBackend: "none"`.
@@ -68,6 +71,7 @@ Do not make an unavailable backend appear runnable. Update availability only whe
 | Fix PyTorch/TensorFlow conversion | `compiler-ir.md` | Compiler and focused source assertions |
 | Change “too large for browser” behavior | `execution-tiers.md` | Tier estimator, UI messages, threshold tests |
 | Add a browser-executable algorithm | All three documents | Manifest runtime metadata, browser runner, estimator, tests |
+| Add cloud storage, collaboration, or remote execution | `platform-services.md` | External provider implementation plus contract tests |
 | Change project JSON | This document and relevant subsystem document | `PROJECT_VERSION`, importer, exporter, compatibility behavior |
 | Change visible UI | `AGENTS.md` localization section | JSX and `src/locales/ui.js` |
 | Change a component lesson | `component-manifest.md` | Tutorial catalog, tutorial coverage tests, and dialog only when presentation changes |
@@ -84,7 +88,7 @@ Generated framework code should also receive focused assertions. When a compiler
 
 ## Current intentional limitations
 
-- Only the connected tabular linear-regression pipeline runs in the browser.
+- Connected tabular linear-regression and KNN-classification pipelines run in the browser.
 - Browser WebGPU, local Python orchestration, and remote GPU execution are not implemented.
 - Exported neural-network code requires the user to bind a dataset and training loop.
 - Shape inference is not yet a first-class IR pass; several layer dimensions remain explicit component properties.

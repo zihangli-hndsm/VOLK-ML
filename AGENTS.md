@@ -7,6 +7,7 @@
 - Read `docs/architecture/component-manifest.md` before adding or changing components, ports, properties, compatibility metadata, or composites.
 - Read `docs/architecture/compiler-ir.md` before changing VOLK IR, graph selection, generated PyTorch/TensorFlow code, loss semantics, or conversion behavior.
 - Read `docs/architecture/execution-tiers.md` before changing browser execution, workload estimates, tier thresholds, or backend availability.
+- Read `docs/architecture/platform-services.md` before changing account, project storage, collaboration, hosted compute, or cloud-service injection boundaries.
 - Do not scan unrelated legacy TypeScript files. The active application entry point is `src/main.jsx`.
 
 ## Localized UI is the default
@@ -35,6 +36,7 @@
 - Mark conversion quality explicitly as `exact`, `adapted`, `approximate`, or `unsupported`; never silently change framework semantics.
 - Define reusable structures as composite subgraphs of registered basic components. A composite must provide internal edges plus external input/output mappings and remain expandable on the canvas.
 - Keep browser execution separate from source compilation. Components without a browser backend can still be designed and exported, while `src/core/runtimeTiers.js` recommends Browser CPU, Browser WebGPU, Local Python, or Remote GPU from estimated workload.
+- Keep hosted-service integrations behind `src/platform/services.js`. Do not add billing-provider checks, credentials, or server authorization logic to the open editor.
 - Validate registry IDs, localized metadata, port mappings, composite references, both compiler backends, and execution-tier estimates before publishing component changes.
 
 ## Required validation

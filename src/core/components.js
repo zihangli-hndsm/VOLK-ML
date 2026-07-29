@@ -42,8 +42,18 @@ function component({
   };
 }
 
-const passThrough = (id, op, en, zh, descriptionEn, descriptionZh, category = 'Activations', properties = []) => component({
-  id, op, name: text(en, zh), description: text(descriptionEn, descriptionZh), category, properties,
+const passThrough = (
+  id,
+  op,
+  en,
+  zh,
+  descriptionEn,
+  descriptionZh,
+  category = 'Activations',
+  properties = [],
+  compatibility,
+) => component({
+  id, op, name: text(en, zh), description: text(descriptionEn, descriptionZh), category, properties, compatibility,
 });
 
 const regressionComponents = [
@@ -76,10 +86,13 @@ const regressionComponents = [
     description: text('Classifies samples by voting among nearby examples.', '通过附近样本投票对数据进行分类。'),
     category: 'Classification',
     inputs: [input('dataset', 'Table')],
-    outputs: [output('model', 'ModelSpec'), output('boundary', 'Mesh')],
-    properties: [numberProperty('k_value', 'Number of Neighbors (K)', '邻居数量 (K)', 3, 1, 99, 2)],
-    minimumTier: 'L2',
-    browserBackend: 'none',
+    outputs: [output('trained_model', 'TrainedModel')],
+    properties: [
+      numberProperty('k_value', 'Number of Neighbors (K)', '邻居数量 (K)', 3, 1, 99, 2),
+      sliderProperty('train_ratio', 'Training Ratio', '训练集比例', 0.8, 0.5, 0.9, 0.05),
+    ],
+    minimumTier: 'L0',
+    browserBackend: 'cpu',
     compatibility: { pytorch: 'unsupported', tensorflow: 'unsupported' },
   }),
   component({
@@ -94,6 +107,13 @@ const regressionComponents = [
     id: 'evaluate_node', op: 'evaluate_regression', kind: 'evaluation',
     name: text('Evaluate Regression', '回归评估'),
     description: text('Computes RMSE and R² on the connected test set.', '在连接的测试集上计算 RMSE 和 R²。'),
+    category: 'Evaluation', inputs: [input('trained_model', 'TrainedModel')], outputs: [output('metrics', 'Metrics')],
+    properties: [], minimumTier: 'L0', browserBackend: 'cpu',
+  }),
+  component({
+    id: 'evaluate_classification_node', op: 'evaluate_classification', kind: 'evaluation',
+    name: text('Evaluate Classification', '分类评估'),
+    description: text('Computes accuracy and macro F1 on a connected classifier test set.', '在连接的分类器测试集上计算准确率和宏平均 F1。'),
     category: 'Evaluation', inputs: [input('trained_model', 'TrainedModel')], outputs: [output('metrics', 'Metrics')],
     properties: [], minimumTier: 'L0', browserBackend: 'cpu',
   }),
@@ -147,7 +167,7 @@ const architectureComponents = [
       selectProperty('padding', 'Padding', '填充', 'same', ['same', 'valid']),
       booleanProperty('use_bias', 'Use Bias', '使用偏置', true),
     ],
-    compatibility: { pytorch: 'exact', tensorflow: 'adapted' },
+    compatibility: { pytorch: 'adapted', tensorflow: 'adapted' },
   }),
   component({
     id: 'max_pool2d_node', op: 'max_pool2d',
@@ -176,14 +196,14 @@ const architectureComponents = [
   passThrough('batch_norm1d_node', 'batch_norm1d', 'BatchNorm1D', '一维批归一化', 'Normalizes vector or sequence features by batch statistics.', '使用批次统计量归一化向量或序列特征。', 'Normalization', [
     numberProperty('features', 'Features', '特征数', 64),
     sliderProperty('momentum', 'Momentum', '动量', 0.1, 0.01, 0.99, 0.01),
-  ]),
+  ], { pytorch: 'exact', tensorflow: 'adapted' }),
   passThrough('batch_norm2d_node', 'batch_norm2d', 'BatchNorm2D', '二维批归一化', 'Normalizes image channels by batch statistics.', '使用批次统计量归一化图像通道。', 'Normalization', [
     numberProperty('channels', 'Channels', '通道数', 32),
     sliderProperty('momentum', 'Momentum', '动量', 0.1, 0.01, 0.99, 0.01),
-  ]),
+  ], { pytorch: 'exact', tensorflow: 'adapted' }),
   passThrough('layer_norm_node', 'layer_norm', 'LayerNorm', '层归一化', 'Normalizes values over the last dimensions.', '在最后若干维度上归一化数值。', 'Normalization', [
     stringProperty('normalized_shape', 'Normalized Shape', '归一化形状', '64'),
-  ]),
+  ], { pytorch: 'exact', tensorflow: 'adapted' }),
   component({
     id: 'embedding_node', op: 'embedding',
     name: text('Embedding', '嵌入层'),

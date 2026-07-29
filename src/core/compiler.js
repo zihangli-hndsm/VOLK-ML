@@ -12,6 +12,61 @@ const pythonShape = (value) => {
 const tensorflowPadding = (value) => value === 'same' ? 'same' : 'valid';
 const pytorchPadding = (value, kernelSize) => value === 'same' ? Math.floor(Number(kernelSize) / 2) : 0;
 
+function selectCompilationGraph(nodes, edges) {
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const incomingSources = new Map(nodes.map((node) => [node.id, []]));
+  const neighbors = new Map(nodes.map((node) => [node.id, []]));
+  edges.forEach((edge) => {
+    if (nodeById.has(edge.source) && nodeById.has(edge.target)) {
+      incomingSources.get(edge.target).push(edge.source);
+      neighbors.get(edge.source).push(edge.target);
+      neighbors.get(edge.target).push(edge.source);
+    }
+  });
+  const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+  const connectedOutputs = nodes.filter(
+    (node) => node.data.manifest.op === 'model_output'
+      && incomingSources.get(node.id).length > 0,
+  );
+  const connectedTabular = nodes.some(
+    (node) => connectedIds.has(node.id) && node.data.manifest.op === 'tabular_data',
+  );
+  let activeIds;
+
+  if (connectedOutputs.length) {
+    activeIds = new Set();
+    const pending = connectedOutputs.map((node) => node.id);
+    while (pending.length) {
+      const id = pending.pop();
+      if (activeIds.has(id)) continue;
+      activeIds.add(id);
+      incomingSources.get(id)?.forEach((source) => pending.push(source));
+    }
+    nodes.filter((node) => ['loss', 'optimizer'].includes(node.data.manifest.kind))
+      .forEach((node) => activeIds.add(node.id));
+  } else if (connectedTabular) {
+    activeIds = new Set();
+    const pending = nodes
+      .filter((node) => connectedIds.has(node.id) && node.data.manifest.op === 'tabular_data')
+      .map((node) => node.id);
+    while (pending.length) {
+      const id = pending.pop();
+      if (activeIds.has(id)) continue;
+      activeIds.add(id);
+      neighbors.get(id)?.forEach((neighbor) => pending.push(neighbor));
+    }
+  } else {
+    activeIds = connectedIds.size ? connectedIds : new Set(nodes.map((node) => node.id));
+  }
+
+  const selectedNodes = nodes.filter((node) => activeIds.has(node.id));
+  const selectedIds = new Set(selectedNodes.map((node) => node.id));
+  const selectedEdges = edges.filter(
+    (edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target),
+  );
+  return { nodes: selectedNodes, edges: selectedEdges };
+}
+
 export function graphToIR(nodes, edges) {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
   const incoming = new Map(nodes.map((node) => [node.id, []]));
@@ -107,8 +162,16 @@ function tensorflowLayerInit(node) {
     case 'batch_norm2d': return `${name} = layers.BatchNormalization(momentum=${1 - Number(p.momentum)})`;
     case 'layer_norm': return `${name} = layers.LayerNormalization()`;
     case 'embedding': return `${name} = layers.Embedding(${p.vocab_size}, ${p.embedding_dim})`;
-    case 'lstm': return `${name} = ${p.bidirectional ? 'layers.Bidirectional(' : ''}layers.LSTM(${p.hidden_size}, return_sequences=True)${p.bidirectional ? ')' : ''}`;
-    case 'gru': return `${name} = ${p.bidirectional ? 'layers.Bidirectional(' : ''}layers.GRU(${p.hidden_size}, return_sequences=True)${p.bidirectional ? ')' : ''}`;
+    case 'lstm':
+    case 'gru': {
+      const recurrent = () => (
+        `${p.bidirectional ? 'layers.Bidirectional(' : ''}layers.${node.op === 'lstm' ? 'LSTM' : 'GRU'}(${p.hidden_size}, return_sequences=True)${p.bidirectional ? ')' : ''}`
+      );
+      const layersCount = Math.max(1, Number(p.layers) || 1);
+      return layersCount === 1
+        ? `${name} = ${recurrent()}`
+        : `${name} = keras.Sequential([${Array.from({ length: layersCount }, recurrent).join(', ')}])`;
+    }
     case 'multihead_attention': return `${name} = layers.MultiHeadAttention(num_heads=${p.num_heads}, key_dim=${Math.max(1, Math.floor(Number(p.embed_dim) / Number(p.num_heads)))}, dropout=${p.dropout})`;
     case 'mlp_block': return `${name} = keras.Sequential([layers.Dense(${p.hidden_units}), layers.ReLU(), layers.Dropout(${p.dropout})])`;
     case 'conv_block': return `${name} = keras.Sequential([layers.Conv2D(${p.filters}, ${p.kernel_size}, padding="same"), layers.BatchNormalization(), layers.ReLU(), layers.MaxPooling2D(2)])`;
@@ -351,8 +414,9 @@ export function compatibilityReport(nodes, framework) {
 
 export function compileGraph(nodes, edges, framework) {
   if (!['pytorch', 'tensorflow'].includes(framework)) throw new Error(`Unsupported framework: ${framework}`);
-  const ir = graphToIR(nodes, edges);
-  const report = compatibilityReport(nodes, framework);
+  const selected = selectCompilationGraph(nodes, edges);
+  const ir = graphToIR(selected.nodes, selected.edges);
+  const report = compatibilityReport(selected.nodes, framework);
   if (report.some((item) => item.quality === 'unsupported')) {
     const error = new Error('error.frameworkUnsupported');
     error.translationKey = 'error.frameworkUnsupported';
