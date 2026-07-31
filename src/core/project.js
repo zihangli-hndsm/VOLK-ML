@@ -2,6 +2,16 @@ import { localizedError } from '../i18n.js';
 
 export const PROJECT_VERSION = 6;
 
+export function projectContentSignature(project) {
+  return JSON.stringify({
+    name: project.name,
+    graph: project.graph,
+    customComponents: project.customComponents,
+    data: project.data,
+    trainedModel: project.trainedModel,
+  });
+}
+
 function migrateKnnOutputHandles(project) {
   const knnNodeIds = new Set(
     project.graph.nodes

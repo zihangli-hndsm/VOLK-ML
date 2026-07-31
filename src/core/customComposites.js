@@ -41,7 +41,14 @@ export function createCustomComposite({
   if (visited.size !== selectedNodes.length) throw new Error('error.compositeSelection');
   const incomingEdges = edges.filter((edge) => !selectedIds.has(edge.source) && selectedIds.has(edge.target));
   const outgoingEdges = edges.filter((edge) => selectedIds.has(edge.source) && !selectedIds.has(edge.target));
+  const nodeById = new Map(selectedNodes.map((node) => [node.id, node]));
   const keyById = new Map(selectedNodes.map((node, index) => [node.id, `node_${index + 1}`]));
+  const internallySatisfiedInputs = new Set(
+    internalEdges.map((edge) => `${edge.target}:${edge.targetHandle}`),
+  );
+  const internallyConsumedOutputs = new Set(
+    internalEdges.map((edge) => `${edge.source}:${edge.sourceHandle}`),
+  );
   const usedInputs = new Set();
   const usedOutputs = new Set();
   const inputs = [];
@@ -53,35 +60,42 @@ export function createCustomComposite({
   const inputPortByEndpoint = new Map();
   const outputPortByEndpoint = new Map();
 
-  incomingEdges.forEach((edge) => {
-    const node = selectedNodes.find((item) => item.id === edge.target);
-    const endpoint = `${edge.target}:${edge.targetHandle}`;
+  const exposeInput = (node, portName) => {
+    const endpoint = `${node.id}:${portName}`;
     const existing = inputPortByEndpoint.get(endpoint);
-    if (existing) {
-      incomingPortByEdge.set(edge.id, existing);
-      return;
-    }
-    const port = portFor(node.data.manifest, 'input', edge.targetHandle);
-    const namePart = uniquePortName(usedInputs, `${keyById.get(node.id)}_${edge.targetHandle}`);
+    if (existing) return existing;
+    const port = portFor(node.data.manifest, 'input', portName);
+    const namePart = uniquePortName(usedInputs, `${keyById.get(node.id)}_${portName}`);
     inputs.push({ name: namePart, type: port?.type ?? 'Tensor' });
-    inputMappings[namePart] = [{ node: keyById.get(node.id), port: edge.targetHandle }];
+    inputMappings[namePart] = [{ node: keyById.get(node.id), port: portName }];
     inputPortByEndpoint.set(endpoint, namePart);
-    incomingPortByEdge.set(edge.id, namePart);
+    return namePart;
+  };
+  const exposeOutput = (node, portName) => {
+    const endpoint = `${node.id}:${portName}`;
+    const existing = outputPortByEndpoint.get(endpoint);
+    if (existing) return existing;
+    const port = portFor(node.data.manifest, 'output', portName);
+    const namePart = uniquePortName(usedOutputs, `${keyById.get(node.id)}_${portName}`);
+    outputs.push({ name: namePart, type: port?.type ?? 'Tensor' });
+    outputMappings[namePart] = { node: keyById.get(node.id), port: portName };
+    outputPortByEndpoint.set(endpoint, namePart);
+    return namePart;
+  };
+
+  selectedNodes.forEach((node) => {
+    node.data.manifest.inputs.forEach((port) => {
+      if (!internallySatisfiedInputs.has(`${node.id}:${port.name}`)) exposeInput(node, port.name);
+    });
+    node.data.manifest.outputs.forEach((port) => {
+      if (!internallyConsumedOutputs.has(`${node.id}:${port.name}`)) exposeOutput(node, port.name);
+    });
+  });
+  incomingEdges.forEach((edge) => {
+    incomingPortByEdge.set(edge.id, exposeInput(nodeById.get(edge.target), edge.targetHandle));
   });
   outgoingEdges.forEach((edge) => {
-    const node = selectedNodes.find((item) => item.id === edge.source);
-    const endpoint = `${edge.source}:${edge.sourceHandle}`;
-    const existing = outputPortByEndpoint.get(endpoint);
-    if (existing) {
-      outgoingPortByEdge.set(edge.id, existing);
-      return;
-    }
-    const port = portFor(node.data.manifest, 'output', edge.sourceHandle);
-    const namePart = uniquePortName(usedOutputs, `${keyById.get(node.id)}_${edge.sourceHandle}`);
-    outputs.push({ name: namePart, type: port?.type ?? 'Tensor' });
-    outputMappings[namePart] = { node: keyById.get(node.id), port: edge.sourceHandle };
-    outputPortByEndpoint.set(endpoint, namePart);
-    outgoingPortByEdge.set(edge.id, namePart);
+    outgoingPortByEdge.set(edge.id, exposeOutput(nodeById.get(edge.source), edge.sourceHandle));
   });
   const minX = Math.min(...selectedNodes.map((node) => node.position.x));
   const minY = Math.min(...selectedNodes.map((node) => node.position.y));

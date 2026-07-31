@@ -159,6 +159,9 @@ composition: {
 - A string beginning with `$` references a property on the composite parent.
 - External inputs may fan out to multiple internal inputs, as used by residual connections.
 - Every external input/output mapping must refer to a real parent port and real child port.
+- When creating a custom composite, inputs not satisfied by an internal edge and outputs not
+  consumed by an internal edge become external ports even if the selected subgraph has no
+  surrounding edges. Existing boundary edges are redirected through those same ports.
 - Expansion replaces the parent node, creates internal nodes/edges, and redirects existing external edges.
 - User-created composites persist a full manifest in the project catalog. Nested custom children embed their manifest in the parent definition so the project remains portable.
 - Custom composites flatten recursively before browser execution or framework compilation, while the canvas may keep them folded.
