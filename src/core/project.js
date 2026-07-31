@@ -1,6 +1,6 @@
 import { localizedError } from '../i18n.js';
 
-export const PROJECT_VERSION = 5;
+export const PROJECT_VERSION = 6;
 
 function migrateKnnOutputHandles(project) {
   const knnNodeIds = new Set(
@@ -34,5 +34,17 @@ export function migrateProject(project) {
   let migrated = project;
   const version = Number.isFinite(project.version) ? project.version : 1;
   if (version < 5) migrated = migrateKnnOutputHandles(migrated);
-  return { ...migrated, version: PROJECT_VERSION };
+  if (version < 6) {
+    migrated = {
+      ...migrated,
+      name: migrated.name || 'Sample Project',
+      customComponents: migrated.customComponents ?? [],
+    };
+  }
+  return {
+    ...migrated,
+    name: migrated.name || 'Sample Project',
+    customComponents: migrated.customComponents ?? [],
+    version: PROJECT_VERSION,
+  };
 }

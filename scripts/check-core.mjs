@@ -13,9 +13,13 @@ import {
   graphToIR,
 } from '../src/core/compiler.js';
 import { executeBrowserGraph, predictWithModel } from '../src/core/browserRuntime.js';
+import { createCustomComposite, flattenCustomComposites } from '../src/core/customComposites.js';
+import { analyzeProject } from '../src/core/explanation.js';
+import { safeProjectFilename } from '../src/core/localProjects.js';
 import { migrateProject, PROJECT_VERSION } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
+import { architectureLayout, stageForManifest, visualKindForManifest } from '../src/core/visualLanguage.js';
 import { resolveMessage } from '../src/i18n.js';
 import { languages, messages } from '../src/locales/ui.js';
 import {
@@ -112,6 +116,13 @@ for (const [key, translations] of Object.entries(messages)) {
 assert.equal(resolveMessage(tutorialByOp.model_output.formula, 'zh'), 'model(x) = 选定的输出张量');
 assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'zh'), 'L = −log p(正确类别)');
 assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'en'), 'L = −log p(correct class)');
+assert.equal(stageForManifest(componentById.get('tabular_data_node')), 'data');
+assert.equal(stageForManifest(componentById.get('dense_node')), 'model');
+assert.equal(stageForManifest(componentById.get('adam_optimizer_node')), 'training');
+assert.equal(stageForManifest(componentById.get('model_output_node')), 'output');
+assert.equal(visualKindForManifest(componentById.get('dense_node')), 'dense');
+assert.equal(visualKindForManifest(componentById.get('multihead_attention_node')), 'attention');
+assert.equal(safeProjectFilename('My Visual Project'), 'my-visual-project.volkml.json');
 
 const architectureNodes = [
   makeNode('input', 'tensor_input_node', { shape: '32' }),
@@ -344,6 +355,82 @@ const regressionModel = await executeBrowserGraph({
 assert.equal(regressionModel.type, 'linear_regression');
 assert.ok(Number.isFinite(regressionModel.metrics.rmse), 'regression browser backend returns RMSE');
 assert.ok(Number.isFinite(predictWithModel(regressionModel, [10, 3])), 'regression predictor returns a number');
+assert.equal(architectureLayout(regressionGraphNodes, regressionGraphEdges).length, 5);
+const regressionAnalysis = analyzeProject(regressionGraphNodes, regressionGraphEdges);
+assert.equal(regressionAnalysis.nodeCount, regressionGraphNodes.length);
+assert.equal(regressionAnalysis.edgeCount, regressionGraphEdges.length);
+assert.equal(regressionAnalysis.missingInputs.length, 0);
+assert.throws(() => createCustomComposite({
+  selectedNodes: [
+    regressionGraphNodes[0],
+    regressionGraphNodes[1],
+    makeNode('disconnected-custom-node', 'dense_node'),
+  ],
+  edges: regressionGraphEdges,
+  name: 'Invalid disconnected group',
+  color: '#2563eb',
+}), /error\.compositeSelection/);
+
+const customRegression = createCustomComposite({
+  selectedNodes: regressionGraphNodes.filter((node) => ['reg-split', 'reg-model'].includes(node.id)),
+  edges: regressionGraphEdges,
+  name: 'Reusable regression core',
+  color: '#2563eb',
+});
+assert.equal(customRegression.manifest.customComposite, true);
+assert.equal(customRegression.manifest.inputs.length, 1);
+assert.equal(customRegression.manifest.outputs.length, 1);
+const customRegressionNodes = [
+  ...regressionGraphNodes.filter((node) => !['reg-split', 'reg-model'].includes(node.id)),
+  customRegression.instance,
+];
+const flattenedCustom = flattenCustomComposites(customRegressionNodes, customRegression.nextEdges);
+assert.equal(flattenedCustom.nodes.length, regressionGraphNodes.length);
+assert.equal(
+  estimateExecutionPlan(customRegressionNodes, regressionDataset).recommendedTier,
+  estimateExecutionPlan(regressionGraphNodes, regressionDataset).recommendedTier,
+  'folding a custom composite does not change execution-tier guidance',
+);
+assert.match(
+  compilePipelineToPyTorch(customRegressionNodes, customRegression.nextEdges).code,
+  /load_tabular_data/,
+);
+const customRegressionModel = await executeBrowserGraph({
+  nodes: customRegressionNodes,
+  edges: customRegression.nextEdges,
+  dataset: regressionDataset,
+});
+assert.equal(customRegressionModel.type, 'linear_regression');
+const nestedCustomRegression = createCustomComposite({
+  selectedNodes: [
+    customRegression.instance,
+    regressionGraphNodes.find((node) => node.id === 'reg-train'),
+  ],
+  edges: customRegression.nextEdges,
+  name: 'Nested trainable regression',
+  color: '#8b5cf6',
+});
+assert.ok(
+  nestedCustomRegression.manifest.composition.nodes.some((node) => node.manifest?.customComposite),
+  'nested custom definitions embed their child manifest',
+);
+const nestedCustomNodes = [
+  ...customRegressionNodes.filter((node) => ![
+    customRegression.instance.id,
+    'reg-train',
+  ].includes(node.id)),
+  nestedCustomRegression.instance,
+];
+assert.equal(
+  flattenCustomComposites(nestedCustomNodes, nestedCustomRegression.nextEdges)
+    .nodes.some((node) => node.data.manifest.customComposite),
+  false,
+  'nested custom composites flatten recursively',
+);
+assert.match(
+  compilePipelineToTensorFlow(nestedCustomNodes, nestedCustomRegression.nextEdges).code,
+  /load_tabular_data/,
+);
 const tabularWithArchitectureOrphan = compilePipelineToPyTorch(
   [
     ...regressionGraphNodes,
@@ -375,6 +462,8 @@ const legacyKnnProject = {
 };
 const migratedKnnProject = migrateProject(legacyKnnProject);
 assert.equal(migratedKnnProject.version, PROJECT_VERSION);
+assert.equal(migratedKnnProject.name, 'Sample Project');
+assert.deepEqual(migratedKnnProject.customComponents, []);
 assert.equal(migratedKnnProject.graph.edges.length, 1);
 assert.equal(migratedKnnProject.graph.edges[0].sourceHandle, 'trained_model');
 
@@ -447,6 +536,7 @@ assert.throws(
 
 const localPlatform = validatePlatformServices(createLocalPlatformServices());
 assert.equal(localPlatform.apiVersion, PLATFORM_API_VERSION);
+assert.equal(localPlatform.projects.mode, 'indexeddb');
 assert.equal(localPlatform.compute.canExecuteInBrowser(estimateExecutionPlan(browserNodes, null)), true);
 assert.equal(localPlatform.compute.canExecuteInBrowser(estimateExecutionPlan(architectureNodes, null)), false);
 await assert.rejects(localPlatform.compute.submit({}), (error) => (

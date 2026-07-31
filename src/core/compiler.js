@@ -1,4 +1,5 @@
 import { componentById } from './components.js';
+import { flattenCustomComposites } from './customComposites.js';
 
 const architectureKinds = new Set(['source', 'layer', 'merge', 'sink', 'composite']);
 
@@ -414,7 +415,8 @@ export function compatibilityReport(nodes, framework) {
 
 export function compileGraph(nodes, edges, framework) {
   if (!['pytorch', 'tensorflow'].includes(framework)) throw new Error(`Unsupported framework: ${framework}`);
-  const selected = selectCompilationGraph(nodes, edges);
+  const flattened = flattenCustomComposites(nodes, edges);
+  const selected = selectCompilationGraph(flattened.nodes, flattened.edges);
   const ir = graphToIR(selected.nodes, selected.edges);
   const report = compatibilityReport(selected.nodes, framework);
   if (report.some((item) => item.quality === 'unsupported')) {

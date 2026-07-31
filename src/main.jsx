@@ -8,10 +8,17 @@ import { componentById, defaults, expandComposite, pluginRegistry } from './core
 import { executeBrowserGraph, predictWithModel } from './core/browserRuntime';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
 import { migrateProject, PROJECT_VERSION } from './core/project';
+import { safeProjectFilename } from './core/localProjects';
+import { createCustomComposite } from './core/customComposites';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
+import { stageForManifest, stageStyles, visualKindForManifest } from './core/visualLanguage';
 import { resolvePlatformServices } from './platform/services';
+import ArchitectureView from './components/ArchitectureView';
+import CompositeDialog from './components/CompositeDialog';
+import VisualGlyph from './components/VisualGlyph';
 
 const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
+const ExplanationDialog = lazy(() => import('./components/ExplanationDialog'));
 
 const LANGUAGE_STORAGE_KEY = 'volk-ml-language-settings';
 const platformServices = resolvePlatformServices();
@@ -99,14 +106,18 @@ function downloadText(filename, content, type) {
 function PipelineNode({ id, data, selected }) {
   const { t } = useVividTranslation();
   const { pendingConnection, onPortTap, onDeleteNode, onOpenTutorial } = useContext(ConnectionContext);
-  const statusStyle = data.status === 'success' ? 'border-emerald-500' : data.status === 'running' ? 'border-amber-400' : data.status === 'error' ? 'border-red-500' : selected ? 'border-blue-500' : 'border-slate-200';
-  return <div className={`min-w-52 max-w-72 rounded-2xl border-2 bg-white p-4 shadow-lg ${statusStyle}`}>
+  const stage = stageForManifest(data.manifest);
+  const stageStyle = stageStyles[stage];
+  const statusStyle = data.status === 'success' ? 'ring-4 ring-emerald-300' : data.status === 'running' ? 'ring-4 ring-amber-300' : data.status === 'error' ? 'ring-4 ring-red-300' : selected ? 'ring-4 ring-blue-200' : '';
+  return <div className={`relative min-w-80 max-w-[26rem] overflow-hidden rounded-2xl border-2 bg-white shadow-lg ${stageStyle.border} ${statusStyle}`} style={data.manifest.color ? { borderColor: data.manifest.color } : undefined}>
     {data.manifest.inputs.map((input, index) => <Handle key={input.name} type="target" position={Position.Left} id={input.name} style={{ top: 44 + index * 32, width: 20, height: 20, borderWidth: 3 }} />)}
+    <div className="grid grid-cols-[minmax(0,1fr)_30%]">
+    <div className="min-w-0 p-4">
     {data.manifest.inputs.length > 0 && <div className="mb-3 flex flex-wrap gap-1">{data.manifest.inputs.map((input) => {
       const compatible = pendingConnection?.type === input.type;
       return <button key={input.name} title={`${t('common.input')}: ${input.type}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'input', nodeId: id, port: input }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-xs font-bold transition ${pendingConnection ? compatible ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-400' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>◀ {input.name}: {input.type}</button>;
     })}</div>}
-    <div className="flex flex-wrap items-center justify-between gap-2"><p className="text-xs font-semibold uppercase tracking-wide text-blue-600">{t(`category.${data.manifest.category}`)}</p><div className="flex items-center gap-1">{data.manifest.kind === 'composite' && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{t('component.composite')}</span>}{data.status && data.status !== 'idle' && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${data.status === 'success' ? 'bg-emerald-100 text-emerald-700' : data.status === 'running' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{t(`status.${data.status}`)}</span>}<button aria-label={t('tutorial.learn')} title={t('tutorial.learn')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpenTutorial(data.manifest); }} className="nodrag nopan grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-sm font-black text-blue-700 hover:bg-blue-100">?</button><button aria-label={t('component.delete')} title={t('component.delete')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onDeleteNode(id); }} className="nodrag nopan grid h-10 w-10 place-items-center rounded-full bg-red-50 text-sm font-bold text-red-600 hover:bg-red-100">⌫</button></div></div>
+    <div className="flex flex-wrap items-center justify-between gap-2"><p className={`text-xs font-semibold uppercase tracking-wide ${stageStyle.text}`}>{t(`category.${data.manifest.category}`)}</p><div className="flex items-center gap-1">{data.manifest.kind === 'composite' && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{t('component.composite')}</span>}{data.status && data.status !== 'idle' && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${data.status === 'success' ? 'bg-emerald-100 text-emerald-700' : data.status === 'running' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{t(`status.${data.status}`)}</span>}{!data.manifest.customComposite && <button aria-label={t('tutorial.learn')} title={t('tutorial.learn')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpenTutorial(data.manifest); }} className="nodrag nopan grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-sm font-black text-blue-700 hover:bg-blue-100">?</button>}<button aria-label={t('component.delete')} title={t('component.delete')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onDeleteNode(id); }} className="nodrag nopan grid h-10 w-10 place-items-center rounded-full bg-red-50 text-sm font-bold text-red-600 hover:bg-red-100">⌫</button></div></div>
     <h3 className="mt-1 break-words text-base font-bold text-slate-900">{t(data.label)}</h3>
     <p className="mt-2 break-words text-sm text-slate-600">{t(data.manifest.description)}</p>
     <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{t('framework.pytorch')} {t(`compatibility.${data.manifest.compatibility?.pytorch ?? 'unsupported'}`)} · {t('framework.tensorflow')} {t(`compatibility.${data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</p>
@@ -114,6 +125,9 @@ function PipelineNode({ id, data, selected }) {
       const active = pendingConnection?.nodeId === id && pendingConnection?.port.name === output.name;
       return <button key={output.name} title={`${t('common.output')}: ${output.type}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'output', nodeId: id, port: output }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-left text-xs font-bold transition ${active ? 'border-amber-400 bg-amber-100 text-amber-800 ring-2 ring-amber-200' : 'border-slate-200 bg-slate-100 hover:border-blue-400'}`}>{output.name}: {output.type} ▶</button>;
     })}</div>
+    </div>
+    <div className={`grid min-h-44 place-items-center border-l border-slate-100 p-2 ${stageStyle.soft}`} style={data.manifest.color ? { backgroundColor: `${data.manifest.color}18` } : undefined}><VisualGlyph kind={visualKindForManifest(data.manifest)} className="h-full w-full" /></div>
+    </div>
     {data.manifest.outputs.map((output, index) => <Handle key={output.name} type="source" position={Position.Right} id={output.name} style={{ top: 44 + index * 32, width: 20, height: 20, borderWidth: 3 }} />)}
   </div>;
 }
@@ -420,24 +434,136 @@ function Workspace() {
   const [leftOpen, setLeftOpen] = useState(true);
   const [rightOpen, setRightOpen] = useState(true);
   const [leftWidth, setLeftWidth] = useState(300);
-  const [rightWidth, setRightWidth] = useState(340);
+  const [rightWidth, setRightWidth] = useState(() => Math.min(640, Math.max(320, Math.round(window.innerWidth * 0.3))));
   const [libraryMode, setLibraryMode] = useState('detailed');
+  const [viewMode, setViewMode] = useState('canvas');
   const [query, setQuery] = useState('');
   const [languageOpen, setLanguageOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const [runnerOpen, setRunnerOpen] = useState(false);
+  const [explanationOpen, setExplanationOpen] = useState(false);
+  const [compositeOpen, setCompositeOpen] = useState(false);
   const [tutorialManifest, setTutorialManifest] = useState(null);
+  const [projectName, setProjectName] = useState(() => t('project.sampleName'));
+  const [customComponents, setCustomComponents] = useState([]);
+  const [restoreCandidate, setRestoreCandidate] = useState(null);
+  const [localReady, setLocalReady] = useState(false);
+  const [autosavedAt, setAutosavedAt] = useState(null);
   const [dataset, setDataset] = useState(null);
   const [model, setModel] = useState(null);
   const [pendingConnection, setPendingConnection] = useState(null);
   const [notice, setNotice] = useState('');
   const importRef = useRef(null);
+  const fileHandleRef = useRef(null);
+  const lastDownloadSignature = useRef('');
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? nodes[0];
-  const filteredPlugins = useMemo(() => pluginRegistry.filter((plugin) => {
+  const selectedNodes = nodes.filter((node) => node.selected);
+  const availablePlugins = useMemo(() => [...pluginRegistry, ...customComponents], [customComponents]);
+  const filteredPlugins = useMemo(() => availablePlugins.filter((plugin) => {
     const haystack = [plugin.category, ...Object.values(plugin.name), ...Object.values(plugin.description)].join(' ').toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
-  }), [query]);
+  }), [availablePlugins, query]);
   const grouped = useMemo(() => filteredPlugins.reduce((acc, plugin) => ({ ...acc, [plugin.category]: [...(acc[plugin.category] ?? []), plugin] }), {}), [filteredPlugins]);
+  const projectSignature = useMemo(() => JSON.stringify({
+    projectName,
+    nodes: nodes.map(({ selected, dragging, ...node }) => node),
+    edges: edges.map(({ selected, ...edge }) => edge),
+    dataset,
+    customComponents,
+  }), [projectName, nodes, edges, dataset, customComponents]);
+  const makeProject = useCallback(() => ({
+    format: 'VOLK-ML',
+    version: PROJECT_VERSION,
+    name: projectName.trim() || t('project.sampleName'),
+    savedAt: new Date().toISOString(),
+    language: { primary, secondary },
+    workspace: {
+      libraryMode,
+      leftWidth,
+      rightWidth,
+      viewMode,
+    },
+    graph: {
+      nodes: nodes.map(({ selected, dragging, ...node }) => node),
+      edges: edges.map(({ selected, ...edge }) => edge),
+    },
+    customComponents,
+    data: dataset,
+    trainedModel: model,
+  }), [projectName, primary, secondary, libraryMode, leftWidth, rightWidth, viewMode, nodes, edges, customComponents, dataset, model, t]);
+  const applyProject = useCallback((rawProject) => {
+    const project = migrateProject(rawProject);
+    const customById = new Map((project.customComponents ?? []).map((manifest) => [manifest.id, manifest]));
+    const restoredNodes = project.graph.nodes.map((node) => {
+      const manifestId = node.data?.manifest?.id;
+      const currentManifest = componentById.get(manifestId)
+        ?? customById.get(manifestId)
+        ?? node.data?.manifest;
+      if (!currentManifest) throw localizedError('error.unknownComponent', { component: manifestId });
+      return {
+        ...node,
+        selected: false,
+        type: 'pipelineNode',
+        data: {
+          ...node.data,
+          label: currentManifest.name,
+          manifest: currentManifest,
+          parameters: { ...defaults(currentManifest), ...node.data?.parameters },
+        },
+      };
+    });
+    setProjectName(project.name || t('project.sampleName'));
+    setCustomComponents(project.customComponents ?? []);
+    setNodes(restoredNodes);
+    setEdges(project.graph.edges.map((edge) => ({ ...edge, selected: false, type: 'deletable' })));
+    setSelectedId(restoredNodes[0]?.id);
+    if (project.language?.primary) setLanguages(project.language);
+    if (project.workspace?.libraryMode) setLibraryMode(project.workspace.libraryMode);
+    if (project.workspace?.viewMode) setViewMode(project.workspace.viewMode);
+    if (Number.isFinite(project.workspace?.leftWidth)) setLeftWidth(project.workspace.leftWidth);
+    if (Number.isFinite(project.workspace?.rightWidth)) setRightWidth(project.workspace.rightWidth);
+    setDataset(project.data ?? null);
+    setModel(project.trainedModel ?? null);
+    return project;
+  }, [setNodes, setEdges, setLanguages, t]);
+
+  useEffect(() => {
+    let active = true;
+    platformServices.projects.load().then((project) => {
+      if (!active) return;
+      if (project?.graph) setRestoreCandidate(project);
+      else setLocalReady(true);
+    }).catch(() => {
+      if (active) setLocalReady(true);
+    });
+    return () => { active = false; };
+  }, []);
+
+  useEffect(() => {
+    if (!localReady) return undefined;
+    const timeout = window.setTimeout(() => {
+      platformServices.projects.save(makeProject()).then(() => {
+        setAutosavedAt(new Date());
+      }).catch((error) => {
+        setNotice(t('project.localSaveFailed', { message: error.message }));
+      });
+    }, 800);
+    return () => window.clearTimeout(timeout);
+  }, [localReady, projectSignature, makeProject, t]);
+
+  useEffect(() => {
+    if (!lastDownloadSignature.current) lastDownloadSignature.current = projectSignature;
+  }, []);
+
+  useEffect(() => {
+    const beforeUnload = (event) => {
+      if (projectSignature === lastDownloadSignature.current) return;
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', beforeUnload);
+    return () => window.removeEventListener('beforeunload', beforeUnload);
+  }, [projectSignature]);
   const isValidConnection = useCallback((connection) => {
     const source = nodes.find((node) => node.id === connection.source);
     const target = nodes.find((node) => node.id === connection.target);
@@ -506,6 +632,13 @@ function Workspace() {
     if (!selectedNode?.data.manifest.composition) return;
     try {
       const expansion = expandComposite(selectedNode);
+      const compositeOrigin = {
+        id: selectedNode.id,
+        label: selectedNode.data.label,
+        manifest: selectedNode.data.manifest,
+        parameters: selectedNode.data.parameters,
+        position: selectedNode.position,
+      };
       const unrelated = edges.filter((edge) => edge.source !== selectedNode.id && edge.target !== selectedNode.id);
       const redirected = [];
       edges.filter((edge) => edge.target === selectedNode.id).forEach((edge) => {
@@ -525,39 +658,117 @@ function Workspace() {
           sourceHandle: source.port,
         });
       });
-      setNodes((current) => [...current.filter((node) => node.id !== selectedNode.id), ...expansion.nodes]);
+      const expandedNodes = expansion.nodes.map((node) => ({
+        ...node,
+        data: { ...node.data, compositeOrigin },
+      }));
+      setNodes((current) => [...current.filter((node) => node.id !== selectedNode.id), ...expandedNodes]);
       setEdges([...unrelated, ...expansion.edges, ...redirected].map((edge) => ({ ...edge, type: 'deletable' })));
-      setSelectedId(expansion.nodes[0]?.id);
+      setSelectedId(expandedNodes[0]?.id);
       setModel(null);
       setNotice(t('component.expanded'));
     } catch (error) { setNotice(translateError(error, t)); }
   };
-  const exportProject = () => {
-    const project = { format: 'VOLK-ML', version: PROJECT_VERSION, savedAt: new Date().toISOString(), language: { primary, secondary }, workspace: { libraryMode, leftWidth, rightWidth }, graph: { nodes, edges }, data: dataset, trainedModel: model };
-    downloadText('volk_ml_project.json', JSON.stringify(project, null, 2), 'application/json');
-    setNotice(t('project.saved'));
+  const collapseSelectedComposite = () => {
+    const origin = selectedNode?.data.compositeOrigin;
+    if (!origin) return;
+    const groupNodes = nodes.filter((node) => node.data.compositeOrigin?.id === origin.id);
+    const groupIds = new Set(groupNodes.map((node) => node.id));
+    const nodeById = new Map(groupNodes.map((node) => [node.id, node]));
+    const inputPort = (edge) => Object.entries(origin.manifest.composition.inputs).find(([, targets]) => (
+      targets.some((target) => (
+        target.node === nodeById.get(edge.target)?.data.compositionKey
+        && target.port === edge.targetHandle
+      ))
+    ))?.[0];
+    const outputPort = (edge) => Object.entries(origin.manifest.composition.outputs).find(([, source]) => (
+      source.node === nodeById.get(edge.source)?.data.compositionKey
+      && source.port === edge.sourceHandle
+    ))?.[0];
+    const redirected = [];
+    edges.filter((edge) => !groupIds.has(edge.source) && groupIds.has(edge.target)).forEach((edge) => {
+      const targetHandle = inputPort(edge);
+      if (targetHandle) redirected.push({ ...edge, target: origin.id, targetHandle });
+    });
+    edges.filter((edge) => groupIds.has(edge.source) && !groupIds.has(edge.target)).forEach((edge) => {
+      const sourceHandle = outputPort(edge);
+      if (sourceHandle) redirected.push({ ...edge, source: origin.id, sourceHandle });
+    });
+    const deduplicated = [...new Map(redirected.map((edge) => [
+      `${edge.source}:${edge.sourceHandle}:${edge.target}:${edge.targetHandle}`,
+      edge,
+    ])).values()];
+    const parent = {
+      id: origin.id,
+      type: 'pipelineNode',
+      position: origin.position,
+      data: {
+        label: origin.label,
+        manifest: origin.manifest,
+        parameters: origin.parameters,
+        status: 'idle',
+      },
+    };
+    setNodes((current) => [...current.filter((node) => !groupIds.has(node.id)), parent]);
+    setEdges([
+      ...edges.filter((edge) => !groupIds.has(edge.source) && !groupIds.has(edge.target)),
+      ...deduplicated,
+    ].map((edge) => ({ ...edge, type: 'deletable' })));
+    setSelectedId(parent.id);
+    setModel(null);
+    setNotice(t('component.collapsed'));
+  };
+  const createCompositeFromSelection = ({ name, color }) => {
+    try {
+      const result = createCustomComposite({ selectedNodes, edges, name, color });
+      const selectedIds = new Set(selectedNodes.map((node) => node.id));
+      setNodes((current) => [
+        ...current.filter((node) => !selectedIds.has(node.id)).map((node) => ({ ...node, selected: false })),
+        result.instance,
+      ]);
+      setEdges(result.nextEdges.map((edge) => ({ ...edge, type: 'deletable' })));
+      setCustomComponents((current) => [...current, result.manifest]);
+      setSelectedId(result.instance.id);
+      setCompositeOpen(false);
+      setModel(null);
+      setNotice(t('composite.created'));
+    } catch (error) {
+      setNotice(t(error.message === 'error.compositeNestedSelection' ? 'composite.noNested' : 'composite.selectTwo'));
+    }
+  };
+  const exportProject = async () => {
+    const project = makeProject();
+    const content = JSON.stringify(project, null, 2);
+    try {
+      if (window.showSaveFilePicker) {
+        const handle = fileHandleRef.current ?? await window.showSaveFilePicker({
+          suggestedName: safeProjectFilename(project.name),
+          types: [{
+            description: t('project.fileType'),
+            accept: { 'application/json': ['.json'] },
+          }],
+        });
+        fileHandleRef.current = handle;
+        const writable = await handle.createWritable();
+        await writable.write(content);
+        await writable.close();
+      } else {
+        downloadText(safeProjectFilename(project.name), content, 'application/json');
+      }
+      lastDownloadSignature.current = projectSignature;
+      setNotice(t('project.saved'));
+    } catch (error) {
+      if (error.name !== 'AbortError') setNotice(t('project.importFailed', { message: error.message }));
+    }
   };
   const importProject = async (event) => {
     const file = event.target.files?.[0];
     event.target.value = '';
     if (!file) return;
     try {
-      const project = migrateProject(JSON.parse(await file.text()));
-      const restoredNodes = project.graph.nodes.map((node) => {
-        const manifestId = node.data?.manifest?.id;
-        const currentManifest = componentById.get(manifestId) ?? node.data?.manifest;
-        if (!currentManifest) throw localizedError('error.unknownComponent', { component: manifestId });
-        return { ...node, type: 'pipelineNode', data: { ...node.data, label: currentManifest.name, manifest: currentManifest, parameters: { ...defaults(currentManifest), ...node.data?.parameters } } };
-      });
-      setNodes(restoredNodes);
-      setEdges(project.graph.edges.map((edge) => ({ ...edge, type: 'deletable' })));
-      setSelectedId(restoredNodes[0]?.id);
-      if (project.language?.primary) setLanguages(project.language);
-      if (project.workspace?.libraryMode) setLibraryMode(project.workspace.libraryMode);
-      if (Number.isFinite(project.workspace?.leftWidth)) setLeftWidth(project.workspace.leftWidth);
-      if (Number.isFinite(project.workspace?.rightWidth)) setRightWidth(project.workspace.rightWidth);
-      setDataset(project.data ?? null);
-      setModel(project.trainedModel ?? null);
+      fileHandleRef.current = null;
+      applyProject(JSON.parse(await file.text()));
+      lastDownloadSignature.current = projectSignature;
       setNotice(t('project.imported'));
     } catch (error) {
       setNotice(t('project.importFailed', { message: translateError(error, t) }));
@@ -570,7 +781,7 @@ function Workspace() {
     const move = (moveEvent) => {
       const delta = moveEvent.clientX - startX;
       const next = initial + (side === 'left' ? delta : -delta);
-      (side === 'left' ? setLeftWidth : setRightWidth)(Math.min(520, Math.max(220, next)));
+      (side === 'left' ? setLeftWidth : setRightWidth)(Math.min(side === 'left' ? 520 : 640, Math.max(side === 'left' ? 220 : 260, next)));
     };
     const stop = () => { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', stop); };
     window.addEventListener('pointermove', move);
@@ -580,10 +791,13 @@ function Workspace() {
   const asideBase = 'fixed bottom-3 top-[76px] z-30 overflow-auto rounded-3xl border border-white/80 bg-white/95 p-4 shadow-2xl backdrop-blur transition-transform lg:static lg:z-auto lg:h-auto lg:rounded-3xl lg:bg-white/85 lg:shadow-xl';
   return <div className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-sky-50 via-white to-indigo-100">
     <header className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
-      <div className="min-w-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 sm:block">{t('app.tagline')}</p></div>
+      <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><label className="hidden min-w-0 md:block"><span className="sr-only">{t('project.name')}</span><input value={projectName} onChange={(event) => setProjectName(event.target.value)} className="w-44 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 lg:w-56" /><span className="mt-0.5 block text-[10px] text-slate-400">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span></label></div>
       <nav className="flex items-center gap-1.5 overflow-x-auto text-sm">
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setLeftOpen((value) => !value)}>☰ <span className="hidden sm:inline">{t('nav.blocks')}</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setRightOpen((value) => !value)}>⚙ <span className="hidden sm:inline">{t('nav.parameters')}</span></button>
+        <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setViewMode((value) => value === 'canvas' ? 'architecture' : 'canvas')}>{viewMode === 'canvas' ? '⌘' : '⌁'} <span className="hidden lg:inline">{t(`nav.${viewMode === 'canvas' ? 'architecture' : 'canvas'}`)}</span></button>
+        <button className="rounded-xl bg-violet-100 px-3 py-2 font-bold text-violet-700" onClick={() => setExplanationOpen(true)}>✦ <span className="hidden xl:inline">{t('nav.explain')}</span></button>
+        <button disabled={selectedNodes.length < 2} className="rounded-xl bg-blue-100 px-3 py-2 font-bold text-blue-700 disabled:opacity-40" onClick={() => setCompositeOpen(true)}>▣ <span className="hidden xl:inline">{t('nav.group')}</span></button>
         <button className={`rounded-xl px-3 py-2 font-bold ${dataset ? 'bg-blue-100 text-blue-700' : 'bg-slate-100'}`} onClick={() => setDataOpen(true)}>▦ <span className="hidden sm:inline">{t('nav.data')}</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={exportProject}>↓ <span className="hidden md:inline">JSON</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => importRef.current?.click()}>↑ <span className="hidden md:inline">{t('nav.import')}</span></button>
@@ -599,26 +813,30 @@ function Workspace() {
         <div className="mt-3 flex gap-2"><div className="relative min-w-0 flex-1"><span className="absolute left-3 top-2.5">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('library.search')} className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500" /></div><button className="rounded-xl border px-3 text-sm font-bold" onClick={() => setLibraryMode((mode) => mode === 'compact' ? 'detailed' : 'compact')}>{libraryMode === 'compact' ? '☷' : '≡'}</button></div>
         <label className="mt-3 flex items-center gap-3 text-xs text-slate-500"><span>{t('common.width')}</span><input type="range" min="220" max="520" value={leftWidth} onChange={(event) => setLeftWidth(Number(event.target.value))} className="min-w-0 flex-1 accent-blue-600" /><span>{leftWidth}px</span></label>
         <p className="mt-2 text-xs text-slate-400">{t('library.summary', { count: filteredPlugins.length, mode: `library.${libraryMode}` })}</p>
-        <div className="mt-4 space-y-5">{Object.entries(grouped).map(([category, plugins]) => <section key={category}><h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{t(`category.${category}`)}</h3><div className="space-y-2">{plugins.map((plugin) => <div key={plugin.id} className={`flex items-start gap-2 rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-blue-400 hover:shadow-md ${libraryMode === 'compact' ? 'p-2' : 'p-3'}`}><button onClick={() => addPluginNode(plugin)} className="min-w-0 flex-1 text-left"><span className="block break-words font-semibold text-slate-900">{t(plugin.name)}</span>{libraryMode === 'detailed' && <span className="mt-1 block break-words text-xs text-slate-500">{t(plugin.description)}</span>}</button><button aria-label={t('tutorial.learn')} title={t('tutorial.learn')} onClick={() => setTutorialManifest(plugin)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-50 font-black text-blue-700 hover:bg-blue-100">?</button></div>)}</div></section>)}</div>
+        <div className="mt-4 space-y-5">{Object.entries(grouped).map(([category, plugins]) => <section key={category}><h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{t(`category.${category}`)}</h3><div className="space-y-2">{plugins.map((plugin) => <div key={plugin.id} className={`flex items-start gap-2 rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-blue-400 hover:shadow-md ${libraryMode === 'compact' ? 'p-2' : 'p-3'}`} style={plugin.color ? { borderLeftWidth: 5, borderLeftColor: plugin.color } : undefined}><button onClick={() => addPluginNode(plugin)} className="min-w-0 flex-1 text-left"><span className="block break-words font-semibold text-slate-900">{t(plugin.name)}</span>{plugin.customComposite && <span className="mt-1 block text-[10px] font-bold uppercase text-violet-600">{t('library.custom')}</span>}{libraryMode === 'detailed' && <span className="mt-1 block break-words text-xs text-slate-500">{t(plugin.description)}</span>}</button>{!plugin.customComposite && <button aria-label={t('tutorial.learn')} title={t('tutorial.learn')} onClick={() => setTutorialManifest(plugin)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-50 font-black text-blue-700 hover:bg-blue-100">?</button>}</div>)}</div></section>)}</div>
         <div className="absolute bottom-8 right-0 top-8 hidden w-2 cursor-col-resize touch-none lg:block" onPointerDown={(event) => startResize('left', event)} />
       </motion.aside>
 
       <section className="relative col-start-2 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-xl">
         {pendingConnection && <div className="absolute left-1/2 top-3 z-20 flex max-w-[calc(100%_-_24px)] -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-xl"><span className="truncate">{pendingConnection.port.name}: {pendingConnection.type} → {t('connection.tapMatching')}</span><button aria-label={t('common.close')} className="nodrag rounded-full bg-white/20 px-2 py-1" onClick={() => setPendingConnection(null)}>✕</button></div>}
-        <ConnectionContext.Provider value={{ pendingConnection, onPortTap, onDeleteNode: deleteNode, onDeleteEdge: deleteEdge, onOpenTutorial: setTutorialManifest }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onNodeClick={(_, node) => setSelectedId(node.id)} nodeTypes={{ pipelineNode: PipelineNode }} edgeTypes={edgeTypes} fitView><Background /><MiniMap pannable zoomable /><Controls /></ReactFlow></ConnectionContext.Provider>
+        {viewMode === 'canvas' ? <ConnectionContext.Provider value={{ pendingConnection, onPortTap, onDeleteNode: deleteNode, onDeleteEdge: deleteEdge, onOpenTutorial: setTutorialManifest }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onNodeClick={(_, node) => setSelectedId(node.id)} nodeTypes={{ pipelineNode: PipelineNode }} edgeTypes={edgeTypes} fitView><Background /><MiniMap pannable zoomable nodeColor={(node) => stageStyles[stageForManifest(node.data.manifest)].hex} /><Controls /></ReactFlow></ConnectionContext.Provider> : <ArchitectureView nodes={nodes} edges={edges} onSelect={setSelectedId} t={t} />}
       </section>
 
       <motion.aside initial={false} animate={{ x: rightOpen ? 0 : '110%' }} style={{ width: `min(${rightWidth}px, calc(100vw - 24px))` }} className={`${asideBase} right-3 lg:transform-none ${rightOpen ? 'lg:block' : 'lg:hidden'}`}>
         <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-black">{t('parameters.title')}</h2><button aria-label={t('common.close')} className="rounded-lg p-2 hover:bg-slate-100" onClick={() => setRightOpen(false)}>✕</button></div>
-        <label className="mt-3 flex items-center gap-3 text-xs text-slate-500"><span>{t('common.width')}</span><input type="range" min="220" max="520" value={rightWidth} onChange={(event) => setRightWidth(Number(event.target.value))} className="min-w-0 flex-1 accent-blue-600" /><span>{rightWidth}px</span></label>
-        {selectedNode ? <div className="mt-4 space-y-5"><div className="rounded-2xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-600">{t(`category.${selectedNode.data.manifest.category}`)}</p><h3 className="break-words text-xl font-black text-slate-900">{t(selectedNode.data.label)}</h3><div className="mt-2 flex gap-2 text-[10px] font-bold uppercase"><span className="rounded-full bg-slate-900 px-2 py-1 text-white">{t('framework.pytorch')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.pytorch ?? 'unsupported'}`)}</span><span className="rounded-full bg-orange-100 px-2 py-1 text-orange-700">{t('framework.tensorflow')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</span></div></div>{selectedNode.data.manifest.properties.map((property) => <label key={property.key} className="block rounded-2xl border border-slate-200 bg-white p-4"><span className="block break-words text-sm font-bold text-slate-800">{t(property.label)}</span><PropertyControl property={property} value={selectedNode.data.parameters[property.key]} onChange={(value) => updateParameter(property.key, value)} /></label>)}{selectedNode.data.manifest.composition && <button onClick={expandSelectedComposite} className="w-full rounded-2xl bg-violet-600 px-4 py-3 font-bold text-white shadow-lg">{t('component.expand')}</button>}<div className="grid grid-cols-2 gap-2"><button onClick={() => exportCode('pytorch')} className="rounded-2xl bg-slate-950 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-700">{t('compiler.exportPyTorch')}</button><button onClick={() => exportCode('tensorflow')} className="rounded-2xl bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-orange-600">{t('compiler.exportTensorFlow')}</button></div></div> : <p className="mt-6 text-sm text-slate-500">{t('parameters.empty')}</p>}
+        <label className="mt-3 block text-xs font-bold text-slate-500">{t('project.name')}<input value={projectName} onChange={(event) => setProjectName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500" /></label>
+        <label className="mt-3 flex items-center gap-3 text-xs text-slate-500"><span>{t('common.width')}</span><input type="range" min="260" max="640" value={rightWidth} onChange={(event) => setRightWidth(Number(event.target.value))} className="min-w-0 flex-1 accent-blue-600" /><span>{rightWidth}px</span></label>
+        {selectedNode ? <div className="mt-4 space-y-5"><div className="rounded-2xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-600">{t(`category.${selectedNode.data.manifest.category}`)}</p><h3 className="break-words text-xl font-black text-slate-900">{t(selectedNode.data.label)}</h3><div className="mt-2 flex gap-2 text-[10px] font-bold uppercase"><span className="rounded-full bg-slate-900 px-2 py-1 text-white">{t('framework.pytorch')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.pytorch ?? 'unsupported'}`)}</span><span className="rounded-full bg-orange-100 px-2 py-1 text-orange-700">{t('framework.tensorflow')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</span></div></div>{selectedNode.data.manifest.properties.map((property) => <label key={property.key} className="block rounded-2xl border border-slate-200 bg-white p-4"><span className="block break-words text-sm font-bold text-slate-800">{t(property.label)}</span><PropertyControl property={property} value={selectedNode.data.parameters[property.key]} onChange={(value) => updateParameter(property.key, value)} /></label>)}{selectedNode.data.manifest.composition && <button onClick={expandSelectedComposite} className="w-full rounded-2xl bg-violet-600 px-4 py-3 font-bold text-white shadow-lg">{t('component.expand')}</button>}{selectedNode.data.compositeOrigin && <button onClick={collapseSelectedComposite} className="w-full rounded-2xl bg-violet-100 px-4 py-3 font-bold text-violet-700">{t('component.collapse')}</button>}<div className="grid grid-cols-2 gap-2"><button onClick={() => exportCode('pytorch')} className="rounded-2xl bg-slate-950 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-700">{t('compiler.exportPyTorch')}</button><button onClick={() => exportCode('tensorflow')} className="rounded-2xl bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-orange-600">{t('compiler.exportTensorFlow')}</button></div></div> : <p className="mt-6 text-sm text-slate-500">{t('parameters.empty')}</p>}
         <div className="absolute bottom-8 left-0 top-8 hidden w-2 cursor-col-resize touch-none lg:block" onPointerDown={(event) => startResize('right', event)} />
       </motion.aside>
     </main>
     {notice && <button onClick={() => setNotice('')} className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice} · ✕</button>}
+    {restoreCandidate && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/60 p-4"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 className="text-xl font-black">{t('project.restoreTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('project.restoreDescription')}</p><p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">{restoreCandidate.name || t('project.sampleName')}</p><div className="mt-5 grid grid-cols-2 gap-2"><button onClick={() => { applyProject(restoreCandidate); setRestoreCandidate(null); setLocalReady(true); }} className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white">{t('project.restore')}</button><button onClick={() => { platformServices.projects.remove().finally(() => { setRestoreCandidate(null); setLocalReady(true); }); }} className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700">{t('project.startFresh')}</button></div></section></div>}
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
     <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} onModel={setModel} onOpenData={() => setDataOpen(true)} onNodeStatus={setNodeStatus} onExport={exportCode} />
+    <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
+    {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
   </div>;
 }

@@ -1,3 +1,5 @@
+import { flattenCustomComposites } from './customComposites.js';
+
 const tierOrder = ['L0', 'L1', 'L2', 'L3'];
 
 export const executionTiers = [
@@ -71,13 +73,14 @@ const maximumTier = (current, next) => (
 );
 
 export function estimateExecutionPlan(nodes, dataset, capabilities = {}) {
+  const planNodes = flattenCustomComposites(nodes, []).nodes;
   let parameters = 0;
   let operationsPerStep = 0;
   let minimumTier = 'L0';
   let browserBackendComplete = true;
   let usesAdam = false;
 
-  nodes.forEach((node) => {
+  planNodes.forEach((node) => {
     const manifest = node.data.manifest;
     parameters += componentParameters(manifest.op, node.data.parameters ?? {});
     operationsPerStep += componentOperations(manifest.op, node.data.parameters ?? {});
@@ -86,7 +89,7 @@ export function estimateExecutionPlan(nodes, dataset, capabilities = {}) {
     if (['adam_optimizer', 'adamw_optimizer'].includes(manifest.op)) usesAdam = true;
   });
 
-  const isTraining = nodes.some((node) => ['training', 'optimizer', 'loss'].includes(node.data.manifest.kind));
+  const isTraining = planNodes.some((node) => ['training', 'optimizer', 'loss'].includes(node.data.manifest.kind));
   const bytesPerParameter = isTraining ? (usesAdam ? 24 : 16) : 4;
   const activationBytes = Math.max(8 * 1024 * 1024, operationsPerStep * 0.08);
   const datasetCells = dataset ? dataset.rows.length * Math.max(1, dataset.columns.length) : 0;

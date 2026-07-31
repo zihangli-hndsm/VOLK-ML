@@ -160,6 +160,9 @@ composition: {
 - External inputs may fan out to multiple internal inputs, as used by residual connections.
 - Every external input/output mapping must refer to a real parent port and real child port.
 - Expansion replaces the parent node, creates internal nodes/edges, and redirects existing external edges.
+- User-created composites persist a full manifest in the project catalog. Nested custom children embed their manifest in the parent definition so the project remains portable.
+- Custom composites flatten recursively before browser execution or framework compilation, while the canvas may keep them folded.
+- A custom definition is copied when added to the canvas; editing or expanding an instance does not mutate the saved template.
 
 Do not hide behavior inside a composite that cannot be represented by its expanded graph.
 

@@ -410,7 +410,7 @@ export function expandComposite(node) {
   );
   const idByKey = new Map();
   const nodes = composition.nodes.map((spec, index) => {
-    const manifest = componentById.get(spec.componentId);
+    const manifest = spec.manifest ?? componentById.get(spec.componentId);
     if (!manifest) {
       const error = new Error('error.compositeExpansion');
       error.translationKey = 'error.compositeExpansion';
@@ -422,12 +422,13 @@ export function expandComposite(node) {
       id,
       type: 'pipelineNode',
       position: {
-        x: node.position.x + (index % 3) * 270,
-        y: node.position.y + Math.floor(index / 3) * 210,
+        x: node.position.x + (spec.position?.x ?? (index % 3) * 270),
+        y: node.position.y + (spec.position?.y ?? Math.floor(index / 3) * 210),
       },
       data: {
         label: manifest.name,
         manifest,
+        compositionKey: spec.key,
         parameters: {
           ...defaults(manifest),
           ...Object.fromEntries(Object.entries(spec.parameters ?? {}).map(([key, value]) => [key, resolveParameter(value)])),

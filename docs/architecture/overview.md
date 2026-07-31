@@ -17,6 +17,10 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Area | Source of truth | Responsibility |
 | --- | --- | --- |
 | Application shell | `src/main.jsx` | React Flow canvas, mobile UI, project import/export, runner presentation |
+| Visual language | `src/core/visualLanguage.js`, `src/components/VisualGlyph.jsx` | Stable stage colors, static canvas glyphs, animated teaching glyphs, architecture layout |
+| Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
+| Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
+| Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
 | Browser runtime | `src/core/browserRuntime.js` | Typed execution validation, linear regression, KNN classification, evaluation, prediction |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
@@ -47,10 +51,20 @@ flowchart TD
 
 - Canvas nodes retain their manifest and user parameters.
 - Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
-- Project JSON stores the graph, workspace preferences, dataset, and trained L0 model.
-- `PROJECT_VERSION` in `src/core/project.js` is currently `5`.
+- Project JSON stores the project name, graph, custom composite definitions, workspace preferences, dataset, and trained L0 model.
+- `PROJECT_VERSION` in `src/core/project.js` is currently `6`.
 - Import first migrates legacy graph contracts, then resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
 - Version 5 migrates legacy KNN `model` edges to `trained_model`; obsolete visualization-only `boundary` edges are removed because the current KNN runtime no longer produces a mesh.
+- Version 6 adds the project name and reusable custom-composite catalog.
+
+## Visual workspace
+
+- Canvas components reserve their rightmost 30% for a lightweight static semantic glyph. Animation is never active on the canvas.
+- The same visual vocabulary becomes animated only inside the component guide after the learner presses play.
+- Stage color has one stable meaning: green for data, blue for models, orange for training, and violet for outputs. Runtime status remains a separate ring.
+- The architecture view derives topological layers from the same graph without changing saved node positions.
+- Custom composites are copy-style definitions. They can contain preset or custom composites, expand for editing, collapse to their original instance, and flatten recursively before execution or source compilation.
+- Project explanation begins with deterministic topology and connection analysis. A user may optionally provide a compatible chat-completion endpoint, model name, and in-memory API key for follow-up questions.
 
 ## Runtime boundaries
 
@@ -93,3 +107,4 @@ Generated framework code should also receive focused assertions. When a compiler
 - Exported neural-network code requires the user to bind a dataset and training loop.
 - Shape inference is not yet a first-class IR pass; several layer dimensions remain explicit component properties.
 - Framework conversion quality is declared per component and may be `adapted`, `approximate`, or `unsupported`.
+- The optional conversational explanation endpoint must support a chat-completion request shape and browser CORS; no API key is persisted.
