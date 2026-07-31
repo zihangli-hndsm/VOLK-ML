@@ -16,7 +16,7 @@ import { executeBrowserGraph, predictWithModel } from '../src/core/browserRuntim
 import { createCustomComposite, flattenCustomComposites } from '../src/core/customComposites.js';
 import { analyzeProject } from '../src/core/explanation.js';
 import { safeProjectFilename } from '../src/core/localProjects.js';
-import { migrateProject, PROJECT_VERSION } from '../src/core/project.js';
+import { migrateProject, PROJECT_VERSION, projectContentSignature } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
 import { architectureLayout, stageForManifest, visualKindForManifest } from '../src/core/visualLanguage.js';
@@ -123,6 +123,23 @@ assert.equal(stageForManifest(componentById.get('model_output_node')), 'output')
 assert.equal(visualKindForManifest(componentById.get('dense_node')), 'dense');
 assert.equal(visualKindForManifest(componentById.get('multihead_attention_node')), 'attention');
 assert.equal(safeProjectFilename('My Visual Project'), 'my-visual-project.volkml.json');
+assert.notEqual(
+  projectContentSignature({
+    name: 'Model state',
+    graph: { nodes: [], edges: [] },
+    customComponents: [],
+    data: null,
+    trainedModel: { weights: [1] },
+  }),
+  projectContentSignature({
+    name: 'Model state',
+    graph: { nodes: [], edges: [] },
+    customComponents: [],
+    data: null,
+    trainedModel: { weights: [2] },
+  }),
+  'trained model changes invalidate the downloaded project signature',
+);
 
 const architectureNodes = [
   makeNode('input', 'tensor_input_node', { shape: '32' }),
@@ -370,6 +387,59 @@ assert.throws(() => createCustomComposite({
   name: 'Invalid disconnected group',
   color: '#2563eb',
 }), /error\.compositeSelection/);
+
+const standaloneLayerComposite = createCustomComposite({
+  selectedNodes: [
+    makeNode('standalone-dense', 'dense_node', { input_features: 32, units: 10 }),
+    makeNode('standalone-relu', 'relu_node'),
+  ],
+  edges: [
+    makeEdge('standalone-dense', 'output', 'standalone-relu', 'input'),
+  ],
+  name: 'Standalone hidden layer',
+  color: '#2563eb',
+});
+assert.deepEqual(
+  standaloneLayerComposite.manifest.inputs.map((port) => port.type),
+  ['Tensor'],
+  'an unconnected composite exposes child inputs not satisfied internally',
+);
+assert.deepEqual(
+  standaloneLayerComposite.manifest.outputs.map((port) => port.type),
+  ['Tensor'],
+  'an unconnected composite exposes child outputs not consumed internally',
+);
+const standaloneInput = standaloneLayerComposite.manifest.inputs[0].name;
+const standaloneOutput = standaloneLayerComposite.manifest.outputs[0].name;
+const connectedStandaloneNodes = [
+  makeNode('standalone-source', 'tensor_input_node', { shape: '32' }),
+  standaloneLayerComposite.instance,
+  makeNode('standalone-sink', 'model_output_node'),
+];
+const connectedStandaloneEdges = [
+  makeEdge('standalone-source', 'tensor', standaloneLayerComposite.instance.id, standaloneInput),
+  makeEdge(standaloneLayerComposite.instance.id, standaloneOutput, 'standalone-sink', 'model'),
+];
+const flattenedStandalone = flattenCustomComposites(
+  connectedStandaloneNodes,
+  connectedStandaloneEdges,
+);
+assert.equal(
+  flattenedStandalone.edges.some((edge) => (
+    edge.source === 'standalone-source'
+    && edge.targetHandle === 'input'
+  )),
+  true,
+  'flattening redirects a new external input to the first child',
+);
+assert.equal(
+  flattenedStandalone.edges.some((edge) => (
+    edge.target === 'standalone-sink'
+    && edge.sourceHandle === 'output'
+  )),
+  true,
+  'flattening redirects a new external output from the final child',
+);
 
 const customRegression = createCustomComposite({
   selectedNodes: regressionGraphNodes.filter((node) => ['reg-split', 'reg-model'].includes(node.id)),

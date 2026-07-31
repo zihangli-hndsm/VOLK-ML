@@ -7,7 +7,7 @@ import { languages, localizedError, resolveMessage, translateError } from './i18
 import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
 import { executeBrowserGraph, predictWithModel } from './core/browserRuntime';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
-import { migrateProject, PROJECT_VERSION } from './core/project';
+import { migrateProject, PROJECT_VERSION, projectContentSignature } from './core/project';
 import { safeProjectFilename } from './core/localProjects';
 import { createCustomComposite } from './core/customComposites';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
@@ -464,13 +464,16 @@ function Workspace() {
     return haystack.includes(query.trim().toLowerCase());
   }), [availablePlugins, query]);
   const grouped = useMemo(() => filteredPlugins.reduce((acc, plugin) => ({ ...acc, [plugin.category]: [...(acc[plugin.category] ?? []), plugin] }), {}), [filteredPlugins]);
-  const projectSignature = useMemo(() => JSON.stringify({
-    projectName,
-    nodes: nodes.map(({ selected, dragging, ...node }) => node),
-    edges: edges.map(({ selected, ...edge }) => edge),
-    dataset,
+  const projectSignature = useMemo(() => projectContentSignature({
+    name: projectName,
+    graph: {
+      nodes: nodes.map(({ selected, dragging, ...node }) => node),
+      edges: edges.map(({ selected, ...edge }) => edge),
+    },
     customComponents,
-  }), [projectName, nodes, edges, dataset, customComponents]);
+    data: dataset,
+    trainedModel: model,
+  }), [projectName, nodes, edges, dataset, customComponents, model]);
   const makeProject = useCallback(() => ({
     format: 'VOLK-ML',
     version: PROJECT_VERSION,
