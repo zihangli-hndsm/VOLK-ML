@@ -1,4 +1,5 @@
 import { localizedError } from '../i18n.js';
+import { flattenCustomComposites } from './customComposites.js';
 
 function resolvePort(manifest, direction, handleId) {
   const ports = direction === 'output' ? manifest.outputs : manifest.inputs;
@@ -236,7 +237,8 @@ export async function executeBrowserGraph({
   onLoss = () => {},
   onYield = () => Promise.resolve(),
 }) {
-  const plan = compileExecutionGraph(nodes, edges);
+  const flattened = flattenCustomComposites(nodes, edges);
+  const plan = compileExecutionGraph(flattened.nodes, flattened.edges);
   if (!dataset) throw localizedError('error.datasetMissing');
   const outputs = new Map();
   let finalModel = null;
@@ -246,7 +248,7 @@ export async function executeBrowserGraph({
   };
 
   for (const node of plan.order) {
-    onNodeStatus([node.id], 'running');
+    onNodeStatus([node.data.runtimeOwnerId ?? node.id], 'running');
     const manifestId = node.data.manifest.id;
     let output;
     if (manifestId === 'tabular_data_node') {
@@ -430,7 +432,7 @@ export async function executeBrowserGraph({
       throw localizedError('error.backendMissing', { node: node.data.manifest.name });
     }
     outputs.set(node.id, output);
-    onNodeStatus([node.id], 'success');
+    onNodeStatus([node.data.runtimeOwnerId ?? node.id], 'success');
   }
   if (!finalModel) throw localizedError('error.noTrainedModel');
   return finalModel;

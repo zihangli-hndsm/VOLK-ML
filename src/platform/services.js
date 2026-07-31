@@ -1,3 +1,5 @@
+import { clearLocalProject, loadLocalProject, saveLocalProject } from '../core/localProjects.js';
+
 export const PLATFORM_API_VERSION = 1;
 
 const unavailable = (capability) => {
@@ -23,11 +25,23 @@ export function createLocalPlatformServices() {
       },
     }),
     projects: Object.freeze({
-      mode: 'local-file',
-      async list() { return []; },
-      async load() { throw unavailable('projects.load'); },
-      async save() { throw unavailable('projects.save'); },
-      async remove() { throw unavailable('projects.remove'); },
+      mode: 'indexeddb',
+      async list() {
+        const project = await loadLocalProject();
+        return project ? [{ id: 'current-project', name: project.name, savedAt: project.savedAt }] : [];
+      },
+      async load(id = 'current-project') {
+        if (id !== 'current-project') throw unavailable('projects.load');
+        return loadLocalProject();
+      },
+      async save(project) {
+        await saveLocalProject(project);
+        return { id: 'current-project', savedAt: project.savedAt };
+      },
+      async remove(id = 'current-project') {
+        if (id !== 'current-project') throw unavailable('projects.remove');
+        await clearLocalProject();
+      },
     }),
     collaboration: Object.freeze({
       available: false,

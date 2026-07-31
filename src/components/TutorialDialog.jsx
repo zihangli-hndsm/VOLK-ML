@@ -1,5 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { tutorialFor } from '../core/tutorials.js';
+import VisualGlyph from './VisualGlyph.jsx';
 
 const points = [
   [22, 108], [42, 94], [62, 88], [82, 66], [102, 72], [122, 48], [142, 42], [162, 26],
@@ -81,6 +82,7 @@ function TutorialVisual({ kind, label }) {
 }
 
 export default function TutorialDialog({ manifest, onClose, t }) {
+  const [playing, setPlaying] = useState(false);
   if (!manifest) return null;
   const tutorial = tutorialFor(manifest);
   if (!tutorial) return null;
@@ -92,7 +94,12 @@ export default function TutorialDialog({ manifest, onClose, t }) {
       </div>
       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.15fr)]">
         <div>
-          <TutorialVisual kind={tutorial.visual} label={t('tutorial.visual')} />
+          <button onClick={() => setPlaying((value) => !value)} className="w-full text-left">
+            <div aria-label={t('tutorial.visual')} className="grid min-h-56 place-items-center overflow-hidden rounded-3xl bg-gradient-to-br from-sky-50 to-violet-100 p-5">
+              <VisualGlyph kind={tutorial.visual} animated={playing} className="h-56 w-full" />
+            </div>
+            <span className="mt-2 block text-center text-xs font-bold text-blue-600">{playing ? t('tutorial.pauseAnimation') : t('tutorial.playAnimation')}</span>
+          </button>
           <p className="mt-2 text-center text-xs text-slate-400">{t('tutorial.visualHint')}</p>
           <div className="mt-4 overflow-x-auto rounded-2xl bg-slate-950 p-4 text-center"><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('tutorial.formula')}</p><p className="mt-2 whitespace-nowrap font-mono text-sm font-bold text-sky-300">{t(tutorial.formula)}</p></div>
         </div>

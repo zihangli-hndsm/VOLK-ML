@@ -54,6 +54,7 @@ Estimates are guardrails, not benchmarks. They are deliberately conservative and
 - Peak memory adds a 35% safety margin.
 - Convolution estimates assume a representative `64 × 64` spatial area.
 - Sequence and attention estimates assume a representative length of `128`.
+- Folded user-created composites are recursively expanded before estimation, so grouping a graph does not change its parameter, operation, or backend guidance.
 
 When real shape inference is added, replace representative assumptions with inferred tensor shapes and document the IR dependency.
 
