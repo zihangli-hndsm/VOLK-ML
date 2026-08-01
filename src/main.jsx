@@ -328,6 +328,9 @@ function PropertyControl({ property, value, onChange }) {
   if (property.type === 'boolean') {
     return <select className={inputClass} value={String(value)} onChange={(event) => onChange(event.target.value === 'true')}><option value="true">{t('common.enabled')}</option><option value="false">{t('common.disabled')}</option></select>;
   }
+  if (property.type === 'code') {
+    return <textarea className={`${inputClass} min-h-28 resize-y font-mono leading-6`} value={value} spellCheck="false" onChange={(event) => onChange(event.target.value)} />;
+  }
   return <><input className={property.type === 'slider' ? 'mt-3 w-full accent-blue-600' : inputClass} type={property.type === 'slider' ? 'range' : property.type === 'number' ? 'number' : 'text'} min={property.min} max={property.max} step={property.step} value={value} onChange={(event) => onChange(property.type === 'text' ? event.target.value : Number(event.target.value))} />{property.type === 'slider' && <span className="mt-2 block text-sm text-slate-500">{value}</span>}</>;
 }
 

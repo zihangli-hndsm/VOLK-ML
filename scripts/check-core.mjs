@@ -18,6 +18,11 @@ import { assessConnection, knownPortTypes } from '../src/core/connections.js';
 import { analyzeProject } from '../src/core/explanation.js';
 import { safeProjectFilename } from '../src/core/localProjects.js';
 import {
+  compileLossExpression,
+  lossExpressionFunctions,
+  parseLossExpression,
+} from '../src/core/lossExpression.js';
+import {
   leastSquaresFit,
   meanSquaredError,
   regressionPointsFromDataset,
@@ -30,6 +35,7 @@ import {
   activationValue,
   architectureLayout,
   componentLibraryTree,
+  concatenateVisualData,
   descentVisualGeometry,
   mseLandscapeValue,
   stageForManifest,
@@ -84,6 +90,7 @@ for (const manifest of pluginRegistry) {
   assert.ok(['L0', 'L1', 'L2', 'L3'].includes(manifest.runtime.minimumTier), `${manifest.id} execution tier`);
   assert.ok(['exact', 'adapted', 'approximate', 'unsupported'].includes(manifest.compatibility.pytorch), `${manifest.id} PyTorch compatibility`);
   assert.ok(['exact', 'adapted', 'approximate', 'unsupported'].includes(manifest.compatibility.tensorflow), `${manifest.id} TensorFlow compatibility`);
+  for (const property of manifest.properties) assert.ok(['number', 'slider', 'select', 'boolean', 'text', 'code'].includes(property.type), `${manifest.id}.${property.key} control type`);
   assert.ok(
     manifest.runtime.browserBackend !== 'none'
       || manifest.compatibility.pytorch !== 'unsupported'
@@ -154,11 +161,40 @@ for (const operation of ['gradient_descent', 'sgd_optimizer', 'adam_optimizer', 
   const geometry = descentVisualGeometry(operation);
   assert.deepEqual(geometry.endpoint, geometry.minimum, `${operation} trajectory ends at the landscape minimum`);
 }
+assert.deepEqual(concatenateVisualData, {
+  inputs: ['[a,b]', '[c,d]'],
+  result: '[a,b,c,d]',
+  axis: -1,
+}, 'concatenate visual matches the default one-dimensional axis');
 for (const type of knownPortTypes) assert.ok(messages[`portType.${type}`], `${type} port role is localized`);
 const libraryTree = componentLibraryTree(pluginRegistry);
 assert.deepEqual(libraryTree.map((group) => group.id), ['data', 'model', 'training', 'output']);
 assert.equal(libraryTree.reduce((count, group) => count + group.count, 0), pluginRegistry.length);
 assert.equal(safeProjectFilename('My Visual Project'), 'my-visual-project.volkml.json');
+assert.deepEqual(lossExpressionFunctions, ['mean', 'sum', 'abs', 'square', 'sqrt', 'log', 'exp', 'clip']);
+assert.ok(parseLossExpression('mean(square(prediction - target))'));
+assert.throws(() => parseLossExpression('mean(square(target))'), /prediction/, 'custom loss must depend on prediction');
+assert.throws(() => parseLossExpression('1'), /prediction/, 'numeric custom loss must depend on prediction');
+assert.equal(
+  compileLossExpression('mean(square(prediction - target))', 'pytorch'),
+  'torch.mean(torch.square((prediction - target)))',
+);
+assert.equal(
+  compileLossExpression('mean(abs(prediction - target)) + clip(0.1, 0, 1)', 'tensorflow'),
+  '(tf.reduce_mean(tf.abs((prediction - target))) + tf.clip_by_value(0.1, 0, 1))',
+);
+assert.equal(
+  compileLossExpression('-prediction ** 2', 'pytorch'),
+  '(-(prediction ** 2))',
+  'a leading unary sign applies after exponentiation',
+);
+assert.equal(
+  compileLossExpression('prediction ** -2', 'tensorflow'),
+  '(prediction ** (-2))',
+  'a signed exponent remains valid',
+);
+assert.throws(() => parseLossExpression('prediction.__class__'), /unexpected/);
+assert.throws(() => parseLossExpression('system(prediction)'), /function/);
 const densePlaygroundPoints = Array.from({ length: 101 }, (_, x) => ({ x, y: 2 * x + 1 }));
 const sampledPlaygroundPoints = uniformlySamplePoints(densePlaygroundPoints, 11);
 assert.equal(sampledPlaygroundPoints.length, 11);
@@ -381,6 +417,113 @@ for (const [lossId, optimizerId, torchLoss, torchOptimizer, tfLoss, tfOptimizer]
   assertPythonSyntax(torchConfigured.code, `${lossId}/${optimizerId} PyTorch`);
   assertPythonSyntax(tfConfigured.code, `${lossId}/${optimizerId} TensorFlow`);
 }
+
+const trainerNodes = [
+  makeNode('trainer-data', 'tabular_data_node'),
+  makeNode('trainer-split', 'train_test_split_node', { train_ratio: 0.75 }),
+  makeNode('trainer-input', 'tensor_input_node', { shape: '2' }),
+  makeNode('trainer-dense', 'dense_node', { input_features: 2, units: 1 }),
+  makeNode('trainer-output', 'model_output_node'),
+  makeNode('trainer-loss', 'custom_loss_node', { expression: 'mean(abs(prediction - target))' }),
+  makeNode('trainer-optimizer', 'adam_optimizer_node', { learning_rate: 0.002 }),
+  makeNode('trainer', 'supervised_trainer_node', { epochs: 12, batch_size: 8, shuffle: false }),
+];
+const trainerEdges = [
+  makeEdge('trainer-data', 'dataset', 'trainer-split', 'dataset'),
+  makeEdge('trainer-input', 'tensor', 'trainer-dense', 'input'),
+  makeEdge('trainer-dense', 'output', 'trainer-output', 'input'),
+  makeEdge('trainer-split', 'split', 'trainer', 'dataset'),
+  makeEdge('trainer-output', 'model', 'trainer', 'model'),
+  makeEdge('trainer-loss', 'loss', 'trainer', 'loss'),
+  makeEdge('trainer-optimizer', 'optimizer', 'trainer', 'optimizer'),
+];
+assert.equal(assessConnection(
+  trainerEdges[3],
+  trainerNodes,
+  trainerEdges.filter((edge) => edge !== trainerEdges[3]),
+).valid, true, 'DatasetSplit connects to the trainer data input');
+assert.equal(assessConnection({
+  source: 'trainer-split', sourceHandle: 'split', target: 'trainer-input', targetHandle: 'input',
+}, trainerNodes, trainerEdges).reason, 'missingPort', 'DatasetSplit does not bind directly to a symbolic Tensor Input');
+const trainerTorch = compilePipelineToPyTorch(trainerNodes, trainerEdges);
+const trainerTensorFlow = compilePipelineToTensorFlow(trainerNodes, trainerEdges);
+assert.match(trainerTorch.code, /def custom_loss\(prediction, target\):\n    return torch\.mean\(torch\.mean\(torch\.abs/);
+assert.match(trainerTorch.code, /DataLoader\(train_set, batch_size=8, shuffle=False\)/);
+assert.match(trainerTorch.code, /model = model\.to\(dtype=torch\.float32\)/);
+assert.match(trainerTorch.code, /features_tensor = torch\.tensor\(X, dtype=torch\.float32\)/);
+assert.match(trainerTorch.code, /for epoch in range\(12\)/);
+assert.match(trainerTensorFlow.code, /def custom_loss\(target, prediction\):\n    return tf\.reduce_mean\(tf\.reduce_mean\(tf\.abs/);
+assert.match(trainerTensorFlow.code, /model\.fit\(X_train, y_train, epochs=12, batch_size=8, shuffle=False/);
+assert.match(trainerTensorFlow.code, /def volk_deterministic_indices\(length, seed=2026\):/);
+assert.match(trainerTensorFlow.code, /train_indices, test_indices = indices\[:split_index\], indices\[split_index:\]/);
+assert.match(trainerTensorFlow.code, /X_train, X_test = X\[train_indices\], X\[test_indices\]/);
+assert.match(trainerTensorFlow.code, /y_train, y_test = y\[train_indices\], y\[test_indices\]/);
+assert.ok(trainerTorch.report.some((item) => item.componentId === 'supervised_trainer_node'));
+assert.ok(trainerTensorFlow.report.some((item) => item.componentId === 'custom_loss_node'));
+assertPythonSyntax(trainerTorch.code, 'Supervised Trainer PyTorch');
+assertPythonSyntax(trainerTensorFlow.code, 'Supervised Trainer TensorFlow');
+assert.doesNotThrow(
+  () => compilePipelineToPyTorch([
+    ...trainerNodes,
+    makeNode('orphan-invalid-loss', 'custom_loss_node', { expression: 'eval(prediction)' }),
+  ], trainerEdges),
+  'an unconnected custom loss does not override the loss connected to the trainer',
+);
+assert.equal(estimateExecutionPlan(trainerNodes, null).recommendedTier, 'L2');
+assert.equal(estimateExecutionPlan(trainerNodes, null).canRunHere, false);
+const invalidLossNodes = trainerNodes.map((node) => node.id === 'trainer-loss'
+  ? makeNode('trainer-loss', 'custom_loss_node', { expression: 'eval(prediction)' })
+  : node);
+assert.throws(
+  () => compilePipelineToPyTorch(invalidLossNodes, trainerEdges),
+  (error) => error.translationKey === 'error.customLossFunction',
+  'custom loss rejects arbitrary function calls',
+);
+assert.throws(
+  () => compilePipelineToTensorFlow(trainerNodes, trainerEdges.filter((edge) => edge.targetHandle !== 'optimizer')),
+  (error) => error.translationKey === 'error.trainerInputsRequired',
+  'trainer compilation requires each typed input',
+);
+assert.throws(
+  () => compilePipelineToPyTorch(trainerNodes, trainerEdges.filter((edge) => edge.targetHandle !== 'model')),
+  (error) => error.translationKey === 'error.trainerInputsRequired',
+  'an incomplete trainer fails before legacy tabular fallback',
+);
+assert.throws(
+  () => compilePipelineToPyTorch(
+    [...trainerNodes, makeNode('legacy-model', 'linear_regression_node')],
+    [
+      ...trainerEdges.filter((edge) => edge.targetHandle !== 'model'),
+      makeEdge('trainer-split', 'split', 'legacy-model', 'split'),
+      makeEdge('legacy-model', 'model', 'trainer', 'model'),
+    ],
+  ),
+  (error) => error.translationKey === 'error.trainerSingleInputOutput',
+  'trainer rejects a type-valid non-architecture ModelSpec before tabular fallback',
+);
+const halfPrecisionTrainerNodes = trainerNodes.map((node) => node.id === 'trainer-input'
+  ? makeNode('trainer-input', 'tensor_input_node', { shape: '2', dtype: 'float16' })
+  : node);
+const halfPrecisionTrainer = compilePipelineToPyTorch(halfPrecisionTrainerNodes, trainerEdges);
+assert.match(halfPrecisionTrainer.code, /model = model\.to\(dtype=torch\.float16\)/);
+assert.match(halfPrecisionTrainer.code, /target_tensor = torch\.tensor\(y, dtype=torch\.float16\)/);
+const integerTrainerNodes = trainerNodes.map((node) => node.id === 'trainer-input'
+  ? makeNode('trainer-input', 'tensor_input_node', { shape: '2', dtype: 'int32' })
+  : node);
+assert.throws(
+  () => compilePipelineToTensorFlow(integerTrainerNodes, trainerEdges),
+  (error) => error.translationKey === 'error.trainerUnsupportedDtype',
+  'trainer rejects unsupported Tensor Input dtypes consistently across backends',
+);
+const secondTrainer = makeNode('trainer-two', 'supervised_trainer_node');
+assert.throws(
+  () => compilePipelineToPyTorch(
+    [...trainerNodes, secondTrainer],
+    [...trainerEdges, makeEdge('trainer-split', 'split', 'trainer-two', 'dataset')],
+  ),
+  (error) => error.translationKey === 'error.multipleTrainers',
+  'two connected trainers are rejected as an ambiguous export target',
+);
 
 const composite = makeNode('block', 'mlp_block_node', { input_features: 16, hidden_units: 24, dropout: 0.3 });
 const expansion = expandComposite(composite);

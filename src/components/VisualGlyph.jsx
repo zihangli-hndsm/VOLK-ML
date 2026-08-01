@@ -1,5 +1,5 @@
 import React from 'react';
-import { activationValue, descentVisualGeometry, mseLandscapeValue } from '../core/visualLanguage.js';
+import { activationValue, concatenateVisualData, descentVisualGeometry, mseLandscapeValue } from '../core/visualLanguage.js';
 
 const Svg = ({ children, viewBox = '0 0 120 76' }) => (
   <svg viewBox={viewBox} className="h-full w-full" aria-hidden="true">{children}</svg>
@@ -222,12 +222,12 @@ function Attention({ animated }) {
 
 function Merge({ concatenate, animated }) {
   if (concatenate) return <Svg>
-    <g>{[['[a,b]', 9, '#dbeafe'], ['[c,d]', 47, '#ede9fe']].map(([label, y, fill]) => <g key={label}><rect x="5" y={y} width="34" height="20" rx="6" fill={fill} /><text x="22" y={y + 13} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text>{animated && <animateTransform attributeName="transform" type="translate" values={`0 0;0 ${y < 30 ? 9 : -9};0 ${y < 30 ? 9 : -9}`} dur="2s" repeatCount="indefinite" />}</g>)}</g>
-    <path d="M40 19 C55 19 55 25 68 25 M40 57 C55 57 55 51 68 51" fill="none" stroke="#64748b" strokeWidth="2" />
-    <rect x="72" y="12" width="41" height="52" rx="8" fill="white" stroke="#8b5cf6" strokeWidth="2" />
-    <rect x="75" y="15" width="35" height="22" rx="5" fill="#dbeafe" /><rect x="75" y="39" width="35" height="22" rx="5" fill="#ede9fe" />
-    <text x="92.5" y="29" textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">[a,b]</text><text x="92.5" y="53" textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">[c,d]</text>
-    <path d="M75 38 H110" stroke="#f97316" strokeWidth="2">{animated && <animate attributeName="stroke-width" values="1;4;1" dur="2s" repeatCount="indefinite" />}</path>
+    {concatenateVisualData.inputs.map((label, index) => <g key={label}><rect x="5" y={11 + index * 34} width="34" height="20" rx="6" fill={index ? '#ede9fe' : '#dbeafe'} /><text x="22" y={24 + index * 34} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text></g>)}
+    <path d="M40 21 C54 21 55 31 67 36 M40 55 C54 55 55 45 67 40" fill="none" stroke="#64748b" strokeWidth="2" />
+    <rect x="68" y="25" width="46" height="26" rx="7" fill="#f5f3ff" stroke="#8b5cf6" strokeWidth="2" />
+    <text x="91" y="42" textAnchor="middle" fontSize="8" fontWeight="800" fill="#4c1d95">{concatenateVisualData.result}</text>
+    <text x="91" y="62" textAnchor="middle" fontSize="7" fontWeight="700" fill="#64748b">axis {concatenateVisualData.axis}</text>
+    {animated && <circle r="3" fill="#f97316"><animateMotion path="M22 21 C42 21 51 35 68 38 L112 38" dur="2s" repeatCount="indefinite" /></circle>}
   </Svg>;
   return <Svg>{['[1,2]', '[3,4]'].map((label, index) => <g key={label}><rect x="5" y={11 + index * 34} width="35" height="23" rx="6" fill={index ? '#ede9fe' : '#dbeafe'} /><text x="22.5" y={26 + index * 34} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text></g>)}<path d="M41 22 C55 22 52 38 65 38 M41 56 C55 56 52 38 65 38" fill="none" stroke="#64748b" strokeWidth="2" /><circle cx="69" cy="38" r="10" fill="#2563eb" /><text x="69" y="42" textAnchor="middle" fontSize="12" fontWeight="800" fill="white">+</text>{arrow(80, 38, 91, 38)}<text x="106" y="42" textAnchor="middle" fontSize="9" fontWeight="800" fill="#047857">[4,6]</text>{animated && <circle cx="69" cy="38" r="13" fill="none" stroke="#f97316"><animate attributeName="r" values="9;14;9" dur="1.5s" repeatCount="indefinite" /></circle>}</Svg>;
 }
@@ -239,6 +239,15 @@ function Loss({ kind, animated }) {
   }
   if (kind === 'cross_entropy_loss') return <Svg><path d="M10 10 C35 14 52 30 65 47 C77 61 92 67 111 69" fill="none" stroke="#ef4444" strokeWidth="4" /><text x="58" y="17" textAnchor="middle" fontSize="9" fontWeight="800" fill="#64748b">−log pᵧ</text><circle cx="10" cy="10" r="5" fill="#2563eb">{animated && <animateMotion path="M0 0 C25 4 42 20 55 37 C67 51 82 57 101 59" dur="2.4s" repeatCount="indefinite" />}</circle></Svg>;
   return <Svg><path d="M8 8 C27 20 48 51 112 68" fill="none" stroke="#3b82f6" strokeWidth="4" /><path d="M8 68 C72 51 93 20 112 8" fill="none" stroke="#f97316" strokeWidth="4" /><text x="25" y="18" textAnchor="middle" fontSize="8" fontWeight="800" fill="#1d4ed8">y=1</text><text x="95" y="18" textAnchor="middle" fontSize="8" fontWeight="800" fill="#c2410c">y=0</text>{animated && <line x1="60" y1="8" x2="60" y2="68" stroke="#10b981" strokeWidth="2"><animate attributeName="x1" values="20;100;20" dur="2.4s" repeatCount="indefinite" /><animate attributeName="x2" values="20;100;20" dur="2.4s" repeatCount="indefinite" /></line>}</Svg>;
+}
+
+function CustomLoss({ animated }) {
+  return <Svg><rect x="7" y="12" width="28" height="18" rx="6" fill="#dbeafe" /><rect x="7" y="46" width="28" height="18" rx="6" fill="#ede9fe" /><text x="21" y="24" textAnchor="middle" fontSize="8" fontWeight="800" fill="#1d4ed8">ŷ</text><text x="21" y="58" textAnchor="middle" fontSize="8" fontWeight="800" fill="#6d28d9">y</text><path d="M36 21 C50 21 49 38 59 38 M36 55 C50 55 49 38 59 38" fill="none" stroke="#64748b" strokeWidth="2" /><rect x="60" y="24" width="34" height="28" rx="8" fill="#fef3c7" stroke="#f59e0b" strokeWidth="2" /><text x="77" y="41" textAnchor="middle" fontSize="8" fontWeight="800" fill="#92400e">f(ŷ,y)</text>{arrow(95, 38, 112, 38, '#f97316')}<text x="110" y="29" textAnchor="middle" fontSize="8" fontWeight="800" fill="#c2410c">L</text>{animated && <circle r="3" fill="#10b981"><animateMotion path="M21 21 C50 21 49 38 59 38 L94 38 L112 38" dur="2s" repeatCount="indefinite" /></circle>}</Svg>;
+}
+
+function SupervisedTrainer({ animated }) {
+  const inputs = [['D', 9, '#d1fae5'], ['M', 27, '#dbeafe'], ['L', 45, '#ffedd5'], ['η', 63, '#ede9fe']];
+  return <Svg>{inputs.map(([label, y, fill], index) => <g key={label}><rect x="5" y={y - 7} width="22" height="14" rx="5" fill={fill} /><text x="16" y={y + 3} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text><path d={`M28 ${y} L47 ${31 + index * 5}`} stroke="#64748b" strokeWidth="1.5" /></g>)}<rect x="48" y="21" width="43" height="36" rx="9" fill="#fff7ed" stroke="#f97316" strokeWidth="2" /><path d="M58 34 H80 M80 34 L75 30 M80 34 L75 38 M80 45 H58 M58 45 L63 41 M58 45 L63 49" fill="none" stroke="#c2410c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><text x="69.5" y="17" textAnchor="middle" fontSize="10" fontWeight="800" fill="#9a3412">↻</text>{arrow(92, 39, 112, 39, '#10b981')}<text x="106" y="30" textAnchor="middle" fontSize="8" fontWeight="800" fill="#047857">M*</text>{animated && <circle cx="69" cy="39" r="13" fill="none" stroke="#fb923c"><animate attributeName="stroke-dasharray" values="1 80;45 20;1 80" dur="2s" repeatCount="indefinite" /></circle>}</Svg>;
 }
 
 function Composite({ kind, animated }) {
@@ -287,9 +296,11 @@ export default function VisualGlyph({ kind, animated = false, className = '' }) 
       case 'mse_loss': visual = <Loss kind={kind} animated={animated} />; break;
       case 'cross_entropy_loss': visual = <Loss kind={kind} animated={animated} />; break;
       case 'binary_cross_entropy_loss': visual = <Loss kind={kind} animated={animated} />; break;
+      case 'custom_loss': visual = <CustomLoss animated={animated} />; break;
       case 'sgd_optimizer': visual = <Descent variant={kind} animated={animated} />; break;
       case 'adam_optimizer': visual = <Descent variant={kind} animated={animated} />; break;
       case 'adamw_optimizer': visual = <Descent variant={kind} animated={animated} />; break;
+      case 'supervised_trainer': visual = <SupervisedTrainer animated={animated} />; break;
       case 'mlp_block': visual = <Composite kind={kind} animated={animated} />; break;
       case 'conv_block': visual = <Composite kind={kind} animated={animated} />; break;
       case 'residual_mlp_block': visual = <Composite kind={kind} animated={animated} />; break;

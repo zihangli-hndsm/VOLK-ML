@@ -18,6 +18,9 @@ const booleanProperty = (key, en, zh, defaultValue) => ({
 const stringProperty = (key, en, zh, defaultValue) => ({
   key, label: text(en, zh), type: 'text', default: defaultValue,
 });
+const codeProperty = (key, en, zh, defaultValue) => ({
+  key, label: text(en, zh), type: 'code', default: defaultValue,
+});
 
 function component({
   id, op, kind = 'layer', name, description, category, inputs = [input('input')],
@@ -280,6 +283,19 @@ const architectureComponents = [
     category: 'Losses', inputs: [], outputs: [output('loss', 'LossSpec')], properties: [],
   }),
   component({
+    id: 'custom_loss_node', op: 'custom_loss', kind: 'loss',
+    name: text('Custom Loss', '自定义损失函数'),
+    description: text('Defines a safe framework-neutral loss expression using prediction and target.', '使用 prediction 和 target 定义安全、框架无关的损失表达式。'),
+    category: 'Losses', inputs: [], outputs: [output('loss', 'LossSpec')],
+    properties: [codeProperty(
+      'expression',
+      'Expression (prediction, target)',
+      '表达式（prediction、target）',
+      'mean(square(prediction - target))',
+    )],
+    minimumTier: 'L2',
+  }),
+  component({
     id: 'sgd_optimizer_node', op: 'sgd_optimizer', kind: 'optimizer',
     name: text('SGD Optimizer', 'SGD 优化器'),
     description: text('Configures stochastic gradient descent.', '配置随机梯度下降。'),
@@ -305,6 +321,25 @@ const architectureComponents = [
       sliderProperty('learning_rate', 'Learning Rate', '学习率', 0.001, 0.00001, 0.1, 0.00001),
       sliderProperty('weight_decay', 'Weight Decay', '权重衰减', 0.01, 0, 0.2, 0.001),
     ],
+  }),
+  component({
+    id: 'supervised_trainer_node', op: 'supervised_trainer', kind: 'training',
+    name: text('Supervised Trainer', '监督训练器'),
+    description: text('Binds split data, a model, a loss, and an optimizer into an exportable training loop.', '把划分后的数据、模型、损失函数和优化器组合成可导出的训练循环。'),
+    category: 'Training',
+    inputs: [
+      input('dataset', 'DatasetSplit'),
+      input('model', 'ModelSpec'),
+      input('loss', 'LossSpec'),
+      input('optimizer', 'OptimizerSpec'),
+    ],
+    outputs: [output('trained_model', 'TrainedModel')],
+    properties: [
+      numberProperty('epochs', 'Epochs', '训练轮数', 20, 1, 10000),
+      numberProperty('batch_size', 'Batch Size', '批次大小', 32, 1, 8192),
+      booleanProperty('shuffle', 'Shuffle Training Data', '打乱训练数据', true),
+    ],
+    minimumTier: 'L2',
   }),
 ];
 

@@ -102,8 +102,13 @@ Supported property controls are:
 | `select` | string | `default`, `options` |
 | `boolean` | boolean | `default` |
 | `text` | string | `default` |
+| `code` | string | `default`; rendered as a multiline monospace editor |
 
 Property keys are part of the compiler contract. Keep generated-source mappings and workload formulas synchronized with property changes.
+
+Custom Loss uses the `code` control but does not accept arbitrary framework source. Its expression DSL exposes only `prediction`, `target`, numeric constants, arithmetic, and the whitelisted tensor functions `mean`, `sum`, `abs`, `square`, `sqrt`, `log`, `exp`, and `clip`. The compiler parses this expression and emits framework-native operations; invalid identifiers, calls, tokens, and argument counts stop export with a localized error. The Trainer applies a final mean reduction, so a valid per-example expression remains a scalar objective for both backends.
+
+Supervised Trainer is the explicit boundary between model definition and training execution. Its required inputs are `DatasetSplit`, `ModelSpec`, `LossSpec`, and `OptimizerSpec`; it outputs `TrainedModel`. Do not connect `DatasetSplit` directly to Tensor Input: Tensor Input is a symbolic architecture source, not a runtime batch.
 
 ## Runtime and compatibility
 

@@ -1,5 +1,6 @@
 import { componentById } from './components.js';
 import { flattenCustomComposites } from './customComposites.js';
+import { compileLossExpression, LossExpressionError } from './lossExpression.js';
 
 const architectureKinds = new Set(['source', 'layer', 'merge', 'sink', 'composite']);
 
@@ -29,12 +30,31 @@ function selectCompilationGraph(nodes, edges) {
     (node) => node.data.manifest.op === 'model_output'
       && incomingSources.get(node.id).length > 0,
   );
+  const connectedTrainers = nodes.filter(
+    (node) => node.data.manifest.op === 'supervised_trainer'
+      && incomingSources.get(node.id).length > 0,
+  );
   const connectedTabular = nodes.some(
     (node) => connectedIds.has(node.id) && node.data.manifest.op === 'tabular_data',
   );
   let activeIds;
 
-  if (connectedOutputs.length) {
+  if (connectedTrainers.length > 1) {
+    const error = new Error('error.multipleTrainers');
+    error.translationKey = 'error.multipleTrainers';
+    throw error;
+  }
+
+  if (connectedTrainers.length) {
+    activeIds = new Set();
+    const pending = [connectedTrainers[0].id];
+    while (pending.length) {
+      const id = pending.pop();
+      if (activeIds.has(id)) continue;
+      activeIds.add(id);
+      incomingSources.get(id)?.forEach((source) => pending.push(source));
+    }
+  } else if (connectedOutputs.length) {
     activeIds = new Set();
     const pending = connectedOutputs.map((node) => node.id);
     while (pending.length) {
@@ -227,35 +247,198 @@ function binaryOutputUsesProbabilities(ir) {
     .some((node) => node.inputs.some((connection) => nodeById.get(connection.source)?.op === 'sigmoid'));
 }
 
-function trainingConfiguration(ir, framework) {
+function compilerError(key, params = {}) {
+  const error = new Error(key);
+  error.translationKey = key;
+  error.translationParams = params;
+  return error;
+}
+
+function trainerContext(ir) {
   const nodes = ir.nodes;
-  const loss = nodes.find((node) => node.kind === 'loss');
-  const optimizer = nodes.find((node) => node.kind === 'optimizer');
-  const probabilityOutput = binaryOutputUsesProbabilities(ir);
-  if (framework === 'pytorch') {
-    const lossLine = {
-      mse_loss: 'criterion = nn.MSELoss()',
-      cross_entropy_loss: 'criterion = nn.CrossEntropyLoss()',
-      binary_cross_entropy_loss: probabilityOutput ? 'criterion = nn.BCELoss()' : 'criterion = nn.BCEWithLogitsLoss()',
-    }[loss?.op] ?? 'criterion = nn.MSELoss()';
-    const optimizerLine = {
-      sgd_optimizer: `optimizer = torch.optim.SGD(model.parameters(), lr=${optimizer?.parameters.learning_rate ?? 0.01}, momentum=${optimizer?.parameters.momentum ?? 0})`,
-      adam_optimizer: `optimizer = torch.optim.Adam(model.parameters(), lr=${optimizer?.parameters.learning_rate ?? 0.001})`,
-      adamw_optimizer: `optimizer = torch.optim.AdamW(model.parameters(), lr=${optimizer?.parameters.learning_rate ?? 0.001}, weight_decay=${optimizer?.parameters.weight_decay ?? 0.01})`,
-    }[optimizer?.op] ?? 'optimizer = torch.optim.Adam(model.parameters(), lr=0.001)';
-    return [lossLine, optimizerLine, '', '# Connect your DataLoader and training loop here.'];
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  const trainer = nodes.find((node) => node.op === 'supervised_trainer');
+  if (!trainer) {
+    return {
+      trainer: null,
+      split: nodes.find((node) => node.op === 'train_test_split'),
+      loss: nodes.find((node) => node.kind === 'loss'),
+      optimizer: nodes.find((node) => node.kind === 'optimizer'),
+    };
   }
-  const lossName = {
-    mse_loss: '"mse"',
-    cross_entropy_loss: 'keras.losses.SparseCategoricalCrossentropy(from_logits=True)',
-    binary_cross_entropy_loss: `keras.losses.BinaryCrossentropy(from_logits=${pythonBoolean(!probabilityOutput)})`,
-  }[loss?.op] ?? '"mse"';
-  const optimizerName = {
+  const sourceByInput = Object.fromEntries(trainer.inputs.map((connection) => [
+    connection.targetHandle,
+    nodeById.get(connection.source),
+  ]));
+  const missing = ['dataset', 'model', 'loss', 'optimizer'].filter((name) => !sourceByInput[name]);
+  if (missing.length) throw compilerError('error.trainerInputsRequired', { inputs: missing.join(', ') });
+  if (sourceByInput.model.op !== 'model_output') throw compilerError('error.trainerSingleInputOutput');
+  return {
+    trainer,
+    split: sourceByInput.dataset,
+    model: sourceByInput.model,
+    loss: sourceByInput.loss,
+    optimizer: sourceByInput.optimizer,
+  };
+}
+
+function customLossError(error) {
+  if (!(error instanceof LossExpressionError)) return error;
+  const key = {
+    empty: 'error.customLossEmpty',
+    unexpected: 'error.customLossUnexpected',
+    identifier: 'error.customLossIdentifier',
+    function: 'error.customLossFunction',
+    arguments: 'error.customLossArguments',
+    prediction: 'error.customLossPrediction',
+  }[error.code] ?? 'error.customLossUnexpected';
+  return compilerError(key, { token: error.token || '∅' });
+}
+
+function pytorchLossLines(loss, probabilityOutput) {
+  if (loss?.op === 'custom_loss') {
+    try {
+      const expression = compileLossExpression(loss.parameters.expression, 'pytorch');
+      return ['def custom_loss(prediction, target):', `    return torch.mean(${expression})`, '', 'criterion = custom_loss'];
+    } catch (error) {
+      throw customLossError(error);
+    }
+  }
+  return [{
+    mse_loss: 'criterion = nn.MSELoss()',
+    cross_entropy_loss: 'criterion = nn.CrossEntropyLoss()',
+    binary_cross_entropy_loss: probabilityOutput ? 'criterion = nn.BCELoss()' : 'criterion = nn.BCEWithLogitsLoss()',
+  }[loss?.op] ?? 'criterion = nn.MSELoss()'];
+}
+
+function tensorflowLossDefinition(loss, probabilityOutput) {
+  if (loss?.op === 'custom_loss') {
+    try {
+      const expression = compileLossExpression(loss.parameters.expression, 'tensorflow');
+      return {
+        lines: ['def custom_loss(target, prediction):', `    return tf.reduce_mean(${expression})`, ''],
+        name: 'custom_loss',
+      };
+    } catch (error) {
+      throw customLossError(error);
+    }
+  }
+  return {
+    lines: [],
+    name: {
+      mse_loss: '"mse"',
+      cross_entropy_loss: 'keras.losses.SparseCategoricalCrossentropy(from_logits=True)',
+      binary_cross_entropy_loss: `keras.losses.BinaryCrossentropy(from_logits=${pythonBoolean(!probabilityOutput)})`,
+    }[loss?.op] ?? '"mse"',
+  };
+}
+
+function optimizerExpression(optimizer, framework) {
+  if (framework === 'pytorch') return {
+    sgd_optimizer: `torch.optim.SGD(model.parameters(), lr=${optimizer?.parameters.learning_rate ?? 0.01}, momentum=${optimizer?.parameters.momentum ?? 0})`,
+    adam_optimizer: `torch.optim.Adam(model.parameters(), lr=${optimizer?.parameters.learning_rate ?? 0.001})`,
+    adamw_optimizer: `torch.optim.AdamW(model.parameters(), lr=${optimizer?.parameters.learning_rate ?? 0.001}, weight_decay=${optimizer?.parameters.weight_decay ?? 0.01})`,
+  }[optimizer?.op] ?? 'torch.optim.Adam(model.parameters(), lr=0.001)';
+  return {
     sgd_optimizer: `keras.optimizers.SGD(learning_rate=${optimizer?.parameters.learning_rate ?? 0.01}, momentum=${optimizer?.parameters.momentum ?? 0})`,
     adam_optimizer: `keras.optimizers.Adam(learning_rate=${optimizer?.parameters.learning_rate ?? 0.001})`,
     adamw_optimizer: `keras.optimizers.AdamW(learning_rate=${optimizer?.parameters.learning_rate ?? 0.001}, weight_decay=${optimizer?.parameters.weight_decay ?? 0.01})`,
   }[optimizer?.op] ?? 'keras.optimizers.Adam(learning_rate=0.001)';
-  return [`model.compile(optimizer=${optimizerName}, loss=${lossName})`, '# Connect your tf.data pipeline and call model.fit(...) here.'];
+}
+
+function tensorflowSplitLines(trainRatio) {
+  return [
+    'import numpy as np',
+    '',
+    'def volk_deterministic_indices(length, seed=2026):',
+    '    indices = list(range(length))',
+    '    for index in range(length - 1, 0, -1):',
+    '        seed = (seed * 1664525 + 1013904223) % 4294967296',
+    '        target = seed % (index + 1)',
+    '        indices[index], indices[target] = indices[target], indices[index]',
+    '    return indices',
+    '',
+    'X = np.asarray(X)',
+    'y = np.asarray(y)',
+    'indices = volk_deterministic_indices(len(X))',
+    `split_index = max(1, min(len(indices) - 1, int(len(indices) * ${trainRatio})))`,
+    'train_indices, test_indices = indices[:split_index], indices[split_index:]',
+    'X_train, X_test = X[train_indices], X[test_indices]',
+    'y_train, y_test = y[train_indices], y[test_indices]',
+  ];
+}
+
+function trainingConfiguration(ir, framework) {
+  const { trainer, split, loss, optimizer } = trainerContext(ir);
+  const probabilityOutput = binaryOutputUsesProbabilities(ir);
+  if (!trainer) {
+    if (framework === 'pytorch') {
+      return [
+        ...pytorchLossLines(loss, probabilityOutput),
+        `optimizer = ${optimizerExpression(optimizer, framework)}`,
+        '',
+        '# Connect your DataLoader and training loop here.',
+      ];
+    }
+    const configuredLoss = tensorflowLossDefinition(loss, probabilityOutput);
+    return [
+      ...configuredLoss.lines,
+      `model.compile(optimizer=${optimizerExpression(optimizer, framework)}, loss=${configuredLoss.name})`,
+      '# Connect your tf.data pipeline and call model.fit(...) here.',
+    ];
+  }
+  const inputs = ir.nodes.filter((node) => node.op === 'tensor_input');
+  const outputs = ir.nodes.filter((node) => node.op === 'model_output');
+  if (inputs.length !== 1 || outputs.length !== 1) throw compilerError('error.trainerSingleInputOutput');
+  const pytorchInputDtype = {
+    float32: 'torch.float32',
+    float16: 'torch.float16',
+  }[inputs[0].parameters.dtype ?? 'float32'];
+  if (!pytorchInputDtype) throw compilerError('error.trainerUnsupportedDtype', { dtype: inputs[0].parameters.dtype ?? 'float32' });
+  const epochs = trainer.parameters.epochs ?? 20;
+  const batchSize = trainer.parameters.batch_size ?? 32;
+  const trainRatio = split.parameters.train_ratio ?? 0.8;
+  if (framework === 'pytorch') {
+    const classification = loss?.op === 'cross_entropy_loss';
+    return [
+      'from torch.utils.data import DataLoader, TensorDataset, random_split',
+      '',
+      '# Replace this loader with the dataset saved in the VOLK-ML project JSON.',
+      'X, y = load_tabular_data()',
+      `model = model.to(dtype=${pytorchInputDtype})`,
+      `features_tensor = torch.tensor(X, dtype=${pytorchInputDtype})`,
+      classification
+        ? 'target_tensor = torch.tensor(y, dtype=torch.long)'
+        : `target_tensor = torch.tensor(y, dtype=${pytorchInputDtype}).reshape(-1, 1)`,
+      'dataset = TensorDataset(features_tensor, target_tensor)',
+      `train_size = int(len(dataset) * ${trainRatio})`,
+      'train_set, test_set = random_split(dataset, [train_size, len(dataset) - train_size], generator=torch.Generator().manual_seed(2026))',
+      `train_loader = DataLoader(train_set, batch_size=${batchSize}, shuffle=${pythonBoolean(trainer.parameters.shuffle ?? true)})`,
+      '',
+      ...pytorchLossLines(loss, probabilityOutput),
+      `optimizer = ${optimizerExpression(optimizer, framework)}`,
+      'loss_history = []',
+      `for epoch in range(${epochs}):`,
+      '    model.train()',
+      '    for features, target in train_loader:',
+      '        optimizer.zero_grad()',
+      '        prediction = model(features)',
+      '        loss = criterion(prediction, target)',
+      '        loss.backward()',
+      '        optimizer.step()',
+      '    loss_history.append(float(loss.detach()))',
+    ];
+  }
+  const configuredLoss = tensorflowLossDefinition(loss, probabilityOutput);
+  return [
+    '# Replace this loader with the dataset saved in the VOLK-ML project JSON.',
+    'X, y = load_tabular_data()',
+    ...tensorflowSplitLines(trainRatio),
+    '',
+    ...configuredLoss.lines,
+    `model.compile(optimizer=${optimizerExpression(optimizer, framework)}, loss=${configuredLoss.name})`,
+    `history = model.fit(X_train, y_train, epochs=${epochs}, batch_size=${batchSize}, shuffle=${pythonBoolean(trainer.parameters.shuffle ?? true)}, validation_data=(X_test, y_test))`,
+  ];
 }
 
 function compileArchitecture(ir, framework) {
@@ -392,9 +575,7 @@ function compileTabularPipeline(ir, framework) {
     '',
     '# Replace this loader with the dataset saved in the VOLK-ML project JSON.',
     'X, y = load_tabular_data()',
-    `split_index = int(len(X) * ${split?.parameters.train_ratio ?? 0.8})`,
-    'X_train, X_test = X[:split_index], X[split_index:]',
-    'y_train, y_test = y[:split_index], y[split_index:]',
+    ...tensorflowSplitLines(split?.parameters.train_ratio ?? 0.8),
     'model = keras.Sequential([keras.layers.Input(shape=(X.shape[1],)), keras.layers.Dense(1)])',
     `model.compile(optimizer=keras.optimizers.SGD(learning_rate=${linear?.parameters.learning_rate ?? 0.01}), loss="mse", metrics=[keras.metrics.RootMeanSquaredError()])`,
     `model.fit(X_train, y_train, epochs=${trainer?.parameters.epochs ?? 100}, batch_size=32, validation_data=(X_test, y_test))`,
@@ -418,6 +599,7 @@ export function compileGraph(nodes, edges, framework) {
   const flattened = flattenCustomComposites(nodes, edges);
   const selected = selectCompilationGraph(flattened.nodes, flattened.edges);
   const ir = graphToIR(selected.nodes, selected.edges);
+  if (ir.nodes.some((node) => node.op === 'supervised_trainer')) trainerContext(ir);
   const report = compatibilityReport(selected.nodes, framework);
   if (report.some((item) => item.quality === 'unsupported')) {
     const error = new Error('error.frameworkUnsupported');

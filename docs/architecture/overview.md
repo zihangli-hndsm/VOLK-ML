@@ -66,6 +66,8 @@ flowchart TD
 - Stage color has one stable meaning: green for data, blue for models, orange for training, and violet for outputs. Runtime status remains a separate ring.
 - The component library is a collapsible stage → category tree. Deleting a saved custom definition removes it from the reusable catalog but deliberately keeps existing canvas instances intact.
 - The architecture view derives topological layers from the same graph without changing saved node positions.
+- Neural training keeps model definition and runtime data binding separate. `Tensor Input → layers → Model Output` defines the model, while Supervised Trainer explicitly joins that `ModelSpec` with `DatasetSplit`, `LossSpec`, and `OptimizerSpec` to generate an L2 Python training loop.
+- Custom Loss expressions use a small framework-neutral tensor DSL and are parsed before export; project JSON never executes user-authored JavaScript or injects raw Python.
 - Custom composites are copy-style definitions. They can contain preset or custom composites, expand for editing, collapse to their original instance, and flatten recursively before execution or source compilation.
 - Project explanation begins with deterministic topology and connection analysis. A user may optionally provide a compatible chat-completion endpoint, model name, and in-memory API key for follow-up questions.
 
@@ -115,7 +117,7 @@ Generated framework code should also receive focused assertions. When a compiler
 
 - Connected tabular linear-regression and KNN-classification pipelines run in the browser.
 - Browser WebGPU, local Python orchestration, and remote GPU execution are not implemented.
-- Exported neural-network code requires the user to bind a dataset and training loop.
+- A connected Supervised Trainer exports a complete single-input/single-output tabular training loop. Architecture-only exports still leave dataset binding and the loop to the user.
 - Shape inference is not yet a first-class IR pass; several layer dimensions remain explicit component properties.
 - Framework conversion quality is declared per component and may be `adapted`, `approximate`, or `unsupported`.
 - The optional conversational explanation endpoint must support a chat-completion request shape and browser CORS; no API key is persisted.
