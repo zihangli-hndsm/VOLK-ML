@@ -35,6 +35,7 @@ import {
   activationValue,
   architectureLayout,
   componentLibraryTree,
+  concatenateVisualData,
   descentVisualGeometry,
   mseLandscapeValue,
   stageForManifest,
@@ -160,6 +161,11 @@ for (const operation of ['gradient_descent', 'sgd_optimizer', 'adam_optimizer', 
   const geometry = descentVisualGeometry(operation);
   assert.deepEqual(geometry.endpoint, geometry.minimum, `${operation} trajectory ends at the landscape minimum`);
 }
+assert.deepEqual(concatenateVisualData, {
+  inputs: ['[a,b]', '[c,d]'],
+  result: '[a,b,c,d]',
+  axis: -1,
+}, 'concatenate visual matches the default one-dimensional axis');
 for (const type of knownPortTypes) assert.ok(messages[`portType.${type}`], `${type} port role is localized`);
 const libraryTree = componentLibraryTree(pluginRegistry);
 assert.deepEqual(libraryTree.map((group) => group.id), ['data', 'model', 'training', 'output']);

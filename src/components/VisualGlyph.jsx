@@ -1,5 +1,5 @@
 import React from 'react';
-import { activationValue, descentVisualGeometry, mseLandscapeValue } from '../core/visualLanguage.js';
+import { activationValue, concatenateVisualData, descentVisualGeometry, mseLandscapeValue } from '../core/visualLanguage.js';
 
 const Svg = ({ children, viewBox = '0 0 120 76' }) => (
   <svg viewBox={viewBox} className="h-full w-full" aria-hidden="true">{children}</svg>
@@ -222,12 +222,12 @@ function Attention({ animated }) {
 
 function Merge({ concatenate, animated }) {
   if (concatenate) return <Svg>
-    <g>{[['[a,b]', 9, '#dbeafe'], ['[c,d]', 47, '#ede9fe']].map(([label, y, fill]) => <g key={label}><rect x="5" y={y} width="34" height="20" rx="6" fill={fill} /><text x="22" y={y + 13} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text>{animated && <animateTransform attributeName="transform" type="translate" values={`0 0;0 ${y < 30 ? 9 : -9};0 ${y < 30 ? 9 : -9}`} dur="2s" repeatCount="indefinite" />}</g>)}</g>
-    <path d="M40 19 C55 19 55 25 68 25 M40 57 C55 57 55 51 68 51" fill="none" stroke="#64748b" strokeWidth="2" />
-    <rect x="72" y="12" width="41" height="52" rx="8" fill="white" stroke="#8b5cf6" strokeWidth="2" />
-    <rect x="75" y="15" width="35" height="22" rx="5" fill="#dbeafe" /><rect x="75" y="39" width="35" height="22" rx="5" fill="#ede9fe" />
-    <text x="92.5" y="29" textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">[a,b]</text><text x="92.5" y="53" textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">[c,d]</text>
-    <path d="M75 38 H110" stroke="#f97316" strokeWidth="2">{animated && <animate attributeName="stroke-width" values="1;4;1" dur="2s" repeatCount="indefinite" />}</path>
+    {concatenateVisualData.inputs.map((label, index) => <g key={label}><rect x="5" y={11 + index * 34} width="34" height="20" rx="6" fill={index ? '#ede9fe' : '#dbeafe'} /><text x="22" y={24 + index * 34} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text></g>)}
+    <path d="M40 21 C54 21 55 31 67 36 M40 55 C54 55 55 45 67 40" fill="none" stroke="#64748b" strokeWidth="2" />
+    <rect x="68" y="25" width="46" height="26" rx="7" fill="#f5f3ff" stroke="#8b5cf6" strokeWidth="2" />
+    <text x="91" y="42" textAnchor="middle" fontSize="8" fontWeight="800" fill="#4c1d95">{concatenateVisualData.result}</text>
+    <text x="91" y="62" textAnchor="middle" fontSize="7" fontWeight="700" fill="#64748b">axis {concatenateVisualData.axis}</text>
+    {animated && <circle r="3" fill="#f97316"><animateMotion path="M22 21 C42 21 51 35 68 38 L112 38" dur="2s" repeatCount="indefinite" /></circle>}
   </Svg>;
   return <Svg>{['[1,2]', '[3,4]'].map((label, index) => <g key={label}><rect x="5" y={11 + index * 34} width="35" height="23" rx="6" fill={index ? '#ede9fe' : '#dbeafe'} /><text x="22.5" y={26 + index * 34} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text></g>)}<path d="M41 22 C55 22 52 38 65 38 M41 56 C55 56 52 38 65 38" fill="none" stroke="#64748b" strokeWidth="2" /><circle cx="69" cy="38" r="10" fill="#2563eb" /><text x="69" y="42" textAnchor="middle" fontSize="12" fontWeight="800" fill="white">+</text>{arrow(80, 38, 91, 38)}<text x="106" y="42" textAnchor="middle" fontSize="9" fontWeight="800" fill="#047857">[4,6]</text>{animated && <circle cx="69" cy="38" r="13" fill="none" stroke="#f97316"><animate attributeName="r" values="9;14;9" dur="1.5s" repeatCount="indefinite" /></circle>}</Svg>;
 }
