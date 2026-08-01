@@ -52,6 +52,10 @@ export function activationValue(op, x) {
   throw new Error(`Unsupported activation: ${op}`);
 }
 
+export function mseLandscapeValue(normalizedParameter) {
+  return normalizedParameter ** 2;
+}
+
 const libraryOrder = ['data', 'model', 'training', 'output', 'custom'];
 
 export function componentLibraryTree(plugins) {

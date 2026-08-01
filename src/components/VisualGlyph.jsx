@@ -1,5 +1,5 @@
 import React from 'react';
-import { activationValue } from '../core/visualLanguage.js';
+import { activationValue, mseLandscapeValue } from '../core/visualLanguage.js';
 
 const Svg = ({ children, viewBox = '0 0 120 76' }) => (
   <svg viewBox={viewBox} className="h-full w-full" aria-hidden="true">{children}</svg>
@@ -30,6 +30,19 @@ function activationGeometry(op) {
     return `${index ? 'L' : 'M'}${p.x.toFixed(2)} ${p.y.toFixed(2)}`;
   }).join(' ');
   return { path, origin: point(0), xAxisY: point(0).y + ((activationValue(op, 0) - 0) / (yMax - yMin)) * 62 };
+}
+
+function mseLandscapeGeometry() {
+  const point = (parameter) => ({
+    x: 8 + ((parameter + 1) / 2) * 104,
+    y: 68 - mseLandscapeValue(parameter) * 58,
+  });
+  const samples = Array.from({ length: 41 }, (_, index) => -1 + index * 0.05);
+  const path = samples.map((parameter, index) => {
+    const sample = point(parameter);
+    return `${index ? 'L' : 'M'}${sample.x.toFixed(2)} ${sample.y.toFixed(2)}`;
+  }).join(' ');
+  return { path, minimum: point(0), example: point(-0.55) };
 }
 
 function Activation({ op, animated }) {
@@ -216,7 +229,10 @@ function Merge({ concatenate, animated }) {
 }
 
 function Loss({ kind, animated }) {
-  if (kind === 'mse_loss') return <Svg><path d="M8 65 Q60 4 112 65" fill="none" stroke="#2563eb" strokeWidth="4" /><line x1="31" y1="51" x2="31" y2="20" stroke="#f97316" strokeWidth="4" strokeLinecap="round">{animated && <animate attributeName="y2" values="51;20;51" dur="2s" repeatCount="indefinite" />}</line><text x="31" y="15" textAnchor="middle" fontSize="8" fill="#c2410c">e²</text><circle cx="60" cy="65" r="4" fill="#10b981" /></Svg>;
+  if (kind === 'mse_loss') {
+    const geometry = mseLandscapeGeometry();
+    return <Svg><path d={geometry.path} fill="none" stroke="#2563eb" strokeWidth="4" /><line x1={geometry.example.x} y1={geometry.example.y} x2={geometry.example.x} y2="20" stroke="#f97316" strokeWidth="4" strokeLinecap="round">{animated && <animate attributeName="y2" values={`${geometry.example.y};20;${geometry.example.y}`} dur="2s" repeatCount="indefinite" />}</line><text x={geometry.example.x} y="15" textAnchor="middle" fontSize="8" fill="#c2410c">e²</text><circle cx={geometry.minimum.x} cy={geometry.minimum.y} r="4" fill="#10b981" /></Svg>;
+  }
   if (kind === 'cross_entropy_loss') return <Svg><path d="M10 10 C35 14 52 30 65 47 C77 61 92 67 111 69" fill="none" stroke="#ef4444" strokeWidth="4" /><text x="58" y="17" textAnchor="middle" fontSize="9" fontWeight="800" fill="#64748b">−log pᵧ</text><circle cx="10" cy="10" r="5" fill="#2563eb">{animated && <animateMotion path="M0 0 C25 4 42 20 55 37 C67 51 82 57 101 59" dur="2.4s" repeatCount="indefinite" />}</circle></Svg>;
   return <Svg><path d="M8 8 C27 20 48 51 112 68" fill="none" stroke="#3b82f6" strokeWidth="4" /><path d="M8 68 C72 51 93 20 112 8" fill="none" stroke="#f97316" strokeWidth="4" /><text x="25" y="18" textAnchor="middle" fontSize="8" fontWeight="800" fill="#1d4ed8">y=1</text><text x="95" y="18" textAnchor="middle" fontSize="8" fontWeight="800" fill="#c2410c">y=0</text>{animated && <line x1="60" y1="8" x2="60" y2="68" stroke="#10b981" strokeWidth="2"><animate attributeName="x1" values="20;100;20" dur="2.4s" repeatCount="indefinite" /><animate attributeName="x2" values="20;100;20" dur="2.4s" repeatCount="indefinite" /></line>}</Svg>;
 }

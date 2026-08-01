@@ -30,6 +30,7 @@ import {
   activationValue,
   architectureLayout,
   componentLibraryTree,
+  mseLandscapeValue,
   stageForManifest,
   visualKindForManifest,
 } from '../src/core/visualLanguage.js';
@@ -130,6 +131,7 @@ for (const [key, translations] of Object.entries(messages)) {
 assert.equal(resolveMessage(tutorialByOp.model_output.formula, 'zh'), 'model(x) = 选定的输出张量');
 assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'zh'), 'L = −log p(正确类别)');
 assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'en'), 'L = −log p(correct class)');
+assert.equal(resolveMessage('playground.equation', 'zh', { weight: '2.00', operator: '−', bias: '1.00' }), 'ŷ = 2.00x − 1.00');
 assert.equal(stageForManifest(componentById.get('tabular_data_node')), 'data');
 assert.equal(stageForManifest(componentById.get('dense_node')), 'model');
 assert.equal(stageForManifest(componentById.get('adam_optimizer_node')), 'training');
@@ -145,6 +147,8 @@ assert.equal(activationValue('relu', 0), 0);
 assert.equal(activationValue('tanh', 0), 0, 'tanh passes through the coordinate origin');
 assert.equal(activationValue('sigmoid', 0), 0.5, 'sigmoid crosses 0.5 at x = 0');
 assert.ok(activationValue('gelu', -1) < 0 && activationValue('gelu', 1) > 0, 'GELU keeps its smooth negative dip');
+assert.ok(mseLandscapeValue(0) < mseLandscapeValue(-1));
+assert.ok(mseLandscapeValue(0) < mseLandscapeValue(1), 'MSE landscape has its minimum at the center');
 for (const type of knownPortTypes) assert.ok(messages[`portType.${type}`], `${type} port role is localized`);
 const libraryTree = componentLibraryTree(pluginRegistry);
 assert.deepEqual(libraryTree.map((group) => group.id), ['data', 'model', 'training', 'output']);

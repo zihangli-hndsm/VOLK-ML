@@ -133,6 +133,7 @@ export const messages = {
   'playground.pointCount': { en: 'Showing all {count} valid points.', zh: '显示全部 {count} 个有效样本点。' },
   'playground.weight': { en: 'Weight (slope)', zh: 'Weight（斜率）' },
   'playground.bias': { en: 'Bias (intercept)', zh: 'Bias（截距）' },
+  'playground.equation': { en: 'ŷ = {weight}x {operator} {bias}', zh: 'ŷ = {weight}x {operator} {bias}' },
   'playground.bestFit': { en: 'Jump to least-squares fit', zh: '跳到最小二乘拟合' },
 
   'project.name': { en: 'Project name', zh: '项目名称' },
