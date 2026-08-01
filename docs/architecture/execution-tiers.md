@@ -13,6 +13,8 @@
 
 Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines. L1–L3 expose design/export guidance.
 
+Supervised Trainer and Custom Loss declare L2 because their implemented path is generated local Python, not browser execution. Adding them to an architecture therefore changes the recommendation to Local Python even when the model itself would otherwise be L1.
+
 ## Estimator inputs
 
 `estimateExecutionPlan(nodes, dataset, capabilities)` combines:

@@ -241,6 +241,15 @@ function Loss({ kind, animated }) {
   return <Svg><path d="M8 8 C27 20 48 51 112 68" fill="none" stroke="#3b82f6" strokeWidth="4" /><path d="M8 68 C72 51 93 20 112 8" fill="none" stroke="#f97316" strokeWidth="4" /><text x="25" y="18" textAnchor="middle" fontSize="8" fontWeight="800" fill="#1d4ed8">y=1</text><text x="95" y="18" textAnchor="middle" fontSize="8" fontWeight="800" fill="#c2410c">y=0</text>{animated && <line x1="60" y1="8" x2="60" y2="68" stroke="#10b981" strokeWidth="2"><animate attributeName="x1" values="20;100;20" dur="2.4s" repeatCount="indefinite" /><animate attributeName="x2" values="20;100;20" dur="2.4s" repeatCount="indefinite" /></line>}</Svg>;
 }
 
+function CustomLoss({ animated }) {
+  return <Svg><rect x="7" y="12" width="28" height="18" rx="6" fill="#dbeafe" /><rect x="7" y="46" width="28" height="18" rx="6" fill="#ede9fe" /><text x="21" y="24" textAnchor="middle" fontSize="8" fontWeight="800" fill="#1d4ed8">ŷ</text><text x="21" y="58" textAnchor="middle" fontSize="8" fontWeight="800" fill="#6d28d9">y</text><path d="M36 21 C50 21 49 38 59 38 M36 55 C50 55 49 38 59 38" fill="none" stroke="#64748b" strokeWidth="2" /><rect x="60" y="24" width="34" height="28" rx="8" fill="#fef3c7" stroke="#f59e0b" strokeWidth="2" /><text x="77" y="41" textAnchor="middle" fontSize="8" fontWeight="800" fill="#92400e">f(ŷ,y)</text>{arrow(95, 38, 112, 38, '#f97316')}<text x="110" y="29" textAnchor="middle" fontSize="8" fontWeight="800" fill="#c2410c">L</text>{animated && <circle r="3" fill="#10b981"><animateMotion path="M21 21 C50 21 49 38 59 38 L94 38 L112 38" dur="2s" repeatCount="indefinite" /></circle>}</Svg>;
+}
+
+function SupervisedTrainer({ animated }) {
+  const inputs = [['D', 9, '#d1fae5'], ['M', 27, '#dbeafe'], ['L', 45, '#ffedd5'], ['η', 63, '#ede9fe']];
+  return <Svg>{inputs.map(([label, y, fill], index) => <g key={label}><rect x="5" y={y - 7} width="22" height="14" rx="5" fill={fill} /><text x="16" y={y + 3} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text><path d={`M28 ${y} L47 ${31 + index * 5}`} stroke="#64748b" strokeWidth="1.5" /></g>)}<rect x="48" y="21" width="43" height="36" rx="9" fill="#fff7ed" stroke="#f97316" strokeWidth="2" /><path d="M58 34 H80 M80 34 L75 30 M80 34 L75 38 M80 45 H58 M58 45 L63 41 M58 45 L63 49" fill="none" stroke="#c2410c" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /><text x="69.5" y="17" textAnchor="middle" fontSize="10" fontWeight="800" fill="#9a3412">↻</text>{arrow(92, 39, 112, 39, '#10b981')}<text x="106" y="30" textAnchor="middle" fontSize="8" fontWeight="800" fill="#047857">M*</text>{animated && <circle cx="69" cy="39" r="13" fill="none" stroke="#fb923c"><animate attributeName="stroke-dasharray" values="1 80;45 20;1 80" dur="2s" repeatCount="indefinite" /></circle>}</Svg>;
+}
+
 function Composite({ kind, animated }) {
   const blocks = kind === 'conv_block' ? ['K', 'μσ', 'ReLU', 'max'] : kind === 'residual_mlp_block' ? ['x', 'F(x)', '+'] : kind === 'mlp_block' ? ['W', 'ReLU', 'mask'] : ['A', 'B', 'C'];
   return <Svg>{blocks.map((label, index) => <g key={label}><rect x={4 + index * (kind === 'conv_block' ? 29 : 38)} y="25" width={kind === 'conv_block' ? 24 : 30} height="27" rx="7" fill={index % 2 ? '#dbeafe' : '#ede9fe'} /><text x={16 + index * (kind === 'conv_block' ? 29 : 38)} y="42" textAnchor="middle" fontSize="7" fontWeight="800" fill="#334155">{label}</text>{index < blocks.length - 1 && <path d={`M${28 + index * (kind === 'conv_block' ? 29 : 38)} 38 H${33 + index * (kind === 'conv_block' ? 29 : 38)}`} stroke="#64748b" strokeWidth="2" />}</g>)}
@@ -287,9 +296,11 @@ export default function VisualGlyph({ kind, animated = false, className = '' }) 
       case 'mse_loss': visual = <Loss kind={kind} animated={animated} />; break;
       case 'cross_entropy_loss': visual = <Loss kind={kind} animated={animated} />; break;
       case 'binary_cross_entropy_loss': visual = <Loss kind={kind} animated={animated} />; break;
+      case 'custom_loss': visual = <CustomLoss animated={animated} />; break;
       case 'sgd_optimizer': visual = <Descent variant={kind} animated={animated} />; break;
       case 'adam_optimizer': visual = <Descent variant={kind} animated={animated} />; break;
       case 'adamw_optimizer': visual = <Descent variant={kind} animated={animated} />; break;
+      case 'supervised_trainer': visual = <SupervisedTrainer animated={animated} />; break;
       case 'mlp_block': visual = <Composite kind={kind} animated={animated} />; break;
       case 'conv_block': visual = <Composite kind={kind} animated={animated} />; break;
       case 'residual_mlp_block': visual = <Composite kind={kind} animated={animated} />; break;

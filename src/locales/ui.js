@@ -269,4 +269,12 @@ export const messages = {
   'error.compositeExpansion': { en: 'This composite component could not be expanded.', zh: '无法展开该复合组件。' },
   'error.modelInputRequired': { en: 'The compiled model needs a Tensor Input connected to its output.', zh: '待编译模型需要连接到输出的张量输入组件。' },
   'error.modelOutputRequired': { en: 'The compiled model needs a Model Output component.', zh: '待编译模型需要一个模型输出组件。' },
+  'error.multipleTrainers': { en: 'Compile one connected Supervised Trainer at a time.', zh: '每次只能编译一个已连接的监督训练器。' },
+  'error.trainerInputsRequired': { en: 'Supervised Trainer is missing required inputs: {inputs}.', zh: '监督训练器缺少必要输入：{inputs}。' },
+  'error.trainerSingleInputOutput': { en: 'Supervised Trainer currently supports one Tensor Input and one Model Output.', zh: '监督训练器目前支持一个张量输入和一个模型输出。' },
+  'error.customLossEmpty': { en: 'Custom Loss needs an expression.', zh: '自定义损失函数需要填写表达式。' },
+  'error.customLossUnexpected': { en: 'Custom Loss contains an unexpected token: {token}.', zh: '自定义损失表达式包含意外符号：{token}。' },
+  'error.customLossIdentifier': { en: 'Custom Loss only accepts prediction and target as variables; found {token}.', zh: '自定义损失函数只接受 prediction 和 target 变量；发现了 {token}。' },
+  'error.customLossFunction': { en: 'Custom Loss does not support the function {token}.', zh: '自定义损失函数不支持函数 {token}。' },
+  'error.customLossArguments': { en: 'Custom Loss function {token} has the wrong number of arguments.', zh: '自定义损失函数 {token} 的参数数量不正确。' },
 };
