@@ -17,6 +17,12 @@ import { createCustomComposite, flattenCustomComposites } from '../src/core/cust
 import { assessConnection, knownPortTypes } from '../src/core/connections.js';
 import { analyzeProject } from '../src/core/explanation.js';
 import { safeProjectFilename } from '../src/core/localProjects.js';
+import {
+  leastSquaresFit,
+  meanSquaredError,
+  regressionPointsFromDataset,
+  uniformlySamplePoints,
+} from '../src/core/linearRegressionPlayground.js';
 import { migrateProject, PROJECT_VERSION, projectContentSignature } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
@@ -144,6 +150,22 @@ const libraryTree = componentLibraryTree(pluginRegistry);
 assert.deepEqual(libraryTree.map((group) => group.id), ['data', 'model', 'training', 'output']);
 assert.equal(libraryTree.reduce((count, group) => count + group.count, 0), pluginRegistry.length);
 assert.equal(safeProjectFilename('My Visual Project'), 'my-visual-project.volkml.json');
+const densePlaygroundPoints = Array.from({ length: 101 }, (_, x) => ({ x, y: 2 * x + 1 }));
+const sampledPlaygroundPoints = uniformlySamplePoints(densePlaygroundPoints, 11);
+assert.equal(sampledPlaygroundPoints.length, 11);
+assert.deepEqual(sampledPlaygroundPoints[0], { x: 0, y: 1 });
+assert.deepEqual(sampledPlaygroundPoints.at(-1), { x: 100, y: 201 });
+assert.deepEqual(leastSquaresFit(densePlaygroundPoints), { weight: 2, bias: 1 });
+assert.equal(meanSquaredError(densePlaygroundPoints, 2, 1), 0);
+const playgroundDataset = regressionPointsFromDataset({
+  task: 'regression',
+  featureColumns: ['feature'],
+  targetColumn: 'target',
+  rows: densePlaygroundPoints.map((point) => ({ feature: point.x, target: point.y })),
+}, 20);
+assert.equal(playgroundDataset.usingDataset, true);
+assert.equal(playgroundDataset.points.length, 20);
+assert.equal(playgroundDataset.total, 101);
 assert.notEqual(
   projectContentSignature({
     name: 'Model state',

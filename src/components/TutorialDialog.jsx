@@ -1,11 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { tutorialFor } from '../core/tutorials.js';
 import { visualKindForManifest } from '../core/visualLanguage.js';
+import LinearRegressionPlayground from './LinearRegressionPlayground.jsx';
 import VisualGlyph from './VisualGlyph.jsx';
 
-export default function TutorialDialog({ manifest, onClose, t }) {
+export default function TutorialDialog({ manifest, dataset, onClose, t }) {
   const [playing, setPlaying] = useState(false);
-  useEffect(() => setPlaying(false), [manifest?.id]);
+  const [playgroundOpen, setPlaygroundOpen] = useState(false);
+  useEffect(() => {
+    setPlaying(false);
+    setPlaygroundOpen(false);
+  }, [manifest?.id]);
   if (!manifest) return null;
   const tutorial = tutorialFor(manifest);
   if (!tutorial) return null;
@@ -33,6 +38,10 @@ export default function TutorialDialog({ manifest, onClose, t }) {
           <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-xs font-black uppercase tracking-wider text-amber-700">{t('tutorial.example')}</h3><p className="mt-2 text-sm leading-6 text-amber-950">{t(tutorial.example)}</p></section>
         </div>
       </div>
+      {manifest.op === 'linear_regression' && <div className="mt-6">
+        <button onClick={() => setPlaygroundOpen((value) => !value)} className="w-full rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white shadow-lg hover:bg-blue-700">{playgroundOpen ? t('playground.close') : t('playground.open')}</button>
+        {playgroundOpen && <LinearRegressionPlayground dataset={dataset} t={t} />}
+      </div>}
     </section>
   </div>;
 }

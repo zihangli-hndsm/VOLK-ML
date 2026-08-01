@@ -62,6 +62,7 @@ flowchart TD
 
 - Canvas components reserve their rightmost 30% for a lightweight static semantic glyph. Animation is never active on the canvas.
 - Every registered operation has its own semantic visual. The same visual vocabulary becomes animated only inside the component guide after the learner presses play; activation curves are sampled from their mathematical functions rather than hand-drawn approximations.
+- The linear-regression guide includes a lazy-loaded playground. It uses the first feature and target from the current regression dataset (or local example points), samples large datasets evenly over sorted x values, and recomputes the line, residuals, and MSE as weight or bias changes.
 - Stage color has one stable meaning: green for data, blue for models, orange for training, and violet for outputs. Runtime status remains a separate ring.
 - The component library is a collapsible stage → category tree. Deleting a saved custom definition removes it from the reusable catalog but deliberately keeps existing canvas instances intact.
 - The architecture view derives topological layers from the same graph without changing saved node positions.
