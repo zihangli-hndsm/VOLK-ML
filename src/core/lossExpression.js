@@ -96,24 +96,24 @@ export function parseLossExpression(source) {
     return { type: 'call', name: token.value, args };
   };
 
+  const power = () => {
+    const left = primary();
+    if (peek().type !== '**') return left;
+    cursor += 1;
+    return { type: 'binary', operator: '**', left, right: unary() };
+  };
   const unary = () => {
     if (peek().type === '+' || peek().type === '-') {
       const operator = tokens[cursor++].type;
       return { type: 'unary', operator, value: unary() };
     }
-    return primary();
-  };
-  const power = () => {
-    const left = unary();
-    if (peek().type !== '**') return left;
-    cursor += 1;
-    return { type: 'binary', operator: '**', left, right: power() };
+    return power();
   };
   const product = () => {
-    let value = power();
+    let value = unary();
     while (peek().type === '*' || peek().type === '/') {
       const operator = tokens[cursor++].type;
-      value = { type: 'binary', operator, left: value, right: power() };
+      value = { type: 'binary', operator, left: value, right: unary() };
     }
     return value;
   };

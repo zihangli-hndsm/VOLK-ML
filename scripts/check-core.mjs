@@ -175,6 +175,16 @@ assert.equal(
   compileLossExpression('mean(abs(prediction - target)) + clip(0.1, 0, 1)', 'tensorflow'),
   '(tf.reduce_mean(tf.abs((prediction - target))) + tf.clip_by_value(0.1, 0, 1))',
 );
+assert.equal(
+  compileLossExpression('-prediction ** 2', 'pytorch'),
+  '(-(prediction ** 2))',
+  'a leading unary sign applies after exponentiation',
+);
+assert.equal(
+  compileLossExpression('prediction ** -2', 'tensorflow'),
+  '(prediction ** (-2))',
+  'a signed exponent remains valid',
+);
 assert.throws(() => parseLossExpression('prediction.__class__'), /unexpected/);
 assert.throws(() => parseLossExpression('system(prediction)'), /function/);
 const densePlaygroundPoints = Array.from({ length: 101 }, (_, x) => ({ x, y: 2 * x + 1 }));
@@ -429,11 +439,13 @@ assert.equal(assessConnection({
 }, trainerNodes, trainerEdges).reason, 'missingPort', 'DatasetSplit does not bind directly to a symbolic Tensor Input');
 const trainerTorch = compilePipelineToPyTorch(trainerNodes, trainerEdges);
 const trainerTensorFlow = compilePipelineToTensorFlow(trainerNodes, trainerEdges);
-assert.match(trainerTorch.code, /def custom_loss\(prediction, target\):\n    return torch\.mean\(torch\.abs/);
+assert.match(trainerTorch.code, /def custom_loss\(prediction, target\):\n    return torch\.mean\(torch\.mean\(torch\.abs/);
 assert.match(trainerTorch.code, /DataLoader\(train_set, batch_size=8, shuffle=False\)/);
 assert.match(trainerTorch.code, /for epoch in range\(12\)/);
-assert.match(trainerTensorFlow.code, /def custom_loss\(target, prediction\):\n    return tf\.reduce_mean\(tf\.abs/);
+assert.match(trainerTensorFlow.code, /def custom_loss\(target, prediction\):\n    return tf\.reduce_mean\(tf\.reduce_mean\(tf\.abs/);
 assert.match(trainerTensorFlow.code, /model\.fit\(X_train, y_train, epochs=12, batch_size=8, shuffle=False/);
+assert.match(trainerTensorFlow.code, /def volk_deterministic_indices\(length, seed=2026\):/);
+assert.match(trainerTensorFlow.code, /train_indices, test_indices = indices\[:split_index\], indices\[split_index:\]/);
 assert.ok(trainerTorch.report.some((item) => item.componentId === 'supervised_trainer_node'));
 assert.ok(trainerTensorFlow.report.some((item) => item.componentId === 'custom_loss_node'));
 assertPythonSyntax(trainerTorch.code, 'Supervised Trainer PyTorch');

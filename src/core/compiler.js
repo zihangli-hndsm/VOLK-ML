@@ -297,7 +297,7 @@ function pytorchLossLines(loss, probabilityOutput) {
   if (loss?.op === 'custom_loss') {
     try {
       const expression = compileLossExpression(loss.parameters.expression, 'pytorch');
-      return ['def custom_loss(prediction, target):', `    return ${expression}`, '', 'criterion = custom_loss'];
+      return ['def custom_loss(prediction, target):', `    return torch.mean(${expression})`, '', 'criterion = custom_loss'];
     } catch (error) {
       throw customLossError(error);
     }
@@ -314,7 +314,7 @@ function tensorflowLossDefinition(loss, probabilityOutput) {
     try {
       const expression = compileLossExpression(loss.parameters.expression, 'tensorflow');
       return {
-        lines: ['def custom_loss(target, prediction):', `    return ${expression}`, ''],
+        lines: ['def custom_loss(target, prediction):', `    return tf.reduce_mean(${expression})`, ''],
         name: 'custom_loss',
       };
     } catch (error) {
@@ -342,6 +342,24 @@ function optimizerExpression(optimizer, framework) {
     adam_optimizer: `keras.optimizers.Adam(learning_rate=${optimizer?.parameters.learning_rate ?? 0.001})`,
     adamw_optimizer: `keras.optimizers.AdamW(learning_rate=${optimizer?.parameters.learning_rate ?? 0.001}, weight_decay=${optimizer?.parameters.weight_decay ?? 0.01})`,
   }[optimizer?.op] ?? 'keras.optimizers.Adam(learning_rate=0.001)';
+}
+
+function tensorflowSplitLines(trainRatio) {
+  return [
+    'def volk_deterministic_indices(length, seed=2026):',
+    '    indices = list(range(length))',
+    '    for index in range(length - 1, 0, -1):',
+    '        seed = (seed * 1664525 + 1013904223) % 4294967296',
+    '        target = seed % (index + 1)',
+    '        indices[index], indices[target] = indices[target], indices[index]',
+    '    return indices',
+    '',
+    'indices = volk_deterministic_indices(len(X))',
+    `split_index = max(1, min(len(indices) - 1, int(len(indices) * ${trainRatio})))`,
+    'train_indices, test_indices = indices[:split_index], indices[split_index:]',
+    'X_train, X_test = [X[index] for index in train_indices], [X[index] for index in test_indices]',
+    'y_train, y_test = [y[index] for index in train_indices], [y[index] for index in test_indices]',
+  ];
 }
 
 function trainingConfiguration(ir, framework) {
@@ -403,9 +421,7 @@ function trainingConfiguration(ir, framework) {
   return [
     '# Replace this loader with the dataset saved in the VOLK-ML project JSON.',
     'X, y = load_tabular_data()',
-    `split_index = int(len(X) * ${trainRatio})`,
-    'X_train, X_test = X[:split_index], X[split_index:]',
-    'y_train, y_test = y[:split_index], y[split_index:]',
+    ...tensorflowSplitLines(trainRatio),
     '',
     ...configuredLoss.lines,
     `model.compile(optimizer=${optimizerExpression(optimizer, framework)}, loss=${configuredLoss.name})`,
@@ -547,9 +563,7 @@ function compileTabularPipeline(ir, framework) {
     '',
     '# Replace this loader with the dataset saved in the VOLK-ML project JSON.',
     'X, y = load_tabular_data()',
-    `split_index = int(len(X) * ${split?.parameters.train_ratio ?? 0.8})`,
-    'X_train, X_test = X[:split_index], X[split_index:]',
-    'y_train, y_test = y[:split_index], y[split_index:]',
+    ...tensorflowSplitLines(split?.parameters.train_ratio ?? 0.8),
     'model = keras.Sequential([keras.layers.Input(shape=(X.shape[1],)), keras.layers.Dense(1)])',
     `model.compile(optimizer=keras.optimizers.SGD(learning_rate=${linear?.parameters.learning_rate ?? 0.01}), loss="mse", metrics=[keras.metrics.RootMeanSquaredError()])`,
     `model.fit(X_train, y_train, epochs=${trainer?.parameters.epochs ?? 100}, batch_size=32, validation_data=(X_test, y_test))`,
