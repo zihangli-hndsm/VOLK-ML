@@ -39,9 +39,33 @@
 - Keep hosted-service integrations behind `src/platform/services.js`. Do not add billing-provider checks, credentials, or server authorization logic to the open editor.
 - Validate registry IDs, localized metadata, port mappings, composite references, both compiler backends, and execution-tier estimates before publishing component changes.
 
+## Visual language and lessons
+
+- Canvas glyphs are lightweight, static semantic cues. Do not add SVG animation to the canvas; animation belongs in the explicit component guide/playground only.
+- A visual must teach the component's actual default semantics. In particular, represent axes, shapes, extrema, and function origins correctly rather than using generic decorative motion.
+- Keep visual geometry in `src/core/visualLanguage.js` when it is shared by rendering and tests. Derive SVG paths, animation paths, and checked endpoints from shared coordinates; do not make a regression assertion compare independently hard-coded values.
+- Keep stage color stable: data = green, model = blue, training = orange, output = violet. Use separate status affordances for execution state.
+- Any new or changed component visual needs a focused invariant in `scripts/check-core.mjs` when a mathematical or semantic claim can regress.
+
+## Supervised Trainer and Custom Loss
+
+- `Tensor Input → architecture → Model Output` is a symbolic model definition. `DatasetSplit` must bind to `Supervised Trainer`, never directly to Tensor Input.
+- A connected Trainer is an L2 source-export root. It requires exactly one reachable Tensor Input and Model Output plus typed DatasetSplit, LossSpec, and OptimizerSpec inputs. Validate that contract before choosing an architecture or legacy tabular backend; never silently fall back for an invalid Trainer graph.
+- Do not route browser-only `ModelSpec` producers, such as Linear Regression, into Trainer export. The Trainer model source must be the selected `model_output`.
+- Preserve declared Trainer input dtype across generated frameworks. The current generic tabular Trainer supports `float32` and `float16`; reject unsupported types with a localized error instead of coercing them.
+- Custom Loss is a deliberately small expression DSL, not a Python or JavaScript escape hatch. Keep its whitelist framework-neutral, parse before emitting source, require a dependency on `prediction`, and ensure the generated objective is scalar before `backward()` or metric recording.
+- When split semantics change, keep browser, PyTorch, and TensorFlow behavior explicitly documented and add source-level regression assertions. Array-oriented TensorFlow exports must retain array/tensor structure rather than converting feature matrices to Python multi-input lists.
+
+## Projects, composites, and hosted boundaries
+
+- Project JSON is a portable, framework-neutral user artifact. When changing persisted fields, increment `PROJECT_VERSION` as appropriate, add an import migration, and preserve old graph handles or migrate them explicitly.
+- Keep project names, local auto-save, file download, and local-file persistence behind `src/core/localProjects.js` / `src/core/project.js`; do not fold persistence policy into canvas components.
+- Custom composites are copy-style definitions. Boundary ports include unsatisfied internal child ports even when the selected subgraph has no surrounding edges. Deleting a catalog definition must not mutate existing instances.
+- Cloud save, collaboration, model APIs, and remote compute use `src/platform/services.js`. Never store API keys in project JSON, component parameters, local project history, or public client configuration.
+
 ## Required validation
 
 - Run `npm run check` for component, compiler, composite, localization, and tier invariants.
 - Run `npm run build` for every application or documentation change that also touches executable code.
 - Run `git diff --check` before publishing.
-- Add a focused regression assertion to `scripts/check-core.mjs` when changing a manifest contract, compiler semantic, graph-selection rule, or tier boundary.
+- Add a focused regression assertion to `scripts/check-core.mjs` when changing a manifest contract, compiler semantic, graph-selection rule, persisted project contract, visual invariant, or tier boundary.
