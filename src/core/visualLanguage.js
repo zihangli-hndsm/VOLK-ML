@@ -1,4 +1,3 @@
-const activationOps = new Set(['relu', 'gelu', 'sigmoid', 'tanh', 'softmax']);
 const dataOps = new Set(['tabular_data', 'train_test_split']);
 const outputKinds = new Set(['sink', 'evaluation', 'inference']);
 const trainingKinds = new Set(['training', 'loss', 'optimizer']);
@@ -39,23 +38,47 @@ export const stageStyles = {
 };
 
 export function visualKindForManifest(manifest) {
-  if (manifest.visualization?.type) return manifest.visualization.type;
-  if (activationOps.has(manifest.op)) return manifest.op === 'gelu' ? 'smooth-curve' : manifest.op;
-  if (manifest.op === 'dense') return 'dense';
-  if (manifest.op === 'linear_regression') return 'scatter';
-  if (manifest.op === 'knn_classifier') return 'neighbors';
-  if (manifest.op === 'gradient_descent' || trainingKinds.has(manifest.kind)) return 'descent';
-  if (manifest.op === 'tabular_data') return 'table';
-  if (manifest.op === 'train_test_split') return 'split';
-  if (manifest.op === 'multihead_attention' || manifest.op === 'transformer') return 'attention';
-  if (['lstm', 'gru'].includes(manifest.op)) return 'sequence';
-  if (manifest.op === 'conv2d') return 'convolution';
-  if (manifest.op === 'max_pool2d') return 'pool';
-  if (manifest.kind === 'composite') return 'composite';
-  if (manifest.kind === 'merge') return 'merge';
-  if (manifest.kind === 'sink') return 'output';
-  if (manifest.kind === 'source') return 'tensor';
-  return 'flow';
+  if (manifest.customComposite) return 'custom_composite';
+  return manifest.op ?? 'unknown';
+}
+
+export function activationValue(op, x) {
+  if (op === 'relu') return Math.max(0, x);
+  if (op === 'sigmoid') return 1 / (1 + Math.exp(-x));
+  if (op === 'tanh') return Math.tanh(x);
+  if (op === 'gelu') {
+    return 0.5 * x * (1 + Math.tanh(Math.sqrt(2 / Math.PI) * (x + 0.044715 * x ** 3)));
+  }
+  throw new Error(`Unsupported activation: ${op}`);
+}
+
+export function mseLandscapeValue(normalizedParameter) {
+  return normalizedParameter ** 2;
+}
+
+const libraryOrder = ['data', 'model', 'training', 'output', 'custom'];
+
+export function componentLibraryTree(plugins) {
+  const groups = new Map();
+  plugins.forEach((plugin) => {
+    const groupId = plugin.customComposite ? 'custom' : stageForManifest(plugin);
+    if (!groups.has(groupId)) groups.set(groupId, new Map());
+    const categories = groups.get(groupId);
+    if (!categories.has(plugin.category)) categories.set(plugin.category, []);
+    categories.get(plugin.category).push(plugin);
+  });
+  return libraryOrder.filter((id) => groups.has(id)).map((id) => {
+    const categories = [...groups.get(id)].map(([category, categoryPlugins]) => ({
+      id: category,
+      plugins: categoryPlugins,
+    }));
+    return {
+      id,
+      labelKey: id === 'custom' ? 'library.custom' : `stage.${id}`,
+      count: categories.reduce((count, category) => count + category.plugins.length, 0),
+      categories,
+    };
+  });
 }
 
 export function architectureLayout(nodes, edges) {

@@ -1,0 +1,105 @@
+export const fallbackRegressionPoints = [
+  { x: -4, y: -6.8 },
+  { x: -3.2, y: -5.1 },
+  { x: -2.4, y: -4.2 },
+  { x: -1.5, y: -1.7 },
+  { x: -0.8, y: -0.9 },
+  { x: 0, y: 1.2 },
+  { x: 0.7, y: 2.1 },
+  { x: 1.5, y: 3.7 },
+  { x: 2.3, y: 5.1 },
+  { x: 3.1, y: 7.6 },
+  { x: 4, y: 8.7 },
+];
+
+const finiteNumber = (value) => {
+  if (value === '' || value === null || value === undefined) return null;
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
+};
+
+export function uniformlySamplePoints(points, limit = 80) {
+  const sorted = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (sorted.length <= limit) return sorted;
+  return Array.from({ length: limit }, (_, index) => (
+    sorted[Math.round(index * (sorted.length - 1) / (limit - 1))]
+  ));
+}
+
+export function regressionPointsFromDataset(dataset, limit = 80) {
+  const feature = dataset?.task === 'regression' ? dataset.featureColumns?.[0] : null;
+  const target = dataset?.task === 'regression' ? dataset.targetColumn : null;
+  if (!feature || !target || !Array.isArray(dataset.rows)) {
+    return {
+      points: fallbackRegressionPoints,
+      total: fallbackRegressionPoints.length,
+      feature: 'x',
+      target: 'y',
+      usingDataset: false,
+    };
+  }
+  const valid = dataset.rows.flatMap((row) => {
+    const x = finiteNumber(row[feature]);
+    const y = finiteNumber(row[target]);
+    return x === null || y === null ? [] : [{ x, y }];
+  });
+  if (valid.length < 2) {
+    return {
+      points: fallbackRegressionPoints,
+      total: fallbackRegressionPoints.length,
+      feature: 'x',
+      target: 'y',
+      usingDataset: false,
+    };
+  }
+  return {
+    points: uniformlySamplePoints(valid, limit),
+    total: valid.length,
+    feature,
+    target,
+    usingDataset: true,
+  };
+}
+
+export function meanSquaredError(points, weight, bias) {
+  if (!points.length) return 0;
+  return points.reduce((sum, point) => {
+    const error = point.y - (weight * point.x + bias);
+    return sum + error ** 2;
+  }, 0) / points.length;
+}
+
+export function leastSquaresFit(points) {
+  if (!points.length) return { weight: 0, bias: 0 };
+  const meanX = points.reduce((sum, point) => sum + point.x, 0) / points.length;
+  const meanY = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+  const numerator = points.reduce((sum, point) => sum + (point.x - meanX) * (point.y - meanY), 0);
+  const denominator = points.reduce((sum, point) => sum + (point.x - meanX) ** 2, 0);
+  const weight = denominator > 0 ? numerator / denominator : 0;
+  return { weight, bias: meanY - weight * meanX };
+}
+
+export function playgroundRanges(points) {
+  const xs = points.map((point) => point.x);
+  const ys = points.map((point) => point.y);
+  const rawXMin = Math.min(...xs);
+  const rawXMax = Math.max(...xs);
+  const rawYMin = Math.min(...ys);
+  const rawYMax = Math.max(...ys);
+  const xSpan = Math.max(1, rawXMax - rawXMin);
+  const ySpan = Math.max(1, rawYMax - rawYMin);
+  const slopeScale = ySpan / xSpan;
+  const weightLimit = Math.max(1, slopeScale * 4);
+  return {
+    xMin: rawXMin - xSpan * 0.08,
+    xMax: rawXMax + xSpan * 0.08,
+    yMin: rawYMin - ySpan * 0.12,
+    yMax: rawYMax + ySpan * 0.12,
+    weightMin: -weightLimit,
+    weightMax: weightLimit,
+    weightStep: weightLimit / 200,
+    biasMin: rawYMin - ySpan * 1.5,
+    biasMax: rawYMax + ySpan * 1.5,
+    biasStep: ySpan / 200,
+  };
+}

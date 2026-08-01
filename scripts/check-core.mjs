@@ -14,12 +14,26 @@ import {
 } from '../src/core/compiler.js';
 import { executeBrowserGraph, predictWithModel } from '../src/core/browserRuntime.js';
 import { createCustomComposite, flattenCustomComposites } from '../src/core/customComposites.js';
+import { assessConnection, knownPortTypes } from '../src/core/connections.js';
 import { analyzeProject } from '../src/core/explanation.js';
 import { safeProjectFilename } from '../src/core/localProjects.js';
+import {
+  leastSquaresFit,
+  meanSquaredError,
+  regressionPointsFromDataset,
+  uniformlySamplePoints,
+} from '../src/core/linearRegressionPlayground.js';
 import { migrateProject, PROJECT_VERSION, projectContentSignature } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
-import { architectureLayout, stageForManifest, visualKindForManifest } from '../src/core/visualLanguage.js';
+import {
+  activationValue,
+  architectureLayout,
+  componentLibraryTree,
+  mseLandscapeValue,
+  stageForManifest,
+  visualKindForManifest,
+} from '../src/core/visualLanguage.js';
 import { resolveMessage } from '../src/i18n.js';
 import { languages, messages } from '../src/locales/ui.js';
 import {
@@ -78,6 +92,7 @@ for (const manifest of pluginRegistry) {
   const tutorial = tutorialByOp[manifest.op];
   assert.ok(tutorial, `${manifest.id} beginner tutorial`);
   assert.ok(tutorial.formula && tutorial.visual, `${manifest.id} tutorial formula and visual`);
+  assert.equal(tutorial.visual, manifest.op, `${manifest.id} uses its own semantic animation`);
   for (const language of languages) {
     assert.ok(manifest.name[language.code], `${manifest.id} ${language.code} name`);
     assert.ok(manifest.description[language.code], `${manifest.id} ${language.code} description`);
@@ -116,13 +131,45 @@ for (const [key, translations] of Object.entries(messages)) {
 assert.equal(resolveMessage(tutorialByOp.model_output.formula, 'zh'), 'model(x) = 选定的输出张量');
 assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'zh'), 'L = −log p(正确类别)');
 assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'en'), 'L = −log p(correct class)');
+assert.equal(resolveMessage('playground.equation', 'zh', { weight: '2.00', operator: '−', bias: '1.00' }), 'ŷ = 2.00x − 1.00');
 assert.equal(stageForManifest(componentById.get('tabular_data_node')), 'data');
 assert.equal(stageForManifest(componentById.get('dense_node')), 'model');
 assert.equal(stageForManifest(componentById.get('adam_optimizer_node')), 'training');
 assert.equal(stageForManifest(componentById.get('model_output_node')), 'output');
 assert.equal(visualKindForManifest(componentById.get('dense_node')), 'dense');
-assert.equal(visualKindForManifest(componentById.get('multihead_attention_node')), 'attention');
+assert.equal(visualKindForManifest(componentById.get('multihead_attention_node')), 'multihead_attention');
+assert.equal(
+  new Set(pluginRegistry.map((manifest) => visualKindForManifest(manifest))).size,
+  pluginRegistry.length,
+  'every registered operation has a distinct semantic visual identity',
+);
+assert.equal(activationValue('relu', 0), 0);
+assert.equal(activationValue('tanh', 0), 0, 'tanh passes through the coordinate origin');
+assert.equal(activationValue('sigmoid', 0), 0.5, 'sigmoid crosses 0.5 at x = 0');
+assert.ok(activationValue('gelu', -1) < 0 && activationValue('gelu', 1) > 0, 'GELU keeps its smooth negative dip');
+assert.ok(mseLandscapeValue(0) < mseLandscapeValue(-1));
+assert.ok(mseLandscapeValue(0) < mseLandscapeValue(1), 'MSE landscape has its minimum at the center');
+for (const type of knownPortTypes) assert.ok(messages[`portType.${type}`], `${type} port role is localized`);
+const libraryTree = componentLibraryTree(pluginRegistry);
+assert.deepEqual(libraryTree.map((group) => group.id), ['data', 'model', 'training', 'output']);
+assert.equal(libraryTree.reduce((count, group) => count + group.count, 0), pluginRegistry.length);
 assert.equal(safeProjectFilename('My Visual Project'), 'my-visual-project.volkml.json');
+const densePlaygroundPoints = Array.from({ length: 101 }, (_, x) => ({ x, y: 2 * x + 1 }));
+const sampledPlaygroundPoints = uniformlySamplePoints(densePlaygroundPoints, 11);
+assert.equal(sampledPlaygroundPoints.length, 11);
+assert.deepEqual(sampledPlaygroundPoints[0], { x: 0, y: 1 });
+assert.deepEqual(sampledPlaygroundPoints.at(-1), { x: 100, y: 201 });
+assert.deepEqual(leastSquaresFit(densePlaygroundPoints), { weight: 2, bias: 1 });
+assert.equal(meanSquaredError(densePlaygroundPoints, 2, 1), 0);
+const playgroundDataset = regressionPointsFromDataset({
+  task: 'regression',
+  featureColumns: ['feature'],
+  targetColumn: 'target',
+  rows: densePlaygroundPoints.map((point) => ({ feature: point.x, target: point.y })),
+}, 20);
+assert.equal(playgroundDataset.usingDataset, true);
+assert.equal(playgroundDataset.points.length, 20);
+assert.equal(playgroundDataset.total, 101);
 assert.notEqual(
   projectContentSignature({
     name: 'Model state',
@@ -154,6 +201,24 @@ const architectureEdges = [
   makeEdge('dense', 'output', 'relu', 'input'),
   makeEdge('relu', 'output', 'output', 'input'),
 ];
+assert.equal(assessConnection({
+  source: 'input', sourceHandle: 'tensor', target: 'dense', targetHandle: 'input',
+}, architectureNodes, []).valid, true, 'matching semantic port types connect');
+assert.equal(assessConnection({
+  source: 'loss', sourceHandle: 'loss', target: 'dense', targetHandle: 'input',
+}, architectureNodes, []).reason, 'type', 'different semantic port roles remain incompatible');
+assert.equal(assessConnection({
+  source: 'input', sourceHandle: 'tensor', target: 'dense', targetHandle: 'input',
+}, architectureNodes, architectureEdges).reason, 'occupied', 'one input accepts one incoming edge');
+assert.equal(assessConnection({
+  source: 'relu', sourceHandle: 'output', target: 'input', targetHandle: 'tensor',
+}, architectureNodes, architectureEdges).reason, 'missingPort');
+assert.equal(assessConnection({
+  source: 'output', sourceHandle: 'model', target: 'dense', targetHandle: 'input',
+}, architectureNodes, architectureEdges).reason, 'type');
+assert.equal(assessConnection({
+  source: 'relu', sourceHandle: 'output', target: 'dense', targetHandle: 'input',
+}, architectureNodes, architectureEdges.filter((edge) => edge.target !== 'dense')).reason, 'cycle', 'cycles are rejected before compilation');
 const ir = graphToIR(architectureNodes, architectureEdges);
 assert.equal(ir.version, 2);
 assert.deepEqual(ir.nodes.filter((node) => ['input', 'dense', 'relu', 'output'].includes(node.id)).map((node) => node.id), ['input', 'dense', 'relu', 'output']);
@@ -536,6 +601,38 @@ assert.equal(migratedKnnProject.name, 'Sample Project');
 assert.deepEqual(migratedKnnProject.customComponents, []);
 assert.equal(migratedKnnProject.graph.edges.length, 1);
 assert.equal(migratedKnnProject.graph.edges[0].sourceHandle, 'trained_model');
+
+const legacySamplePositions = {
+  'pipeline-data': [40, 180],
+  'pipeline-split': [340, 180],
+  'pipeline-linear': [650, 180],
+  'pipeline-optimizer': [960, 180],
+  'pipeline-evaluate': [1270, 70],
+  'pipeline-predictor': [1270, 300],
+};
+const legacySampleProject = {
+  format: 'VOLK-ML',
+  version: 6,
+  name: 'Sample Project',
+  customComponents: [],
+  graph: {
+    nodes: Object.entries(legacySamplePositions).map(([id, [x, y]]) => ({ id, position: { x, y } })),
+    edges: [],
+  },
+};
+const migratedSampleProject = migrateProject(legacySampleProject);
+assert.deepEqual(
+  migratedSampleProject.graph.nodes.find((node) => node.id === 'pipeline-linear').position,
+  { x: 920, y: 220 },
+  'the untouched sample project receives wider component spacing',
+);
+const arrangedSampleProject = structuredClone(legacySampleProject);
+arrangedSampleProject.graph.nodes[0].position.x = 41;
+assert.equal(
+  migrateProject(arrangedSampleProject).graph.nodes.find((node) => node.id === 'pipeline-linear').position.x,
+  650,
+  'a user-arranged sample graph keeps its positions',
+);
 
 const classificationGraphNodes = [
   makeNode('class-data', 'tabular_data_node'),

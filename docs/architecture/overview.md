@@ -52,19 +52,30 @@ flowchart TD
 - Canvas nodes retain their manifest and user parameters.
 - Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
 - Project JSON stores the project name, graph, custom composite definitions, workspace preferences, dataset, and trained L0 model.
-- `PROJECT_VERSION` in `src/core/project.js` is currently `6`.
+- `PROJECT_VERSION` in `src/core/project.js` is currently `7`.
 - Import first migrates legacy graph contracts, then resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
 - Version 5 migrates legacy KNN `model` edges to `trained_model`; obsolete visualization-only `boundary` edges are removed because the current KNN runtime no longer produces a mesh.
 - Version 6 adds the project name and reusable custom-composite catalog.
+- Version 7 moves only the untouched built-in sample graph to wider coordinates so enlarged component cards do not overlap; user-arranged graphs keep their positions.
 
 ## Visual workspace
 
 - Canvas components reserve their rightmost 30% for a lightweight static semantic glyph. Animation is never active on the canvas.
-- The same visual vocabulary becomes animated only inside the component guide after the learner presses play.
+- Every registered operation has its own semantic visual. The same visual vocabulary becomes animated only inside the component guide after the learner presses play; activation curves are sampled from their mathematical functions rather than hand-drawn approximations.
+- The linear-regression guide includes a lazy-loaded playground. It uses the first feature and target from the current regression dataset (or local example points), samples large datasets evenly over sorted x values, and recomputes the line, residuals, and MSE as weight or bias changes.
 - Stage color has one stable meaning: green for data, blue for models, orange for training, and violet for outputs. Runtime status remains a separate ring.
+- The component library is a collapsible stage → category tree. Deleting a saved custom definition removes it from the reusable catalog but deliberately keeps existing canvas instances intact.
 - The architecture view derives topological layers from the same graph without changing saved node positions.
 - Custom composites are copy-style definitions. They can contain preset or custom composites, expand for editing, collapse to their original instance, and flatten recursively before execution or source compilation.
 - Project explanation begins with deterministic topology and connection analysis. A user may optionally provide a compatible chat-completion endpoint, model name, and in-memory API key for follow-up questions.
+
+## Canvas connection rules
+
+- Connections remain nominally type-safe: ports connect only when their exact semantic types match. VOLK-ML does not silently coerce tables, tensors, model specifications, or trained models.
+- One input accepts one incoming edge, while one output may fan out to several consumers.
+- Self-connections and connections that would introduce a graph cycle are rejected before they reach compilation or browser execution.
+- The canvas shows localized, human-readable port roles while keeping stable internal type identifiers in saved projects.
+- Future flexibility should come from explicit adapter components or a shape-inference pass, not implicit conversions that hide graph semantics.
 
 ## Runtime boundaries
 
