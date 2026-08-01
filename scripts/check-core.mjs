@@ -452,6 +452,8 @@ assert.match(trainerTensorFlow.code, /def custom_loss\(target, prediction\):\n  
 assert.match(trainerTensorFlow.code, /model\.fit\(X_train, y_train, epochs=12, batch_size=8, shuffle=False/);
 assert.match(trainerTensorFlow.code, /def volk_deterministic_indices\(length, seed=2026\):/);
 assert.match(trainerTensorFlow.code, /train_indices, test_indices = indices\[:split_index\], indices\[split_index:\]/);
+assert.match(trainerTensorFlow.code, /X_train, X_test = X\[train_indices\], X\[test_indices\]/);
+assert.match(trainerTensorFlow.code, /y_train, y_test = y\[train_indices\], y\[test_indices\]/);
 assert.ok(trainerTorch.report.some((item) => item.componentId === 'supervised_trainer_node'));
 assert.ok(trainerTensorFlow.report.some((item) => item.componentId === 'custom_loss_node'));
 assertPythonSyntax(trainerTorch.code, 'Supervised Trainer PyTorch');
@@ -477,6 +479,11 @@ assert.throws(
   () => compilePipelineToTensorFlow(trainerNodes, trainerEdges.filter((edge) => edge.targetHandle !== 'optimizer')),
   (error) => error.translationKey === 'error.trainerInputsRequired',
   'trainer compilation requires each typed input',
+);
+assert.throws(
+  () => compilePipelineToPyTorch(trainerNodes, trainerEdges.filter((edge) => edge.targetHandle !== 'model')),
+  (error) => error.translationKey === 'error.trainerInputsRequired',
+  'an incomplete trainer fails before legacy tabular fallback',
 );
 const secondTrainer = makeNode('trainer-two', 'supervised_trainer_node');
 assert.throws(

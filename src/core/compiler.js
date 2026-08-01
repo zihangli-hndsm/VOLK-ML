@@ -346,6 +346,8 @@ function optimizerExpression(optimizer, framework) {
 
 function tensorflowSplitLines(trainRatio) {
   return [
+    'import numpy as np',
+    '',
     'def volk_deterministic_indices(length, seed=2026):',
     '    indices = list(range(length))',
     '    for index in range(length - 1, 0, -1):',
@@ -354,11 +356,13 @@ function tensorflowSplitLines(trainRatio) {
     '        indices[index], indices[target] = indices[target], indices[index]',
     '    return indices',
     '',
+    'X = np.asarray(X)',
+    'y = np.asarray(y)',
     'indices = volk_deterministic_indices(len(X))',
     `split_index = max(1, min(len(indices) - 1, int(len(indices) * ${trainRatio})))`,
     'train_indices, test_indices = indices[:split_index], indices[split_index:]',
-    'X_train, X_test = [X[index] for index in train_indices], [X[index] for index in test_indices]',
-    'y_train, y_test = [y[index] for index in train_indices], [y[index] for index in test_indices]',
+    'X_train, X_test = X[train_indices], X[test_indices]',
+    'y_train, y_test = y[train_indices], y[test_indices]',
   ];
 }
 
@@ -587,6 +591,7 @@ export function compileGraph(nodes, edges, framework) {
   const flattened = flattenCustomComposites(nodes, edges);
   const selected = selectCompilationGraph(flattened.nodes, flattened.edges);
   const ir = graphToIR(selected.nodes, selected.edges);
+  if (ir.nodes.some((node) => node.op === 'supervised_trainer')) trainerContext(ir);
   const report = compatibilityReport(selected.nodes, framework);
   if (report.some((item) => item.quality === 'unsupported')) {
     const error = new Error('error.frameworkUnsupported');

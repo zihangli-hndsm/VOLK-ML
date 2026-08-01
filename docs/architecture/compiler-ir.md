@@ -81,7 +81,7 @@ When one or more connected Model Output nodes exist, the compiler:
 
 This rule intentionally ignores disconnected experimental layers on the canvas. Do not change it to compile every architecture node: orphan nodes have no valid forward input and would produce invalid source.
 
-When a connected Supervised Trainer exists, it becomes the compilation root. The compiler walks backward from that trainer so the selected IR contains exactly its data split, model architecture, loss, and optimizer dependencies. More than one connected trainer is rejected as ambiguous. The first Trainer release supports one Tensor Input and one Model Output.
+When a connected Supervised Trainer exists, it becomes the compilation root. The compiler walks backward from that trainer so the selected IR contains exactly its data split, model architecture, loss, and optimizer dependencies. Its four typed inputs are validated before architecture/tabular backend selection, so an incomplete Trainer cannot silently fall back to the legacy tabular generator. More than one connected trainer is rejected as ambiguous. The first Trainer release supports one Tensor Input and one Model Output.
 
 When a connected Tabular Data pipeline exists without a connected Model Output, compilation selects the connected tabular graph and ignores isolated architecture experiments. Unsupported or cyclic orphan nodes must not block a valid active pipeline.
 
