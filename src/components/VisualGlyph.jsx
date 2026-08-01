@@ -1,5 +1,5 @@
 import React from 'react';
-import { activationValue, mseLandscapeValue } from '../core/visualLanguage.js';
+import { activationValue, descentVisualGeometry, mseLandscapeValue } from '../core/visualLanguage.js';
 
 const Svg = ({ children, viewBox = '0 0 120 76' }) => (
   <svg viewBox={viewBox} className="h-full w-full" aria-hidden="true">{children}</svg>
@@ -105,13 +105,12 @@ function Knn({ animated }) {
 
 function Descent({ variant, animated }) {
   const colors = variant === 'adamw_optimizer' ? ['#8b5cf6', '#f97316'] : variant === 'adam_optimizer' ? ['#10b981', '#2563eb'] : ['#f97316', '#2563eb'];
-  const path = variant === 'sgd_optimizer' ? 'M18 14 L31 34 L42 27 L51 49 L61 43 L72 61' : variant === 'adam_optimizer' ? 'M18 14 C31 19 34 43 51 48 C62 52 65 61 75 62' : 'M18 14 C33 24 38 45 53 51 C64 57 69 61 77 62';
-  const motionPath = variant === 'sgd_optimizer' ? 'M0 0 L13 20 L24 13 L33 35 L43 29 L54 47' : variant === 'adam_optimizer' ? 'M0 0 C13 5 16 29 33 34 C44 38 47 47 57 48' : 'M0 0 C15 10 20 31 35 37 C46 43 51 47 59 48';
-  return <Svg><path d="M7 13 C29 9 31 66 58 66 C83 66 87 13 112 13" fill="none" stroke="#fed7aa" strokeWidth="8" />
-    <path d={path} fill="none" stroke={colors[1]} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+  const geometry = descentVisualGeometry(variant);
+  return <Svg><path d="M7 13 C30 13 32 66 60 66 C88 66 90 13 113 13" fill="none" stroke="#fed7aa" strokeWidth="8" />
+    <path d={geometry.path} fill="none" stroke={colors[1]} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
     {variant === 'adam_optimizer' && <><path d="M22 66 H45" stroke="#10b981" strokeWidth="2" /><path d="M22 71 H35" stroke="#10b981" strokeWidth="2" /></>}
     {variant === 'adamw_optimizer' && <circle cx="96" cy="27" r="11" fill="none" stroke="#8b5cf6" strokeWidth="3">{animated && <animate attributeName="r" values="11;6;11" dur="2s" repeatCount="indefinite" />}</circle>}
-    <circle cx="18" cy="14" r="5" fill={colors[0]}>{animated && <animateMotion path={motionPath} dur="2.4s" repeatCount="indefinite" />}</circle>
+    <circle cx="18" cy="14" r="5" fill={colors[0]}>{animated && <animateMotion path={geometry.motionPath} dur="2.4s" repeatCount="indefinite" />}</circle>
   </Svg>;
 }
 
@@ -222,10 +221,15 @@ function Attention({ animated }) {
 }
 
 function Merge({ concatenate, animated }) {
-  const leftA = concatenate ? '[a,b]' : '[1,2]';
-  const leftB = concatenate ? '[c,d]' : '[3,4]';
-  const result = concatenate ? '[a,b,c,d]' : '[4,6]';
-  return <Svg>{[leftA, leftB].map((label, index) => <g key={label}><rect x="5" y={11 + index * 34} width="35" height="23" rx="6" fill={index ? '#ede9fe' : '#dbeafe'} /><text x="22.5" y={26 + index * 34} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text></g>)}<path d="M41 22 C55 22 52 38 65 38 M41 56 C55 56 52 38 65 38" fill="none" stroke="#64748b" strokeWidth="2" /><circle cx="69" cy="38" r="10" fill="#2563eb" /><text x="69" y="42" textAnchor="middle" fontSize="12" fontWeight="800" fill="white">{concatenate ? '‖' : '+'}</text>{arrow(80, 38, 91, 38)}<text x="106" y="42" textAnchor="middle" fontSize={concatenate ? 7 : 9} fontWeight="800" fill="#047857">{result}</text>{animated && <circle cx="69" cy="38" r="13" fill="none" stroke="#f97316"><animate attributeName="r" values="9;14;9" dur="1.5s" repeatCount="indefinite" /></circle>}</Svg>;
+  if (concatenate) return <Svg>
+    <g>{[['[a,b]', 9, '#dbeafe'], ['[c,d]', 47, '#ede9fe']].map(([label, y, fill]) => <g key={label}><rect x="5" y={y} width="34" height="20" rx="6" fill={fill} /><text x="22" y={y + 13} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text>{animated && <animateTransform attributeName="transform" type="translate" values={`0 0;0 ${y < 30 ? 9 : -9};0 ${y < 30 ? 9 : -9}`} dur="2s" repeatCount="indefinite" />}</g>)}</g>
+    <path d="M40 19 C55 19 55 25 68 25 M40 57 C55 57 55 51 68 51" fill="none" stroke="#64748b" strokeWidth="2" />
+    <rect x="72" y="12" width="41" height="52" rx="8" fill="white" stroke="#8b5cf6" strokeWidth="2" />
+    <rect x="75" y="15" width="35" height="22" rx="5" fill="#dbeafe" /><rect x="75" y="39" width="35" height="22" rx="5" fill="#ede9fe" />
+    <text x="92.5" y="29" textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">[a,b]</text><text x="92.5" y="53" textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">[c,d]</text>
+    <path d="M75 38 H110" stroke="#f97316" strokeWidth="2">{animated && <animate attributeName="stroke-width" values="1;4;1" dur="2s" repeatCount="indefinite" />}</path>
+  </Svg>;
+  return <Svg>{['[1,2]', '[3,4]'].map((label, index) => <g key={label}><rect x="5" y={11 + index * 34} width="35" height="23" rx="6" fill={index ? '#ede9fe' : '#dbeafe'} /><text x="22.5" y={26 + index * 34} textAnchor="middle" fontSize="8" fontWeight="800" fill="#334155">{label}</text></g>)}<path d="M41 22 C55 22 52 38 65 38 M41 56 C55 56 52 38 65 38" fill="none" stroke="#64748b" strokeWidth="2" /><circle cx="69" cy="38" r="10" fill="#2563eb" /><text x="69" y="42" textAnchor="middle" fontSize="12" fontWeight="800" fill="white">+</text>{arrow(80, 38, 91, 38)}<text x="106" y="42" textAnchor="middle" fontSize="9" fontWeight="800" fill="#047857">[4,6]</text>{animated && <circle cx="69" cy="38" r="13" fill="none" stroke="#f97316"><animate attributeName="r" values="9;14;9" dur="1.5s" repeatCount="indefinite" /></circle>}</Svg>;
 }
 
 function Loss({ kind, animated }) {

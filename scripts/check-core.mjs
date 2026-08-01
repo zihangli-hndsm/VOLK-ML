@@ -30,6 +30,7 @@ import {
   activationValue,
   architectureLayout,
   componentLibraryTree,
+  descentVisualGeometry,
   mseLandscapeValue,
   stageForManifest,
   visualKindForManifest,
@@ -149,6 +150,10 @@ assert.equal(activationValue('sigmoid', 0), 0.5, 'sigmoid crosses 0.5 at x = 0')
 assert.ok(activationValue('gelu', -1) < 0 && activationValue('gelu', 1) > 0, 'GELU keeps its smooth negative dip');
 assert.ok(mseLandscapeValue(0) < mseLandscapeValue(-1));
 assert.ok(mseLandscapeValue(0) < mseLandscapeValue(1), 'MSE landscape has its minimum at the center');
+for (const operation of ['gradient_descent', 'sgd_optimizer', 'adam_optimizer', 'adamw_optimizer']) {
+  const geometry = descentVisualGeometry(operation);
+  assert.deepEqual(geometry.endpoint, geometry.minimum, `${operation} trajectory ends at the landscape minimum`);
+}
 for (const type of knownPortTypes) assert.ok(messages[`portType.${type}`], `${type} port role is localized`);
 const libraryTree = componentLibraryTree(pluginRegistry);
 assert.deepEqual(libraryTree.map((group) => group.id), ['data', 'model', 'training', 'output']);
