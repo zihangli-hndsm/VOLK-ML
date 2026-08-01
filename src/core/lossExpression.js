@@ -128,7 +128,16 @@ export function parseLossExpression(source) {
 
   const ast = expression();
   if (peek().type !== 'eof') throw new LossExpressionError('unexpected', peek().value);
+  if (!referencesPrediction(ast)) throw new LossExpressionError('prediction');
   return ast;
+}
+
+function referencesPrediction(node) {
+  if (node.type === 'variable') return node.name === 'prediction';
+  if (node.type === 'unary') return referencesPrediction(node.value);
+  if (node.type === 'binary') return referencesPrediction(node.left) || referencesPrediction(node.right);
+  if (node.type === 'call') return node.args.some(referencesPrediction);
+  return false;
 }
 
 function compileNode(node, framework) {

@@ -272,6 +272,7 @@ function trainerContext(ir) {
   ]));
   const missing = ['dataset', 'model', 'loss', 'optimizer'].filter((name) => !sourceByInput[name]);
   if (missing.length) throw compilerError('error.trainerInputsRequired', { inputs: missing.join(', ') });
+  if (sourceByInput.model.op !== 'model_output') throw compilerError('error.trainerSingleInputOutput');
   return {
     trainer,
     split: sourceByInput.dataset,
@@ -289,6 +290,7 @@ function customLossError(error) {
     identifier: 'error.customLossIdentifier',
     function: 'error.customLossFunction',
     arguments: 'error.customLossArguments',
+    prediction: 'error.customLossPrediction',
   }[error.code] ?? 'error.customLossUnexpected';
   return compilerError(key, { token: error.token || '∅' });
 }
@@ -388,6 +390,11 @@ function trainingConfiguration(ir, framework) {
   const inputs = ir.nodes.filter((node) => node.op === 'tensor_input');
   const outputs = ir.nodes.filter((node) => node.op === 'model_output');
   if (inputs.length !== 1 || outputs.length !== 1) throw compilerError('error.trainerSingleInputOutput');
+  const pytorchInputDtype = {
+    float32: 'torch.float32',
+    float16: 'torch.float16',
+  }[inputs[0].parameters.dtype ?? 'float32'];
+  if (!pytorchInputDtype) throw compilerError('error.trainerUnsupportedDtype', { dtype: inputs[0].parameters.dtype ?? 'float32' });
   const epochs = trainer.parameters.epochs ?? 20;
   const batchSize = trainer.parameters.batch_size ?? 32;
   const trainRatio = split.parameters.train_ratio ?? 0.8;
@@ -398,10 +405,11 @@ function trainingConfiguration(ir, framework) {
       '',
       '# Replace this loader with the dataset saved in the VOLK-ML project JSON.',
       'X, y = load_tabular_data()',
-      'features_tensor = torch.tensor(X, dtype=torch.float32)',
+      `model = model.to(dtype=${pytorchInputDtype})`,
+      `features_tensor = torch.tensor(X, dtype=${pytorchInputDtype})`,
       classification
         ? 'target_tensor = torch.tensor(y, dtype=torch.long)'
-        : 'target_tensor = torch.tensor(y, dtype=torch.float32).reshape(-1, 1)',
+        : `target_tensor = torch.tensor(y, dtype=${pytorchInputDtype}).reshape(-1, 1)`,
       'dataset = TensorDataset(features_tensor, target_tensor)',
       `train_size = int(len(dataset) * ${trainRatio})`,
       'train_set, test_set = random_split(dataset, [train_size, len(dataset) - train_size], generator=torch.Generator().manual_seed(2026))',

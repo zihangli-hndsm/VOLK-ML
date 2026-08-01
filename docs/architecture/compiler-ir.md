@@ -81,7 +81,7 @@ When one or more connected Model Output nodes exist, the compiler:
 
 This rule intentionally ignores disconnected experimental layers on the canvas. Do not change it to compile every architecture node: orphan nodes have no valid forward input and would produce invalid source.
 
-When a connected Supervised Trainer exists, it becomes the compilation root. The compiler walks backward from that trainer so the selected IR contains exactly its data split, model architecture, loss, and optimizer dependencies. Its four typed inputs are validated before architecture/tabular backend selection, so an incomplete Trainer cannot silently fall back to the legacy tabular generator. More than one connected trainer is rejected as ambiguous. The first Trainer release supports one Tensor Input and one Model Output.
+When a connected Supervised Trainer exists, it becomes the compilation root. The compiler walks backward from that trainer so the selected IR contains exactly its data split, model architecture, loss, and optimizer dependencies. Its four typed inputs are validated before architecture/tabular backend selection, and its model input must come from the selected `model_output`; an incomplete or non-architecture Trainer cannot silently fall back to the legacy tabular generator. More than one connected trainer is rejected as ambiguous. The first Trainer release supports one Tensor Input and one Model Output, with `float32` and `float16` inputs supported for training; `int32` inputs are rejected because generic supervised tabular targets/features cannot be safely inferred from them.
 
 When a connected Tabular Data pipeline exists without a connected Model Output, compilation selects the connected tabular graph and ignores isolated architecture experiments. Unsupported or cyclic orphan nodes must not block a valid active pipeline.
 
@@ -110,7 +110,7 @@ TensorFlow generation creates:
 
 A connected Supervised Trainer additionally generates deterministic train/test binding from `load_tabular_data()`, batch and epoch configuration, and either a PyTorch optimization loop or TensorFlow `model.fit`. TensorFlow exports apply the same seeded Fisher–Yates index shuffle used by the browser split before slicing, rather than assigning leading rows to training. The data loader remains an explicit replacement point because exported code does not embed project rows.
 
-Custom Loss source is never interpolated directly. `src/core/lossExpression.js` tokenizes and parses the framework-neutral expression before mapping each allowed tensor operation to `torch` or `tf`. Its parser follows standard exponentiation precedence (`-x ** 2` means `-(x ** 2)`), and the generated loss applies a final mean reduction before backward propagation.
+Custom Loss source is never interpolated directly. `src/core/lossExpression.js` tokenizes and parses the framework-neutral expression before mapping each allowed tensor operation to `torch` or `tf`. A valid expression must reference `prediction`, follows standard exponentiation precedence (`-x ** 2` means `-(x ** 2)`), and receives a final mean reduction before backward propagation.
 
 Tensor input shape strings are converted to Python tuples. Node IDs are sanitized before being used as generated variable names.
 

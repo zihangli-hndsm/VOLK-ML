@@ -173,6 +173,8 @@ assert.equal(libraryTree.reduce((count, group) => count + group.count, 0), plugi
 assert.equal(safeProjectFilename('My Visual Project'), 'my-visual-project.volkml.json');
 assert.deepEqual(lossExpressionFunctions, ['mean', 'sum', 'abs', 'square', 'sqrt', 'log', 'exp', 'clip']);
 assert.ok(parseLossExpression('mean(square(prediction - target))'));
+assert.throws(() => parseLossExpression('mean(square(target))'), /prediction/, 'custom loss must depend on prediction');
+assert.throws(() => parseLossExpression('1'), /prediction/, 'numeric custom loss must depend on prediction');
 assert.equal(
   compileLossExpression('mean(square(prediction - target))', 'pytorch'),
   'torch.mean(torch.square((prediction - target)))',
@@ -447,6 +449,8 @@ const trainerTorch = compilePipelineToPyTorch(trainerNodes, trainerEdges);
 const trainerTensorFlow = compilePipelineToTensorFlow(trainerNodes, trainerEdges);
 assert.match(trainerTorch.code, /def custom_loss\(prediction, target\):\n    return torch\.mean\(torch\.mean\(torch\.abs/);
 assert.match(trainerTorch.code, /DataLoader\(train_set, batch_size=8, shuffle=False\)/);
+assert.match(trainerTorch.code, /model = model\.to\(dtype=torch\.float32\)/);
+assert.match(trainerTorch.code, /features_tensor = torch\.tensor\(X, dtype=torch\.float32\)/);
 assert.match(trainerTorch.code, /for epoch in range\(12\)/);
 assert.match(trainerTensorFlow.code, /def custom_loss\(target, prediction\):\n    return tf\.reduce_mean\(tf\.reduce_mean\(tf\.abs/);
 assert.match(trainerTensorFlow.code, /model\.fit\(X_train, y_train, epochs=12, batch_size=8, shuffle=False/);
@@ -484,6 +488,32 @@ assert.throws(
   () => compilePipelineToPyTorch(trainerNodes, trainerEdges.filter((edge) => edge.targetHandle !== 'model')),
   (error) => error.translationKey === 'error.trainerInputsRequired',
   'an incomplete trainer fails before legacy tabular fallback',
+);
+assert.throws(
+  () => compilePipelineToPyTorch(
+    [...trainerNodes, makeNode('legacy-model', 'linear_regression_node')],
+    [
+      ...trainerEdges.filter((edge) => edge.targetHandle !== 'model'),
+      makeEdge('trainer-split', 'split', 'legacy-model', 'split'),
+      makeEdge('legacy-model', 'model', 'trainer', 'model'),
+    ],
+  ),
+  (error) => error.translationKey === 'error.trainerSingleInputOutput',
+  'trainer rejects a type-valid non-architecture ModelSpec before tabular fallback',
+);
+const halfPrecisionTrainerNodes = trainerNodes.map((node) => node.id === 'trainer-input'
+  ? makeNode('trainer-input', 'tensor_input_node', { shape: '2', dtype: 'float16' })
+  : node);
+const halfPrecisionTrainer = compilePipelineToPyTorch(halfPrecisionTrainerNodes, trainerEdges);
+assert.match(halfPrecisionTrainer.code, /model = model\.to\(dtype=torch\.float16\)/);
+assert.match(halfPrecisionTrainer.code, /target_tensor = torch\.tensor\(y, dtype=torch\.float16\)/);
+const integerTrainerNodes = trainerNodes.map((node) => node.id === 'trainer-input'
+  ? makeNode('trainer-input', 'tensor_input_node', { shape: '2', dtype: 'int32' })
+  : node);
+assert.throws(
+  () => compilePipelineToTensorFlow(integerTrainerNodes, trainerEdges),
+  (error) => error.translationKey === 'error.trainerUnsupportedDtype',
+  'trainer rejects unsupported Tensor Input dtypes consistently across backends',
 );
 const secondTrainer = makeNode('trainer-two', 'supervised_trainer_node');
 assert.throws(
