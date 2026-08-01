@@ -10,10 +10,12 @@ import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from
 import { migrateProject, PROJECT_VERSION, projectContentSignature } from './core/project';
 import { safeProjectFilename } from './core/localProjects';
 import { createCustomComposite } from './core/customComposites';
+import { assessConnection } from './core/connections';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
 import { stageForManifest, stageStyles, visualKindForManifest } from './core/visualLanguage';
 import { resolvePlatformServices } from './platform/services';
 import ArchitectureView from './components/ArchitectureView';
+import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
 import VisualGlyph from './components/VisualGlyph';
 
@@ -30,6 +32,7 @@ const ConnectionContext = createContext({
   onDeleteNode: () => {},
   onDeleteEdge: () => {},
   onOpenTutorial: () => {},
+  canConnectToInput: () => false,
 });
 function LanguageProvider({ children }) {
   const storedLanguage = useMemo(() => {
@@ -59,6 +62,12 @@ function LanguageProvider({ children }) {
 }
 function useVividTranslation() { return useContext(LanguageContext); }
 
+const readablePortType = (type, t) => {
+  const key = `portType.${type}`;
+  const translated = t(key);
+  return translated === key ? type : translated;
+};
+
 const createNode = (manifest, index) => ({
   id: `${manifest.id}-${crypto.randomUUID()}`,
   type: 'pipelineNode',
@@ -68,12 +77,12 @@ const createNode = (manifest, index) => ({
 
 function makeDefaultGraph() {
   const specs = [
-    ['pipeline-data', 'tabular_data_node', 40, 180],
-    ['pipeline-split', 'train_test_split_node', 340, 180],
-    ['pipeline-linear', 'linear_regression_node', 650, 180],
-    ['pipeline-optimizer', 'gradient_descent_node', 960, 180],
-    ['pipeline-evaluate', 'evaluate_node', 1270, 70],
-    ['pipeline-predictor', 'predictor_node', 1270, 300],
+    ['pipeline-data', 'tabular_data_node', 40, 220],
+    ['pipeline-split', 'train_test_split_node', 480, 220],
+    ['pipeline-linear', 'linear_regression_node', 920, 220],
+    ['pipeline-optimizer', 'gradient_descent_node', 1360, 220],
+    ['pipeline-evaluate', 'evaluate_node', 1800, 40],
+    ['pipeline-predictor', 'predictor_node', 1800, 400],
   ];
   const nodes = specs.map(([id, manifestId, x, y]) => {
     const manifest = componentById.get(manifestId);
@@ -89,11 +98,6 @@ function makeDefaultGraph() {
   ] };
 }
 
-function resolvePort(manifest, direction, handleId) {
-  const ports = direction === 'output' ? manifest.outputs : manifest.inputs;
-  return ports.find((port) => port.name === handleId) ?? (ports.length === 1 ? ports[0] : null);
-}
-
 function downloadText(filename, content, type) {
   const url = URL.createObjectURL(new Blob([content], { type }));
   const anchor = document.createElement('a');
@@ -105,7 +109,7 @@ function downloadText(filename, content, type) {
 
 function PipelineNode({ id, data, selected }) {
   const { t } = useVividTranslation();
-  const { pendingConnection, onPortTap, onDeleteNode, onOpenTutorial } = useContext(ConnectionContext);
+  const { pendingConnection, onPortTap, onDeleteNode, onOpenTutorial, canConnectToInput } = useContext(ConnectionContext);
   const stage = stageForManifest(data.manifest);
   const stageStyle = stageStyles[stage];
   const statusStyle = data.status === 'success' ? 'ring-4 ring-emerald-300' : data.status === 'running' ? 'ring-4 ring-amber-300' : data.status === 'error' ? 'ring-4 ring-red-300' : selected ? 'ring-4 ring-blue-200' : '';
@@ -114,8 +118,8 @@ function PipelineNode({ id, data, selected }) {
     <div className="grid grid-cols-[minmax(0,1fr)_30%]">
     <div className="min-w-0 p-4">
     {data.manifest.inputs.length > 0 && <div className="mb-3 flex flex-wrap gap-1">{data.manifest.inputs.map((input) => {
-      const compatible = pendingConnection?.type === input.type;
-      return <button key={input.name} title={`${t('common.input')}: ${input.type}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'input', nodeId: id, port: input }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-xs font-bold transition ${pendingConnection ? compatible ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-400' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>◀ {input.name}: {input.type}</button>;
+      const compatible = canConnectToInput(id, input);
+      return <button key={input.name} title={`${t('common.input')}: ${readablePortType(input.type, t)}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'input', nodeId: id, port: input }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-xs font-bold transition ${pendingConnection ? compatible ? 'border-emerald-400 bg-emerald-50 text-emerald-700' : 'border-slate-200 bg-slate-50 text-slate-400' : 'border-blue-200 bg-blue-50 text-blue-700'}`}>◀ {input.name} · {readablePortType(input.type, t)}</button>;
     })}</div>}
     <div className="flex flex-wrap items-center justify-between gap-2"><p className={`text-xs font-semibold uppercase tracking-wide ${stageStyle.text}`}>{t(`category.${data.manifest.category}`)}</p><div className="flex items-center gap-1">{data.manifest.kind === 'composite' && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">{t('component.composite')}</span>}{data.status && data.status !== 'idle' && <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${data.status === 'success' ? 'bg-emerald-100 text-emerald-700' : data.status === 'running' ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-700'}`}>{t(`status.${data.status}`)}</span>}{!data.manifest.customComposite && <button aria-label={t('tutorial.learn')} title={t('tutorial.learn')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onOpenTutorial(data.manifest); }} className="nodrag nopan grid h-10 w-10 place-items-center rounded-full bg-blue-50 text-sm font-black text-blue-700 hover:bg-blue-100">?</button>}<button aria-label={t('component.delete')} title={t('component.delete')} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); onDeleteNode(id); }} className="nodrag nopan grid h-10 w-10 place-items-center rounded-full bg-red-50 text-sm font-bold text-red-600 hover:bg-red-100">⌫</button></div></div>
     <h3 className="mt-1 break-words text-base font-bold text-slate-900">{t(data.label)}</h3>
@@ -123,7 +127,7 @@ function PipelineNode({ id, data, selected }) {
     <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{t('framework.pytorch')} {t(`compatibility.${data.manifest.compatibility?.pytorch ?? 'unsupported'}`)} · {t('framework.tensorflow')} {t(`compatibility.${data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</p>
     <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-slate-500">{data.manifest.outputs.map((output) => {
       const active = pendingConnection?.nodeId === id && pendingConnection?.port.name === output.name;
-      return <button key={output.name} title={`${t('common.output')}: ${output.type}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'output', nodeId: id, port: output }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-left text-xs font-bold transition ${active ? 'border-amber-400 bg-amber-100 text-amber-800 ring-2 ring-amber-200' : 'border-slate-200 bg-slate-100 hover:border-blue-400'}`}>{output.name}: {output.type} ▶</button>;
+      return <button key={output.name} title={`${t('common.output')}: ${readablePortType(output.type, t)}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'output', nodeId: id, port: output }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-left text-xs font-bold transition ${active ? 'border-amber-400 bg-amber-100 text-amber-800 ring-2 ring-amber-200' : 'border-slate-200 bg-slate-100 hover:border-blue-400'}`}>{output.name} · {readablePortType(output.type, t)} ▶</button>;
     })}</div>
     </div>
     <div className={`grid min-h-44 place-items-center border-l border-slate-100 p-2 ${stageStyle.soft}`} style={data.manifest.color ? { backgroundColor: `${data.manifest.color}18` } : undefined}><VisualGlyph kind={visualKindForManifest(data.manifest)} className="h-full w-full" /></div>
@@ -463,7 +467,6 @@ function Workspace() {
     const haystack = [plugin.category, ...Object.values(plugin.name), ...Object.values(plugin.description)].join(' ').toLowerCase();
     return haystack.includes(query.trim().toLowerCase());
   }), [availablePlugins, query]);
-  const grouped = useMemo(() => filteredPlugins.reduce((acc, plugin) => ({ ...acc, [plugin.category]: [...(acc[plugin.category] ?? []), plugin] }), {}), [filteredPlugins]);
   const projectSignature = useMemo(() => projectContentSignature({
     name: projectName,
     graph: {
@@ -567,19 +570,25 @@ function Workspace() {
     window.addEventListener('beforeunload', beforeUnload);
     return () => window.removeEventListener('beforeunload', beforeUnload);
   }, [projectSignature]);
-  const isValidConnection = useCallback((connection) => {
-    const source = nodes.find((node) => node.id === connection.source);
-    const target = nodes.find((node) => node.id === connection.target);
-    const output = source && resolvePort(source.data.manifest, 'output', connection.sourceHandle);
-    const input = target && resolvePort(target.data.manifest, 'input', connection.targetHandle);
-    return Boolean(output && input && output.type === input.type && connection.source !== connection.target);
-  }, [nodes]);
+  const connectionNotice = useCallback((assessment) => {
+    if (assessment.reason === 'type') return t('connection.incompatibleTypes', {
+      source: readablePortType(assessment.sourceType, t),
+      target: readablePortType(assessment.targetType, t),
+    });
+    if (assessment.reason === 'occupied') return t('connection.inputOccupied');
+    if (assessment.reason === 'cycle') return t('connection.cycle');
+    if (assessment.reason === 'self') return t('connection.self');
+    return t('connection.incompatible');
+  }, [t]);
+  const assess = useCallback((connection) => assessConnection(connection, nodes, edges), [nodes, edges]);
+  const isValidConnection = useCallback((connection) => assess(connection).valid, [assess]);
   const onConnect = useCallback((connection) => {
-    if (!isValidConnection(connection)) { setNotice(t('connection.incompatible')); return; }
+    const assessment = assess(connection);
+    if (!assessment.valid) { setNotice(connectionNotice(assessment)); return; }
     setEdges((current) => addEdge({ ...connection, type: 'deletable' }, current));
     setPendingConnection(null);
     setModel(null);
-  }, [isValidConnection, setEdges, t]);
+  }, [assess, connectionNotice, setEdges]);
   const onPortTap = useCallback(({ direction, nodeId, port }) => {
     if (direction === 'output') {
       setPendingConnection((current) => current?.nodeId === nodeId && current?.port.name === port.name ? null : { nodeId, port, type: port.type });
@@ -587,12 +596,22 @@ function Workspace() {
     }
     if (!pendingConnection) { setNotice(t('connection.tapOutputFirst')); return; }
     const connection = { source: pendingConnection.nodeId, sourceHandle: pendingConnection.port.name, target: nodeId, targetHandle: port.name };
-    if (!isValidConnection(connection)) { setNotice(t('connection.incompatibleTypes', { source: pendingConnection.type, target: port.type })); return; }
-    setEdges((current) => addEdge({ ...connection, id: `tap-${crypto.randomUUID()}`, type: 'deletable' }, current.filter((edge) => !(edge.target === nodeId && edge.targetHandle === port.name))));
+    const assessment = assess(connection);
+    if (!assessment.valid) { setNotice(connectionNotice(assessment)); return; }
+    setEdges((current) => addEdge({ ...connection, id: `tap-${crypto.randomUUID()}`, type: 'deletable' }, current));
     setPendingConnection(null);
     setModel(null);
     setNotice(t('connection.connected'));
-  }, [pendingConnection, isValidConnection, setEdges, t]);
+  }, [pendingConnection, assess, connectionNotice, setEdges, t]);
+  const canConnectToInput = useCallback((nodeId, port) => {
+    if (!pendingConnection) return false;
+    return assess({
+      source: pendingConnection.nodeId,
+      sourceHandle: pendingConnection.port.name,
+      target: nodeId,
+      targetHandle: port.name,
+    }).valid;
+  }, [pendingConnection, assess]);
   const handleEdgesChange = useCallback((changes) => {
     if (changes.some((change) => change.type === 'remove' || change.type === 'add')) setModel(null);
     onEdgesChange(changes);
@@ -622,6 +641,11 @@ function Workspace() {
   }, [setEdges, t]);
   const setNodeStatus = useCallback((ids, status) => setNodes((current) => current.map((node) => ids.includes(node.id) ? { ...node, data: { ...node.data, status } } : node)), [setNodes]);
   const addPluginNode = (manifest) => { const node = createNode(manifest, nodes.length); setNodes((current) => [...current, node]); setSelectedId(node.id); setModel(null); };
+  const deleteCustomComponent = (manifest) => {
+    if (!window.confirm(t('library.deleteCustomConfirm', { name: t(manifest.name) }))) return;
+    setCustomComponents((current) => current.filter((item) => item.id !== manifest.id));
+    setNotice(t('library.customDeleted', { name: t(manifest.name) }));
+  };
   const updateParameter = (key, value) => { setNodes((current) => current.map((node) => node.id === selectedNode?.id ? { ...node, data: { ...node.data, parameters: { ...node.data.parameters, [key]: value }, status: 'idle' } } : node)); setModel(null); };
   const exportCode = (framework) => {
     try {
@@ -816,13 +840,13 @@ function Workspace() {
         <div className="mt-3 flex gap-2"><div className="relative min-w-0 flex-1"><span className="absolute left-3 top-2.5">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('library.search')} className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500" /></div><button className="rounded-xl border px-3 text-sm font-bold" onClick={() => setLibraryMode((mode) => mode === 'compact' ? 'detailed' : 'compact')}>{libraryMode === 'compact' ? '☷' : '≡'}</button></div>
         <label className="mt-3 flex items-center gap-3 text-xs text-slate-500"><span>{t('common.width')}</span><input type="range" min="220" max="520" value={leftWidth} onChange={(event) => setLeftWidth(Number(event.target.value))} className="min-w-0 flex-1 accent-blue-600" /><span>{leftWidth}px</span></label>
         <p className="mt-2 text-xs text-slate-400">{t('library.summary', { count: filteredPlugins.length, mode: `library.${libraryMode}` })}</p>
-        <div className="mt-4 space-y-5">{Object.entries(grouped).map(([category, plugins]) => <section key={category}><h3 className="mb-2 text-xs font-bold uppercase tracking-wider text-slate-500">{t(`category.${category}`)}</h3><div className="space-y-2">{plugins.map((plugin) => <div key={plugin.id} className={`flex items-start gap-2 rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-blue-400 hover:shadow-md ${libraryMode === 'compact' ? 'p-2' : 'p-3'}`} style={plugin.color ? { borderLeftWidth: 5, borderLeftColor: plugin.color } : undefined}><button onClick={() => addPluginNode(plugin)} className="min-w-0 flex-1 text-left"><span className="block break-words font-semibold text-slate-900">{t(plugin.name)}</span>{plugin.customComposite && <span className="mt-1 block text-[10px] font-bold uppercase text-violet-600">{t('library.custom')}</span>}{libraryMode === 'detailed' && <span className="mt-1 block break-words text-xs text-slate-500">{t(plugin.description)}</span>}</button>{!plugin.customComposite && <button aria-label={t('tutorial.learn')} title={t('tutorial.learn')} onClick={() => setTutorialManifest(plugin)} className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-blue-50 font-black text-blue-700 hover:bg-blue-100">?</button>}</div>)}</div></section>)}</div>
+        <ComponentLibrary plugins={filteredPlugins} query={query} mode={libraryMode} onAdd={addPluginNode} onTutorial={setTutorialManifest} onDeleteCustom={deleteCustomComponent} t={t} />
         <div className="absolute bottom-8 right-0 top-8 hidden w-2 cursor-col-resize touch-none lg:block" onPointerDown={(event) => startResize('left', event)} />
       </motion.aside>
 
       <section className="relative col-start-2 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-xl">
-        {pendingConnection && <div className="absolute left-1/2 top-3 z-20 flex max-w-[calc(100%_-_24px)] -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-xl"><span className="truncate">{pendingConnection.port.name}: {pendingConnection.type} → {t('connection.tapMatching')}</span><button aria-label={t('common.close')} className="nodrag rounded-full bg-white/20 px-2 py-1" onClick={() => setPendingConnection(null)}>✕</button></div>}
-        {viewMode === 'canvas' ? <ConnectionContext.Provider value={{ pendingConnection, onPortTap, onDeleteNode: deleteNode, onDeleteEdge: deleteEdge, onOpenTutorial: setTutorialManifest }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onNodeClick={(_, node) => setSelectedId(node.id)} nodeTypes={{ pipelineNode: PipelineNode }} edgeTypes={edgeTypes} fitView><Background /><MiniMap pannable zoomable nodeColor={(node) => stageStyles[stageForManifest(node.data.manifest)].hex} /><Controls /></ReactFlow></ConnectionContext.Provider> : <ArchitectureView nodes={nodes} edges={edges} onSelect={setSelectedId} t={t} />}
+        {pendingConnection && <div className="absolute left-1/2 top-3 z-20 flex max-w-[calc(100%_-_24px)] -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-xl"><span className="truncate">{pendingConnection.port.name} · {readablePortType(pendingConnection.type, t)} → {t('connection.tapMatching')}</span><button aria-label={t('common.close')} className="nodrag rounded-full bg-white/20 px-2 py-1" onClick={() => setPendingConnection(null)}>✕</button></div>}
+        {viewMode === 'canvas' ? <ConnectionContext.Provider value={{ pendingConnection, onPortTap, onDeleteNode: deleteNode, onDeleteEdge: deleteEdge, onOpenTutorial: setTutorialManifest, canConnectToInput }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onNodeClick={(_, node) => setSelectedId(node.id)} nodeTypes={{ pipelineNode: PipelineNode }} edgeTypes={edgeTypes} fitView><Background /><MiniMap pannable zoomable nodeColor={(node) => stageStyles[stageForManifest(node.data.manifest)].hex} /><Controls /></ReactFlow></ConnectionContext.Provider> : <ArchitectureView nodes={nodes} edges={edges} onSelect={setSelectedId} t={t} />}
       </section>
 
       <motion.aside initial={false} animate={{ x: rightOpen ? 0 : '110%' }} style={{ width: `min(${rightWidth}px, calc(100vw - 24px))` }} className={`${asideBase} right-3 lg:transform-none ${rightOpen ? 'lg:block' : 'lg:hidden'}`}>

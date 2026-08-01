@@ -423,6 +423,10 @@ export const tutorialByOp = {
   }),
 };
 
+Object.entries(tutorialByOp).forEach(([op, tutorial]) => {
+  tutorial.visual = op;
+});
+
 export function tutorialFor(manifest) {
   return tutorialByOp[manifest.op] ?? null;
 }

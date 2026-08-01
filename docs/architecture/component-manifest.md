@@ -86,6 +86,11 @@ Use an existing type when the semantic payload is the same. Introduce a new type
 
 Each input name and each output name must be unique within its manifest. Inputs are required unless the runtime/compiler explicitly gains an optional-port contract.
 
+The canvas enforces the graph-level connection contract before saving an edge: exact port-type
+match, one incoming edge per input, no self-edge, and no directed cycle. Outputs may fan out.
+These checks live in `src/core/connections.js` so pointer dragging and touch-based port selection
+share the same behavior.
+
 ## Properties
 
 Supported property controls are:
