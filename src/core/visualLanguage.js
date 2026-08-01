@@ -56,6 +56,34 @@ export function mseLandscapeValue(normalizedParameter) {
   return normalizedParameter ** 2;
 }
 
+const descentPaths = {
+  gradient_descent: {
+    path: 'M18 14 L31 34 L42 27 L50 50 L57 47 L60 66',
+    motionPath: 'M0 0 L13 20 L24 13 L32 36 L39 33 L42 52',
+  },
+  sgd_optimizer: {
+    path: 'M18 14 L30 36 L41 29 L49 53 L55 49 L60 66',
+    motionPath: 'M0 0 L12 22 L23 15 L31 39 L37 35 L42 52',
+  },
+  adam_optimizer: {
+    path: 'M18 14 C31 19 34 43 49 52 C55 58 57 64 60 66',
+    motionPath: 'M0 0 C13 5 16 29 31 38 C37 44 39 50 42 52',
+  },
+  adamw_optimizer: {
+    path: 'M18 14 C32 24 37 46 51 55 C56 60 58 64 60 66',
+    motionPath: 'M0 0 C14 10 19 32 33 41 C38 46 40 50 42 52',
+  },
+};
+
+export function descentVisualGeometry(variant) {
+  const trajectory = descentPaths[variant] ?? descentPaths.gradient_descent;
+  return {
+    ...trajectory,
+    minimum: { x: 60, y: 66 },
+    endpoint: { x: 60, y: 66 },
+  };
+}
+
 const libraryOrder = ['data', 'model', 'training', 'output', 'custom'];
 
 export function componentLibraryTree(plugins) {
