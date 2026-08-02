@@ -5,7 +5,7 @@ The Canvas Agent API lets trusted code inspect and operate a VOLK-ML workspace a
 ```js
 const bridge = globalThis.__VOLK_ML_AGENT__;
 const instances = bridge.listInstances();
-const canvas = await bridge.open(instances[0].instanceId);
+const canvas = await bridge.open(instances[0].id);
 ```
 
 `open()` without an ID opens the only mounted instance. It rejects an ambiguous or unknown instance instead of choosing silently.
