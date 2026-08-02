@@ -299,6 +299,24 @@ export function createCanvasAgentSnapshot({
   };
 }
 
+export function canvasExecutionInputSignature(nodes, edges, dataset) {
+  return JSON.stringify({
+    nodes: nodes.map((node) => ({
+      id: node.id,
+      componentId: node.data.manifest.id,
+      parameters: node.data.parameters,
+    })),
+    edges: edges.map((edge) => ({
+      id: edge.id,
+      source: edge.source,
+      sourceHandle: edge.sourceHandle,
+      target: edge.target,
+      targetHandle: edge.targetHandle,
+    })),
+    dataset,
+  });
+}
+
 const requiredAdapterMethods = [
   'getState', 'listComponents', 'addNode', 'updateNode', 'removeNode', 'connect',
   'disconnect', 'selectNode', 'renameProject', 'setDataset', 'loadProject',
