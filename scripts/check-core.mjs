@@ -154,6 +154,16 @@ assert.throws(
   () => validateAgentDataset({ rows: [{ feature: 1 }], featureColumns: ['feature'], targetColumn: 'feature' }),
   (error) => error.code === 'INVALID_DATASET',
 );
+assert.throws(
+  () => validateAgentDataset({ rows: [{ feature: 1n, target: 2 }], featureColumns: ['feature'], targetColumn: 'target' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
+const circularAgentRow = { feature: 1, target: 2 };
+circularAgentRow.nested = circularAgentRow;
+assert.throws(
+  () => validateAgentDataset({ rows: [circularAgentRow], featureColumns: ['feature'], targetColumn: 'target' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
 const agentProject = {
   format: 'VOLK-ML',
   version: PROJECT_VERSION,
