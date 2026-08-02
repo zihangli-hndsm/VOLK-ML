@@ -26,6 +26,7 @@ import {
   installCanvasAgentBridge,
   removeAgentNode,
   updateAgentNode,
+  validateAgentDataset,
 } from '../src/core/canvasAgent.js';
 import { analyzeProject } from '../src/core/explanation.js';
 import { safeProjectFilename } from '../src/core/localProjects.js';
@@ -126,6 +127,22 @@ const agentEdges = connectAgentNodes([agentInput, agentDense], [], {
 assert.equal(agentEdges[0].id, 'agent-link');
 assert.equal(disconnectAgentEdge(agentEdges, 'agent-link').length, 0);
 assert.deepEqual(removeAgentNode([agentInput, agentDense], agentEdges, agentInput.id).edges, []);
+const validatedAgentDataset = validateAgentDataset({
+  name: 'agent-data',
+  rows: [{ feature: 1, target: 2 }],
+  featureColumns: [' feature '],
+  targetColumn: ' target ',
+});
+assert.deepEqual(validatedAgentDataset.featureColumns, ['feature']);
+assert.equal(validatedAgentDataset.targetColumn, 'target');
+assert.throws(
+  () => validateAgentDataset({ rows: [], featureColumns: ['feature'], targetColumn: 'target' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
+assert.throws(
+  () => validateAgentDataset({ rows: [{ feature: 1 }], featureColumns: ['feature'], targetColumn: 'feature' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
 const agentProject = {
   format: 'VOLK-ML',
   version: PROJECT_VERSION,
