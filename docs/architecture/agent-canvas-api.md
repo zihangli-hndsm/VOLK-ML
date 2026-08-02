@@ -107,7 +107,7 @@ await canvas.downloadProject();
 
 `loadProject()` uses the canonical importer, including project-version migrations and manifest resolution. `getProject()` and `downloadProject()` use the canonical serializer; there is no Agent-only file format. `downloadProject()` triggers the browser's normal download flow with the sanitized project name.
 
-Dataset replacement accepts the same tabular dataset shape used by project files: non-empty, JSON-safe row objects, feature-column names, and a target-column name. The adapter derives normalized column metadata from the supplied rows before exposing the dataset to the editor. Callers may set `task` to `regression` or `classification`; when omitted, a numeric target defaults to regression and a text target to classification. BigInt, non-finite numbers, circular values, sparse arrays, and non-plain objects are rejected before workspace state changes. It does not upload data.
+Dataset replacement accepts the same tabular dataset shape used by project files: non-empty, JSON-safe row objects, feature-column names, and a target-column name. The adapter derives normalized column metadata from the supplied rows before exposing the dataset to the editor. Callers may set `task` to exactly `regression` or `classification`; only an omitted task is inferred, with a numeric target defaulting to regression and a text target to classification. An optional name must be text and defaults to `Agent Dataset`. BigInt, non-finite numbers, circular values, sparse arrays, and non-plain objects are rejected before workspace state changes. It does not upload data.
 
 ### Execution and source export
 
