@@ -118,6 +118,10 @@ assert.throws(
 const movedAgentDense = updateAgentNode([agentDense], agentDense.id, { position: { x: 420, y: 80 }, parameters: { units: 16 } })[0];
 assert.deepEqual(movedAgentDense.position, { x: 420, y: 80 });
 assert.equal(movedAgentDense.data.parameters.units, 16);
+const runningAgentDense = { ...agentDense, data: { ...agentDense.data, status: 'success' } };
+const layoutOnlyAgentDense = updateAgentNode([runningAgentDense], runningAgentDense.id, { position: { x: 500, y: 120 } })[0];
+assert.equal(layoutOnlyAgentDense.data.status, 'success', 'Layout-only Agent edits must preserve execution status');
+assert.equal(updateAgentNode([runningAgentDense], runningAgentDense.id, { parameters: { units: 16 } })[0].data.status, 'idle');
 const agentEdges = connectAgentNodes([agentInput, agentDense], [], {
   id: 'agent-link',
   source: agentInput.id,
