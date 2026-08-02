@@ -45,7 +45,7 @@ import {
   regressionPointsFromDataset,
   uniformlySamplePoints,
 } from '../src/core/linearRegressionPlayground.js';
-import { migrateProject, PROJECT_VERSION, projectContentSignature } from '../src/core/project.js';
+import { migrateProject, PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
 import {
@@ -985,6 +985,22 @@ assert.equal(migratedKnnProject.name, 'Sample Project');
 assert.deepEqual(migratedKnnProject.customComponents, []);
 assert.equal(migratedKnnProject.graph.edges.length, 1);
 assert.equal(migratedKnnProject.graph.edges[0].sourceHandle, 'trained_model');
+
+assert.throws(
+  () => validateProjectForWorkspace({
+    format: 'VOLK-ML',
+    version: PROJECT_VERSION,
+    name: {},
+    graph: { nodes: [], edges: [] },
+    customComponents: [],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must reject unsafe names before applying state',
+);
+assert.equal(validateProjectForWorkspace({
+  ...agentProject,
+  customComponents: [],
+}).name, 'Agent test');
 
 const legacySamplePositions = {
   'pipeline-data': [40, 180],
