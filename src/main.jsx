@@ -16,6 +16,7 @@ import { stageForManifest, stageStyles, visualKindForManifest } from './core/vis
 import { resolvePlatformServices } from './platform/services';
 import {
   CanvasAgentError,
+  canvasExecutionInputSignature,
   connectAgentNodes,
   createAgentNode,
   createCanvasAgentApi,
@@ -536,17 +537,10 @@ function Workspace() {
     data: dataset,
     trainedModel: model,
   }), [projectName, nodes, edges, dataset, customComponents, model]);
-  const executionInputSignature = useMemo(() => JSON.stringify({
-    nodes: nodes.map((node) => ({ id: node.id, componentId: node.data.manifest.id, parameters: node.data.parameters })),
-    edges: edges.map((edge) => ({
-      id: edge.id,
-      source: edge.source,
-      sourceHandle: edge.sourceHandle,
-      target: edge.target,
-      targetHandle: edge.targetHandle,
-    })),
-    dataset,
-  }), [nodes, edges, dataset]);
+  const executionInputSignature = useMemo(
+    () => canvasExecutionInputSignature(nodes, edges, dataset),
+    [nodes, edges, dataset],
+  );
   const previousExecutionSignature = useRef(executionInputSignature);
   const makeProject = useCallback(() => projectFromWorkspace(workspaceStateRef.current), []);
   const applyProject = useCallback((rawProject) => {
@@ -731,6 +725,7 @@ function Workspace() {
       throw new CanvasAgentError('INSTANCE_BUSY', 'Canvas execution is already running.');
     }
     const startedAt = new Date().toISOString();
+    const startedWithSignature = canvasExecutionInputSignature(state.nodes, state.edges, state.dataset);
     let currentNode = null;
     setNodeStatus(state.nodes.map((node) => node.id), 'idle');
     updateRuntime({
@@ -764,6 +759,12 @@ function Workspace() {
         onLoss: (losses) => updateRuntime((current) => ({ ...current, losses })),
         onYield: () => new Promise((resolve) => requestAnimationFrame(resolve)),
       });
+      const currentState = workspaceStateRef.current;
+      if (canvasExecutionInputSignature(currentState.nodes, currentState.edges, currentState.dataset) !== startedWithSignature) {
+        const changedError = new CanvasAgentError('WORKSPACE_CHANGED', 'Workspace changed while the pipeline was running.');
+        changedError.translationKey = 'error.workspaceChangedDuringRun';
+        throw changedError;
+      }
       const { test, ...persistableModel } = finalModel;
       workspaceStateRef.current = { ...workspaceStateRef.current, model: persistableModel };
       setModel(persistableModel);
@@ -782,7 +783,7 @@ function Workspace() {
       }));
       return persistableModel;
     } catch (error) {
-      if (currentNode) setNodeStatus([currentNode.id], 'error');
+      if (error?.code !== 'WORKSPACE_CHANGED' && currentNode) setNodeStatus([currentNode.id], 'error');
       updateRuntime((current) => ({
         ...current,
         status: 'failed',
