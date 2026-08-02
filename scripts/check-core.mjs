@@ -27,6 +27,7 @@ import {
   disconnectAgentEdge,
   installCanvasAgentBridge,
   removeAgentNode,
+  selectAgentNode,
   updateAgentNode,
   validateAgentDataset,
 } from '../src/core/canvasAgent.js';
@@ -144,6 +145,12 @@ assert.notEqual(
 assert.equal(agentEdges[0].id, 'agent-link');
 assert.equal(disconnectAgentEdge(agentEdges, 'agent-link').length, 0);
 assert.deepEqual(removeAgentNode([agentInput, agentDense], agentEdges, agentInput.id).edges, []);
+assert.equal(selectAgentNode([agentInput, agentDense], agentDense.id)[1].selected, true);
+assert.ok(selectAgentNode([agentInput, agentDense], null).every((node) => !node.selected));
+assert.throws(
+  () => selectAgentNode([agentInput], 'missing'),
+  (error) => error.code === 'NODE_NOT_FOUND',
+);
 const validatedAgentDataset = validateAgentDataset({
   name: 'agent-data',
   rows: [{ feature: 1, target: 2 }],
@@ -212,7 +219,10 @@ const fakeAgentApi = createCanvasAgentApi({
   instanceId: 'test-instance',
   getState: () => agentSnapshot,
   listComponents: () => [],
-  addNode: async () => ({ nodeId: 'new-node' }),
+  addNode: async (request) => {
+    if (request?.invalidDetails) throw new CanvasAgentError('INVALID_PARAMETER', 'Invalid parameter fixture', { value: 1n });
+    return { nodeId: 'new-node' };
+  },
   updateNode: async (nodeId) => ({ nodeId }),
   removeNode: async (nodeId) => ({ nodeId }),
   connect: async () => ({ edgeId: 'new-edge' }),
@@ -239,6 +249,12 @@ await assert.rejects(
   (error) => error instanceof CanvasAgentError
     && error.code === 'OPERATION_FAILED'
     && error.details.operation === 'loadProject',
+);
+await assert.rejects(
+  fakeAgentApi.addNode({ invalidDetails: true }),
+  (error) => error.code === 'INVALID_PARAMETER'
+    && error.details.value === '1'
+    && JSON.stringify(error.details) === '{"value":"1"}',
 );
 const secondAgentApi = createCanvasAgentApi({ ...{
   instanceId: 'second-instance',
