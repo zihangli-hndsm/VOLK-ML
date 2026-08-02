@@ -1054,6 +1054,17 @@ assert.throws(
   (error) => error.translationKey === 'error.invalidProject',
   'workspace project validation must enforce one incoming edge per input',
 );
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    graph: {
+      ...agentProject.graph,
+      edges: agentProject.graph.edges.map((edge) => ({ ...edge, sourceHandle: 'bogus' })),
+    },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must require exact persisted handles',
+);
 assert.equal(validateProjectForWorkspace({
   ...agentProject,
   customComponents: [customRegression.manifest],
@@ -1065,6 +1076,17 @@ assert.throws(
   }),
   (error) => error.translationKey === 'error.invalidProject',
   'workspace project validation must inspect custom composite structure',
+);
+const duplicatedBoundaryManifest = structuredClone(customRegression.manifest);
+const originalBoundaryInput = duplicatedBoundaryManifest.inputs[0];
+duplicatedBoundaryManifest.inputs.push({ name: 'duplicate_input', type: originalBoundaryInput.type });
+duplicatedBoundaryManifest.composition.inputs.duplicate_input = structuredClone(
+  duplicatedBoundaryManifest.composition.inputs[originalBoundaryInput.name],
+);
+assert.throws(
+  () => validateProjectForWorkspace({ ...agentProject, customComponents: [duplicatedBoundaryManifest] }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must reject duplicate composite boundary targets',
 );
 assert.throws(
   () => validateProjectForWorkspace({ ...agentProject, trainedModel: { hasPredictor: true } }),
@@ -1082,6 +1104,19 @@ assert.equal(validateProjectForWorkspace({
   data: regressionDataset,
   trainedModel: persistedRegressionModel,
 }).trainedModel.type, 'linear_regression');
+assert.throws(
+  () => validateProjectForWorkspace({
+    format: 'VOLK-ML',
+    version: PROJECT_VERSION,
+    name: 'Stale regression model',
+    graph: { nodes: regressionGraphNodes, edges: regressionGraphEdges },
+    customComponents: [],
+    data: regressionDataset,
+    trainedModel: { ...persistedRegressionModel, sourceNodeId: 'missing-training-node' },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must bind trained models to graph nodes',
+);
 
 const legacySamplePositions = {
   'pipeline-data': [40, 180],
