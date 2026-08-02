@@ -15,6 +15,18 @@ import {
 import { executeBrowserGraph, predictWithModel } from '../src/core/browserRuntime.js';
 import { createCustomComposite, flattenCustomComposites } from '../src/core/customComposites.js';
 import { assessConnection, knownPortTypes } from '../src/core/connections.js';
+import {
+  CANVAS_AGENT_API_VERSION,
+  CANVAS_AGENT_GLOBAL,
+  connectAgentNodes,
+  createAgentNode,
+  createCanvasAgentApi,
+  createCanvasAgentSnapshot,
+  disconnectAgentEdge,
+  installCanvasAgentBridge,
+  removeAgentNode,
+  updateAgentNode,
+} from '../src/core/canvasAgent.js';
 import { analyzeProject } from '../src/core/explanation.js';
 import { safeProjectFilename } from '../src/core/localProjects.js';
 import {
@@ -81,6 +93,97 @@ const assertPythonSyntax = (code, label) => {
   );
   assert.equal(result.status, 0, `${label} generated invalid Python:\n${result.stderr}`);
 };
+
+const agentInput = createAgentNode({
+  nodes: [],
+  manifest: componentById.get('tensor_input_node'),
+  request: { id: 'agent-input', position: { x: 10, y: 20 }, parameters: { shape: '8' } },
+});
+const agentDense = createAgentNode({
+  nodes: [agentInput],
+  manifest: componentById.get('dense_node'),
+  request: { id: 'agent-dense', position: { x: 300, y: 20 }, parameters: { input_features: 8, units: 4 } },
+});
+assert.equal(agentDense.data.parameters.units, 4);
+assert.throws(
+  () => createAgentNode({ nodes: [agentInput], manifest: componentById.get('dense_node'), request: { id: 'agent-input' } }),
+  (error) => error.code === 'DUPLICATE_NODE_ID',
+);
+assert.throws(
+  () => updateAgentNode([agentDense], agentDense.id, { parameters: { units: -1 } }),
+  (error) => error.code === 'INVALID_PARAMETER',
+);
+const movedAgentDense = updateAgentNode([agentDense], agentDense.id, { position: { x: 420, y: 80 }, parameters: { units: 16 } })[0];
+assert.deepEqual(movedAgentDense.position, { x: 420, y: 80 });
+assert.equal(movedAgentDense.data.parameters.units, 16);
+const agentEdges = connectAgentNodes([agentInput, agentDense], [], {
+  id: 'agent-link',
+  source: agentInput.id,
+  sourceHandle: 'tensor',
+  target: agentDense.id,
+  targetHandle: 'input',
+});
+assert.equal(agentEdges[0].id, 'agent-link');
+assert.equal(disconnectAgentEdge(agentEdges, 'agent-link').length, 0);
+assert.deepEqual(removeAgentNode([agentInput, agentDense], agentEdges, agentInput.id).edges, []);
+const agentProject = {
+  format: 'VOLK-ML',
+  version: PROJECT_VERSION,
+  name: 'Agent test',
+  savedAt: '2026-08-02T00:00:00.000Z',
+  graph: { nodes: [agentInput, agentDense], edges: agentEdges },
+  customComponents: [],
+  data: null,
+  trainedModel: null,
+};
+const agentSnapshot = createCanvasAgentSnapshot({
+  instanceId: 'test-instance',
+  project: agentProject,
+  nodes: agentProject.graph.nodes,
+  edges: agentProject.graph.edges,
+  selectedNodeId: agentDense.id,
+  viewMode: 'canvas',
+  runtime: { status: 'idle', losses: [], activeNodeIds: [] },
+  executionPlan: { recommendedTier: 'L1', canRunHere: false },
+  dirty: true,
+});
+assert.equal(agentSnapshot.apiVersion, CANVAS_AGENT_API_VERSION);
+assert.equal(agentSnapshot.canvas.nodes[1].componentId, 'dense_node');
+assert.equal(agentSnapshot.dataset, null);
+assert.equal(agentSnapshot.execution.runtime.status, 'idle');
+const agentListeners = new Set();
+const fakeAgentApi = createCanvasAgentApi({
+  instanceId: 'test-instance',
+  getState: () => agentSnapshot,
+  listComponents: () => [],
+  addNode: async () => ({ nodeId: 'new-node' }),
+  updateNode: async (nodeId) => ({ nodeId }),
+  removeNode: async (nodeId) => ({ nodeId }),
+  connect: async () => ({ edgeId: 'new-edge' }),
+  disconnect: async (edgeId) => ({ edgeId }),
+  selectNode: async (nodeId) => ({ nodeId }),
+  renameProject: async (name) => ({ name }),
+  setDataset: async (dataset) => ({ hasDataset: Boolean(dataset) }),
+  loadProject: async (project) => ({ name: project.name }),
+  getProject: () => agentProject,
+  run: async () => ({ type: 'linear_regression' }),
+  exportCode: async (framework) => ({ framework, code: '' }),
+  downloadProject: async () => ({ filename: 'agent-test.volkml.json' }),
+  subscribe(listener) { agentListeners.add(listener); return () => agentListeners.delete(listener); },
+});
+const agentTarget = {};
+const uninstallAgentBridge = installCanvasAgentBridge(fakeAgentApi, agentTarget);
+assert.deepEqual(agentTarget[CANVAS_AGENT_GLOBAL].listInstances(), [{ id: 'test-instance' }]);
+assert.equal((await agentTarget[CANVAS_AGENT_GLOBAL].open()).instanceId, 'test-instance');
+const copiedAgentState = fakeAgentApi.getState();
+copiedAgentState.canvas.nodes[0].position.x = 999;
+assert.equal(agentSnapshot.canvas.nodes[0].position.x, 10, 'Agent snapshots must be detached from workspace state');
+await assert.rejects(
+  agentTarget[CANVAS_AGENT_GLOBAL].open('missing'),
+  (error) => error.code === 'INSTANCE_NOT_FOUND',
+);
+uninstallAgentBridge();
+assert.equal(agentTarget[CANVAS_AGENT_GLOBAL], undefined);
 
 assert.equal(new Set(pluginRegistry.map((manifest) => manifest.id)).size, pluginRegistry.length, 'Component IDs must be unique');
 for (const manifest of pluginRegistry) {
