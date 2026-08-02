@@ -184,6 +184,15 @@ const sameKeys = (object, expected) => {
   return keys.length === expected.size && keys.every((key) => expected.has(key));
 };
 
+const exactHandlesExist = (edge, nodes) => {
+  const source = nodes.find((node) => node.id === edge.source);
+  const target = nodes.find((node) => node.id === edge.target);
+  return Boolean(
+    source?.data.manifest.outputs.some((port) => port.name === edge.sourceHandle)
+    && target?.data.manifest.inputs.some((port) => port.name === edge.targetHandle),
+  );
+};
+
 function customManifestIsValid(manifest, availableManifests, ancestors = new Set()) {
   const propertyKeys = new Set();
   if (
@@ -237,6 +246,7 @@ function customManifestIsValid(manifest, availableManifests, ancestors = new Set
       !edge || typeof edge !== 'object'
       || typeof edge.source !== 'string' || typeof edge.target !== 'string'
       || typeof edge.sourceHandle !== 'string' || typeof edge.targetHandle !== 'string'
+      || !exactHandlesExist(edge, childNodes)
       || !assessConnection(edge, childNodes, validatedEdges).valid
     ) return false;
     validatedEdges.push(edge);
@@ -247,16 +257,26 @@ function customManifestIsValid(manifest, availableManifests, ancestors = new Set
   const childByKey = new Map(childNodes.map((node) => [node.id, node.data.manifest]));
   const parentInputByName = new Map(manifest.inputs.map((port) => [port.name, port]));
   const parentOutputByName = new Map(manifest.outputs.map((port) => [port.name, port]));
+  const occupiedInputs = new Set(validatedEdges.map((edge) => `${edge.target}:${edge.targetHandle}`));
+  const consumedOutputs = new Set(validatedEdges.map((edge) => `${edge.source}:${edge.sourceHandle}`));
+  const mappedInputs = new Set();
+  const mappedOutputs = new Set();
   const inputsValid = Object.entries(composition.inputs).every(([parentName, targets]) => (
     Array.isArray(targets) && targets.length > 0 && targets.every((target) => {
       const child = childByKey.get(target?.node);
       const childPort = child?.inputs.find((port) => port.name === target?.port);
+      const endpoint = `${target?.node}:${target?.port}`;
+      if (occupiedInputs.has(endpoint) || mappedInputs.has(endpoint)) return false;
+      mappedInputs.add(endpoint);
       return childPort && childPort.type === parentInputByName.get(parentName)?.type;
     })
   ));
   const outputsValid = Object.entries(composition.outputs).every(([parentName, source]) => {
     const child = childByKey.get(source?.node);
     const childPort = child?.outputs.find((port) => port.name === source?.port);
+    const endpoint = `${source?.node}:${source?.port}`;
+    if (consumedOutputs.has(endpoint) || mappedOutputs.has(endpoint)) return false;
+    mappedOutputs.add(endpoint);
     return childPort && childPort.type === parentOutputByName.get(parentName)?.type;
   });
   return inputsValid && outputsValid;
@@ -274,7 +294,7 @@ const metricsAreValid = (metrics) => (
     && Object.values(metrics).every(Number.isFinite))
 );
 
-function trainedModelIsValid(model) {
+function trainedModelIsValid(model, nodeManifests, edges, dataset) {
   if (model === null || model === undefined) return true;
   if (
     !model || typeof model !== 'object' || Array.isArray(model)
@@ -291,9 +311,24 @@ function trainedModelIsValid(model) {
     || !Number.isInteger(model.trainRows) || model.trainRows < 0
     || !Number.isInteger(model.testRows) || model.testRows < 0
   ) return false;
+  const sourceManifest = nodeManifests.get(model.sourceNodeId);
+  if (
+    !sourceManifest || !dataset
+    || dataset.targetColumn !== model.targetColumn
+    || !Array.isArray(dataset.featureColumns)
+    || dataset.featureColumns.length !== model.featureColumns.length
+    || dataset.featureColumns.some((column, index) => column !== model.featureColumns[index])
+  ) return false;
+  if (model.hasPredictor && !edges.some((edge) => (
+    edge.source === model.sourceNodeId
+    && nodeManifests.get(edge.target)?.id === 'predictor_node'
+  ))) return false;
   const featureCount = model.featureColumns.length;
   if (model.type === 'linear_regression') {
-    return typeof model.modelNodeId === 'string' && model.modelNodeId
+    return dataset.task === 'regression'
+      && sourceManifest.id === 'gradient_descent_node'
+      && typeof model.modelNodeId === 'string' && model.modelNodeId
+      && nodeManifests.get(model.modelNodeId)?.id === 'linear_regression_node'
       && finiteArray(model.weights, featureCount)
       && Number.isFinite(model.bias)
       && model.normalization && typeof model.normalization === 'object'
@@ -305,7 +340,9 @@ function trainedModelIsValid(model) {
       && Number.isInteger(model.epochs) && model.epochs > 0
       && Number.isFinite(model.learningRate) && model.learningRate > 0;
   }
-  return Array.isArray(model.train) && model.train.length > 0
+  return dataset.task === 'classification'
+    && sourceManifest.id === 'knn_node'
+    && Array.isArray(model.train) && model.train.length > 0
     && model.train.every((sample) => (
       sample && typeof sample === 'object'
       && finiteArray(sample.x, featureCount)
@@ -339,6 +376,7 @@ export function validateProjectForWorkspace(rawProject) {
   });
 
   const nodeIds = new Set();
+  const nodeManifests = new Map();
   const validationNodes = [];
   project.graph.nodes.forEach((node) => {
     const embeddedManifest = node?.data?.manifest;
@@ -352,6 +390,7 @@ export function validateProjectForWorkspace(rawProject) {
       || !manifest || !parametersAreValid(manifest, node.data.parameters ?? {})
     ) invalidProject();
     nodeIds.add(node.id);
+    nodeManifests.set(node.id, manifest);
     validationNodes.push({ ...node, data: { ...node.data, manifest } });
   });
   const edgeIds = new Set();
@@ -363,11 +402,12 @@ export function validateProjectForWorkspace(rawProject) {
       || typeof edge.source !== 'string' || !nodeIds.has(edge.source)
       || typeof edge.target !== 'string' || !nodeIds.has(edge.target)
       || typeof edge.sourceHandle !== 'string' || typeof edge.targetHandle !== 'string'
+      || !exactHandlesExist(edge, validationNodes)
       || !assessConnection(edge, validationNodes, validatedEdges).valid
     ) invalidProject();
     edgeIds.add(edge.id);
     validatedEdges.push(edge);
   });
-  if (!trainedModelIsValid(project.trainedModel)) invalidProject();
+  if (!trainedModelIsValid(project.trainedModel, nodeManifests, validatedEdges, project.data)) invalidProject();
   return project;
 }
