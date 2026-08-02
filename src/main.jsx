@@ -439,7 +439,7 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, runtime, on
   }, [open, graphSignature, t]);
   if (!open) return null;
   const running = runtime.status === 'running';
-  const losses = runtime.losses ?? model?.lossHistory ?? [];
+  const losses = runtime.status === 'idle' ? model?.lossHistory ?? [] : runtime.losses ?? [];
   const runtimeError = runtime.error ? translateError(runtime.error, t) : '';
   const visibleError = graphError || runtimeError;
 
