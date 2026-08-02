@@ -22,6 +22,31 @@ function copy(value) {
   return value === undefined ? undefined : structuredClone(value);
 }
 
+function assertJsonSafe(value, code, label, path = '$', ancestors = new WeakSet()) {
+  if (value === null || ['string', 'boolean'].includes(typeof value)) return;
+  if (typeof value === 'number') {
+    if (Number.isFinite(value)) return;
+    fail(code, `${label} contains a non-finite number at ${path}.`, { path });
+  }
+  if (typeof value !== 'object') fail(code, `${label} contains a non-JSON value at ${path}.`, { path, type: typeof value });
+  if (ancestors.has(value)) fail(code, `${label} contains a circular value at ${path}.`, { path });
+  const prototype = Object.getPrototypeOf(value);
+  if (!Array.isArray(value) && prototype !== Object.prototype && prototype !== null) {
+    fail(code, `${label} contains a non-plain object at ${path}.`, { path });
+  }
+  if (Object.getOwnPropertySymbols(value).length) fail(code, `${label} contains symbol keys at ${path}.`, { path });
+  ancestors.add(value);
+  if (Array.isArray(value)) {
+    for (let index = 0; index < value.length; index += 1) {
+      if (!Object.hasOwn(value, index)) fail(code, `${label} contains an array hole at ${path}[${index}].`, { path: `${path}[${index}]` });
+      assertJsonSafe(value[index], code, label, `${path}[${index}]`, ancestors);
+    }
+  } else {
+    Object.entries(value).forEach(([key, child]) => assertJsonSafe(child, code, label, `${path}.${key}`, ancestors));
+  }
+  ancestors.delete(value);
+}
+
 function normalizeAdapterError(error, operation) {
   if (error instanceof CanvasAgentError) return error;
   return new CanvasAgentError('OPERATION_FAILED', error?.message ?? String(error), {
@@ -86,6 +111,7 @@ export function validateAgentDataset(dataset) {
   if (!validRows || !validFeatures || !targetColumn) {
     fail('INVALID_DATASET', 'Dataset needs non-empty object rows, featureColumns, and targetColumn.');
   }
+  assertJsonSafe(dataset, 'INVALID_DATASET', 'Dataset');
   const featureColumns = dataset.featureColumns.map((column) => column.trim());
   if (new Set(featureColumns).size !== featureColumns.length || featureColumns.includes(targetColumn)) {
     fail('INVALID_DATASET', 'Dataset feature and target columns must be unique.', { featureColumns, targetColumn });
@@ -290,7 +316,10 @@ export function createCanvasAgentApi(adapter) {
     selectNode: (nodeId) => invokeAdapterAsync('selectNode', async () => copy(await adapter.selectNode(nodeId))),
     renameProject: (name) => invokeAdapterAsync('renameProject', async () => copy(await adapter.renameProject(name))),
     setDataset: (dataset) => invokeAdapterAsync('setDataset', async () => copy(await adapter.setDataset(copy(dataset)))),
-    loadProject: (project) => invokeAdapterAsync('loadProject', async () => copy(await adapter.loadProject(copy(project)))),
+    loadProject: (project) => invokeAdapterAsync('loadProject', async () => {
+      assertJsonSafe(project, 'INVALID_PROJECT', 'Project');
+      return copy(await adapter.loadProject(copy(project)));
+    }),
     getProject: () => invokeAdapter('getProject', () => copy(adapter.getProject())),
     run: () => invokeAdapterAsync('run', async () => copy(await adapter.run())),
     exportCode: (framework, options) => invokeAdapterAsync('exportCode', async () => copy(await adapter.exportCode(framework, copy(options)))),
