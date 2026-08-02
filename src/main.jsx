@@ -976,23 +976,25 @@ function Workspace() {
       dirty: projectContentSignature(project) !== lastDownloadSignature.current,
     });
   }, []);
-  const commitAgentGraph = useCallback(({ nextNodes, nextEdges, nextSelectedId }) => {
+  const commitAgentGraph = useCallback(({ nextNodes, nextEdges, nextSelectedId, invalidateArtifacts = true }) => {
     assertAgentWritable(workspaceStateRef.current, 'Canvas graph cannot change while execution is running.');
-    const nextRuntime = idleRuntimeState();
+    const nextRuntime = invalidateArtifacts ? idleRuntimeState() : workspaceStateRef.current.runtime;
     workspaceStateRef.current = {
       ...workspaceStateRef.current,
       nodes: nextNodes,
       edges: nextEdges,
       selectedId: nextSelectedId,
-      model: null,
+      model: invalidateArtifacts ? null : workspaceStateRef.current.model,
       runtime: nextRuntime,
     };
     setNodes(nextNodes);
     setEdges(nextEdges);
     setSelectedId(nextSelectedId);
     setPendingConnection(null);
-    setModel(null);
-    setRuntime(nextRuntime);
+    if (invalidateArtifacts) {
+      setModel(null);
+      setRuntime(nextRuntime);
+    }
   }, [setNodes, setEdges]);
   const agentAddNode = useCallback(async (request) => {
     const state = workspaceStateRef.current;
@@ -1008,10 +1010,16 @@ function Workspace() {
   }, [commitAgentGraph]);
   const agentUpdateNode = useCallback(async (nodeId, patch) => {
     const state = workspaceStateRef.current;
+    const previousNode = state.nodes.find((node) => node.id === nodeId);
+    const nextNodes = updateAgentNode(state.nodes, nodeId, patch);
+    const nextNode = nextNodes.find((node) => node.id === nodeId);
+    const parametersChanged = Object.keys(patch?.parameters ?? {})
+      .some((key) => !Object.is(previousNode.data.parameters[key], nextNode.data.parameters[key]));
     commitAgentGraph({
-      nextNodes: updateAgentNode(state.nodes, nodeId, patch),
+      nextNodes,
       nextEdges: state.edges,
       nextSelectedId: nodeId,
+      invalidateArtifacts: parametersChanged,
     });
     return { nodeId };
   }, [commitAgentGraph]);
@@ -1097,6 +1105,7 @@ function Workspace() {
     return { filename, code: result.code, ir: result.ir, report: result.report };
   }, []);
   const agentDownloadProject = useCallback(async () => {
+    assertAgentWritable(workspaceStateRef.current, 'Project cannot be downloaded while execution is running.');
     const project = projectFromWorkspace(workspaceStateRef.current);
     const content = JSON.stringify(project, null, 2);
     const filename = safeProjectFilename(project.name);
