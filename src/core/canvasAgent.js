@@ -247,6 +247,14 @@ export function connectAgentNodes(nodes, edges, request, idFactory = () => crypt
     target: request?.target,
     targetHandle: request?.targetHandle,
   };
+  const source = nodes.find((node) => node.id === connection.source);
+  const target = nodes.find((node) => node.id === connection.target);
+  if (
+    !source?.data.manifest.outputs.some((port) => port.name === connection.sourceHandle)
+    || !target?.data.manifest.inputs.some((port) => port.name === connection.targetHandle)
+  ) {
+    fail('INVALID_CONNECTION', 'Connection references an unknown port.', { connection, reason: 'missingPort' });
+  }
   const assessment = assessConnection(connection, nodes, edges);
   if (!assessment.valid) {
     fail('INVALID_CONNECTION', `Connection rejected: ${assessment.reason}.`, {
