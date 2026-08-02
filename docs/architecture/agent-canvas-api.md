@@ -129,7 +129,7 @@ Mutating commands reject with `INSTANCE_BUSY` while a browser run is active. Ins
 
 ## Errors and versioning
 
-Failures reject with `CanvasAgentError`. Its stable `code` identifies the class of failure; `details` contains serializable context. Current codes include invalid arguments, unknown or duplicate nodes/edges/components, invalid parameters or datasets, rejected connections, busy instances, unavailable operations, and ambiguous/unknown instances.
+Failures reject with `CanvasAgentError`. Its stable `code` identifies the class of failure; `details` contains JSON-serializable context, with unsupported diagnostic values converted to strings at the API boundary. Current codes include invalid arguments, unknown or duplicate nodes/edges/components, invalid parameters or datasets, rejected connections, busy instances, unavailable operations, and ambiguous/unknown instances.
 
 Consumers must check `bridge.apiVersion` or `canvas.apiVersion`. Changing a required command, payload, snapshot-field meaning, or error-code meaning requires incrementing `CANVAS_AGENT_API_VERSION` and documenting migration behavior. Additive optional fields may be introduced within the same version.
 
