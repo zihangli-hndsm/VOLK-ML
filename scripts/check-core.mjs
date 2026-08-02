@@ -1066,6 +1066,22 @@ assert.throws(
   (error) => error.translationKey === 'error.invalidProject',
   'workspace project validation must inspect custom composite structure',
 );
+assert.throws(
+  () => validateProjectForWorkspace({ ...agentProject, trainedModel: { hasPredictor: true } }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must reject malformed trained models',
+);
+const { test: omittedRegressionTest, ...persistedRegressionModel } = regressionModel;
+assert.ok(omittedRegressionTest.length > 0);
+assert.equal(validateProjectForWorkspace({
+  format: 'VOLK-ML',
+  version: PROJECT_VERSION,
+  name: 'Persisted regression model',
+  graph: { nodes: regressionGraphNodes, edges: regressionGraphEdges },
+  customComponents: [],
+  data: regressionDataset,
+  trainedModel: persistedRegressionModel,
+}).trainedModel.type, 'linear_regression');
 
 const legacySamplePositions = {
   'pipeline-data': [40, 180],
