@@ -22,6 +22,7 @@ import {
   createCanvasAgentApi,
   createCanvasAgentSnapshot,
   disconnectAgentEdge,
+  invalidateAgentNodeStatuses,
   installCanvasAgentBridge,
   removeAgentNode,
   selectAgentNode,
@@ -981,7 +982,8 @@ function Workspace() {
   }, []);
   const commitAgentGraph = useCallback(({ nextNodes, nextEdges, nextSelectedId, invalidateArtifacts = true }) => {
     assertAgentWritable(workspaceStateRef.current, 'Canvas graph cannot change while execution is running.');
-    const synchronizedNodes = selectAgentNode(nextNodes, nextSelectedId);
+    const currentNodes = invalidateArtifacts ? invalidateAgentNodeStatuses(nextNodes) : nextNodes;
+    const synchronizedNodes = selectAgentNode(currentNodes, nextSelectedId);
     const nextRuntime = invalidateArtifacts ? idleRuntimeState() : workspaceStateRef.current.runtime;
     workspaceStateRef.current = {
       ...workspaceStateRef.current,
@@ -1076,17 +1078,20 @@ function Workspace() {
     assertAgentWritable(workspaceStateRef.current, 'Dataset cannot change while execution is running.');
     const validatedDataset = validateAgentDataset(nextDataset);
     const nextRuntime = idleRuntimeState();
+    const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
     workspaceStateRef.current = {
       ...workspaceStateRef.current,
+      nodes: nextNodes,
       dataset: validatedDataset,
       model: null,
       runtime: nextRuntime,
     };
+    setNodes(nextNodes);
     setDataset(validatedDataset);
     setModel(null);
     setRuntime(nextRuntime);
     return { hasDataset: Boolean(validatedDataset), rows: validatedDataset?.rows.length ?? 0 };
-  }, []);
+  }, [setNodes]);
   const agentLoadProject = useCallback(async (project) => {
     assertAgentWritable(workspaceStateRef.current, 'Project cannot change while execution is running.');
     applyProject(project);
@@ -1105,7 +1110,7 @@ function Workspace() {
       : compilePipelineToPyTorch(state.nodes, state.edges);
     const filename = `volk_ml_${framework}_pipeline.py`;
     if (options?.download) downloadText(filename, result.code, 'text/x-python');
-    return { filename, code: result.code, ir: result.ir, report: result.report };
+    return result.code;
   }, []);
   const agentDownloadProject = useCallback(async () => {
     assertAgentWritable(workspaceStateRef.current, 'Project cannot be downloaded while execution is running.');
