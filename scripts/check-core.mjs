@@ -135,6 +135,10 @@ const validatedAgentDataset = validateAgentDataset({
 });
 assert.deepEqual(validatedAgentDataset.featureColumns, ['feature']);
 assert.equal(validatedAgentDataset.targetColumn, 'target');
+assert.deepEqual(validatedAgentDataset.columns, [
+  { name: 'feature', type: 'number', missing: 0 },
+  { name: 'target', type: 'number', missing: 0 },
+]);
 assert.throws(
   () => validateAgentDataset({ rows: [], featureColumns: ['feature'], targetColumn: 'target' }),
   (error) => error.code === 'INVALID_DATASET',
