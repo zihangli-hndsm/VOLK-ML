@@ -168,6 +168,7 @@ assert.equal(agentSnapshot.apiVersion, CANVAS_AGENT_API_VERSION);
 assert.equal(agentSnapshot.canvas.nodes[1].componentId, 'dense_node');
 assert.equal(agentSnapshot.dataset, null);
 assert.equal(agentSnapshot.execution.runtime.status, 'idle');
+assert.equal(agentSnapshot.execution.runtime.result, null);
 const agentListeners = new Set();
 const fakeAgentApi = createCanvasAgentApi({
   instanceId: 'test-instance',
@@ -192,6 +193,34 @@ const agentTarget = {};
 const uninstallAgentBridge = installCanvasAgentBridge(fakeAgentApi, agentTarget);
 assert.deepEqual(agentTarget[CANVAS_AGENT_GLOBAL].listInstances(), [{ id: 'test-instance' }]);
 assert.equal((await agentTarget[CANVAS_AGENT_GLOBAL].open()).instanceId, 'test-instance');
+const secondAgentApi = createCanvasAgentApi({ ...{
+  instanceId: 'second-instance',
+  getState: () => ({ ...agentSnapshot, instanceId: 'second-instance' }),
+  listComponents: () => [],
+  addNode: async () => ({ nodeId: 'new-node' }),
+  updateNode: async (nodeId) => ({ nodeId }),
+  removeNode: async (nodeId) => ({ nodeId }),
+  connect: async () => ({ edgeId: 'new-edge' }),
+  disconnect: async (edgeId) => ({ edgeId }),
+  selectNode: async (nodeId) => ({ nodeId }),
+  renameProject: async (name) => ({ name }),
+  setDataset: async (dataset) => ({ hasDataset: Boolean(dataset) }),
+  loadProject: async (project) => ({ name: project.name }),
+  getProject: () => agentProject,
+  run: async () => ({ type: 'linear_regression' }),
+  exportCode: async (framework) => ({ framework, code: '' }),
+  downloadProject: async () => ({ filename: 'agent-test.volkml.json' }),
+  subscribe: () => () => {},
+} });
+const sharedAgentBridge = agentTarget[CANVAS_AGENT_GLOBAL];
+const uninstallSecondAgentBridge = installCanvasAgentBridge(secondAgentApi, agentTarget);
+assert.equal(agentTarget[CANVAS_AGENT_GLOBAL], sharedAgentBridge, 'Mounted canvases must share one bridge');
+assert.deepEqual(agentTarget[CANVAS_AGENT_GLOBAL].listInstances(), [{ id: 'test-instance' }, { id: 'second-instance' }]);
+await assert.rejects(
+  agentTarget[CANVAS_AGENT_GLOBAL].open(),
+  (error) => error.code === 'INSTANCE_AMBIGUOUS',
+);
+assert.equal((await agentTarget[CANVAS_AGENT_GLOBAL].open('test-instance')).instanceId, 'test-instance');
 const copiedAgentState = fakeAgentApi.getState();
 copiedAgentState.canvas.nodes[0].position.x = 999;
 assert.equal(agentSnapshot.canvas.nodes[0].position.x, 10, 'Agent snapshots must be detached from workspace state');
@@ -200,6 +229,9 @@ await assert.rejects(
   (error) => error.code === 'INSTANCE_NOT_FOUND',
 );
 uninstallAgentBridge();
+assert.deepEqual(agentTarget[CANVAS_AGENT_GLOBAL].listInstances(), [{ id: 'second-instance' }]);
+assert.equal((await agentTarget[CANVAS_AGENT_GLOBAL].open()).instanceId, 'second-instance');
+uninstallSecondAgentBridge();
 assert.equal(agentTarget[CANVAS_AGENT_GLOBAL], undefined);
 
 assert.equal(new Set(pluginRegistry.map((manifest) => manifest.id)).size, pluginRegistry.length, 'Component IDs must be unique');
