@@ -233,6 +233,13 @@ export function selectAgentNode(nodes, nodeId) {
   return nodes.map((node) => ({ ...node, selected: node.id === nodeId }));
 }
 
+export function invalidateAgentNodeStatuses(nodes) {
+  return nodes.map((node) => node.data.status === 'idle' ? node : {
+    ...node,
+    data: { ...node.data, status: 'idle' },
+  });
+}
+
 export function connectAgentNodes(nodes, edges, request, idFactory = () => crypto.randomUUID()) {
   const connection = {
     source: request?.source,
