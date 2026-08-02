@@ -504,6 +504,7 @@ function Workspace() {
   const fileHandleRef = useRef(null);
   const lastDownloadSignature = useRef('');
   const workspaceStateRef = useRef(null);
+  const agentAdapterRef = useRef(null);
   workspaceStateRef.current = {
     projectName,
     fallbackProjectName: t('project.sampleName'),
@@ -1115,45 +1116,50 @@ function Workspace() {
     setPersistenceRevision((revision) => revision + 1);
     return { filename, bytes: new Blob([content]).size };
   }, []);
+  agentAdapterRef.current = {
+    getState: getAgentSnapshot,
+    listComponents: () => [...pluginRegistry, ...workspaceStateRef.current.customComponents].map(summarizeAgentComponent),
+    addNode: agentAddNode,
+    updateNode: agentUpdateNode,
+    removeNode: agentRemoveNode,
+    connect: agentConnect,
+    disconnect: agentDisconnect,
+    selectNode: agentSelectNode,
+    renameProject: agentRenameProject,
+    setDataset: agentSetDataset,
+    loadProject: agentLoadProject,
+    getProject: () => projectFromWorkspace(workspaceStateRef.current),
+    run: runBrowserGraph,
+    exportCode: agentExportCode,
+    downloadProject: agentDownloadProject,
+    subscribe(listener) {
+      agentSubscribersRef.current.add(listener);
+      return () => agentSubscribersRef.current.delete(listener);
+    },
+  };
   useEffect(() => {
+    const forward = (method) => (...args) => agentAdapterRef.current[method](...args);
     const api = createCanvasAgentApi({
       instanceId: instanceIdRef.current,
-      getState: getAgentSnapshot,
-      listComponents: () => [...pluginRegistry, ...workspaceStateRef.current.customComponents].map(summarizeAgentComponent),
-      addNode: agentAddNode,
-      updateNode: agentUpdateNode,
-      removeNode: agentRemoveNode,
-      connect: agentConnect,
-      disconnect: agentDisconnect,
-      selectNode: agentSelectNode,
-      renameProject: agentRenameProject,
-      setDataset: agentSetDataset,
-      loadProject: agentLoadProject,
-      getProject: () => projectFromWorkspace(workspaceStateRef.current),
-      run: runBrowserGraph,
-      exportCode: agentExportCode,
-      downloadProject: agentDownloadProject,
-      subscribe(listener) {
-        agentSubscribersRef.current.add(listener);
-        return () => agentSubscribersRef.current.delete(listener);
-      },
+      getState: forward('getState'),
+      listComponents: forward('listComponents'),
+      addNode: forward('addNode'),
+      updateNode: forward('updateNode'),
+      removeNode: forward('removeNode'),
+      connect: forward('connect'),
+      disconnect: forward('disconnect'),
+      selectNode: forward('selectNode'),
+      renameProject: forward('renameProject'),
+      setDataset: forward('setDataset'),
+      loadProject: forward('loadProject'),
+      getProject: forward('getProject'),
+      run: forward('run'),
+      exportCode: forward('exportCode'),
+      downloadProject: forward('downloadProject'),
+      subscribe: forward('subscribe'),
     });
     return installCanvasAgentBridge(api, window);
-  }, [
-    getAgentSnapshot,
-    agentAddNode,
-    agentUpdateNode,
-    agentRemoveNode,
-    agentConnect,
-    agentDisconnect,
-    agentSelectNode,
-    agentRenameProject,
-    agentSetDataset,
-    agentLoadProject,
-    runBrowserGraph,
-    agentExportCode,
-    agentDownloadProject,
-  ]);
+  }, []);
   useEffect(() => {
     if (!agentSubscribersRef.current.size) return;
     const snapshot = getAgentSnapshot();
