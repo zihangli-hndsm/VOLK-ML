@@ -1,4 +1,6 @@
 import { localizedError } from '../i18n.js';
+import { componentById } from './components.js';
+import { assessConnection } from './connections.js';
 
 export const PROJECT_VERSION = 7;
 
@@ -146,6 +148,120 @@ const propertyIsValid = (property) => {
   return typeof property.default === 'string';
 };
 
+const propertyValueIsValid = (property, value) => {
+  if (['number', 'slider'].includes(property.type)) {
+    if (!Number.isFinite(value)) return false;
+    if (Number.isFinite(property.min) && value < property.min) return false;
+    if (Number.isFinite(property.max) && value > property.max) return false;
+    if (Number.isFinite(property.step) && property.step > 0) {
+      const base = Number.isFinite(property.min) ? property.min : 0;
+      const steps = (value - base) / property.step;
+      if (Math.abs(steps - Math.round(steps)) > 1e-9) return false;
+    }
+    return true;
+  }
+  if (property.type === 'select') return property.options.includes(value);
+  if (property.type === 'boolean') return typeof value === 'boolean';
+  return typeof value === 'string';
+};
+
+const parametersAreValid = (manifest, parameters, referenceKeys = null) => {
+  if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) return false;
+  const propertyByKey = new Map(manifest.properties.map((property) => [property.key, property]));
+  return Object.entries(parameters).every(([key, value]) => {
+    const property = propertyByKey.get(key);
+    if (!property) return false;
+    if (referenceKeys && typeof value === 'string' && value.startsWith('$')) {
+      return referenceKeys.has(value.slice(1));
+    }
+    return propertyValueIsValid(property, value);
+  });
+};
+
+const sameKeys = (object, expected) => {
+  if (!object || typeof object !== 'object' || Array.isArray(object)) return false;
+  const keys = Object.keys(object);
+  return keys.length === expected.size && keys.every((key) => expected.has(key));
+};
+
+function customManifestIsValid(manifest, availableManifests, ancestors = new Set()) {
+  const propertyKeys = new Set();
+  if (
+    !manifest || typeof manifest !== 'object' || Array.isArray(manifest)
+    || manifest.customComposite !== true || manifest.kind !== 'composite'
+    || typeof manifest.id !== 'string' || !manifest.id
+    || typeof manifest.op !== 'string' || !manifest.op
+    || typeof manifest.category !== 'string' || !manifest.category
+    || !localizedTextIsValid(manifest.name) || !localizedTextIsValid(manifest.description)
+    || !Array.isArray(manifest.inputs) || !Array.isArray(manifest.outputs) || !Array.isArray(manifest.properties)
+    || !portsAreValid(manifest.inputs) || !portsAreValid(manifest.outputs)
+    || !manifest.properties.every((property) => {
+      if (!propertyIsValid(property) || propertyKeys.has(property.key)) return false;
+      propertyKeys.add(property.key);
+      return true;
+    })
+    || !manifest.runtime || !['L0', 'L1', 'L2', 'L3'].includes(manifest.runtime.minimumTier)
+    || !['cpu', 'none'].includes(manifest.runtime.browserBackend)
+    || !manifest.compatibility
+    || !['exact', 'adapted', 'approximate', 'unsupported'].includes(manifest.compatibility.pytorch)
+    || !['exact', 'adapted', 'approximate', 'unsupported'].includes(manifest.compatibility.tensorflow)
+  ) return false;
+  if (ancestors.has(manifest.id)) return false;
+  const composition = manifest.composition;
+  if (
+    !composition || typeof composition !== 'object'
+    || !Array.isArray(composition.nodes) || composition.nodes.length === 0
+    || !Array.isArray(composition.edges)
+  ) return false;
+  const nextAncestors = new Set(ancestors).add(manifest.id);
+  const childKeys = new Set();
+  const childNodes = [];
+  for (const spec of composition.nodes) {
+    if (
+      !spec || typeof spec !== 'object' || Array.isArray(spec)
+      || typeof spec.key !== 'string' || !spec.key || childKeys.has(spec.key)
+      || typeof spec.componentId !== 'string' || !spec.componentId
+      || (spec.position !== undefined && (!Number.isFinite(spec.position?.x) || !Number.isFinite(spec.position?.y)))
+    ) return false;
+    if (spec.manifest !== undefined && spec.manifest?.customComposite !== true) return false;
+    const childManifest = spec.manifest ?? componentById.get(spec.componentId) ?? availableManifests.get(spec.componentId);
+    if (!childManifest || childManifest.id !== spec.componentId) return false;
+    if (childManifest.customComposite && !customManifestIsValid(childManifest, availableManifests, nextAncestors)) return false;
+    if (!parametersAreValid(childManifest, spec.parameters ?? {}, propertyKeys)) return false;
+    childKeys.add(spec.key);
+    childNodes.push({ id: spec.key, data: { manifest: childManifest } });
+  }
+  const validatedEdges = [];
+  for (const edge of composition.edges) {
+    if (
+      !edge || typeof edge !== 'object'
+      || typeof edge.source !== 'string' || typeof edge.target !== 'string'
+      || typeof edge.sourceHandle !== 'string' || typeof edge.targetHandle !== 'string'
+      || !assessConnection(edge, childNodes, validatedEdges).valid
+    ) return false;
+    validatedEdges.push(edge);
+  }
+  const inputNames = new Set(manifest.inputs.map((port) => port.name));
+  const outputNames = new Set(manifest.outputs.map((port) => port.name));
+  if (!sameKeys(composition.inputs, inputNames) || !sameKeys(composition.outputs, outputNames)) return false;
+  const childByKey = new Map(childNodes.map((node) => [node.id, node.data.manifest]));
+  const parentInputByName = new Map(manifest.inputs.map((port) => [port.name, port]));
+  const parentOutputByName = new Map(manifest.outputs.map((port) => [port.name, port]));
+  const inputsValid = Object.entries(composition.inputs).every(([parentName, targets]) => (
+    Array.isArray(targets) && targets.length > 0 && targets.every((target) => {
+      const child = childByKey.get(target?.node);
+      const childPort = child?.inputs.find((port) => port.name === target?.port);
+      return childPort && childPort.type === parentInputByName.get(parentName)?.type;
+    })
+  ));
+  const outputsValid = Object.entries(composition.outputs).every(([parentName, source]) => {
+    const child = childByKey.get(source?.node);
+    const childPort = child?.outputs.find((port) => port.name === source?.port);
+    return childPort && childPort.type === parentOutputByName.get(parentName)?.type;
+  });
+  return inputsValid && outputsValid;
+}
+
 export function validateProjectForWorkspace(rawProject) {
   const project = migrateProject(rawProject);
   if (typeof project.name !== 'string' || !Array.isArray(project.customComponents)) invalidProject();
@@ -157,19 +273,33 @@ export function validateProjectForWorkspace(rawProject) {
   )) invalidProject();
   if (project.workspace !== undefined && (!project.workspace || typeof project.workspace !== 'object')) invalidProject();
 
+  const customById = new Map();
+  project.customComponents.forEach((manifest) => {
+    if (!manifest || typeof manifest.id !== 'string' || customById.has(manifest.id) || componentById.has(manifest.id)) invalidProject();
+    customById.set(manifest.id, manifest);
+  });
+  project.customComponents.forEach((manifest) => {
+    if (!customManifestIsValid(manifest, customById)) invalidProject();
+  });
+
   const nodeIds = new Set();
+  const validationNodes = [];
   project.graph.nodes.forEach((node) => {
-    const manifest = node?.data?.manifest;
+    const embeddedManifest = node?.data?.manifest;
+    const manifest = componentById.get(embeddedManifest?.id)
+      ?? customById.get(embeddedManifest?.id)
+      ?? (embeddedManifest?.customComposite && customManifestIsValid(embeddedManifest, customById) ? embeddedManifest : null);
     if (
       !node || typeof node !== 'object'
       || typeof node.id !== 'string' || !node.id.trim() || nodeIds.has(node.id)
       || !Number.isFinite(node.position?.x) || !Number.isFinite(node.position?.y)
-      || !manifest || typeof manifest !== 'object' || typeof manifest.id !== 'string' || !manifest.id
-      || !node.data.parameters || typeof node.data.parameters !== 'object' || Array.isArray(node.data.parameters)
+      || !manifest || !parametersAreValid(manifest, node.data.parameters ?? {})
     ) invalidProject();
     nodeIds.add(node.id);
+    validationNodes.push({ ...node, data: { ...node.data, manifest } });
   });
   const edgeIds = new Set();
+  const validatedEdges = [];
   project.graph.edges.forEach((edge) => {
     if (
       !edge || typeof edge !== 'object'
@@ -177,23 +307,10 @@ export function validateProjectForWorkspace(rawProject) {
       || typeof edge.source !== 'string' || !nodeIds.has(edge.source)
       || typeof edge.target !== 'string' || !nodeIds.has(edge.target)
       || typeof edge.sourceHandle !== 'string' || typeof edge.targetHandle !== 'string'
+      || !assessConnection(edge, validationNodes, validatedEdges).valid
     ) invalidProject();
     edgeIds.add(edge.id);
-  });
-  project.customComponents.forEach((manifest) => {
-    const propertyKeys = new Set();
-    if (
-      !manifest || typeof manifest !== 'object'
-      || typeof manifest.id !== 'string' || !manifest.id
-      || !localizedTextIsValid(manifest.name) || !localizedTextIsValid(manifest.description)
-      || !Array.isArray(manifest.inputs) || !Array.isArray(manifest.outputs) || !Array.isArray(manifest.properties)
-      || !portsAreValid(manifest.inputs) || !portsAreValid(manifest.outputs)
-      || !manifest.properties.every((property) => {
-        if (!propertyIsValid(property) || propertyKeys.has(property.key)) return false;
-        propertyKeys.add(property.key);
-        return true;
-      })
-    ) invalidProject();
+    validatedEdges.push(edge);
   });
   return project;
 }
