@@ -109,6 +109,43 @@ const localizedTextIsValid = (value) => (
     && Object.values(value).every((translation) => typeof translation === 'string'))
 );
 
+const portsAreValid = (ports) => {
+  const names = new Set();
+  return ports.every((port) => {
+    if (
+      !port || typeof port !== 'object' || Array.isArray(port)
+      || typeof port.name !== 'string' || !port.name.trim() || names.has(port.name)
+      || typeof port.type !== 'string' || !port.type.trim()
+    ) return false;
+    names.add(port.name);
+    return true;
+  });
+};
+
+const propertyIsValid = (property) => {
+  if (
+    !property || typeof property !== 'object' || Array.isArray(property)
+    || typeof property.key !== 'string' || !property.key.trim()
+    || !localizedTextIsValid(property.label)
+    || !['number', 'slider', 'select', 'boolean', 'text', 'code'].includes(property.type)
+  ) return false;
+  if (['number', 'slider'].includes(property.type)) {
+    return Number.isFinite(property.default)
+      && (property.min === undefined || Number.isFinite(property.min))
+      && (property.max === undefined || Number.isFinite(property.max))
+      && (property.step === undefined || (Number.isFinite(property.step) && property.step > 0));
+  }
+  if (property.type === 'select') {
+    return typeof property.default === 'string'
+      && Array.isArray(property.options)
+      && property.options.length > 0
+      && property.options.every((option) => typeof option === 'string')
+      && property.options.includes(property.default);
+  }
+  if (property.type === 'boolean') return typeof property.default === 'boolean';
+  return typeof property.default === 'string';
+};
+
 export function validateProjectForWorkspace(rawProject) {
   const project = migrateProject(rawProject);
   if (typeof project.name !== 'string' || !Array.isArray(project.customComponents)) invalidProject();
@@ -144,11 +181,18 @@ export function validateProjectForWorkspace(rawProject) {
     edgeIds.add(edge.id);
   });
   project.customComponents.forEach((manifest) => {
+    const propertyKeys = new Set();
     if (
       !manifest || typeof manifest !== 'object'
       || typeof manifest.id !== 'string' || !manifest.id
       || !localizedTextIsValid(manifest.name) || !localizedTextIsValid(manifest.description)
       || !Array.isArray(manifest.inputs) || !Array.isArray(manifest.outputs) || !Array.isArray(manifest.properties)
+      || !portsAreValid(manifest.inputs) || !portsAreValid(manifest.outputs)
+      || !manifest.properties.every((property) => {
+        if (!propertyIsValid(property) || propertyKeys.has(property.key)) return false;
+        propertyKeys.add(property.key);
+        return true;
+      })
     ) invalidProject();
   });
   return project;
