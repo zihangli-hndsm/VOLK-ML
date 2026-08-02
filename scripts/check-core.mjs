@@ -164,6 +164,7 @@ const validatedAgentDataset = validateAgentDataset({
 assert.deepEqual(validatedAgentDataset.featureColumns, ['feature']);
 assert.equal(validatedAgentDataset.targetColumn, 'target');
 assert.equal(validatedAgentDataset.task, 'regression');
+assert.equal(validatedAgentDataset.name, 'agent-data');
 assert.deepEqual(validatedAgentDataset.columns, [
   { name: 'feature', type: 'number', missing: 0 },
   { name: 'target', type: 'number', missing: 0 },
@@ -173,6 +174,19 @@ assert.equal(validateAgentDataset({
   featureColumns: ['feature'],
   targetColumn: 'target',
 }).task, 'classification');
+assert.equal(validateAgentDataset({
+  rows: [{ feature: 1, target: 2 }],
+  featureColumns: ['feature'],
+  targetColumn: 'target',
+}).name, 'Agent Dataset');
+assert.throws(
+  () => validateAgentDataset({ rows: [{ feature: 1, target: 2 }], featureColumns: ['feature'], targetColumn: 'target', task: 'classification ' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
+assert.throws(
+  () => validateAgentDataset({ rows: [{ feature: 1, target: 2 }], featureColumns: ['feature'], targetColumn: 'target', name: { text: 'bad' } }),
+  (error) => error.code === 'INVALID_DATASET',
+);
 assert.throws(
   () => validateAgentDataset({ rows: [], featureColumns: ['feature'], targetColumn: 'target' }),
   (error) => error.code === 'INVALID_DATASET',
