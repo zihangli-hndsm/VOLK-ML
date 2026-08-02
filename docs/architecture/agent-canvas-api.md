@@ -121,6 +121,8 @@ await canvas.exportCode('pytorch', { download: true });
 
 `run()` invokes the shared browser execution path and updates node status plus runtime timestamps, active node IDs, losses, result summary, and serialized error details. It is limited to supported L0 browser pipelines. A Supervised Trainer and other L1-L3 graphs remain available for inspection and source export but are not presented as locally executable.
 
+The runner records a semantic signature of its graph parameters, topology, and dataset. If the interactive editor changes any of those inputs before execution finishes, the stale result is discarded with `WORKSPACE_CHANGED`; layout-only movement does not invalidate it.
+
 `exportCode(framework)` accepts `pytorch` or `tensorflow` and returns generated Python. `{ download: true }` also downloads the source file.
 
 Mutating commands reject with `INSTANCE_BUSY` while a browser run is active. Inspection and state subscription remain available.
