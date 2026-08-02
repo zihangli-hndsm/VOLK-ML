@@ -819,8 +819,14 @@ function Workspace() {
   useEffect(() => {
     if (previousExecutionSignature.current === executionInputSignature) return;
     previousExecutionSignature.current = executionInputSignature;
-    if (workspaceStateRef.current.runtime.status !== 'running') updateRuntime(idleRuntimeState());
-  }, [executionInputSignature, updateRuntime]);
+    if (workspaceStateRef.current.runtime.status !== 'running') {
+      const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
+      workspaceStateRef.current = { ...workspaceStateRef.current, nodes: nextNodes, model: null };
+      setNodes(nextNodes);
+      setModel(null);
+      updateRuntime(idleRuntimeState());
+    }
+  }, [executionInputSignature, setNodes, updateRuntime]);
   const addPluginNode = (manifest) => { const node = createNode(manifest, nodes.length); setNodes((current) => [...current, node]); setSelectedId(node.id); setModel(null); };
   const deleteCustomComponent = (manifest) => {
     if (!window.confirm(t('library.deleteCustomConfirm', { name: t(manifest.name) }))) return;
