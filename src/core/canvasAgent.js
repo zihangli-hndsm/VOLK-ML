@@ -163,15 +163,21 @@ export function updateAgentNode(nodes, nodeId, patch = {}) {
   const allowed = new Set(['position', 'parameters']);
   const unknown = Object.keys(patch).find((key) => !allowed.has(key));
   if (unknown) fail('INVALID_NODE_PATCH', `Unsupported node field: ${unknown}.`, { field: unknown });
-  return nodes.map((item) => item.id === nodeId ? {
-    ...item,
-    position: patch.position ? validatePosition(patch.position, item.position) : item.position,
-    data: {
-      ...item.data,
-      parameters: mergeParameters(item.data.manifest, item.data.parameters, patch.parameters),
-      status: 'idle',
-    },
-  } : item);
+  return nodes.map((item) => {
+    if (item.id !== nodeId) return item;
+    const parameters = mergeParameters(item.data.manifest, item.data.parameters, patch.parameters);
+    const parametersChanged = Object.keys(patch.parameters ?? {})
+      .some((key) => !Object.is(parameters[key], item.data.parameters[key]));
+    return {
+      ...item,
+      position: patch.position ? validatePosition(patch.position, item.position) : item.position,
+      data: {
+        ...item.data,
+        parameters,
+        status: parametersChanged ? 'idle' : item.data.status,
+      },
+    };
+  });
 }
 
 export function removeAgentNode(nodes, edges, nodeId) {
