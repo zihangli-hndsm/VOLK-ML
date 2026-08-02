@@ -17,6 +17,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Area | Source of truth | Responsibility |
 | --- | --- | --- |
 | Application shell | `src/main.jsx` | React Flow canvas, mobile UI, project import/export, runner presentation |
+| Canvas Agent API | `src/core/canvasAgent.js`, `src/main.jsx` | Versioned in-page inspection, graph commands, execution status, source export, and project download |
 | Visual language | `src/core/visualLanguage.js`, `src/components/VisualGlyph.jsx` | Stable stage colors, static canvas glyphs, animated teaching glyphs, architecture layout |
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
@@ -46,10 +47,14 @@ flowchart TD
     C --> E["TensorFlow compiler"]
     A --> F["Tier estimator"]
     A --> G["L0 browser executor"]
+    H["Trusted in-page agent"] --> I["Canvas Agent API v1"]
+    I --> A
+    G --> I
     F --> G
 ```
 
 - Canvas nodes retain their manifest and user parameters.
+- The mounted workspace exposes a serializable canvas snapshot and validated commands through `globalThis.__VOLK_ML_AGENT__`; it does not expose React internals or create a network listener.
 - Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
 - Project JSON stores the project name, graph, custom composite definitions, workspace preferences, dataset, and trained L0 model.
 - `PROJECT_VERSION` in `src/core/project.js` is currently `7`.
@@ -99,6 +104,7 @@ Do not make an unavailable backend appear runnable. Update availability only whe
 | Change “too large for browser” behavior | `execution-tiers.md` | Tier estimator, UI messages, threshold tests |
 | Add a browser-executable algorithm | All three documents | Manifest runtime metadata, browser runner, estimator, tests |
 | Add cloud storage, collaboration, or remote execution | `platform-services.md` | External provider implementation plus contract tests |
+| Change agent canvas commands or snapshots | `agent-canvas-api.md` | Pure command helpers, workspace adapter, API version, and contract tests |
 | Change project JSON | This document and relevant subsystem document | `PROJECT_VERSION`, importer, exporter, compatibility behavior |
 | Change visible UI | `AGENTS.md` localization section | JSX and `src/locales/ui.js` |
 | Change a component lesson | `component-manifest.md` | Tutorial catalog, tutorial coverage tests, and dialog only when presentation changes |
@@ -121,3 +127,4 @@ Generated framework code should also receive focused assertions. When a compiler
 - Shape inference is not yet a first-class IR pass; several layer dimensions remain explicit component properties.
 - Framework conversion quality is declared per component and may be `adapted`, `approximate`, or `unsupported`.
 - The optional conversational explanation endpoint must support a chat-completion request shape and browser CORS; no API key is persisted.
+- The Canvas Agent API controls one mounted browser workspace and has no remote authentication or transport. External agent hosts must provide those boundaries themselves.
