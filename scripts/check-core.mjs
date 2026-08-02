@@ -19,6 +19,7 @@ import {
   CANVAS_AGENT_API_VERSION,
   CANVAS_AGENT_GLOBAL,
   CanvasAgentError,
+  canvasExecutionInputSignature,
   connectAgentNodes,
   createAgentNode,
   createCanvasAgentApi,
@@ -129,6 +130,17 @@ const agentEdges = connectAgentNodes([agentInput, agentDense], [], {
   target: agentDense.id,
   targetHandle: 'input',
 });
+const agentExecutionSignature = canvasExecutionInputSignature([agentInput, agentDense], agentEdges, null);
+assert.equal(
+  canvasExecutionInputSignature([{ ...agentInput, position: { x: 999, y: 999 } }, agentDense], agentEdges, null),
+  agentExecutionSignature,
+  'Layout changes must not invalidate an execution result',
+);
+assert.notEqual(
+  canvasExecutionInputSignature([agentInput, movedAgentDense], agentEdges, null),
+  agentExecutionSignature,
+  'Parameter changes must invalidate an execution result',
+);
 assert.equal(agentEdges[0].id, 'agent-link');
 assert.equal(disconnectAgentEdge(agentEdges, 'agent-link').length, 0);
 assert.deepEqual(removeAgentNode([agentInput, agentDense], agentEdges, agentInput.id).edges, []);
