@@ -22,6 +22,25 @@ function copy(value) {
   return value === undefined ? undefined : structuredClone(value);
 }
 
+function normalizeAdapterError(error, operation) {
+  if (error instanceof CanvasAgentError) return error;
+  return new CanvasAgentError('OPERATION_FAILED', error?.message ?? String(error), {
+    operation,
+    causeName: error?.name ?? 'Error',
+    causeCode: error?.code,
+    translationKey: error?.translationKey,
+    translationParams: copy(error?.translationParams),
+  });
+}
+
+function invokeAdapter(operation, callback) {
+  try { return callback(); } catch (error) { throw normalizeAdapterError(error, operation); }
+}
+
+async function invokeAdapterAsync(operation, callback) {
+  try { return await callback(); } catch (error) { throw normalizeAdapterError(error, operation); }
+}
+
 function validatePosition(position, fallback) {
   const next = position ?? fallback;
   if (!Number.isFinite(next?.x) || !Number.isFinite(next?.y)) {
@@ -230,7 +249,7 @@ export function createCanvasAgentSnapshot({
       targetColumn: project.data.targetColumn ?? null,
     } : null,
     execution: {
-      plan: copy(executionPlan),
+      recommendation: copy(executionPlan),
       runtime: {
         status: runtime?.status ?? 'idle',
         activeNodeIds: copy(runtime?.activeNodeIds ?? []),
@@ -257,24 +276,24 @@ export function createCanvasAgentApi(adapter) {
   return Object.freeze({
     apiVersion: CANVAS_AGENT_API_VERSION,
     instanceId: adapter.instanceId,
-    getState: () => copy(adapter.getState()),
-    listComponents: () => copy(adapter.listComponents()),
-    addNode: async (request) => copy(await adapter.addNode(copy(request))),
-    updateNode: async (nodeId, patch) => copy(await adapter.updateNode(nodeId, copy(patch))),
-    removeNode: async (nodeId) => copy(await adapter.removeNode(nodeId)),
-    connect: async (request) => copy(await adapter.connect(copy(request))),
-    disconnect: async (edgeId) => copy(await adapter.disconnect(edgeId)),
-    selectNode: async (nodeId) => copy(await adapter.selectNode(nodeId)),
-    renameProject: async (name) => copy(await adapter.renameProject(name)),
-    setDataset: async (dataset) => copy(await adapter.setDataset(copy(dataset))),
-    loadProject: async (project) => copy(await adapter.loadProject(copy(project))),
-    getProject: () => copy(adapter.getProject()),
-    run: async () => copy(await adapter.run()),
-    exportCode: async (framework, options) => copy(await adapter.exportCode(framework, copy(options))),
-    downloadProject: async () => copy(await adapter.downloadProject()),
+    getState: () => invokeAdapter('getState', () => copy(adapter.getState())),
+    listComponents: () => invokeAdapter('listComponents', () => copy(adapter.listComponents())),
+    addNode: (request) => invokeAdapterAsync('addNode', async () => copy(await adapter.addNode(copy(request)))),
+    updateNode: (nodeId, patch) => invokeAdapterAsync('updateNode', async () => copy(await adapter.updateNode(nodeId, copy(patch)))),
+    removeNode: (nodeId) => invokeAdapterAsync('removeNode', async () => copy(await adapter.removeNode(nodeId))),
+    connect: (request) => invokeAdapterAsync('connect', async () => copy(await adapter.connect(copy(request)))),
+    disconnect: (edgeId) => invokeAdapterAsync('disconnect', async () => copy(await adapter.disconnect(edgeId))),
+    selectNode: (nodeId) => invokeAdapterAsync('selectNode', async () => copy(await adapter.selectNode(nodeId))),
+    renameProject: (name) => invokeAdapterAsync('renameProject', async () => copy(await adapter.renameProject(name))),
+    setDataset: (dataset) => invokeAdapterAsync('setDataset', async () => copy(await adapter.setDataset(copy(dataset)))),
+    loadProject: (project) => invokeAdapterAsync('loadProject', async () => copy(await adapter.loadProject(copy(project)))),
+    getProject: () => invokeAdapter('getProject', () => copy(adapter.getProject())),
+    run: () => invokeAdapterAsync('run', async () => copy(await adapter.run())),
+    exportCode: (framework, options) => invokeAdapterAsync('exportCode', async () => copy(await adapter.exportCode(framework, copy(options)))),
+    downloadProject: () => invokeAdapterAsync('downloadProject', async () => copy(await adapter.downloadProject())),
     subscribe(listener) {
       if (typeof listener !== 'function') fail('INVALID_LISTENER', 'subscribe() needs a function.');
-      return adapter.subscribe((state) => listener(copy(state)));
+      return invokeAdapter('subscribe', () => adapter.subscribe((state) => listener(copy(state))));
     },
   });
 }
