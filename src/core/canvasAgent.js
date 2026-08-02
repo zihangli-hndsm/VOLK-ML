@@ -54,6 +54,28 @@ function mergeParameters(manifest, current, patch = {}) {
   return { ...current, ...patch };
 }
 
+export function validateAgentDataset(dataset) {
+  if (dataset === null) return null;
+  const validRows = Array.isArray(dataset?.rows)
+    && dataset.rows.length > 0
+    && dataset.rows.every((row) => row && typeof row === 'object' && !Array.isArray(row));
+  const validFeatures = Array.isArray(dataset?.featureColumns)
+    && dataset.featureColumns.length > 0
+    && dataset.featureColumns.every((column) => typeof column === 'string' && column.trim());
+  const targetColumn = typeof dataset?.targetColumn === 'string' ? dataset.targetColumn.trim() : '';
+  if (!validRows || !validFeatures || !targetColumn) {
+    fail('INVALID_DATASET', 'Dataset needs non-empty object rows, featureColumns, and targetColumn.');
+  }
+  const featureColumns = dataset.featureColumns.map((column) => column.trim());
+  if (new Set(featureColumns).size !== featureColumns.length || featureColumns.includes(targetColumn)) {
+    fail('INVALID_DATASET', 'Dataset feature and target columns must be unique.', { featureColumns, targetColumn });
+  }
+  const missingColumn = [...featureColumns, targetColumn]
+    .find((column) => !dataset.rows.some((row) => Object.hasOwn(row, column)));
+  if (missingColumn) fail('INVALID_DATASET', `Dataset column is missing from every row: ${missingColumn}.`, { column: missingColumn });
+  return copy({ ...dataset, featureColumns, targetColumn });
+}
+
 export function createAgentNode({ nodes, manifest, request = {}, idFactory = () => crypto.randomUUID() }) {
   if (!manifest) fail('UNKNOWN_COMPONENT', `Unknown component: ${request.componentId}.`, { componentId: request.componentId });
   const id = String(request.id ?? `${manifest.id}-${idFactory()}`).trim();
