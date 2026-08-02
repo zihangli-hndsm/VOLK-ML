@@ -981,16 +981,17 @@ function Workspace() {
   }, []);
   const commitAgentGraph = useCallback(({ nextNodes, nextEdges, nextSelectedId, invalidateArtifacts = true }) => {
     assertAgentWritable(workspaceStateRef.current, 'Canvas graph cannot change while execution is running.');
+    const synchronizedNodes = selectAgentNode(nextNodes, nextSelectedId);
     const nextRuntime = invalidateArtifacts ? idleRuntimeState() : workspaceStateRef.current.runtime;
     workspaceStateRef.current = {
       ...workspaceStateRef.current,
-      nodes: nextNodes,
+      nodes: synchronizedNodes,
       edges: nextEdges,
       selectedId: nextSelectedId,
       model: invalidateArtifacts ? null : workspaceStateRef.current.model,
       runtime: nextRuntime,
     };
-    setNodes(nextNodes);
+    setNodes(synchronizedNodes);
     setEdges(nextEdges);
     setSelectedId(nextSelectedId);
     setPendingConnection(null);
