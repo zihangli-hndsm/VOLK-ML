@@ -117,6 +117,10 @@ assert.throws(
   () => updateAgentNode([agentDense], agentDense.id, { parameters: { units: -1 } }),
   (error) => error.code === 'INVALID_PARAMETER',
 );
+assert.throws(
+  () => updateAgentNode([agentDense], agentDense.id, { parameters: { units: 1.5 } }),
+  (error) => error.code === 'INVALID_PARAMETER' && error.details.step === 1,
+);
 const movedAgentDense = updateAgentNode([agentDense], agentDense.id, { position: { x: 420, y: 80 }, parameters: { units: 16 } })[0];
 assert.deepEqual(movedAgentDense.position, { x: 420, y: 80 });
 assert.equal(movedAgentDense.data.parameters.units, 16);
