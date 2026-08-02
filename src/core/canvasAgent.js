@@ -3,6 +3,7 @@ import { defaults } from './components.js';
 
 export const CANVAS_AGENT_API_VERSION = 1;
 export const CANVAS_AGENT_GLOBAL = '__VOLK_ML_AGENT__';
+const bridgeRegistryByTarget = new WeakMap();
 
 export class CanvasAgentError extends Error {
   constructor(code, message, details = {}) {
@@ -218,7 +219,15 @@ export function createCanvasAgentSnapshot({
     } : null,
     execution: {
       plan: copy(executionPlan),
-      runtime: copy(runtime),
+      runtime: {
+        status: runtime?.status ?? 'idle',
+        activeNodeIds: copy(runtime?.activeNodeIds ?? []),
+        losses: copy(runtime?.losses ?? []),
+        result: copy(runtime?.result ?? null),
+        error: copy(runtime?.error ?? null),
+        startedAt: runtime?.startedAt ?? null,
+        finishedAt: runtime?.finishedAt ?? null,
+      },
     },
   };
 }
@@ -259,19 +268,41 @@ export function createCanvasAgentApi(adapter) {
 }
 
 export function installCanvasAgentBridge(api, target = globalThis) {
-  const previous = target[CANVAS_AGENT_GLOBAL];
-  const bridge = Object.freeze({
-    apiVersion: CANVAS_AGENT_API_VERSION,
-    listInstances: () => [{ id: api.instanceId }],
-    async open(instanceId = api.instanceId) {
-      if (instanceId !== api.instanceId) fail('INSTANCE_NOT_FOUND', `Canvas instance not found: ${instanceId}.`, { instanceId });
-      return api;
-    },
-  });
-  target[CANVAS_AGENT_GLOBAL] = bridge;
+  let registry = bridgeRegistryByTarget.get(target);
+  if (!registry) {
+    const apis = new Map();
+    const previous = target[CANVAS_AGENT_GLOBAL];
+    const bridge = Object.freeze({
+      apiVersion: CANVAS_AGENT_API_VERSION,
+      listInstances: () => [...apis.keys()].map((id) => ({ id })),
+      async open(instanceId) {
+        if (instanceId === undefined) {
+          if (apis.size > 1) fail('INSTANCE_AMBIGUOUS', 'More than one canvas instance is mounted.', { instanceIds: [...apis.keys()] });
+          const only = apis.values().next().value;
+          if (only) return only;
+        } else if (apis.has(instanceId)) {
+          return apis.get(instanceId);
+        }
+        fail('INSTANCE_NOT_FOUND', `Canvas instance not found: ${instanceId ?? ''}.`, { instanceId });
+      },
+    });
+    registry = { apis, bridge, previous };
+    bridgeRegistryByTarget.set(target, registry);
+    target[CANVAS_AGENT_GLOBAL] = bridge;
+  }
+  if (registry.apis.has(api.instanceId)) {
+    fail('DUPLICATE_INSTANCE', `Canvas instance is already mounted: ${api.instanceId}.`, { instanceId: api.instanceId });
+  }
+  registry.apis.set(api.instanceId, api);
+  let installed = true;
   return () => {
-    if (target[CANVAS_AGENT_GLOBAL] !== bridge) return;
-    if (previous === undefined) delete target[CANVAS_AGENT_GLOBAL];
-    else target[CANVAS_AGENT_GLOBAL] = previous;
+    if (!installed) return;
+    installed = false;
+    if (registry.apis.get(api.instanceId) === api) registry.apis.delete(api.instanceId);
+    if (registry.apis.size) return;
+    bridgeRegistryByTarget.delete(target);
+    if (target[CANVAS_AGENT_GLOBAL] !== registry.bridge) return;
+    if (registry.previous === undefined) delete target[CANVAS_AGENT_GLOBAL];
+    else target[CANVAS_AGENT_GLOBAL] = registry.previous;
   };
 }
