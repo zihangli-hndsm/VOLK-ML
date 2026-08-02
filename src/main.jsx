@@ -490,6 +490,7 @@ function Workspace() {
   const [restoreCandidate, setRestoreCandidate] = useState(null);
   const [localReady, setLocalReady] = useState(false);
   const [autosavedAt, setAutosavedAt] = useState(null);
+  const [persistenceRevision, setPersistenceRevision] = useState(0);
   const [dataset, setDataset] = useState(null);
   const [model, setModel] = useState(null);
   const [runtime, setRuntime] = useState(idleRuntimeState);
@@ -940,6 +941,7 @@ function Workspace() {
         downloadText(safeProjectFilename(project.name), content, 'application/json');
       }
       lastDownloadSignature.current = projectSignature;
+      setPersistenceRevision((revision) => revision + 1);
       setNotice(t('project.saved'));
     } catch (error) {
       if (error.name !== 'AbortError') setNotice(t('project.importFailed', { message: error.message }));
@@ -953,6 +955,7 @@ function Workspace() {
       fileHandleRef.current = null;
       applyProject(JSON.parse(await file.text()));
       lastDownloadSignature.current = projectSignature;
+      setPersistenceRevision((revision) => revision + 1);
       setNotice(t('project.imported'));
     } catch (error) {
       setNotice(t('project.importFailed', { message: translateError(error, t) }));
@@ -1078,6 +1081,7 @@ function Workspace() {
     applyProject(project);
     const normalized = projectFromWorkspace(workspaceStateRef.current);
     lastDownloadSignature.current = projectContentSignature(normalized);
+    setPersistenceRevision((revision) => revision + 1);
     return { name: normalized.name, version: normalized.version };
   }, [applyProject]);
   const agentExportCode = useCallback(async (framework, options = {}) => {
@@ -1098,6 +1102,7 @@ function Workspace() {
     const filename = safeProjectFilename(project.name);
     downloadText(filename, content, 'application/json');
     lastDownloadSignature.current = projectContentSignature(project);
+    setPersistenceRevision((revision) => revision + 1);
     return { filename, bytes: new Blob([content]).size };
   }, []);
   useEffect(() => {
@@ -1145,7 +1150,7 @@ function Workspace() {
     agentSubscribersRef.current.forEach((listener) => {
       try { listener(snapshot); } catch { /* One agent listener must not block the workspace. */ }
     });
-  }, [projectSignature, runtime, selectedId, viewMode, getAgentSnapshot]);
+  }, [projectSignature, runtime, selectedId, viewMode, persistenceRevision, getAgentSnapshot]);
   const startResize = (side, event) => {
     event.preventDefault();
     const startX = event.clientX;
