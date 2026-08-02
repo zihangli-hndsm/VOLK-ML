@@ -166,6 +166,7 @@ const idleRuntimeState = () => ({
   status: 'idle',
   activeNodeIds: [],
   losses: [],
+  result: null,
   error: null,
   startedAt: null,
   finishedAt: null,
@@ -731,6 +732,7 @@ function Workspace() {
       status: 'running',
       activeNodeIds: [],
       losses: [],
+      result: null,
       error: null,
       startedAt,
       finishedAt: null,
@@ -1044,6 +1046,9 @@ function Workspace() {
     return { nodeId };
   }, []);
   const agentRenameProject = useCallback(async (name) => {
+    if (workspaceStateRef.current.runtime.status === 'running') {
+      throw new CanvasAgentError('INSTANCE_BUSY', 'Project cannot be renamed while execution is running.');
+    }
     if (typeof name !== 'string' || !name.trim()) {
       throw new CanvasAgentError('INVALID_PROJECT_NAME', 'Project name cannot be empty.');
     }
