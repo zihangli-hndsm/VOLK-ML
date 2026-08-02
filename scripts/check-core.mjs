@@ -149,6 +149,16 @@ assert.notEqual(
   'Parameter changes must invalidate an execution result',
 );
 assert.equal(agentEdges[0].id, 'agent-link');
+assert.throws(
+  () => connectAgentNodes([agentInput, agentDense], [], {
+    source: agentInput.id,
+    sourceHandle: 'bogus',
+    target: agentDense.id,
+    targetHandle: 'bogus',
+  }),
+  (error) => error.code === 'INVALID_CONNECTION',
+  'Agent connections must require exact port handles',
+);
 assert.equal(disconnectAgentEdge(agentEdges, 'agent-link').length, 0);
 assert.deepEqual(removeAgentNode([agentInput, agentDense], agentEdges, agentInput.id).edges, []);
 assert.equal(selectAgentNode([agentInput, agentDense], agentDense.id)[1].selected, true);
@@ -1087,6 +1097,20 @@ assert.throws(
   () => validateProjectForWorkspace({ ...agentProject, customComponents: [duplicatedBoundaryManifest] }),
   (error) => error.translationKey === 'error.invalidProject',
   'workspace project validation must reject duplicate composite boundary targets',
+);
+const catalogOnlyNestedManifest = structuredClone(customRegression.manifest);
+catalogOnlyNestedManifest.id = 'custom_nested_catalog_only';
+const parentWithCatalogOnlyChild = structuredClone(customRegression.manifest);
+parentWithCatalogOnlyChild.id = 'custom_parent_catalog_only';
+parentWithCatalogOnlyChild.composition.nodes[0].componentId = catalogOnlyNestedManifest.id;
+delete parentWithCatalogOnlyChild.composition.nodes[0].manifest;
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    customComponents: [catalogOnlyNestedManifest, parentWithCatalogOnlyChild],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must require embedded nested custom manifests',
 );
 assert.throws(
   () => validateProjectForWorkspace({ ...agentProject, trainedModel: { hasPredictor: true } }),
