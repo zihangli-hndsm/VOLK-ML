@@ -592,6 +592,7 @@ function Workspace() {
       runtime: nextRuntime,
       selectedId: restoredNodes[0]?.id ?? null,
     };
+    previousExecutionSignature.current = canvasExecutionInputSignature(restoredNodes, restoredEdges, project.data);
     setProjectName(workspaceStateRef.current.projectName);
     setCustomComponents(workspaceStateRef.current.customComponents);
     setNodes(restoredNodes);
