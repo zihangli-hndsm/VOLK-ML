@@ -67,7 +67,7 @@ All mutations return promises. An accepted mutation is visible through `getState
 
 ```js
 const { nodeId } = await canvas.addNode({
-  componentId: 'tensor_input',
+  componentId: 'tensor_input_node',
   id: 'optional-stable-id',
   position: { x: 100, y: 200 },
   parameters: { shape: '32' },
