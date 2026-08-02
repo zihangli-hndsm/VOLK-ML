@@ -25,6 +25,7 @@ import {
   createCanvasAgentApi,
   createCanvasAgentSnapshot,
   disconnectAgentEdge,
+  invalidateAgentNodeStatuses,
   installCanvasAgentBridge,
   removeAgentNode,
   selectAgentNode,
@@ -128,6 +129,7 @@ const runningAgentDense = { ...agentDense, data: { ...agentDense.data, status: '
 const layoutOnlyAgentDense = updateAgentNode([runningAgentDense], runningAgentDense.id, { position: { x: 500, y: 120 } })[0];
 assert.equal(layoutOnlyAgentDense.data.status, 'success', 'Layout-only Agent edits must preserve execution status');
 assert.equal(updateAgentNode([runningAgentDense], runningAgentDense.id, { parameters: { units: 16 } })[0].data.status, 'idle');
+assert.equal(invalidateAgentNodeStatuses([runningAgentDense])[0].data.status, 'idle');
 const agentEdges = connectAgentNodes([agentInput, agentDense], [], {
   id: 'agent-link',
   source: agentInput.id,
@@ -254,7 +256,7 @@ const fakeAgentApi = createCanvasAgentApi({
   },
   getProject: () => agentProject,
   run: async () => ({ type: 'linear_regression' }),
-  exportCode: async (framework) => ({ framework, code: '' }),
+  exportCode: async (framework) => `# ${framework}`,
   downloadProject: async () => ({ filename: 'agent-test.volkml.json' }),
   subscribe(listener) { agentListeners.add(listener); return () => agentListeners.delete(listener); },
 });
@@ -268,6 +270,7 @@ await assert.rejects(
     && error.code === 'OPERATION_FAILED'
     && error.details.operation === 'loadProject',
 );
+assert.equal(await fakeAgentApi.exportCode('pytorch'), '# pytorch');
 await assert.rejects(
   fakeAgentApi.addNode({ invalidDetails: true }),
   (error) => error.code === 'INVALID_PARAMETER'
@@ -289,7 +292,7 @@ const secondAgentApi = createCanvasAgentApi({ ...{
   loadProject: async (project) => ({ name: project.name }),
   getProject: () => agentProject,
   run: async () => ({ type: 'linear_regression' }),
-  exportCode: async (framework) => ({ framework, code: '' }),
+  exportCode: async (framework) => `# ${framework}`,
   downloadProject: async () => ({ filename: 'agent-test.volkml.json' }),
   subscribe: () => () => {},
 } });
