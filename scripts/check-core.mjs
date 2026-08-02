@@ -1001,6 +1001,31 @@ assert.equal(validateProjectForWorkspace({
   ...agentProject,
   customComponents: [],
 }).name, 'Agent test');
+const malformedCustomManifest = {
+  id: 'custom_invalid',
+  name: { en: 'Invalid', zh: '无效' },
+  description: { en: 'Invalid fixture', zh: '无效测试项' },
+  inputs: [null],
+  outputs: [],
+  properties: [],
+};
+assert.throws(
+  () => validateProjectForWorkspace({ ...agentProject, customComponents: [malformedCustomManifest] }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must inspect custom component ports',
+);
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    customComponents: [{
+      ...malformedCustomManifest,
+      inputs: [],
+      properties: [{ key: 'units', label: { en: 'Units', zh: '单元' }, type: 'number', default: 'many' }],
+    }],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must inspect custom component properties',
+);
 
 const legacySamplePositions = {
   'pipeline-data': [40, 180],
