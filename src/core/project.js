@@ -97,3 +97,59 @@ export function migrateProject(project) {
     version: PROJECT_VERSION,
   };
 }
+
+function invalidProject() {
+  throw localizedError('error.invalidProject');
+}
+
+const localizedTextIsValid = (value) => (
+  typeof value === 'string'
+  || (value && typeof value === 'object' && !Array.isArray(value)
+    && Object.values(value).length > 0
+    && Object.values(value).every((translation) => typeof translation === 'string'))
+);
+
+export function validateProjectForWorkspace(rawProject) {
+  const project = migrateProject(rawProject);
+  if (typeof project.name !== 'string' || !Array.isArray(project.customComponents)) invalidProject();
+  if (project.language !== undefined && (
+    !project.language
+    || typeof project.language !== 'object'
+    || (project.language.primary !== undefined && typeof project.language.primary !== 'string')
+    || (project.language.secondary !== undefined && project.language.secondary !== null && typeof project.language.secondary !== 'string')
+  )) invalidProject();
+  if (project.workspace !== undefined && (!project.workspace || typeof project.workspace !== 'object')) invalidProject();
+
+  const nodeIds = new Set();
+  project.graph.nodes.forEach((node) => {
+    const manifest = node?.data?.manifest;
+    if (
+      !node || typeof node !== 'object'
+      || typeof node.id !== 'string' || !node.id.trim() || nodeIds.has(node.id)
+      || !Number.isFinite(node.position?.x) || !Number.isFinite(node.position?.y)
+      || !manifest || typeof manifest !== 'object' || typeof manifest.id !== 'string' || !manifest.id
+      || !node.data.parameters || typeof node.data.parameters !== 'object' || Array.isArray(node.data.parameters)
+    ) invalidProject();
+    nodeIds.add(node.id);
+  });
+  const edgeIds = new Set();
+  project.graph.edges.forEach((edge) => {
+    if (
+      !edge || typeof edge !== 'object'
+      || typeof edge.id !== 'string' || !edge.id.trim() || edgeIds.has(edge.id)
+      || typeof edge.source !== 'string' || !nodeIds.has(edge.source)
+      || typeof edge.target !== 'string' || !nodeIds.has(edge.target)
+      || typeof edge.sourceHandle !== 'string' || typeof edge.targetHandle !== 'string'
+    ) invalidProject();
+    edgeIds.add(edge.id);
+  });
+  project.customComponents.forEach((manifest) => {
+    if (
+      !manifest || typeof manifest !== 'object'
+      || typeof manifest.id !== 'string' || !manifest.id
+      || !localizedTextIsValid(manifest.name) || !localizedTextIsValid(manifest.description)
+      || !Array.isArray(manifest.inputs) || !Array.isArray(manifest.outputs) || !Array.isArray(manifest.properties)
+    ) invalidProject();
+  });
+  return project;
+}
