@@ -103,6 +103,13 @@ function validateParameter(property, value) {
     if (!Number.isFinite(value)) fail('INVALID_PARAMETER', `${property.key} needs a finite number.`, { key: property.key, value });
     if (Number.isFinite(property.min) && value < property.min) fail('INVALID_PARAMETER', `${property.key} is below its minimum.`, { key: property.key, value, min: property.min });
     if (Number.isFinite(property.max) && value > property.max) fail('INVALID_PARAMETER', `${property.key} is above its maximum.`, { key: property.key, value, max: property.max });
+    if (Number.isFinite(property.step) && property.step > 0) {
+      const base = Number.isFinite(property.min) ? property.min : 0;
+      const steps = (value - base) / property.step;
+      if (Math.abs(steps - Math.round(steps)) > 1e-9) {
+        fail('INVALID_PARAMETER', `${property.key} does not align with its step.`, { key: property.key, value, step: property.step, base });
+      }
+    }
   } else if (property.type === 'boolean') {
     if (typeof value !== 'boolean') fail('INVALID_PARAMETER', `${property.key} needs a boolean.`, { key: property.key, value });
   } else if (property.type === 'select') {
