@@ -24,6 +24,7 @@ import {
   disconnectAgentEdge,
   installCanvasAgentBridge,
   removeAgentNode,
+  selectAgentNode,
   summarizeAgentComponent,
   updateAgentNode,
   validateAgentDataset,
@@ -520,7 +521,7 @@ function Workspace() {
     runtime,
     selectedId,
   };
-  const selectedNode = nodes.find((node) => node.id === selectedId) ?? nodes[0];
+  const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
   const selectedNodes = nodes.filter((node) => node.selected);
   const availablePlugins = useMemo(() => [...pluginRegistry, ...customComponents], [customComponents]);
   const filteredPlugins = useMemo(() => availablePlugins.filter((plugin) => {
@@ -1053,13 +1054,12 @@ function Workspace() {
   const agentSelectNode = useCallback(async (nodeId) => {
     const state = workspaceStateRef.current;
     assertAgentWritable(state, 'Canvas selection cannot change while execution is running.');
-    if (nodeId !== null && !state.nodes.some((node) => node.id === nodeId)) {
-      throw new CanvasAgentError('NODE_NOT_FOUND', `Node not found: ${nodeId}.`, { nodeId });
-    }
-    workspaceStateRef.current = { ...state, selectedId: nodeId };
+    const nextNodes = selectAgentNode(state.nodes, nodeId);
+    workspaceStateRef.current = { ...state, nodes: nextNodes, selectedId: nodeId };
+    setNodes(nextNodes);
     setSelectedId(nodeId);
     return { nodeId };
-  }, []);
+  }, [setNodes]);
   const agentRenameProject = useCallback(async (name) => {
     assertAgentWritable(workspaceStateRef.current, 'Project cannot be renamed while execution is running.');
     if (typeof name !== 'string' || !name.trim()) {
