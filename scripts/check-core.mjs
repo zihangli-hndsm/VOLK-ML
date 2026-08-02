@@ -18,6 +18,7 @@ import { assessConnection, knownPortTypes } from '../src/core/connections.js';
 import {
   CANVAS_AGENT_API_VERSION,
   CANVAS_AGENT_GLOBAL,
+  CanvasAgentError,
   connectAgentNodes,
   createAgentNode,
   createCanvasAgentApi,
@@ -173,6 +174,7 @@ assert.equal(agentSnapshot.canvas.nodes[1].componentId, 'dense_node');
 assert.equal(agentSnapshot.dataset, null);
 assert.equal(agentSnapshot.execution.runtime.status, 'idle');
 assert.equal(agentSnapshot.execution.runtime.result, null);
+assert.equal(agentSnapshot.execution.recommendation.recommendedTier, 'L1');
 const agentListeners = new Set();
 const fakeAgentApi = createCanvasAgentApi({
   instanceId: 'test-instance',
@@ -186,7 +188,10 @@ const fakeAgentApi = createCanvasAgentApi({
   selectNode: async (nodeId) => ({ nodeId }),
   renameProject: async (name) => ({ name }),
   setDataset: async (dataset) => ({ hasDataset: Boolean(dataset) }),
-  loadProject: async (project) => ({ name: project.name }),
+  loadProject: async (project) => {
+    if (project.name === 'fail') throw new Error('Invalid project fixture');
+    return { name: project.name };
+  },
   getProject: () => agentProject,
   run: async () => ({ type: 'linear_regression' }),
   exportCode: async (framework) => ({ framework, code: '' }),
@@ -197,6 +202,12 @@ const agentTarget = {};
 const uninstallAgentBridge = installCanvasAgentBridge(fakeAgentApi, agentTarget);
 assert.deepEqual(agentTarget[CANVAS_AGENT_GLOBAL].listInstances(), [{ id: 'test-instance' }]);
 assert.equal((await agentTarget[CANVAS_AGENT_GLOBAL].open()).instanceId, 'test-instance');
+await assert.rejects(
+  fakeAgentApi.loadProject({ name: 'fail' }),
+  (error) => error instanceof CanvasAgentError
+    && error.code === 'OPERATION_FAILED'
+    && error.details.operation === 'loadProject',
+);
 const secondAgentApi = createCanvasAgentApi({ ...{
   instanceId: 'second-instance',
   getState: () => ({ ...agentSnapshot, instanceId: 'second-instance' }),
