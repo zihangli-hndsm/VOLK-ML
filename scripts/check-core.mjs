@@ -1026,6 +1026,46 @@ assert.throws(
   (error) => error.translationKey === 'error.invalidProject',
   'workspace project validation must inspect custom component properties',
 );
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    graph: {
+      ...agentProject.graph,
+      nodes: agentProject.graph.nodes.map((node) => node.id === agentDense.id
+        ? { ...node, data: { ...node.data, parameters: { ...node.data.parameters, units: 1.5 } } }
+        : node),
+    },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must apply manifest parameter steps',
+);
+const duplicateInputSource = { ...agentInput, id: 'agent-input-duplicate', position: { x: 10, y: 180 } };
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    graph: {
+      nodes: [...agentProject.graph.nodes, duplicateInputSource],
+      edges: [
+        ...agentProject.graph.edges,
+        makeEdge(duplicateInputSource.id, 'tensor', agentDense.id, 'input'),
+      ],
+    },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must enforce one incoming edge per input',
+);
+assert.equal(validateProjectForWorkspace({
+  ...agentProject,
+  customComponents: [customRegression.manifest],
+}).customComponents.length, 1);
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    customComponents: [{ ...customRegression.manifest, composition: null }],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must inspect custom composite structure',
+);
 
 const legacySamplePositions = {
   'pipeline-data': [40, 180],
