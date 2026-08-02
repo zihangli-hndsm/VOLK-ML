@@ -22,6 +22,27 @@ function copy(value) {
   return value === undefined ? undefined : structuredClone(value);
 }
 
+function jsonSafeDetails(value, ancestors = new WeakSet()) {
+  if (value === null || ['string', 'boolean'].includes(typeof value)) return value;
+  if (typeof value === 'number') return Number.isFinite(value) ? value : String(value);
+  if (typeof value === 'bigint') return value.toString();
+  if (['undefined', 'function', 'symbol'].includes(typeof value)) return String(value);
+  if (ancestors.has(value)) return '[Circular]';
+  ancestors.add(value);
+  let normalized;
+  if (Array.isArray(value)) {
+    normalized = value.map((item) => jsonSafeDetails(item, ancestors));
+  } else if ([Object.prototype, null].includes(Object.getPrototypeOf(value))) {
+    normalized = Object.fromEntries(
+      Object.entries(value).map(([key, item]) => [key, jsonSafeDetails(item, ancestors)]),
+    );
+  } else {
+    normalized = String(value);
+  }
+  ancestors.delete(value);
+  return normalized;
+}
+
 function assertJsonSafe(value, code, label, path = '$', ancestors = new WeakSet()) {
   if (value === null || ['string', 'boolean'].includes(typeof value)) return;
   if (typeof value === 'number') {
@@ -48,13 +69,16 @@ function assertJsonSafe(value, code, label, path = '$', ancestors = new WeakSet(
 }
 
 function normalizeAdapterError(error, operation) {
-  if (error instanceof CanvasAgentError) return error;
+  if (error instanceof CanvasAgentError) {
+    error.details = jsonSafeDetails(error.details);
+    return error;
+  }
   return new CanvasAgentError('OPERATION_FAILED', error?.message ?? String(error), {
     operation,
     causeName: error?.name ?? 'Error',
     causeCode: error?.code,
     translationKey: error?.translationKey,
-    translationParams: copy(error?.translationParams),
+    translationParams: jsonSafeDetails(error?.translationParams),
   });
 }
 
@@ -186,6 +210,13 @@ export function removeAgentNode(nodes, edges, nodeId) {
     nodes: nodes.filter((node) => node.id !== nodeId),
     edges: edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
   };
+}
+
+export function selectAgentNode(nodes, nodeId) {
+  if (nodeId !== null && !nodes.some((node) => node.id === nodeId)) {
+    fail('NODE_NOT_FOUND', `Node not found: ${nodeId}.`, { nodeId });
+  }
+  return nodes.map((node) => ({ ...node, selected: node.id === nodeId }));
 }
 
 export function connectAgentNodes(nodes, edges, request, idFactory = () => crypto.randomUUID()) {
