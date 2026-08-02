@@ -63,6 +63,15 @@
 - Custom composites are copy-style definitions. Boundary ports include unsatisfied internal child ports even when the selected subgraph has no surrounding edges. Deleting a catalog definition must not mutate existing instances.
 - Cloud save, collaboration, model APIs, and remote compute use `src/platform/services.js`. Never store API keys in project JSON, component parameters, local project history, or public client configuration.
 
+## Canvas Agent API
+
+- `src/core/canvasAgent.js` is the versioned, framework-neutral command contract for agents that operate a mounted editor. Keep graph mutations in its pure helpers so UI actions and agent actions obey the same component, port, single-input, and cycle rules.
+- The browser entry point is `globalThis.__VOLK_ML_AGENT__`. It is an in-page capability, not an HTTP server, authentication boundary, or hosted-service adapter. A host that exposes it to an external agent is responsible for origin isolation, user consent, and authorization.
+- Return serializable snapshots rather than React state, DOM nodes, file handles, API keys, or mutable registry objects. Commands that mutate state are asynchronous; `getState()` must reflect an accepted mutation before its promise resolves.
+- Preserve the distinction between execution and export. `run()` may execute only graphs supported by the L0 browser runtime; L1-L3 graphs remain inspectable and exportable.
+- Project downloads must use the canonical versioned project serializer. Do not invent an agent-only project format or bypass import migration and manifest resolution.
+- Changing a required method, command payload, snapshot field meaning, or error-code meaning requires incrementing `CANVAS_AGENT_API_VERSION`, updating `docs/architecture/agent-canvas-api.md`, and adding a focused contract assertion.
+
 ## Required validation
 
 - Run `npm run check` for component, compiler, composite, localization, and tier invariants.
