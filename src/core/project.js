@@ -235,6 +235,7 @@ function customManifestIsValid(manifest, availableManifests, ancestors = new Set
     if (spec.manifest !== undefined && spec.manifest?.customComposite !== true) return false;
     const childManifest = spec.manifest ?? componentById.get(spec.componentId) ?? availableManifests.get(spec.componentId);
     if (!childManifest || childManifest.id !== spec.componentId) return false;
+    if (childManifest.customComposite && spec.manifest === undefined) return false;
     if (childManifest.customComposite && !customManifestIsValid(childManifest, availableManifests, nextAncestors)) return false;
     if (!parametersAreValid(childManifest, spec.parameters ?? {}, propertyKeys)) return false;
     childKeys.add(spec.key);
@@ -258,7 +259,6 @@ function customManifestIsValid(manifest, availableManifests, ancestors = new Set
   const parentInputByName = new Map(manifest.inputs.map((port) => [port.name, port]));
   const parentOutputByName = new Map(manifest.outputs.map((port) => [port.name, port]));
   const occupiedInputs = new Set(validatedEdges.map((edge) => `${edge.target}:${edge.targetHandle}`));
-  const consumedOutputs = new Set(validatedEdges.map((edge) => `${edge.source}:${edge.sourceHandle}`));
   const mappedInputs = new Set();
   const mappedOutputs = new Set();
   const inputsValid = Object.entries(composition.inputs).every(([parentName, targets]) => (
@@ -275,7 +275,7 @@ function customManifestIsValid(manifest, availableManifests, ancestors = new Set
     const child = childByKey.get(source?.node);
     const childPort = child?.outputs.find((port) => port.name === source?.port);
     const endpoint = `${source?.node}:${source?.port}`;
-    if (consumedOutputs.has(endpoint) || mappedOutputs.has(endpoint)) return false;
+    if (mappedOutputs.has(endpoint)) return false;
     mappedOutputs.add(endpoint);
     return childPort && childPort.type === parentOutputByName.get(parentName)?.type;
   });
