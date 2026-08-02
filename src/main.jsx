@@ -162,6 +162,10 @@ function runtimeErrorInfo(error) {
   };
 }
 
+function assertAgentWritable(state, message = 'Canvas cannot change while execution is running.') {
+  if (state.runtime.status === 'running') throw new CanvasAgentError('INSTANCE_BUSY', message);
+}
+
 const idleRuntimeState = () => ({
   status: 'idle',
   activeNodeIds: [],
@@ -970,9 +974,7 @@ function Workspace() {
     });
   }, []);
   const commitAgentGraph = useCallback(({ nextNodes, nextEdges, nextSelectedId }) => {
-    if (workspaceStateRef.current.runtime.status === 'running') {
-      throw new CanvasAgentError('INSTANCE_BUSY', 'Canvas graph cannot change while execution is running.');
-    }
+    assertAgentWritable(workspaceStateRef.current, 'Canvas graph cannot change while execution is running.');
     const nextRuntime = idleRuntimeState();
     workspaceStateRef.current = {
       ...workspaceStateRef.current,
@@ -1038,6 +1040,7 @@ function Workspace() {
   }, [commitAgentGraph]);
   const agentSelectNode = useCallback(async (nodeId) => {
     const state = workspaceStateRef.current;
+    assertAgentWritable(state, 'Canvas selection cannot change while execution is running.');
     if (nodeId !== null && !state.nodes.some((node) => node.id === nodeId)) {
       throw new CanvasAgentError('NODE_NOT_FOUND', `Node not found: ${nodeId}.`, { nodeId });
     }
@@ -1046,9 +1049,7 @@ function Workspace() {
     return { nodeId };
   }, []);
   const agentRenameProject = useCallback(async (name) => {
-    if (workspaceStateRef.current.runtime.status === 'running') {
-      throw new CanvasAgentError('INSTANCE_BUSY', 'Project cannot be renamed while execution is running.');
-    }
+    assertAgentWritable(workspaceStateRef.current, 'Project cannot be renamed while execution is running.');
     if (typeof name !== 'string' || !name.trim()) {
       throw new CanvasAgentError('INVALID_PROJECT_NAME', 'Project name cannot be empty.');
     }
@@ -1058,9 +1059,7 @@ function Workspace() {
     return { name: nextName };
   }, []);
   const agentSetDataset = useCallback(async (nextDataset) => {
-    if (workspaceStateRef.current.runtime.status === 'running') {
-      throw new CanvasAgentError('INSTANCE_BUSY', 'Dataset cannot change while execution is running.');
-    }
+    assertAgentWritable(workspaceStateRef.current, 'Dataset cannot change while execution is running.');
     const validatedDataset = validateAgentDataset(nextDataset);
     const nextRuntime = idleRuntimeState();
     workspaceStateRef.current = {
@@ -1075,9 +1074,7 @@ function Workspace() {
     return { hasDataset: Boolean(validatedDataset), rows: validatedDataset?.rows.length ?? 0 };
   }, []);
   const agentLoadProject = useCallback(async (project) => {
-    if (workspaceStateRef.current.runtime.status === 'running') {
-      throw new CanvasAgentError('INSTANCE_BUSY', 'Project cannot change while execution is running.');
-    }
+    assertAgentWritable(workspaceStateRef.current, 'Project cannot change while execution is running.');
     applyProject(project);
     const normalized = projectFromWorkspace(workspaceStateRef.current);
     lastDownloadSignature.current = projectContentSignature(normalized);
