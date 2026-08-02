@@ -18,6 +18,7 @@ VOLK-ML (Vivid Online Learning Kit for Machine Learning) is a bilingual visual M
 - Name projects, recover local IndexedDB auto-saves, download a versioned `.volkml.json` snapshot, and re-open project files locally.
 - Ask the deterministic project explainer for a graph walkthrough; optionally provide a compatible chat-completion endpoint for follow-up questions without persisting an API key.
 - Estimate whether a graph belongs on Browser CPU, Browser WebGPU, Local Python, or Remote GPU without claiming unavailable runtimes.
+- Let an in-page agent inspect and edit the mounted canvas, run supported browser pipelines, export code, and download the canonical project file through a versioned API.
 
 ## Training and execution boundaries
 
@@ -32,6 +33,30 @@ KNN is intentionally browser-only. Browser WebGPU, local Python orchestration, r
 Local-first use is the default: IndexedDB protects the active project, downloads create portable JSON snapshots, and supported browsers may keep working with an authorized local file. The project format contains no cloud credentials or API keys.
 
 Future cloud save, collaboration, and remote compute integrate only through the versioned service boundary in [`src/platform/services.js`](src/platform/services.js). This keeps the open editor usable offline while allowing a hosted edition to implement the same project APIs separately.
+
+## Canvas Agent API
+
+After the editor mounts, trusted same-page code can open its canvas instance through `window.__VOLK_ML_AGENT__`:
+
+```js
+const canvas = await window.__VOLK_ML_AGENT__.open();
+
+const state = canvas.getState();
+const components = canvas.listComponents();
+
+const { nodeId } = await canvas.addNode({
+  componentId: 'dense_node',
+  position: { x: 640, y: 180 },
+  parameters: { input_features: 32, units: 64 },
+});
+
+await canvas.updateNode(nodeId, { parameters: { units: 128 } });
+await canvas.run(); // L0 browser pipelines only
+await canvas.exportCode('pytorch', { download: true });
+await canvas.downloadProject();
+```
+
+The API also supports typed connections, deletion, selection, project renaming, dataset replacement, project loading, state subscriptions, and direct project snapshots. It is deliberately an in-page JavaScript capability rather than an unauthenticated network endpoint. See [`docs/architecture/agent-canvas-api.md`](docs/architecture/agent-canvas-api.md) for the complete v1 contract and security boundary.
 
 ## Run locally
 
@@ -63,10 +88,11 @@ The active implementation uses:
 - `src/core/customComposites.js` for user-defined nested components;
 - `src/core/localProjects.js` and `src/core/project.js` for auto-save, project files, and migration;
 - `src/core/explanation.js` for deterministic project explanation and optional model hand-off;
+- `src/core/canvasAgent.js` for the versioned in-page canvas inspection and command contract;
 - `src/platform/services.js` for local defaults and future hosted-service adapters;
 - `src/main.jsx` for the visual editor and learning interface.
 
-Start with [`docs/architecture/overview.md`](docs/architecture/overview.md). The cloud boundary is documented in [`docs/architecture/platform-services.md`](docs/architecture/platform-services.md).
+Start with [`docs/architecture/overview.md`](docs/architecture/overview.md). The canvas command contract is documented in [`docs/architecture/agent-canvas-api.md`](docs/architecture/agent-canvas-api.md), and the cloud boundary in [`docs/architecture/platform-services.md`](docs/architecture/platform-services.md).
 
 ## Build
 

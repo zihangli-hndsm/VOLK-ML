@@ -7,13 +7,29 @@ import { languages, localizedError, resolveMessage, translateError } from './i18
 import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
 import { executeBrowserGraph, predictWithModel } from './core/browserRuntime';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
-import { migrateProject, PROJECT_VERSION, projectContentSignature } from './core/project';
+import { PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from './core/project';
 import { safeProjectFilename } from './core/localProjects';
 import { createCustomComposite } from './core/customComposites';
 import { assessConnection } from './core/connections';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
 import { stageForManifest, stageStyles, visualKindForManifest } from './core/visualLanguage';
 import { resolvePlatformServices } from './platform/services';
+import {
+  CanvasAgentError,
+  canvasExecutionInputSignature,
+  connectAgentNodes,
+  createAgentNode,
+  createCanvasAgentApi,
+  createCanvasAgentSnapshot,
+  disconnectAgentEdge,
+  invalidateAgentNodeStatuses,
+  installCanvasAgentBridge,
+  removeAgentNode,
+  selectAgentNode,
+  summarizeAgentComponent,
+  updateAgentNode,
+  validateAgentDataset,
+} from './core/canvasAgent';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
@@ -106,6 +122,62 @@ function downloadText(filename, content, type) {
   anchor.click();
   URL.revokeObjectURL(url);
 }
+
+function projectFromWorkspace(state) {
+  return {
+    format: 'VOLK-ML',
+    version: PROJECT_VERSION,
+    name: state.projectName.trim() || state.fallbackProjectName || 'Sample Project',
+    savedAt: new Date().toISOString(),
+    language: { primary: state.primary, secondary: state.secondary },
+    workspace: {
+      libraryMode: state.libraryMode,
+      leftWidth: state.leftWidth,
+      rightWidth: state.rightWidth,
+      viewMode: state.viewMode,
+    },
+    graph: {
+      nodes: state.nodes.map(({ selected, dragging, ...node }) => node),
+      edges: state.edges.map(({ selected, ...edge }) => edge),
+    },
+    customComponents: state.customComponents,
+    data: state.dataset,
+    trainedModel: state.model,
+  };
+}
+
+function executionPlanFor(nodes, edges, dataset) {
+  const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
+  const connectedNodes = nodes.filter((node) => connectedIds.has(node.id));
+  const plan = estimateExecutionPlan(connectedNodes, dataset, {
+    webgpu: typeof navigator !== 'undefined' && Boolean(navigator.gpu),
+  });
+  return { ...plan, canRunHere: platformServices.compute.canExecuteInBrowser(plan) };
+}
+
+function runtimeErrorInfo(error) {
+  return {
+    name: error?.name ?? 'Error',
+    message: error?.message ?? String(error),
+    code: error?.code,
+    translationKey: error?.translationKey,
+    translationParams: error?.translationParams,
+  };
+}
+
+function assertAgentWritable(state, message = 'Canvas cannot change while execution is running.') {
+  if (state.runtime.status === 'running') throw new CanvasAgentError('INSTANCE_BUSY', message);
+}
+
+const idleRuntimeState = () => ({
+  status: 'idle',
+  activeNodeIds: [],
+  losses: [],
+  result: null,
+  error: null,
+  startedAt: null,
+  finishedAt: null,
+});
 
 function PipelineNode({ id, data, selected }) {
   const { t } = useVividTranslation();
@@ -334,10 +406,8 @@ function PropertyControl({ property, value, onChange }) {
   return <><input className={property.type === 'slider' ? 'mt-3 w-full accent-blue-600' : inputClass} type={property.type === 'slider' ? 'range' : property.type === 'number' ? 'number' : 'text'} min={property.min} max={property.max} step={property.step} value={value} onChange={(event) => onChange(property.type === 'text' ? event.target.value : Number(event.target.value))} />{property.type === 'slider' && <span className="mt-2 block text-sm text-slate-500">{value}</span>}</>;
 }
 
-function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, onOpenData, onNodeStatus, onExport }) {
+function RunnerDialog({ open, onClose, nodes, edges, dataset, model, runtime, onRun, onOpenData, onExport }) {
   const { t } = useVividTranslation();
-  const [running, setRunning] = useState(false);
-  const [losses, setLosses] = useState(model?.lossHistory ?? []);
   const [inputs, setInputs] = useState({});
   const [prediction, setPrediction] = useState(null);
   const [graphError, setGraphError] = useState('');
@@ -346,12 +416,7 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
     nodes: nodes.map((node) => ({ id: node.id, manifestId: node.data.manifest.id, parameters: node.data.parameters })),
     edges: edges.map((edge) => ({ source: edge.source, sourceHandle: edge.sourceHandle, target: edge.target, targetHandle: edge.targetHandle })),
   }), [nodes, edges]);
-  const executionPlan = useMemo(() => {
-    const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
-    const connectedNodes = nodes.filter((node) => connectedIds.has(node.id));
-    const plan = estimateExecutionPlan(connectedNodes, dataset, { webgpu: typeof navigator !== 'undefined' && Boolean(navigator.gpu) });
-    return { ...plan, canRunHere: platformServices.compute.canExecuteInBrowser(plan) };
-  }, [graphSignature, dataset]);
+  const executionPlan = useMemo(() => executionPlanFor(nodes, edges, dataset), [graphSignature, dataset]);
   const needsDataset = useMemo(() => {
     const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
     return nodes.some(
@@ -360,7 +425,6 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
   }, [graphSignature]);
   useEffect(() => {
     if (open) {
-      setLosses(model?.lossHistory ?? []);
       setPrediction(null);
       setGraphError('');
       try {
@@ -375,39 +439,12 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
       }
       catch (error) { setPlanNames([]); setGraphError(translateError(error, t)); }
     }
-  }, [open, model, graphSignature, t]);
+  }, [open, graphSignature, t]);
   if (!open) return null;
-
-  const run = async () => {
-    if (running) return;
-    setGraphError('');
-    setPrediction(null);
-    setLosses([]);
-    onNodeStatus(nodes.map((node) => node.id), 'idle');
-    let currentNode = null;
-    try {
-      if (!executionPlan.canRunHere) throw localizedError('error.higherTierRequired', { tier: executionPlan.recommendedTier });
-      setRunning(true);
-      const finalModel = await executeBrowserGraph({
-        nodes,
-        edges,
-        dataset,
-        onNodeStatus: (ids, status) => {
-          currentNode = status === 'running' ? nodes.find((node) => ids.includes(node.id)) : currentNode;
-          onNodeStatus(ids, status);
-        },
-        onLoss: setLosses,
-        onYield: () => new Promise((resolve) => requestAnimationFrame(resolve)),
-      });
-      const { test, ...persistableModel } = finalModel;
-      onModel(persistableModel);
-    } catch (error) {
-      setGraphError(translateError(error, t));
-      if (currentNode) onNodeStatus([currentNode.id], 'error');
-    } finally {
-      setRunning(false);
-    }
-  };
+  const running = runtime.status === 'running';
+  const losses = runtime.status === 'idle' ? model?.lossHistory ?? [] : runtime.losses ?? [];
+  const runtimeError = runtime.error ? translateError(runtime.error, t) : '';
+  const visibleError = graphError || runtimeError;
 
   const tryPrediction = () => {
     if (!model?.hasPredictor) return;
@@ -424,9 +461,9 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, onModel, on
       <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-black">{t('runner.title')}</h2><p className="mt-1 text-sm text-slate-500">{t('runner.description')}</p></div><button aria-label={t('common.close')} className="rounded-full p-2 hover:bg-slate-100" onClick={onClose}>✕</button></div>
       {planNames.length > 0 && <div className="mt-4 flex flex-wrap items-center gap-1 text-xs">{planNames.map((name, index) => <React.Fragment key={`${name}-${index}`}><span className="rounded-full bg-slate-100 px-2 py-1 font-bold">{name}</span>{index < planNames.length - 1 && <span className="text-slate-300">→</span>}</React.Fragment>)}</div>}
       <TierPanel plan={executionPlan} onExport={onExport} />
-      {graphError && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">⚠ {graphError}</div>}
+      {visibleError && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">⚠ {visibleError}</div>}
       {needsDataset && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div className="mt-4"><LossChart values={losses} /></div><button disabled={running || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={run} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button></div>
+        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div className="mt-4"><LossChart values={losses} /></div><button disabled={running || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button></div>
         <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="font-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
       </div> : <div className="mt-5 rounded-3xl border border-dashed border-slate-300 p-8 text-center text-slate-500"><p className="text-3xl">⇧</p><p className="mt-3 font-bold">{t('tier.useHigherTier', { tier: executionPlan.recommendedTier })}</p><p className="mt-1 text-sm">{t('tier.designStillAvailable')}</p></div>}
     </section>
@@ -456,14 +493,37 @@ function Workspace() {
   const [restoreCandidate, setRestoreCandidate] = useState(null);
   const [localReady, setLocalReady] = useState(false);
   const [autosavedAt, setAutosavedAt] = useState(null);
+  const [persistenceRevision, setPersistenceRevision] = useState(0);
   const [dataset, setDataset] = useState(null);
   const [model, setModel] = useState(null);
+  const [runtime, setRuntime] = useState(idleRuntimeState);
   const [pendingConnection, setPendingConnection] = useState(null);
   const [notice, setNotice] = useState('');
+  const instanceIdRef = useRef(`workspace-${crypto.randomUUID()}`);
+  const agentSubscribersRef = useRef(new Set());
   const importRef = useRef(null);
   const fileHandleRef = useRef(null);
   const lastDownloadSignature = useRef('');
-  const selectedNode = nodes.find((node) => node.id === selectedId) ?? nodes[0];
+  const workspaceStateRef = useRef(null);
+  const agentAdapterRef = useRef(null);
+  workspaceStateRef.current = {
+    projectName,
+    fallbackProjectName: t('project.sampleName'),
+    primary,
+    secondary,
+    libraryMode,
+    leftWidth,
+    rightWidth,
+    viewMode,
+    nodes,
+    edges,
+    customComponents,
+    dataset,
+    model,
+    runtime,
+    selectedId,
+  };
+  const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
   const selectedNodes = nodes.filter((node) => node.selected);
   const availablePlugins = useMemo(() => [...pluginRegistry, ...customComponents], [customComponents]);
   const filteredPlugins = useMemo(() => availablePlugins.filter((plugin) => {
@@ -480,28 +540,20 @@ function Workspace() {
     data: dataset,
     trainedModel: model,
   }), [projectName, nodes, edges, dataset, customComponents, model]);
-  const makeProject = useCallback(() => ({
-    format: 'VOLK-ML',
-    version: PROJECT_VERSION,
-    name: projectName.trim() || t('project.sampleName'),
-    savedAt: new Date().toISOString(),
-    language: { primary, secondary },
-    workspace: {
-      libraryMode,
-      leftWidth,
-      rightWidth,
-      viewMode,
-    },
-    graph: {
-      nodes: nodes.map(({ selected, dragging, ...node }) => node),
-      edges: edges.map(({ selected, ...edge }) => edge),
-    },
-    customComponents,
-    data: dataset,
-    trainedModel: model,
-  }), [projectName, primary, secondary, libraryMode, leftWidth, rightWidth, viewMode, nodes, edges, customComponents, dataset, model, t]);
+  const executionInputSignature = useMemo(
+    () => canvasExecutionInputSignature(nodes, edges, dataset),
+    [nodes, edges, dataset],
+  );
+  const previousExecutionSignature = useRef(executionInputSignature);
+  const makeProject = useCallback(() => projectFromWorkspace(workspaceStateRef.current), []);
   const applyProject = useCallback((rawProject) => {
-    const project = migrateProject(rawProject);
+    const migratedProject = validateProjectForWorkspace(rawProject);
+    const project = {
+      ...migratedProject,
+      data: migratedProject.data === null || migratedProject.data === undefined
+        ? null
+        : validateAgentDataset(migratedProject.data),
+    };
     const customById = new Map((project.customComponents ?? []).map((manifest) => [manifest.id, manifest]));
     const restoredNodes = project.graph.nodes.map((node) => {
       const manifestId = node.data?.manifest?.id;
@@ -521,10 +573,30 @@ function Workspace() {
         },
       };
     });
-    setProjectName(project.name || t('project.sampleName'));
-    setCustomComponents(project.customComponents ?? []);
+    const restoredEdges = project.graph.edges.map((edge) => ({ ...edge, selected: false, type: 'deletable' }));
+    const nextRuntime = idleRuntimeState();
+    workspaceStateRef.current = {
+      ...workspaceStateRef.current,
+      projectName: project.name || t('project.sampleName'),
+      primary: project.language?.primary ?? workspaceStateRef.current.primary,
+      secondary: project.language?.secondary ?? workspaceStateRef.current.secondary,
+      libraryMode: project.workspace?.libraryMode ?? workspaceStateRef.current.libraryMode,
+      leftWidth: Number.isFinite(project.workspace?.leftWidth) ? project.workspace.leftWidth : workspaceStateRef.current.leftWidth,
+      rightWidth: Number.isFinite(project.workspace?.rightWidth) ? project.workspace.rightWidth : workspaceStateRef.current.rightWidth,
+      viewMode: project.workspace?.viewMode ?? workspaceStateRef.current.viewMode,
+      nodes: restoredNodes,
+      edges: restoredEdges,
+      customComponents: project.customComponents ?? [],
+      dataset: project.data ?? null,
+      model: project.trainedModel ?? null,
+      runtime: nextRuntime,
+      selectedId: restoredNodes[0]?.id ?? null,
+    };
+    previousExecutionSignature.current = canvasExecutionInputSignature(restoredNodes, restoredEdges, project.data);
+    setProjectName(workspaceStateRef.current.projectName);
+    setCustomComponents(workspaceStateRef.current.customComponents);
     setNodes(restoredNodes);
-    setEdges(project.graph.edges.map((edge) => ({ ...edge, selected: false, type: 'deletable' })));
+    setEdges(restoredEdges);
     setSelectedId(restoredNodes[0]?.id);
     if (project.language?.primary) setLanguages(project.language);
     if (project.workspace?.libraryMode) setLibraryMode(project.workspace.libraryMode);
@@ -533,6 +605,7 @@ function Workspace() {
     if (Number.isFinite(project.workspace?.rightWidth)) setRightWidth(project.workspace.rightWidth);
     setDataset(project.data ?? null);
     setModel(project.trainedModel ?? null);
+    setRuntime(nextRuntime);
     return project;
   }, [setNodes, setEdges, setLanguages, t]);
 
@@ -642,7 +715,119 @@ function Workspace() {
     setModel(null);
     setNotice(t('connection.deleted'));
   }, [setEdges, t]);
-  const setNodeStatus = useCallback((ids, status) => setNodes((current) => current.map((node) => ids.includes(node.id) ? { ...node, data: { ...node.data, status } } : node)), [setNodes]);
+  const updateRuntime = useCallback((update) => {
+    const current = workspaceStateRef.current.runtime;
+    const next = typeof update === 'function' ? update(current) : update;
+    workspaceStateRef.current = { ...workspaceStateRef.current, runtime: next };
+    setRuntime(next);
+    return next;
+  }, []);
+  const setNodeStatus = useCallback((ids, status) => {
+    const nextNodes = workspaceStateRef.current.nodes.map((node) => ids.includes(node.id)
+      ? { ...node, data: { ...node.data, status } }
+      : node);
+    workspaceStateRef.current = { ...workspaceStateRef.current, nodes: nextNodes };
+    setNodes(nextNodes);
+  }, [setNodes]);
+  const runBrowserGraph = useCallback(async () => {
+    const state = workspaceStateRef.current;
+    if (state.runtime.status === 'running') {
+      throw new CanvasAgentError('INSTANCE_BUSY', 'Canvas execution is already running.');
+    }
+    const startedAt = new Date().toISOString();
+    const startedWithSignature = canvasExecutionInputSignature(state.nodes, state.edges, state.dataset);
+    let currentNode = null;
+    setNodeStatus(state.nodes.map((node) => node.id), 'idle');
+    updateRuntime({
+      status: 'running',
+      activeNodeIds: [],
+      losses: [],
+      result: null,
+      error: null,
+      startedAt,
+      finishedAt: null,
+    });
+    try {
+      const plan = executionPlanFor(state.nodes, state.edges, state.dataset);
+      if (!plan.canRunHere) throw localizedError('error.higherTierRequired', { tier: plan.recommendedTier });
+      const finalModel = await executeBrowserGraph({
+        nodes: state.nodes,
+        edges: state.edges,
+        dataset: state.dataset,
+        onNodeStatus: (ids, status) => {
+          currentNode = status === 'running'
+            ? state.nodes.find((node) => ids.includes(node.id)) ?? currentNode
+            : currentNode;
+          setNodeStatus(ids, status);
+          updateRuntime((current) => ({
+            ...current,
+            activeNodeIds: status === 'running'
+              ? [...new Set([...current.activeNodeIds, ...ids])]
+              : current.activeNodeIds.filter((id) => !ids.includes(id)),
+          }));
+        },
+        onLoss: (losses) => updateRuntime((current) => ({ ...current, losses })),
+        onYield: () => new Promise((resolve) => requestAnimationFrame(resolve)),
+      });
+      const currentState = workspaceStateRef.current;
+      if (canvasExecutionInputSignature(currentState.nodes, currentState.edges, currentState.dataset) !== startedWithSignature) {
+        const changedError = new CanvasAgentError('WORKSPACE_CHANGED', 'Workspace changed while the pipeline was running.');
+        changedError.translationKey = 'error.workspaceChangedDuringRun';
+        throw changedError;
+      }
+      const { test, ...persistableModel } = finalModel;
+      workspaceStateRef.current = { ...workspaceStateRef.current, model: persistableModel };
+      setModel(persistableModel);
+      updateRuntime((current) => ({
+        ...current,
+        status: 'succeeded',
+        activeNodeIds: [],
+        losses: persistableModel.lossHistory ?? current.losses,
+        error: null,
+        result: {
+          type: persistableModel.type,
+          sourceNodeId: persistableModel.sourceNodeId,
+          metrics: persistableModel.metrics ?? null,
+        },
+        finishedAt: new Date().toISOString(),
+      }));
+      return persistableModel;
+    } catch (error) {
+      if (error?.code === 'WORKSPACE_CHANGED') {
+        const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
+        workspaceStateRef.current = { ...workspaceStateRef.current, nodes: nextNodes, model: null };
+        setNodes(nextNodes);
+        setModel(null);
+        updateRuntime({
+          ...idleRuntimeState(),
+          status: 'failed',
+          error: runtimeErrorInfo(error),
+          finishedAt: new Date().toISOString(),
+        });
+      } else {
+        if (currentNode) setNodeStatus([currentNode.id], 'error');
+        updateRuntime((current) => ({
+          ...current,
+          status: 'failed',
+          activeNodeIds: [],
+          error: runtimeErrorInfo(error),
+          finishedAt: new Date().toISOString(),
+        }));
+      }
+      throw error;
+    }
+  }, [setNodeStatus, setNodes, updateRuntime]);
+  useEffect(() => {
+    if (previousExecutionSignature.current === executionInputSignature) return;
+    previousExecutionSignature.current = executionInputSignature;
+    if (workspaceStateRef.current.runtime.status !== 'running') {
+      const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
+      workspaceStateRef.current = { ...workspaceStateRef.current, nodes: nextNodes, model: null };
+      setNodes(nextNodes);
+      setModel(null);
+      updateRuntime(idleRuntimeState());
+    }
+  }, [executionInputSignature, setNodes, updateRuntime]);
   const addPluginNode = (manifest) => { const node = createNode(manifest, nodes.length); setNodes((current) => [...current, node]); setSelectedId(node.id); setModel(null); };
   const deleteCustomComponent = (manifest) => {
     if (!window.confirm(t('library.deleteCustomConfirm', { name: t(manifest.name) }))) return;
@@ -786,6 +971,7 @@ function Workspace() {
         downloadText(safeProjectFilename(project.name), content, 'application/json');
       }
       lastDownloadSignature.current = projectSignature;
+      setPersistenceRevision((revision) => revision + 1);
       setNotice(t('project.saved'));
     } catch (error) {
       if (error.name !== 'AbortError') setNotice(t('project.importFailed', { message: error.message }));
@@ -799,11 +985,220 @@ function Workspace() {
       fileHandleRef.current = null;
       applyProject(JSON.parse(await file.text()));
       lastDownloadSignature.current = projectSignature;
+      setPersistenceRevision((revision) => revision + 1);
       setNotice(t('project.imported'));
     } catch (error) {
       setNotice(t('project.importFailed', { message: translateError(error, t) }));
     }
   };
+  const getAgentSnapshot = useCallback(() => {
+    const state = workspaceStateRef.current;
+    const project = projectFromWorkspace(state);
+    return createCanvasAgentSnapshot({
+      instanceId: instanceIdRef.current,
+      project,
+      nodes: state.nodes,
+      edges: state.edges,
+      selectedNodeId: state.selectedId,
+      viewMode: state.viewMode,
+      runtime: state.runtime,
+      executionPlan: executionPlanFor(state.nodes, state.edges, state.dataset),
+      dirty: projectContentSignature(project) !== lastDownloadSignature.current,
+    });
+  }, []);
+  const commitAgentGraph = useCallback(({ nextNodes, nextEdges, nextSelectedId, invalidateArtifacts = true }) => {
+    assertAgentWritable(workspaceStateRef.current, 'Canvas graph cannot change while execution is running.');
+    const currentNodes = invalidateArtifacts ? invalidateAgentNodeStatuses(nextNodes) : nextNodes;
+    const synchronizedNodes = selectAgentNode(currentNodes, nextSelectedId);
+    const nextRuntime = invalidateArtifacts ? idleRuntimeState() : workspaceStateRef.current.runtime;
+    workspaceStateRef.current = {
+      ...workspaceStateRef.current,
+      nodes: synchronizedNodes,
+      edges: nextEdges,
+      selectedId: nextSelectedId,
+      model: invalidateArtifacts ? null : workspaceStateRef.current.model,
+      runtime: nextRuntime,
+    };
+    setNodes(synchronizedNodes);
+    setEdges(nextEdges);
+    setSelectedId(nextSelectedId);
+    setPendingConnection(null);
+    if (invalidateArtifacts) {
+      setModel(null);
+      setRuntime(nextRuntime);
+    }
+  }, [setNodes, setEdges]);
+  const agentAddNode = useCallback(async (request) => {
+    const state = workspaceStateRef.current;
+    const manifest = [...pluginRegistry, ...state.customComponents]
+      .find((item) => item.id === request?.componentId);
+    const node = createAgentNode({ nodes: state.nodes, manifest, request });
+    commitAgentGraph({
+      nextNodes: [...state.nodes, node],
+      nextEdges: state.edges,
+      nextSelectedId: node.id,
+    });
+    return { nodeId: node.id };
+  }, [commitAgentGraph]);
+  const agentUpdateNode = useCallback(async (nodeId, patch) => {
+    const state = workspaceStateRef.current;
+    const previousNode = state.nodes.find((node) => node.id === nodeId);
+    const nextNodes = updateAgentNode(state.nodes, nodeId, patch);
+    const nextNode = nextNodes.find((node) => node.id === nodeId);
+    const parametersChanged = Object.keys(patch?.parameters ?? {})
+      .some((key) => !Object.is(previousNode.data.parameters[key], nextNode.data.parameters[key]));
+    commitAgentGraph({
+      nextNodes,
+      nextEdges: state.edges,
+      nextSelectedId: nodeId,
+      invalidateArtifacts: parametersChanged,
+    });
+    return { nodeId };
+  }, [commitAgentGraph]);
+  const agentRemoveNode = useCallback(async (nodeId) => {
+    const state = workspaceStateRef.current;
+    const next = removeAgentNode(state.nodes, state.edges, nodeId);
+    commitAgentGraph({
+      nextNodes: next.nodes,
+      nextEdges: next.edges,
+      nextSelectedId: state.selectedId === nodeId ? next.nodes[0]?.id ?? null : state.selectedId,
+    });
+    return { nodeId };
+  }, [commitAgentGraph]);
+  const agentConnect = useCallback(async (request) => {
+    const state = workspaceStateRef.current;
+    const nextEdges = connectAgentNodes(state.nodes, state.edges, request);
+    const edgeId = nextEdges.at(-1).id;
+    commitAgentGraph({ nextNodes: state.nodes, nextEdges, nextSelectedId: state.selectedId });
+    return { edgeId };
+  }, [commitAgentGraph]);
+  const agentDisconnect = useCallback(async (edgeId) => {
+    const state = workspaceStateRef.current;
+    commitAgentGraph({
+      nextNodes: state.nodes,
+      nextEdges: disconnectAgentEdge(state.edges, edgeId),
+      nextSelectedId: state.selectedId,
+    });
+    return { edgeId };
+  }, [commitAgentGraph]);
+  const agentSelectNode = useCallback(async (nodeId) => {
+    const state = workspaceStateRef.current;
+    assertAgentWritable(state, 'Canvas selection cannot change while execution is running.');
+    const nextNodes = selectAgentNode(state.nodes, nodeId);
+    workspaceStateRef.current = { ...state, nodes: nextNodes, selectedId: nodeId };
+    setNodes(nextNodes);
+    setSelectedId(nodeId);
+    return { nodeId };
+  }, [setNodes]);
+  const agentRenameProject = useCallback(async (name) => {
+    assertAgentWritable(workspaceStateRef.current, 'Project cannot be renamed while execution is running.');
+    if (typeof name !== 'string' || !name.trim()) {
+      throw new CanvasAgentError('INVALID_PROJECT_NAME', 'Project name cannot be empty.');
+    }
+    const nextName = name.trim();
+    workspaceStateRef.current = { ...workspaceStateRef.current, projectName: nextName };
+    setProjectName(nextName);
+    return { name: nextName };
+  }, []);
+  const agentSetDataset = useCallback(async (nextDataset) => {
+    assertAgentWritable(workspaceStateRef.current, 'Dataset cannot change while execution is running.');
+    const validatedDataset = validateAgentDataset(nextDataset);
+    const nextRuntime = idleRuntimeState();
+    const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
+    workspaceStateRef.current = {
+      ...workspaceStateRef.current,
+      nodes: nextNodes,
+      dataset: validatedDataset,
+      model: null,
+      runtime: nextRuntime,
+    };
+    setNodes(nextNodes);
+    setDataset(validatedDataset);
+    setModel(null);
+    setRuntime(nextRuntime);
+    return { hasDataset: Boolean(validatedDataset), rows: validatedDataset?.rows.length ?? 0 };
+  }, [setNodes]);
+  const agentLoadProject = useCallback(async (project) => {
+    assertAgentWritable(workspaceStateRef.current, 'Project cannot change while execution is running.');
+    applyProject(project);
+    const normalized = projectFromWorkspace(workspaceStateRef.current);
+    lastDownloadSignature.current = projectContentSignature(normalized);
+    setPersistenceRevision((revision) => revision + 1);
+    return { name: normalized.name, version: normalized.version };
+  }, [applyProject]);
+  const agentExportCode = useCallback(async (framework, options = {}) => {
+    if (!['pytorch', 'tensorflow'].includes(framework)) {
+      throw new CanvasAgentError('UNSUPPORTED_FRAMEWORK', `Unsupported framework: ${framework}.`, { framework });
+    }
+    const state = workspaceStateRef.current;
+    const result = framework === 'tensorflow'
+      ? compilePipelineToTensorFlow(state.nodes, state.edges)
+      : compilePipelineToPyTorch(state.nodes, state.edges);
+    const filename = `volk_ml_${framework}_pipeline.py`;
+    if (options?.download) downloadText(filename, result.code, 'text/x-python');
+    return result.code;
+  }, []);
+  const agentDownloadProject = useCallback(async () => {
+    assertAgentWritable(workspaceStateRef.current, 'Project cannot be downloaded while execution is running.');
+    const project = projectFromWorkspace(workspaceStateRef.current);
+    const content = JSON.stringify(project, null, 2);
+    const filename = safeProjectFilename(project.name);
+    downloadText(filename, content, 'application/json');
+    lastDownloadSignature.current = projectContentSignature(project);
+    setPersistenceRevision((revision) => revision + 1);
+    return { filename, bytes: new Blob([content]).size };
+  }, []);
+  agentAdapterRef.current = {
+    getState: getAgentSnapshot,
+    listComponents: () => [...pluginRegistry, ...workspaceStateRef.current.customComponents].map(summarizeAgentComponent),
+    addNode: agentAddNode,
+    updateNode: agentUpdateNode,
+    removeNode: agentRemoveNode,
+    connect: agentConnect,
+    disconnect: agentDisconnect,
+    selectNode: agentSelectNode,
+    renameProject: agentRenameProject,
+    setDataset: agentSetDataset,
+    loadProject: agentLoadProject,
+    getProject: () => projectFromWorkspace(workspaceStateRef.current),
+    run: runBrowserGraph,
+    exportCode: agentExportCode,
+    downloadProject: agentDownloadProject,
+    subscribe(listener) {
+      agentSubscribersRef.current.add(listener);
+      return () => agentSubscribersRef.current.delete(listener);
+    },
+  };
+  useEffect(() => {
+    const forward = (method) => (...args) => agentAdapterRef.current[method](...args);
+    const api = createCanvasAgentApi({
+      instanceId: instanceIdRef.current,
+      getState: forward('getState'),
+      listComponents: forward('listComponents'),
+      addNode: forward('addNode'),
+      updateNode: forward('updateNode'),
+      removeNode: forward('removeNode'),
+      connect: forward('connect'),
+      disconnect: forward('disconnect'),
+      selectNode: forward('selectNode'),
+      renameProject: forward('renameProject'),
+      setDataset: forward('setDataset'),
+      loadProject: forward('loadProject'),
+      getProject: forward('getProject'),
+      run: forward('run'),
+      exportCode: forward('exportCode'),
+      downloadProject: forward('downloadProject'),
+      subscribe: forward('subscribe'),
+    });
+    return installCanvasAgentBridge(api, window);
+  }, []);
+  useEffect(() => {
+    if (!agentSubscribersRef.current.size) return;
+    const snapshot = getAgentSnapshot();
+    agentSubscribersRef.current.forEach((listener) => {
+      try { listener(snapshot); } catch { /* One agent listener must not block the workspace. */ }
+    });
+  }, [projectSignature, runtime, selectedId, viewMode, persistenceRevision, getAgentSnapshot]);
   const startResize = (side, event) => {
     event.preventDefault();
     const startX = event.clientX;
@@ -864,7 +1259,7 @@ function Workspace() {
     {restoreCandidate && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/60 p-4"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 className="text-xl font-black">{t('project.restoreTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('project.restoreDescription')}</p><p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">{restoreCandidate.name || t('project.sampleName')}</p><div className="mt-5 grid grid-cols-2 gap-2"><button onClick={() => { applyProject(restoreCandidate); setRestoreCandidate(null); setLocalReady(true); }} className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white">{t('project.restore')}</button><button onClick={() => { platformServices.projects.remove().finally(() => { setRestoreCandidate(null); setLocalReady(true); }); }} className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700">{t('project.startFresh')}</button></div></section></div>}
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
-    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} onModel={setModel} onOpenData={() => setDataOpen(true)} onNodeStatus={setNodeStatus} onExport={exportCode} />
+    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} runtime={runtime} onRun={runBrowserGraph} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
     <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}

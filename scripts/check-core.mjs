@@ -15,6 +15,23 @@ import {
 import { executeBrowserGraph, predictWithModel } from '../src/core/browserRuntime.js';
 import { createCustomComposite, flattenCustomComposites } from '../src/core/customComposites.js';
 import { assessConnection, knownPortTypes } from '../src/core/connections.js';
+import {
+  CANVAS_AGENT_API_VERSION,
+  CANVAS_AGENT_GLOBAL,
+  CanvasAgentError,
+  canvasExecutionInputSignature,
+  connectAgentNodes,
+  createAgentNode,
+  createCanvasAgentApi,
+  createCanvasAgentSnapshot,
+  disconnectAgentEdge,
+  invalidateAgentNodeStatuses,
+  installCanvasAgentBridge,
+  removeAgentNode,
+  selectAgentNode,
+  updateAgentNode,
+  validateAgentDataset,
+} from '../src/core/canvasAgent.js';
 import { analyzeProject } from '../src/core/explanation.js';
 import { safeProjectFilename } from '../src/core/localProjects.js';
 import {
@@ -28,7 +45,7 @@ import {
   regressionPointsFromDataset,
   uniformlySamplePoints,
 } from '../src/core/linearRegressionPlayground.js';
-import { migrateProject, PROJECT_VERSION, projectContentSignature } from '../src/core/project.js';
+import { migrateProject, PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
 import {
@@ -81,6 +98,235 @@ const assertPythonSyntax = (code, label) => {
   );
   assert.equal(result.status, 0, `${label} generated invalid Python:\n${result.stderr}`);
 };
+
+const agentInput = createAgentNode({
+  nodes: [],
+  manifest: componentById.get('tensor_input_node'),
+  request: { id: 'agent-input', position: { x: 10, y: 20 }, parameters: { shape: '8' } },
+});
+const agentDense = createAgentNode({
+  nodes: [agentInput],
+  manifest: componentById.get('dense_node'),
+  request: { id: 'agent-dense', position: { x: 300, y: 20 }, parameters: { input_features: 8, units: 4 } },
+});
+assert.equal(agentDense.data.parameters.units, 4);
+assert.throws(
+  () => createAgentNode({ nodes: [agentInput], manifest: componentById.get('dense_node'), request: { id: 'agent-input' } }),
+  (error) => error.code === 'DUPLICATE_NODE_ID',
+);
+assert.throws(
+  () => updateAgentNode([agentDense], agentDense.id, { parameters: { units: -1 } }),
+  (error) => error.code === 'INVALID_PARAMETER',
+);
+assert.throws(
+  () => updateAgentNode([agentDense], agentDense.id, { parameters: { units: 1.5 } }),
+  (error) => error.code === 'INVALID_PARAMETER' && error.details.step === 1,
+);
+const movedAgentDense = updateAgentNode([agentDense], agentDense.id, { position: { x: 420, y: 80 }, parameters: { units: 16 } })[0];
+assert.deepEqual(movedAgentDense.position, { x: 420, y: 80 });
+assert.equal(movedAgentDense.data.parameters.units, 16);
+const runningAgentDense = { ...agentDense, data: { ...agentDense.data, status: 'success' } };
+const layoutOnlyAgentDense = updateAgentNode([runningAgentDense], runningAgentDense.id, { position: { x: 500, y: 120 } })[0];
+assert.equal(layoutOnlyAgentDense.data.status, 'success', 'Layout-only Agent edits must preserve execution status');
+assert.equal(updateAgentNode([runningAgentDense], runningAgentDense.id, { parameters: { units: 16 } })[0].data.status, 'idle');
+assert.equal(invalidateAgentNodeStatuses([runningAgentDense])[0].data.status, 'idle');
+const agentEdges = connectAgentNodes([agentInput, agentDense], [], {
+  id: 'agent-link',
+  source: agentInput.id,
+  sourceHandle: 'tensor',
+  target: agentDense.id,
+  targetHandle: 'input',
+});
+const agentExecutionSignature = canvasExecutionInputSignature([agentInput, agentDense], agentEdges, null);
+assert.equal(
+  canvasExecutionInputSignature([{ ...agentInput, position: { x: 999, y: 999 } }, agentDense], agentEdges, null),
+  agentExecutionSignature,
+  'Layout changes must not invalidate an execution result',
+);
+assert.notEqual(
+  canvasExecutionInputSignature([agentInput, movedAgentDense], agentEdges, null),
+  agentExecutionSignature,
+  'Parameter changes must invalidate an execution result',
+);
+assert.equal(agentEdges[0].id, 'agent-link');
+assert.throws(
+  () => connectAgentNodes([agentInput, agentDense], [], {
+    source: agentInput.id,
+    sourceHandle: 'bogus',
+    target: agentDense.id,
+    targetHandle: 'bogus',
+  }),
+  (error) => error.code === 'INVALID_CONNECTION',
+  'Agent connections must require exact port handles',
+);
+assert.equal(disconnectAgentEdge(agentEdges, 'agent-link').length, 0);
+assert.deepEqual(removeAgentNode([agentInput, agentDense], agentEdges, agentInput.id).edges, []);
+assert.equal(selectAgentNode([agentInput, agentDense], agentDense.id)[1].selected, true);
+assert.ok(selectAgentNode([agentInput, agentDense], null).every((node) => !node.selected));
+assert.throws(
+  () => selectAgentNode([agentInput], 'missing'),
+  (error) => error.code === 'NODE_NOT_FOUND',
+);
+const validatedAgentDataset = validateAgentDataset({
+  name: 'agent-data',
+  rows: [{ feature: 1, target: 2 }],
+  featureColumns: [' feature '],
+  targetColumn: ' target ',
+});
+assert.deepEqual(validatedAgentDataset.featureColumns, ['feature']);
+assert.equal(validatedAgentDataset.targetColumn, 'target');
+assert.equal(validatedAgentDataset.task, 'regression');
+assert.equal(validatedAgentDataset.name, 'agent-data');
+assert.deepEqual(validatedAgentDataset.columns, [
+  { name: 'feature', type: 'number', missing: 0 },
+  { name: 'target', type: 'number', missing: 0 },
+]);
+assert.equal(validateAgentDataset({
+  rows: [{ feature: 1, target: 'class-a' }],
+  featureColumns: ['feature'],
+  targetColumn: 'target',
+}).task, 'classification');
+assert.equal(validateAgentDataset({
+  rows: [{ feature: 1, target: 2 }],
+  featureColumns: ['feature'],
+  targetColumn: 'target',
+}).name, 'Agent Dataset');
+assert.throws(
+  () => validateAgentDataset({ rows: [{ feature: 1, target: 2 }], featureColumns: ['feature'], targetColumn: 'target', task: 'classification ' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
+assert.throws(
+  () => validateAgentDataset({ rows: [{ feature: 1, target: 2 }], featureColumns: ['feature'], targetColumn: 'target', name: { text: 'bad' } }),
+  (error) => error.code === 'INVALID_DATASET',
+);
+assert.throws(
+  () => validateAgentDataset({ rows: [], featureColumns: ['feature'], targetColumn: 'target' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
+assert.throws(
+  () => validateAgentDataset({ rows: [{ feature: 1 }], featureColumns: ['feature'], targetColumn: 'feature' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
+assert.throws(
+  () => validateAgentDataset({ rows: [{ feature: 1n, target: 2 }], featureColumns: ['feature'], targetColumn: 'target' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
+const circularAgentRow = { feature: 1, target: 2 };
+circularAgentRow.nested = circularAgentRow;
+assert.throws(
+  () => validateAgentDataset({ rows: [circularAgentRow], featureColumns: ['feature'], targetColumn: 'target' }),
+  (error) => error.code === 'INVALID_DATASET',
+);
+const agentProject = {
+  format: 'VOLK-ML',
+  version: PROJECT_VERSION,
+  name: 'Agent test',
+  savedAt: '2026-08-02T00:00:00.000Z',
+  graph: { nodes: [agentInput, agentDense], edges: agentEdges },
+  customComponents: [],
+  data: null,
+  trainedModel: null,
+};
+const agentSnapshot = createCanvasAgentSnapshot({
+  instanceId: 'test-instance',
+  project: agentProject,
+  nodes: agentProject.graph.nodes,
+  edges: agentProject.graph.edges,
+  selectedNodeId: agentDense.id,
+  viewMode: 'canvas',
+  runtime: { status: 'idle', losses: [], activeNodeIds: [] },
+  executionPlan: { recommendedTier: 'L1', canRunHere: false },
+  dirty: true,
+});
+assert.equal(agentSnapshot.apiVersion, CANVAS_AGENT_API_VERSION);
+assert.equal(agentSnapshot.canvas.nodes[1].componentId, 'dense_node');
+assert.equal(agentSnapshot.dataset, null);
+assert.equal(agentSnapshot.execution.runtime.status, 'idle');
+assert.equal(agentSnapshot.execution.runtime.result, null);
+assert.equal(agentSnapshot.execution.recommendation.recommendedTier, 'L1');
+const agentListeners = new Set();
+const fakeAgentApi = createCanvasAgentApi({
+  instanceId: 'test-instance',
+  getState: () => agentSnapshot,
+  listComponents: () => [],
+  addNode: async (request) => {
+    if (request?.invalidDetails) throw new CanvasAgentError('INVALID_PARAMETER', 'Invalid parameter fixture', { value: 1n });
+    return { nodeId: 'new-node' };
+  },
+  updateNode: async (nodeId) => ({ nodeId }),
+  removeNode: async (nodeId) => ({ nodeId }),
+  connect: async () => ({ edgeId: 'new-edge' }),
+  disconnect: async (edgeId) => ({ edgeId }),
+  selectNode: async (nodeId) => ({ nodeId }),
+  renameProject: async (name) => ({ name }),
+  setDataset: async (dataset) => ({ hasDataset: Boolean(dataset) }),
+  loadProject: async (project) => {
+    if (project.name === 'fail') throw new Error('Invalid project fixture');
+    return { name: project.name };
+  },
+  getProject: () => agentProject,
+  run: async () => ({ type: 'linear_regression' }),
+  exportCode: async (framework) => `# ${framework}`,
+  downloadProject: async () => ({ filename: 'agent-test.volkml.json' }),
+  subscribe(listener) { agentListeners.add(listener); return () => agentListeners.delete(listener); },
+});
+const agentTarget = {};
+const uninstallAgentBridge = installCanvasAgentBridge(fakeAgentApi, agentTarget);
+assert.deepEqual(agentTarget[CANVAS_AGENT_GLOBAL].listInstances(), [{ id: 'test-instance' }]);
+assert.equal((await agentTarget[CANVAS_AGENT_GLOBAL].open()).instanceId, 'test-instance');
+await assert.rejects(
+  fakeAgentApi.loadProject({ name: 'fail' }),
+  (error) => error instanceof CanvasAgentError
+    && error.code === 'OPERATION_FAILED'
+    && error.details.operation === 'loadProject',
+);
+assert.equal(await fakeAgentApi.exportCode('pytorch'), '# pytorch');
+await assert.rejects(
+  fakeAgentApi.addNode({ invalidDetails: true }),
+  (error) => error.code === 'INVALID_PARAMETER'
+    && error.details.value === '1'
+    && JSON.stringify(error.details) === '{"value":"1"}',
+);
+const secondAgentApi = createCanvasAgentApi({ ...{
+  instanceId: 'second-instance',
+  getState: () => ({ ...agentSnapshot, instanceId: 'second-instance' }),
+  listComponents: () => [],
+  addNode: async () => ({ nodeId: 'new-node' }),
+  updateNode: async (nodeId) => ({ nodeId }),
+  removeNode: async (nodeId) => ({ nodeId }),
+  connect: async () => ({ edgeId: 'new-edge' }),
+  disconnect: async (edgeId) => ({ edgeId }),
+  selectNode: async (nodeId) => ({ nodeId }),
+  renameProject: async (name) => ({ name }),
+  setDataset: async (dataset) => ({ hasDataset: Boolean(dataset) }),
+  loadProject: async (project) => ({ name: project.name }),
+  getProject: () => agentProject,
+  run: async () => ({ type: 'linear_regression' }),
+  exportCode: async (framework) => `# ${framework}`,
+  downloadProject: async () => ({ filename: 'agent-test.volkml.json' }),
+  subscribe: () => () => {},
+} });
+const sharedAgentBridge = agentTarget[CANVAS_AGENT_GLOBAL];
+const uninstallSecondAgentBridge = installCanvasAgentBridge(secondAgentApi, agentTarget);
+assert.equal(agentTarget[CANVAS_AGENT_GLOBAL], sharedAgentBridge, 'Mounted canvases must share one bridge');
+assert.deepEqual(agentTarget[CANVAS_AGENT_GLOBAL].listInstances(), [{ id: 'test-instance' }, { id: 'second-instance' }]);
+await assert.rejects(
+  agentTarget[CANVAS_AGENT_GLOBAL].open(),
+  (error) => error.code === 'INSTANCE_AMBIGUOUS',
+);
+assert.equal((await agentTarget[CANVAS_AGENT_GLOBAL].open('test-instance')).instanceId, 'test-instance');
+const copiedAgentState = fakeAgentApi.getState();
+copiedAgentState.canvas.nodes[0].position.x = 999;
+assert.equal(agentSnapshot.canvas.nodes[0].position.x, 10, 'Agent snapshots must be detached from workspace state');
+await assert.rejects(
+  agentTarget[CANVAS_AGENT_GLOBAL].open('missing'),
+  (error) => error.code === 'INSTANCE_NOT_FOUND',
+);
+uninstallAgentBridge();
+assert.deepEqual(agentTarget[CANVAS_AGENT_GLOBAL].listInstances(), [{ id: 'second-instance' }]);
+assert.equal((await agentTarget[CANVAS_AGENT_GLOBAL].open()).instanceId, 'second-instance');
+uninstallSecondAgentBridge();
+assert.equal(agentTarget[CANVAS_AGENT_GLOBAL], undefined);
 
 assert.equal(new Set(pluginRegistry.map((manifest) => manifest.id)).size, pluginRegistry.length, 'Component IDs must be unique');
 for (const manifest of pluginRegistry) {
@@ -749,6 +995,160 @@ assert.equal(migratedKnnProject.name, 'Sample Project');
 assert.deepEqual(migratedKnnProject.customComponents, []);
 assert.equal(migratedKnnProject.graph.edges.length, 1);
 assert.equal(migratedKnnProject.graph.edges[0].sourceHandle, 'trained_model');
+
+assert.throws(
+  () => validateProjectForWorkspace({
+    format: 'VOLK-ML',
+    version: PROJECT_VERSION,
+    name: {},
+    graph: { nodes: [], edges: [] },
+    customComponents: [],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must reject unsafe names before applying state',
+);
+assert.equal(validateProjectForWorkspace({
+  ...agentProject,
+  customComponents: [],
+}).name, 'Agent test');
+const malformedCustomManifest = {
+  id: 'custom_invalid',
+  name: { en: 'Invalid', zh: '无效' },
+  description: { en: 'Invalid fixture', zh: '无效测试项' },
+  inputs: [null],
+  outputs: [],
+  properties: [],
+};
+assert.throws(
+  () => validateProjectForWorkspace({ ...agentProject, customComponents: [malformedCustomManifest] }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must inspect custom component ports',
+);
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    customComponents: [{
+      ...malformedCustomManifest,
+      inputs: [],
+      properties: [{ key: 'units', label: { en: 'Units', zh: '单元' }, type: 'number', default: 'many' }],
+    }],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must inspect custom component properties',
+);
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    graph: {
+      ...agentProject.graph,
+      nodes: agentProject.graph.nodes.map((node) => node.id === agentDense.id
+        ? { ...node, data: { ...node.data, parameters: { ...node.data.parameters, units: 1.5 } } }
+        : node),
+    },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must apply manifest parameter steps',
+);
+const duplicateInputSource = { ...agentInput, id: 'agent-input-duplicate', position: { x: 10, y: 180 } };
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    graph: {
+      nodes: [...agentProject.graph.nodes, duplicateInputSource],
+      edges: [
+        ...agentProject.graph.edges,
+        makeEdge(duplicateInputSource.id, 'tensor', agentDense.id, 'input'),
+      ],
+    },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must enforce one incoming edge per input',
+);
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    graph: {
+      ...agentProject.graph,
+      edges: agentProject.graph.edges.map((edge) => ({ ...edge, sourceHandle: 'bogus' })),
+    },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must require exact persisted handles',
+);
+assert.equal(validateProjectForWorkspace({
+  ...agentProject,
+  customComponents: [customRegression.manifest],
+}).customComponents.length, 1);
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    customComponents: [{ ...customRegression.manifest, composition: null }],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must inspect custom composite structure',
+);
+const duplicatedBoundaryManifest = structuredClone(customRegression.manifest);
+const originalBoundaryInput = duplicatedBoundaryManifest.inputs[0];
+duplicatedBoundaryManifest.inputs.push({ name: 'duplicate_input', type: originalBoundaryInput.type });
+duplicatedBoundaryManifest.composition.inputs.duplicate_input = structuredClone(
+  duplicatedBoundaryManifest.composition.inputs[originalBoundaryInput.name],
+);
+assert.throws(
+  () => validateProjectForWorkspace({ ...agentProject, customComponents: [duplicatedBoundaryManifest] }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must reject duplicate composite boundary targets',
+);
+const catalogOnlyNestedManifest = structuredClone(customRegression.manifest);
+catalogOnlyNestedManifest.id = 'custom_nested_catalog_only';
+const parentWithCatalogOnlyChild = structuredClone(customRegression.manifest);
+parentWithCatalogOnlyChild.id = 'custom_parent_catalog_only';
+parentWithCatalogOnlyChild.composition.nodes[0].componentId = catalogOnlyNestedManifest.id;
+delete parentWithCatalogOnlyChild.composition.nodes[0].manifest;
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    customComponents: [catalogOnlyNestedManifest, parentWithCatalogOnlyChild],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must require embedded nested custom manifests',
+);
+assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    customComponents: [{ ...customRegression.manifest, visualStage: 'bogus' }],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must reject unknown custom visual stages',
+);
+assert.throws(
+  () => validateProjectForWorkspace({ ...agentProject, trainedModel: { hasPredictor: true } }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must reject malformed trained models',
+);
+const { test: omittedRegressionTest, ...persistedRegressionModel } = regressionModel;
+assert.ok(omittedRegressionTest.length > 0);
+assert.equal(validateProjectForWorkspace({
+  format: 'VOLK-ML',
+  version: PROJECT_VERSION,
+  name: 'Persisted regression model',
+  graph: { nodes: regressionGraphNodes, edges: regressionGraphEdges },
+  customComponents: [],
+  data: regressionDataset,
+  trainedModel: persistedRegressionModel,
+}).trainedModel.type, 'linear_regression');
+assert.throws(
+  () => validateProjectForWorkspace({
+    format: 'VOLK-ML',
+    version: PROJECT_VERSION,
+    name: 'Stale regression model',
+    graph: { nodes: regressionGraphNodes, edges: regressionGraphEdges },
+    customComponents: [],
+    data: regressionDataset,
+    trainedModel: { ...persistedRegressionModel, sourceNodeId: 'missing-training-node' },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must bind trained models to graph nodes',
+);
 
 const legacySamplePositions = {
   'pipeline-data': [40, 180],

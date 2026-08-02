@@ -2,6 +2,8 @@
 
 VOLK-ML keeps the educational editor and local workflow independent from any future hosted product. The public application defaults to `createLocalPlatformServices()` in `src/platform/services.js`. A hosted shell may inject an implementation through `globalThis.__VOLK_ML_PLATFORM_SERVICES__` before the application starts.
 
+The separately versioned `globalThis.__VOLK_ML_AGENT__` bridge controls a workspace that is already mounted in the browser. It is not a platform service, does not listen on the network, and grants no account or cloud authority. A hosted shell may connect a trusted external agent to that bridge, but must enforce authentication, authorization, origin isolation, and user consent outside the open editor.
+
 ## Contract
 
 Platform API version 1 exposes four service groups:
@@ -56,5 +58,6 @@ Call `validatePlatformServices()` during hosted application startup. Keep provid
 - Users must retain JSON import/export so hosted storage never becomes a lock-in boundary.
 - The local implementation stores one current auto-save in IndexedDB. The application uses the same `projects.load/save/remove` methods that a hosted provider replaces.
 - File handles and model API keys are session-only capabilities and must not be serialized into project JSON.
+- Canvas agents receive serializable project and execution snapshots only. They do not receive platform credentials, cloud provider objects, or local file handles.
 
 Changing a required method or its semantics requires a new `PLATFORM_API_VERSION` and a migration note.

@@ -265,6 +265,7 @@ export const messages = {
   'error.invalidProject': { en: 'Invalid VOLK-ML project', zh: '无效的 VOLK-ML 项目' },
   'error.unknownComponent': { en: 'Unknown component: {component}', zh: '未知组件：{component}' },
   'error.higherTierRequired': { en: 'This graph needs the {tier} execution tier.', zh: '该图需要使用 {tier} 执行层级。' },
+  'error.workspaceChangedDuringRun': { en: 'The workspace changed while this pipeline was running, so its result was discarded.', zh: '管线运行期间工作区已发生变化，因此本次运行结果已丢弃。' },
   'error.frameworkUnsupported': { en: '{framework} cannot compile: {components}.', zh: '{framework} 无法编译以下组件：{components}。' },
   'error.compositeExpansion': { en: 'This composite component could not be expanded.', zh: '无法展开该复合组件。' },
   'error.modelInputRequired': { en: 'The compiled model needs a Tensor Input connected to its output.', zh: '待编译模型需要连接到输出的张量输入组件。' },

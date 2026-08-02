@@ -63,9 +63,27 @@
 - Custom composites are copy-style definitions. Boundary ports include unsatisfied internal child ports even when the selected subgraph has no surrounding edges. Deleting a catalog definition must not mutate existing instances.
 - Cloud save, collaboration, model APIs, and remote compute use `src/platform/services.js`. Never store API keys in project JSON, component parameters, local project history, or public client configuration.
 
+## Canvas Agent API
+
+- `src/core/canvasAgent.js` is the versioned, framework-neutral command contract for agents that operate a mounted editor. Keep graph mutations in its pure helpers so UI actions and agent actions obey the same component, port, single-input, and cycle rules.
+- The browser entry point is `globalThis.__VOLK_ML_AGENT__`. It is an in-page capability, not an HTTP server, authentication boundary, or hosted-service adapter. A host that exposes it to an external agent is responsible for origin isolation, user consent, and authorization.
+- Return serializable snapshots rather than React state, DOM nodes, file handles, API keys, or mutable registry objects. Commands that mutate state are asynchronous; `getState()` must reflect an accepted mutation before its promise resolves.
+- Preserve the distinction between execution and export. `run()` may execute only graphs supported by the L0 browser runtime; L1-L3 graphs remain inspectable and exportable.
+- Project downloads must use the canonical versioned project serializer. Do not invent an agent-only project format or bypass import migration and manifest resolution.
+- Changing a required method, command payload, snapshot field meaning, or error-code meaning requires incrementing `CANVAS_AGENT_API_VERSION`, updating `docs/architecture/agent-canvas-api.md`, and adding a focused contract assertion.
+
 ## Required validation
 
 - Run `npm run check` for component, compiler, composite, localization, and tier invariants.
 - Run `npm run build` for every application or documentation change that also touches executable code.
 - Run `git diff --check` before publishing.
 - Add a focused regression assertion to `scripts/check-core.mjs` when changing a manifest contract, compiler semantic, graph-selection rule, persisted project contract, visual invariant, or tier boundary.
+
+## Pull request completion loop
+
+- After creating a pull request, use the GitHub connector to mark it ready for review; do not leave completed implementation work in draft state.
+- Wait for required checks and automated review to finish. Inspect failing checks and actionable review feedback, implement fixes without asking for confirmation when they remain within the original task scope, and rerun the required local validation before updating the branch.
+- After each fix round, add the exact top-level PR comment `@codex review` through the GitHub connector to request another automated review. Extra words are not part of the supported trigger.
+- Repeat the check, review, fix, validate, update, and re-review loop until required checks pass and the latest automated review has no unresolved actionable findings.
+- Do not resolve or dismiss review threads merely to make the PR appear clean. Leave obsolete-thread resolution to the reviewer unless the user explicitly asks otherwise.
+- Stop and report only when a required fix needs a product decision, broader authority, unavailable credentials, or a scope expansion beyond the original request.
