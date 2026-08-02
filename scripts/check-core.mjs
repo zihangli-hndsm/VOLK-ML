@@ -1113,6 +1113,14 @@ assert.throws(
   'workspace project validation must require embedded nested custom manifests',
 );
 assert.throws(
+  () => validateProjectForWorkspace({
+    ...agentProject,
+    customComponents: [{ ...customRegression.manifest, visualStage: 'bogus' }],
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'workspace project validation must reject unknown custom visual stages',
+);
+assert.throws(
   () => validateProjectForWorkspace({ ...agentProject, trainedModel: { hasPredictor: true } }),
   (error) => error.translationKey === 'error.invalidProject',
   'workspace project validation must reject malformed trained models',
