@@ -74,7 +74,19 @@ export function validateAgentDataset(dataset) {
   const missingColumn = [...featureColumns, targetColumn]
     .find((column) => !dataset.rows.some((row) => Object.hasOwn(row, column)));
   if (missingColumn) fail('INVALID_DATASET', `Dataset column is missing from every row: ${missingColumn}.`, { column: missingColumn });
-  return copy({ ...dataset, featureColumns, targetColumn });
+  const columnNames = [...new Set(dataset.rows.flatMap((row) => Object.keys(row)))];
+  const columns = columnNames.map((name) => {
+    const present = dataset.rows
+      .map((row) => row[name])
+      .filter((value) => value !== '' && value !== null && value !== undefined);
+    const numericCount = present.filter((value) => Number.isFinite(Number(value))).length;
+    return {
+      name,
+      type: present.length > 0 && numericCount === present.length ? 'number' : 'text',
+      missing: dataset.rows.length - present.length,
+    };
+  });
+  return copy({ ...dataset, columns, featureColumns, targetColumn });
 }
 
 export function createAgentNode({ nodes, manifest, request = {}, idFactory = () => crypto.randomUUID() }) {
