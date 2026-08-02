@@ -7,7 +7,7 @@ import { languages, localizedError, resolveMessage, translateError } from './i18
 import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
 import { executeBrowserGraph, predictWithModel } from './core/browserRuntime';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
-import { migrateProject, PROJECT_VERSION, projectContentSignature } from './core/project';
+import { PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from './core/project';
 import { safeProjectFilename } from './core/localProjects';
 import { createCustomComposite } from './core/customComposites';
 import { assessConnection } from './core/connections';
@@ -547,7 +547,13 @@ function Workspace() {
   const previousExecutionSignature = useRef(executionInputSignature);
   const makeProject = useCallback(() => projectFromWorkspace(workspaceStateRef.current), []);
   const applyProject = useCallback((rawProject) => {
-    const project = migrateProject(rawProject);
+    const migratedProject = validateProjectForWorkspace(rawProject);
+    const project = {
+      ...migratedProject,
+      data: migratedProject.data === null || migratedProject.data === undefined
+        ? null
+        : validateAgentDataset(migratedProject.data),
+    };
     const customById = new Map((project.customComponents ?? []).map((manifest) => [manifest.id, manifest]));
     const restoredNodes = project.graph.nodes.map((node) => {
       const manifestId = node.data?.manifest?.id;
@@ -786,17 +792,30 @@ function Workspace() {
       }));
       return persistableModel;
     } catch (error) {
-      if (error?.code !== 'WORKSPACE_CHANGED' && currentNode) setNodeStatus([currentNode.id], 'error');
-      updateRuntime((current) => ({
-        ...current,
-        status: 'failed',
-        activeNodeIds: [],
-        error: runtimeErrorInfo(error),
-        finishedAt: new Date().toISOString(),
-      }));
+      if (error?.code === 'WORKSPACE_CHANGED') {
+        const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
+        workspaceStateRef.current = { ...workspaceStateRef.current, nodes: nextNodes, model: null };
+        setNodes(nextNodes);
+        setModel(null);
+        updateRuntime({
+          ...idleRuntimeState(),
+          status: 'failed',
+          error: runtimeErrorInfo(error),
+          finishedAt: new Date().toISOString(),
+        });
+      } else {
+        if (currentNode) setNodeStatus([currentNode.id], 'error');
+        updateRuntime((current) => ({
+          ...current,
+          status: 'failed',
+          activeNodeIds: [],
+          error: runtimeErrorInfo(error),
+          finishedAt: new Date().toISOString(),
+        }));
+      }
       throw error;
     }
-  }, [setNodeStatus, updateRuntime]);
+  }, [setNodeStatus, setNodes, updateRuntime]);
   useEffect(() => {
     if (previousExecutionSignature.current === executionInputSignature) return;
     previousExecutionSignature.current = executionInputSignature;
