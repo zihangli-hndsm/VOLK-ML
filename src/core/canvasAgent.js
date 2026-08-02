@@ -105,7 +105,11 @@ export function validateAgentDataset(dataset) {
       missing: dataset.rows.length - present.length,
     };
   });
-  return copy({ ...dataset, columns, featureColumns, targetColumn });
+  const targetType = columns.find((column) => column.name === targetColumn)?.type;
+  const task = ['regression', 'classification'].includes(dataset.task)
+    ? dataset.task
+    : targetType === 'number' ? 'regression' : 'classification';
+  return copy({ ...dataset, columns, featureColumns, targetColumn, task });
 }
 
 export function createAgentNode({ nodes, manifest, request = {}, idFactory = () => crypto.randomUUID() }) {
