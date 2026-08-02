@@ -143,6 +143,12 @@ export function validateAgentDataset(dataset) {
     fail('INVALID_DATASET', 'Dataset needs non-empty object rows, featureColumns, and targetColumn.');
   }
   assertJsonSafe(dataset, 'INVALID_DATASET', 'Dataset');
+  if (dataset.task !== undefined && !['regression', 'classification'].includes(dataset.task)) {
+    fail('INVALID_DATASET', 'Dataset task must be regression or classification.', { task: dataset.task });
+  }
+  if (dataset.name !== undefined && typeof dataset.name !== 'string') {
+    fail('INVALID_DATASET', 'Dataset name must be text.', { name: dataset.name });
+  }
   const featureColumns = dataset.featureColumns.map((column) => column.trim());
   if (new Set(featureColumns).size !== featureColumns.length || featureColumns.includes(targetColumn)) {
     fail('INVALID_DATASET', 'Dataset feature and target columns must be unique.', { featureColumns, targetColumn });
@@ -166,7 +172,8 @@ export function validateAgentDataset(dataset) {
   const task = ['regression', 'classification'].includes(dataset.task)
     ? dataset.task
     : targetType === 'number' ? 'regression' : 'classification';
-  return copy({ ...dataset, columns, featureColumns, targetColumn, task });
+  const name = dataset.name?.trim() || 'Agent Dataset';
+  return copy({ ...dataset, name, columns, featureColumns, targetColumn, task });
 }
 
 export function createAgentNode({ nodes, manifest, request = {}, idFactory = () => crypto.randomUUID() }) {
