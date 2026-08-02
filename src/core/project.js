@@ -1,6 +1,7 @@
 import { localizedError } from '../i18n.js';
 import { componentById } from './components.js';
 import { assessConnection } from './connections.js';
+import { flattenCustomComposites } from './customComposites.js';
 
 export const PROJECT_VERSION = 7;
 
@@ -201,6 +202,7 @@ function customManifestIsValid(manifest, availableManifests, ancestors = new Set
     || typeof manifest.id !== 'string' || !manifest.id
     || typeof manifest.op !== 'string' || !manifest.op
     || typeof manifest.category !== 'string' || !manifest.category
+    || (manifest.visualStage !== undefined && !['data', 'model', 'training', 'output'].includes(manifest.visualStage))
     || !localizedTextIsValid(manifest.name) || !localizedTextIsValid(manifest.description)
     || !Array.isArray(manifest.inputs) || !Array.isArray(manifest.outputs) || !Array.isArray(manifest.properties)
     || !portsAreValid(manifest.inputs) || !portsAreValid(manifest.outputs)
@@ -294,7 +296,7 @@ const metricsAreValid = (metrics) => (
     && Object.values(metrics).every(Number.isFinite))
 );
 
-function trainedModelIsValid(model, nodeManifests, edges, dataset) {
+function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges, dataset) {
   if (model === null || model === undefined) return true;
   if (
     !model || typeof model !== 'object' || Array.isArray(model)
@@ -311,24 +313,31 @@ function trainedModelIsValid(model, nodeManifests, edges, dataset) {
     || !Number.isInteger(model.trainRows) || model.trainRows < 0
     || !Number.isInteger(model.testRows) || model.testRows < 0
   ) return false;
-  const sourceManifest = nodeManifests.get(model.sourceNodeId);
+  const topLevelIds = new Set(topLevelNodes.map((node) => node.id));
+  const sourceNodes = expandedNodes.filter((node) => (node.data.runtimeOwnerId ?? node.id) === model.sourceNodeId);
+  const sourceManifest = sourceNodes.find((node) => (
+    ['gradient_descent_node', 'knn_node'].includes(node.data.manifest.id)
+  ))?.data.manifest;
   if (
-    !sourceManifest || !dataset
+    !topLevelIds.has(model.sourceNodeId) || !sourceManifest || !dataset
     || dataset.targetColumn !== model.targetColumn
     || !Array.isArray(dataset.featureColumns)
     || dataset.featureColumns.length !== model.featureColumns.length
     || dataset.featureColumns.some((column, index) => column !== model.featureColumns[index])
   ) return false;
-  if (model.hasPredictor && !edges.some((edge) => (
-    edge.source === model.sourceNodeId
-    && nodeManifests.get(edge.target)?.id === 'predictor_node'
+  if (model.hasPredictor && !expandedEdges.some((edge) => (
+    (expandedNodes.find((node) => node.id === edge.source)?.data.runtimeOwnerId ?? edge.source) === model.sourceNodeId
+    && expandedNodes.find((node) => node.id === edge.target)?.data.manifest.id === 'predictor_node'
   ))) return false;
   const featureCount = model.featureColumns.length;
   if (model.type === 'linear_regression') {
     return dataset.task === 'regression'
       && sourceManifest.id === 'gradient_descent_node'
       && typeof model.modelNodeId === 'string' && model.modelNodeId
-      && nodeManifests.get(model.modelNodeId)?.id === 'linear_regression_node'
+      && expandedNodes.some((node) => (
+        node.data.manifest.id === 'linear_regression_node'
+        && (node.id === model.modelNodeId || (node.data.runtimeOwnerId ?? node.id) === model.sourceNodeId)
+      ))
       && finiteArray(model.weights, featureCount)
       && Number.isFinite(model.bias)
       && model.normalization && typeof model.normalization === 'object'
@@ -408,6 +417,12 @@ export function validateProjectForWorkspace(rawProject) {
     edgeIds.add(edge.id);
     validatedEdges.push(edge);
   });
-  if (!trainedModelIsValid(project.trainedModel, nodeManifests, validatedEdges, project.data)) invalidProject();
+  let expanded;
+  try {
+    expanded = flattenCustomComposites(validationNodes, validatedEdges);
+  } catch {
+    invalidProject();
+  }
+  if (!trainedModelIsValid(project.trainedModel, validationNodes, expanded.nodes, expanded.edges, project.data)) invalidProject();
   return project;
 }
