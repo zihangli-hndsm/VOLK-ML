@@ -25,6 +25,7 @@ import {
   removeAgentNode,
   summarizeAgentComponent,
   updateAgentNode,
+  validateAgentDataset,
 } from './core/canvasAgent';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
@@ -1055,25 +1056,18 @@ function Workspace() {
     if (workspaceStateRef.current.runtime.status === 'running') {
       throw new CanvasAgentError('INSTANCE_BUSY', 'Dataset cannot change while execution is running.');
     }
-    if (nextDataset !== null && (
-      typeof nextDataset !== 'object'
-      || !Array.isArray(nextDataset.rows)
-      || !Array.isArray(nextDataset.featureColumns)
-      || typeof nextDataset.targetColumn !== 'string'
-    )) {
-      throw new CanvasAgentError('INVALID_DATASET', 'Dataset needs rows, featureColumns, and targetColumn.');
-    }
+    const validatedDataset = validateAgentDataset(nextDataset);
     const nextRuntime = idleRuntimeState();
     workspaceStateRef.current = {
       ...workspaceStateRef.current,
-      dataset: nextDataset,
+      dataset: validatedDataset,
       model: null,
       runtime: nextRuntime,
     };
-    setDataset(nextDataset);
+    setDataset(validatedDataset);
     setModel(null);
     setRuntime(nextRuntime);
-    return { hasDataset: Boolean(nextDataset), rows: nextDataset?.rows.length ?? 0 };
+    return { hasDataset: Boolean(validatedDataset), rows: validatedDataset?.rows.length ?? 0 };
   }, []);
   const agentLoadProject = useCallback(async (project) => {
     if (workspaceStateRef.current.runtime.status === 'running') {
