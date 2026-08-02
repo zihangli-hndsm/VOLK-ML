@@ -92,6 +92,8 @@ await canvas.selectNode('dense-id'); // null clears selection
 
 Node creation resolves the component from the live registry and applies manifest defaults. Updates validate property names, types, ranges, and choices. Connections use the same nominal port-type, one-edge-per-input, duplicate-edge, self-edge, and cycle checks as interactive canvas connections. Removing a node also removes its incident edges.
 
+Changing node position is layout-only and preserves a trained model and completed runtime result. Parameter or topology changes invalidate those artifacts before the command resolves.
+
 ### Project and dataset
 
 ```js
