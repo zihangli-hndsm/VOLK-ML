@@ -262,6 +262,62 @@ function customManifestIsValid(manifest, availableManifests, ancestors = new Set
   return inputsValid && outputsValid;
 }
 
+const finiteArray = (value, length) => (
+  Array.isArray(value)
+  && (length === undefined || value.length === length)
+  && value.every(Number.isFinite)
+);
+
+const metricsAreValid = (metrics) => (
+  metrics === null
+  || (metrics && typeof metrics === 'object' && !Array.isArray(metrics)
+    && Object.values(metrics).every(Number.isFinite))
+);
+
+function trainedModelIsValid(model) {
+  if (model === null || model === undefined) return true;
+  if (
+    !model || typeof model !== 'object' || Array.isArray(model)
+    || !['linear_regression', 'knn_classifier'].includes(model.type)
+    || typeof model.sourceNodeId !== 'string' || !model.sourceNodeId
+    || !Array.isArray(model.featureColumns) || model.featureColumns.length === 0
+    || !model.featureColumns.every((column) => typeof column === 'string' && column)
+    || new Set(model.featureColumns).size !== model.featureColumns.length
+    || typeof model.targetColumn !== 'string' || !model.targetColumn
+    || typeof model.hasPredictor !== 'boolean'
+    || !finiteArray(model.lossHistory)
+    || !metricsAreValid(model.metrics)
+    || typeof model.trainedAt !== 'string'
+    || !Number.isInteger(model.trainRows) || model.trainRows < 0
+    || !Number.isInteger(model.testRows) || model.testRows < 0
+  ) return false;
+  const featureCount = model.featureColumns.length;
+  if (model.type === 'linear_regression') {
+    return typeof model.modelNodeId === 'string' && model.modelNodeId
+      && finiteArray(model.weights, featureCount)
+      && Number.isFinite(model.bias)
+      && model.normalization && typeof model.normalization === 'object'
+      && finiteArray(model.normalization.xMeans, featureCount)
+      && finiteArray(model.normalization.xStds, featureCount)
+      && model.normalization.xStds.every((value) => value !== 0)
+      && Number.isFinite(model.normalization.yMean)
+      && Number.isFinite(model.normalization.yStd) && model.normalization.yStd !== 0
+      && Number.isInteger(model.epochs) && model.epochs > 0
+      && Number.isFinite(model.learningRate) && model.learningRate > 0;
+  }
+  return Array.isArray(model.train) && model.train.length > 0
+    && model.train.every((sample) => (
+      sample && typeof sample === 'object'
+      && finiteArray(sample.x, featureCount)
+      && typeof sample.y === 'string'
+    ))
+    && Number.isInteger(model.k) && model.k > 0 && model.k <= model.train.length
+    && model.normalization && typeof model.normalization === 'object'
+    && finiteArray(model.normalization.means, featureCount)
+    && finiteArray(model.normalization.stds, featureCount)
+    && model.normalization.stds.every((value) => value !== 0);
+}
+
 export function validateProjectForWorkspace(rawProject) {
   const project = migrateProject(rawProject);
   if (typeof project.name !== 'string' || !Array.isArray(project.customComponents)) invalidProject();
@@ -312,5 +368,6 @@ export function validateProjectForWorkspace(rawProject) {
     edgeIds.add(edge.id);
     validatedEdges.push(edge);
   });
+  if (!trainedModelIsValid(project.trainedModel)) invalidProject();
   return project;
 }
