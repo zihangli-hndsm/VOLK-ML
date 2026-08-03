@@ -94,7 +94,9 @@ function browserTopologyComplete(nodes, edges = null) {
 }
 
 export function estimateExecutionPlan(nodes, dataset, capabilities = {}) {
-  const planNodes = flattenCustomComposites(nodes, []).nodes;
+  const flattened = flattenCustomComposites(nodes, capabilities.edges ?? []);
+  const planNodes = flattened.nodes;
+  const planEdges = capabilities.edges ? flattened.edges : null;
   let parameters = 0;
   let operationsPerStep = 0;
   let minimumTier = 'L0';
@@ -116,7 +118,11 @@ export function estimateExecutionPlan(nodes, dataset, capabilities = {}) {
   const datasetCells = dataset ? dataset.rows.length * Math.max(1, dataset.columns.length) : 0;
   const datasetBytes = datasetCells * 32;
   const trainer = planNodes.find((node) => node.data.manifest.op === 'supervised_trainer');
-  const trainingExamples = dataset ? Math.max(1, Math.floor(dataset.rows.length * Number(trainer?.data.parameters.train_ratio ?? 0.8))) : 1;
+  const nodeById = new Map(planNodes.map((node) => [node.id, node]));
+  const connectedSplitId = trainer && planEdges?.find((edge) => edge.target === trainer.id && edge.targetHandle === 'dataset')?.source;
+  const split = nodeById.get(connectedSplitId) ?? planNodes.find((node) => node.data.manifest.op === 'train_test_split');
+  const trainRatio = Number(split?.data.parameters.train_ratio ?? 0.8);
+  const trainingExamples = dataset ? Math.max(1, Math.floor(dataset.rows.length * trainRatio)) : 1;
   const trainingSteps = trainer ? Math.max(1, Number(trainer.data.parameters.epochs)) * Math.ceil(trainingExamples / Math.max(1, Number(trainer.data.parameters.batch_size))) : 1;
   const trainingOperations = operationsPerStep * trainingExamples * (trainer ? Math.max(1, Number(trainer.data.parameters.epochs)) : 1);
   const peakBytes = (parameters * bytesPerParameter + activationBytes + datasetBytes) * 1.35;
@@ -134,7 +140,7 @@ export function estimateExecutionPlan(nodes, dataset, capabilities = {}) {
   else if (trainingOperations > 250_000_000 || cpuSeconds > 10) recommendedTier = maximumTier(recommendedTier, 'L1');
 
   if (datasetBytes > 100 * 1024 * 1024) recommendedTier = maximumTier(recommendedTier, 'L2');
-  const topologyComplete = browserTopologyComplete(planNodes, capabilities.edges);
+  const topologyComplete = browserTopologyComplete(planNodes, planEdges);
   const canRunHere = recommendedTier === 'L0' && browserBackendComplete && topologyComplete;
   const webgpuDetected = Boolean(capabilities.webgpu);
   const reasons = [];
@@ -161,4 +167,3 @@ export function estimateExecutionPlan(nodes, dataset, capabilities = {}) {
     reasons,
   };
 }
-
