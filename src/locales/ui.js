@@ -253,7 +253,7 @@ export const messages = {
   'error.multipleInputs': { en: '{node} has multiple connections to {input}.', zh: '{node} 的 {input} 输入存在多条连接。' },
   'error.pipelineCycle': { en: 'Pipeline contains a cycle.', zh: '管线中存在循环连接。' },
   'error.dataNodeRequired': { en: 'Pipeline needs a connected Tabular Data component.', zh: '管线需要一个已连接的表格数据组件。' },
-  'error.multipleTrainingRoots': { en: 'Run one supervised training branch at a time.', zh: '每次只能运行一个监督训练分支。' },
+  'error.multipleTrainingRoots': { en: 'Run one browser training branch at a time.', zh: '每次只能运行一个浏览器训练分支。' },
   'error.csvRows': { en: 'CSV needs a header and at least one data row.', zh: 'CSV 需要表头和至少一行数据。' },
   'error.objectRows': { en: 'Data must be an array of objects.', zh: '数据必须是对象数组。' },
   'error.noRows': { en: 'No rows found.', zh: '未找到数据行。' },
