@@ -57,7 +57,7 @@ npm run build
 git diff --check
 ```
 
-These commands are a minimum, not a substitute for task-specific tests. A documentation-only change may use proportionate validation, including link, formatting, and consistency checks, when the accepted design does not require an application build.
+These commands are a minimum, not a substitute for task-specific tests. `npm run check` and `git diff --check` are required for every change. A documentation-only change may omit `npm run build` when the accepted design does not require an application build, but must still run the required core checks and proportionate validation such as link, formatting, and consistency checks.
 
 A failed or skipped required check means acceptance has not passed. Fixes return to Development and the affected acceptance checks must be rerun. The user decides whether the evidence satisfies acceptance when judgment or a product decision is involved.
 
