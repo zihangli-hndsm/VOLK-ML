@@ -79,11 +79,12 @@
 - Run `git diff --check` before publishing.
 - Add a focused regression assertion to `scripts/check-core.mjs` when changing a manifest contract, compiler semantic, graph-selection rule, persisted project contract, visual invariant, or tier boundary.
 
-## Pull request completion loop
+## Development workflow
 
-- After creating a pull request, use the GitHub connector to mark it ready for review; do not leave completed implementation work in draft state.
-- Wait for required checks and automated review to finish. Inspect failing checks and actionable review feedback, implement fixes without asking for confirmation when they remain within the original task scope, and rerun the required local validation before updating the branch.
-- After each fix round, add the exact top-level PR comment `@codex review` through the GitHub connector to request another automated review. Extra words are not part of the supported trigger.
-- Repeat the check, review, fix, validate, update, and re-review loop until required checks pass and the latest automated review has no unresolved actionable findings.
-- Do not resolve or dismiss review threads merely to make the PR appear clean. Leave obsolete-thread resolution to the reviewer unless the user explicitly asks otherwise.
-- Stop and report only when a required fix needs a product decision, broader authority, unavailable credentials, or a scope expansion beyond the original request.
+- Follow [`docs/development-workflow.md`](docs/development-workflow.md) for every change. The required order is Design -> Development -> Acceptance -> Pull request.
+- Before editing executable code, agree with the user on the goal, scope, implementation approach, acceptance criteria, and exact test plan. Do not begin Development until the user accepts that design.
+- If implementation exposes a material design gap or requires a scope or behavior change, return to Design and get agreement before continuing.
+- After implementation, run the agreed task-specific tests plus the applicable baseline validation above. Report criterion-by-criterion evidence, skipped checks, limitations, and deviations.
+- Do not open a pull request until Acceptance passes. A development branch is allowed before then, but it must not be treated as accepted or ready for review.
+- Do not run a Codex automated review-submit loop and do not repeatedly post `@codex review`. Automated review and CI feedback do not replace the agreed acceptance plan.
+- Feedback received after opening a pull request is a new validation signal. Classify it against the accepted design; material changes return to Design, while in-scope fixes pass through Development and Acceptance before the branch is updated.
