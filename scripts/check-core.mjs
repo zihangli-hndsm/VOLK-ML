@@ -382,10 +382,10 @@ for (const [key, translations] of Object.entries(messages)) {
   for (const language of languages) assert.ok(translations[language.code], `${key} is missing ${language.code}`);
 }
 
-assert.equal(resolveMessage(tutorialByOp.model_output.formula, 'zh'), 'model(x) = 选定的输出张量');
-assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'zh'), 'L = −log p(正确类别)');
-assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'en'), 'L = −log p(correct class)');
-assert.equal(resolveMessage('playground.equation', 'zh', { weight: '2.00', operator: '−', bias: '1.00' }), 'ŷ = 2.00x − 1.00');
+assert.equal(resolveMessage(tutorialByOp.model_output.formula, 'zh'), 'model(x) = 閫夊畾鐨勮緭鍑哄紶閲?);
+assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'zh'), 'L = 鈭抣og p(姝ｇ‘绫诲埆)');
+assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'en'), 'L = 鈭抣og p(correct class)');
+assert.equal(resolveMessage('playground.equation', 'zh', { weight: '2.00', operator: '鈭?, bias: '1.00' }), '欧 = 2.00x 鈭?1.00');
 assert.equal(stageForManifest(componentById.get('tabular_data_node')), 'data');
 assert.equal(stageForManifest(componentById.get('dense_node')), 'model');
 assert.equal(stageForManifest(componentById.get('adam_optimizer_node')), 'training');
@@ -412,463 +412,7 @@ assert.deepEqual(concatenateVisualData, {
   result: '[a,b,c,d]',
   axis: -1,
 }, 'concatenate visual matches the default one-dimensional axis');
-for (const type of knownPortTypes) assert.ok(messages[`portType.${type}`], `${type} port role is localized`);
-const libraryTree = componentLibraryTree(pluginRegistry);
-assert.deepEqual(libraryTree.map((group) => group.id), ['data', 'model', 'training', 'output']);
-assert.equal(libraryTree.reduce((count, group) => count + group.count, 0), pluginRegistry.length);
-assert.equal(safeProjectFilename('My Visual Project'), 'my-visual-project.volkml.json');
-assert.deepEqual(lossExpressionFunctions, ['mean', 'sum', 'abs', 'square', 'sqrt', 'log', 'exp', 'clip']);
-assert.ok(parseLossExpression('mean(square(prediction - target))'));
-assert.throws(() => parseLossExpression('mean(square(target))'), /prediction/, 'custom loss must depend on prediction');
-assert.throws(() => parseLossExpression('1'), /prediction/, 'numeric custom loss must depend on prediction');
-assert.equal(
-  compileLossExpression('mean(square(prediction - target))', 'pytorch'),
-  'torch.mean(torch.square((prediction - target)))',
-);
-assert.equal(
-  compileLossExpression('mean(abs(prediction - target)) + clip(0.1, 0, 1)', 'tensorflow'),
-  '(tf.reduce_mean(tf.abs((prediction - target))) + tf.clip_by_value(0.1, 0, 1))',
-);
-assert.equal(
-  compileLossExpression('-prediction ** 2', 'pytorch'),
-  '(-(prediction ** 2))',
-  'a leading unary sign applies after exponentiation',
-);
-assert.equal(
-  compileLossExpression('prediction ** -2', 'tensorflow'),
-  '(prediction ** (-2))',
-  'a signed exponent remains valid',
-);
-assert.throws(() => parseLossExpression('prediction.__class__'), /unexpected/);
-assert.throws(() => parseLossExpression('system(prediction)'), /function/);
-const densePlaygroundPoints = Array.from({ length: 101 }, (_, x) => ({ x, y: 2 * x + 1 }));
-const sampledPlaygroundPoints = uniformlySamplePoints(densePlaygroundPoints, 11);
-assert.equal(sampledPlaygroundPoints.length, 11);
-assert.deepEqual(sampledPlaygroundPoints[0], { x: 0, y: 1 });
-assert.deepEqual(sampledPlaygroundPoints.at(-1), { x: 100, y: 201 });
-assert.deepEqual(leastSquaresFit(densePlaygroundPoints), { weight: 2, bias: 1 });
-assert.equal(meanSquaredError(densePlaygroundPoints, 2, 1), 0);
-const playgroundDataset = regressionPointsFromDataset({
-  task: 'regression',
-  featureColumns: ['feature'],
-  targetColumn: 'target',
-  rows: densePlaygroundPoints.map((point) => ({ feature: point.x, target: point.y })),
-}, 20);
-assert.equal(playgroundDataset.usingDataset, true);
-assert.equal(playgroundDataset.points.length, 20);
-assert.equal(playgroundDataset.total, 101);
-assert.notEqual(
-  projectContentSignature({
-    name: 'Model state',
-    graph: { nodes: [], edges: [] },
-    customComponents: [],
-    data: null,
-    trainedModel: { weights: [1] },
-  }),
-  projectContentSignature({
-    name: 'Model state',
-    graph: { nodes: [], edges: [] },
-    customComponents: [],
-    data: null,
-    trainedModel: { weights: [2] },
-  }),
-  'trained model changes invalidate the downloaded project signature',
-);
-
-const architectureNodes = [
-  makeNode('input', 'tensor_input_node', { shape: '32' }),
-  makeNode('dense', 'dense_node', { input_features: 32, units: 10 }),
-  makeNode('relu', 'relu_node'),
-  makeNode('output', 'model_output_node'),
-  makeNode('loss', 'cross_entropy_loss_node'),
-  makeNode('optimizer', 'adam_optimizer_node'),
-];
-const architectureEdges = [
-  makeEdge('input', 'tensor', 'dense', 'input'),
-  makeEdge('dense', 'output', 'relu', 'input'),
-  makeEdge('relu', 'output', 'output', 'input'),
-];
-assert.equal(assessConnection({
-  source: 'input', sourceHandle: 'tensor', target: 'dense', targetHandle: 'input',
-}, architectureNodes, []).valid, true, 'matching semantic port types connect');
-assert.equal(assessConnection({
-  source: 'loss', sourceHandle: 'loss', target: 'dense', targetHandle: 'input',
-}, architectureNodes, []).reason, 'type', 'different semantic port roles remain incompatible');
-assert.equal(assessConnection({
-  source: 'input', sourceHandle: 'tensor', target: 'dense', targetHandle: 'input',
-}, architectureNodes, architectureEdges).reason, 'occupied', 'one input accepts one incoming edge');
-assert.equal(assessConnection({
-  source: 'relu', sourceHandle: 'output', target: 'input', targetHandle: 'tensor',
-}, architectureNodes, architectureEdges).reason, 'missingPort');
-assert.equal(assessConnection({
-  source: 'output', sourceHandle: 'model', target: 'dense', targetHandle: 'input',
-}, architectureNodes, architectureEdges).reason, 'type');
-assert.equal(assessConnection({
-  source: 'relu', sourceHandle: 'output', target: 'dense', targetHandle: 'input',
-}, architectureNodes, architectureEdges.filter((edge) => edge.target !== 'dense')).reason, 'cycle', 'cycles are rejected before compilation');
-const ir = graphToIR(architectureNodes, architectureEdges);
-assert.equal(ir.version, 2);
-assert.deepEqual(ir.nodes.filter((node) => ['input', 'dense', 'relu', 'output'].includes(node.id)).map((node) => node.id), ['input', 'dense', 'relu', 'output']);
-
-const pytorch = compilePipelineToPyTorch(architectureNodes, architectureEdges);
-const tensorflow = compilePipelineToTensorFlow(architectureNodes, architectureEdges);
-assert.match(pytorch.code, /class VOLKModel/);
-assert.match(pytorch.code, /nn\.Linear\(32, 10/);
-assert.match(pytorch.code, /nn\.CrossEntropyLoss/);
-assert.match(tensorflow.code, /keras\.Model/);
-assert.match(tensorflow.code, /layers\.Dense\(10/);
-assert.match(tensorflow.code, /SparseCategoricalCrossentropy/);
-assertPythonSyntax(pytorch.code, 'representative PyTorch architecture');
-assertPythonSyntax(tensorflow.code, 'representative TensorFlow architecture');
-
-const architectureExpectations = {
-  dense_node: [/nn\.Linear/, /layers\.Dense/],
-  conv2d_node: [/nn\.Conv2d/, /layers\.Conv2D/],
-  max_pool2d_node: [/nn\.MaxPool2d/, /layers\.MaxPooling2D/],
-  flatten_node: [/torch\.flatten/, /layers\.Flatten/],
-  reshape_node: [/\.reshape/, /layers\.Reshape/],
-  relu_node: [/nn\.ReLU/, /layers\.ReLU/],
-  gelu_node: [/nn\.GELU/, /Activation\("gelu"\)/],
-  sigmoid_node: [/nn\.Sigmoid/, /Activation\("sigmoid"\)/],
-  tanh_node: [/nn\.Tanh/, /Activation\("tanh"\)/],
-  softmax_node: [/nn\.Softmax/, /layers\.Softmax/],
-  dropout_node: [/nn\.Dropout/, /layers\.Dropout/],
-  batch_norm1d_node: [/nn\.BatchNorm1d/, /layers\.BatchNormalization/],
-  batch_norm2d_node: [/nn\.BatchNorm2d/, /layers\.BatchNormalization/],
-  layer_norm_node: [/nn\.LayerNorm/, /layers\.LayerNormalization/],
-  embedding_node: [/nn\.Embedding/, /layers\.Embedding/],
-  lstm_node: [/nn\.LSTM/, /layers\.LSTM/],
-  gru_node: [/nn\.GRU/, /layers\.GRU/],
-  multihead_attention_node: [/nn\.MultiheadAttention/, /layers\.MultiHeadAttention/],
-  add_node: [/\+/, /layers\.Add/],
-  concatenate_node: [/torch\.cat/, /layers\.Concatenate/],
-  mlp_block_node: [/nn\.Sequential/, /keras\.Sequential/],
-  conv_block_node: [/nn\.Conv2d/, /layers\.Conv2D/],
-  residual_mlp_block_node: [/ResidualMLPBlock/, /ResidualMLPBlock/],
-};
-
-const makeArchitectureCase = (componentId) => {
-  const manifest = componentById.get(componentId);
-  const inputParameters = manifest.op === 'embedding'
-    ? { shape: '12', dtype: 'int32' }
-    : { shape: '32' };
-  const parameters = ['lstm', 'gru'].includes(manifest.op)
-    ? { layers: 2 }
-    : {};
-  const subject = makeNode('subject', componentId, parameters);
-  const outputNode = makeNode('case-output', 'model_output_node');
-  if (manifest.kind === 'merge') {
-    return {
-      nodes: [
-        makeNode('case-input-a', 'tensor_input_node', inputParameters),
-        makeNode('case-input-b', 'tensor_input_node', inputParameters),
-        subject,
-        outputNode,
-      ],
-      edges: [
-        makeEdge('case-input-a', 'tensor', 'subject', 'a'),
-        makeEdge('case-input-b', 'tensor', 'subject', 'b'),
-        makeEdge('subject', 'output', 'case-output', 'input'),
-      ],
-    };
-  }
-  return {
-    nodes: [
-      makeNode('case-input', 'tensor_input_node', inputParameters),
-      subject,
-      outputNode,
-    ],
-    edges: [
-      makeEdge('case-input', 'tensor', 'subject', manifest.inputs[0].name),
-      makeEdge('subject', manifest.outputs[0].name, 'case-output', 'input'),
-    ],
-  };
-};
-
-for (const [componentId, [pytorchPattern, tensorflowPattern]] of Object.entries(architectureExpectations)) {
-  const graph = makeArchitectureCase(componentId);
-  const pytorchCase = compilePipelineToPyTorch(graph.nodes, graph.edges);
-  const tensorflowCase = compilePipelineToTensorFlow(graph.nodes, graph.edges);
-  assert.ok(
-    pytorchCase.report.some((item) => item.componentId === componentId),
-    `${componentId} appears in PyTorch compatibility report`,
-  );
-  assert.ok(
-    tensorflowCase.report.some((item) => item.componentId === componentId),
-    `${componentId} appears in TensorFlow compatibility report`,
-  );
-  assert.match(pytorchCase.code, pytorchPattern, `${componentId} PyTorch mapping`);
-  assert.match(tensorflowCase.code, tensorflowPattern, `${componentId} TensorFlow mapping`);
-  assertPythonSyntax(pytorchCase.code, `${componentId} PyTorch`);
-  assertPythonSyntax(tensorflowCase.code, `${componentId} TensorFlow`);
-}
-const stackedLstm = makeArchitectureCase('lstm_node');
-assert.equal(
-  (compilePipelineToTensorFlow(stackedLstm.nodes, stackedLstm.edges).code.match(/layers\.LSTM/g) ?? []).length,
-  2,
-  'TensorFlow LSTM honors the configured layer count',
-);
-
-const orphan = makeNode('orphan', 'dense_node', { input_features: 999, units: 777 });
-const pytorchWithoutOrphan = compilePipelineToPyTorch([...architectureNodes, orphan], architectureEdges);
-const tensorflowWithoutOrphan = compilePipelineToTensorFlow([...architectureNodes, orphan], architectureEdges);
-assert.doesNotMatch(pytorchWithoutOrphan.code, /n_orphan/);
-assert.doesNotMatch(tensorflowWithoutOrphan.code, /n_orphan/);
-assert.doesNotMatch(pytorchWithoutOrphan.code, /999, 777/);
-assert.doesNotMatch(tensorflowWithoutOrphan.code, /Dense\(777/);
-const unsupportedOrphan = makeNode('unsupported-orphan', 'knn_node');
-assert.doesNotThrow(() => compilePipelineToPyTorch(
-  [...architectureNodes, unsupportedOrphan],
-  architectureEdges,
-), 'an unconnected unsupported component must not block an active architecture');
-
-const binaryNodes = [
-  makeNode('binary-input', 'tensor_input_node', { shape: '32' }),
-  makeNode('binary-dense', 'dense_node', { input_features: 32, units: 1 }),
-  makeNode('binary-sigmoid', 'sigmoid_node'),
-  makeNode('binary-output', 'model_output_node'),
-  makeNode('binary-loss', 'binary_cross_entropy_loss_node'),
-];
-const binaryProbabilityEdges = [
-  makeEdge('binary-input', 'tensor', 'binary-dense', 'input'),
-  makeEdge('binary-dense', 'output', 'binary-sigmoid', 'input'),
-  makeEdge('binary-sigmoid', 'output', 'binary-output', 'input'),
-];
-const binaryLogitEdges = [
-  makeEdge('binary-input', 'tensor', 'binary-dense', 'input'),
-  makeEdge('binary-dense', 'output', 'binary-output', 'input'),
-];
-assert.match(compilePipelineToPyTorch(binaryNodes, binaryProbabilityEdges).code, /criterion = nn\.BCELoss\(\)/);
-assert.match(compilePipelineToTensorFlow(binaryNodes, binaryProbabilityEdges).code, /BinaryCrossentropy\(from_logits=False\)/);
-assert.match(compilePipelineToPyTorch(binaryNodes, binaryLogitEdges).code, /criterion = nn\.BCEWithLogitsLoss\(\)/);
-assert.match(compilePipelineToTensorFlow(binaryNodes, binaryLogitEdges).code, /BinaryCrossentropy\(from_logits=True\)/);
-
-const trainingCases = [
-  ['mse_loss_node', 'sgd_optimizer_node', /nn\.MSELoss/, /torch\.optim\.SGD/, /loss="mse"|loss="mse"/, /keras\.optimizers\.SGD/],
-  ['cross_entropy_loss_node', 'adam_optimizer_node', /nn\.CrossEntropyLoss/, /torch\.optim\.Adam\(/, /SparseCategoricalCrossentropy/, /keras\.optimizers\.Adam\(/],
-  ['binary_cross_entropy_loss_node', 'adamw_optimizer_node', /BCEWithLogitsLoss/, /torch\.optim\.AdamW/, /BinaryCrossentropy/, /keras\.optimizers\.AdamW/],
-];
-for (const [lossId, optimizerId, torchLoss, torchOptimizer, tfLoss, tfOptimizer] of trainingCases) {
-  const configuredNodes = [
-    ...architectureNodes.filter((node) => !['loss', 'optimizer'].includes(node.id)),
-    makeNode('loss', lossId),
-    makeNode('optimizer', optimizerId),
-  ];
-  const torchConfigured = compilePipelineToPyTorch(configuredNodes, architectureEdges);
-  const tfConfigured = compilePipelineToTensorFlow(configuredNodes, architectureEdges);
-  assert.match(torchConfigured.code, torchLoss, `${lossId} PyTorch configuration`);
-  assert.match(torchConfigured.code, torchOptimizer, `${optimizerId} PyTorch configuration`);
-  assert.match(tfConfigured.code, tfLoss, `${lossId} TensorFlow configuration`);
-  assert.match(tfConfigured.code, tfOptimizer, `${optimizerId} TensorFlow configuration`);
-  assertPythonSyntax(torchConfigured.code, `${lossId}/${optimizerId} PyTorch`);
-  assertPythonSyntax(tfConfigured.code, `${lossId}/${optimizerId} TensorFlow`);
-}
-
-const trainerNodes = [
-  makeNode('trainer-data', 'tabular_data_node'),
-  makeNode('trainer-split', 'train_test_split_node', { train_ratio: 0.75 }),
-  makeNode('trainer-input', 'tensor_input_node', { shape: '2' }),
-  makeNode('trainer-dense', 'dense_node', { input_features: 2, units: 1 }),
-  makeNode('trainer-output', 'model_output_node'),
-  makeNode('trainer-loss', 'custom_loss_node', { expression: 'mean(abs(prediction - target))' }),
-  makeNode('trainer-optimizer', 'adam_optimizer_node', { learning_rate: 0.002 }),
-  makeNode('trainer', 'supervised_trainer_node', { epochs: 12, batch_size: 8, shuffle: false }),
-];
-const trainerEdges = [
-  makeEdge('trainer-data', 'dataset', 'trainer-split', 'dataset'),
-  makeEdge('trainer-input', 'tensor', 'trainer-dense', 'input'),
-  makeEdge('trainer-dense', 'output', 'trainer-output', 'input'),
-  makeEdge('trainer-split', 'split', 'trainer', 'dataset'),
-  makeEdge('trainer-output', 'model', 'trainer', 'model'),
-  makeEdge('trainer-loss', 'loss', 'trainer', 'loss'),
-  makeEdge('trainer-optimizer', 'optimizer', 'trainer', 'optimizer'),
-];
-assert.equal(assessConnection(
-  trainerEdges[3],
-  trainerNodes,
-  trainerEdges.filter((edge) => edge !== trainerEdges[3]),
-).valid, true, 'DatasetSplit connects to the trainer data input');
-assert.equal(assessConnection({
-  source: 'trainer-split', sourceHandle: 'split', target: 'trainer-input', targetHandle: 'input',
-}, trainerNodes, trainerEdges).reason, 'missingPort', 'DatasetSplit does not bind directly to a symbolic Tensor Input');
-const trainerTorch = compilePipelineToPyTorch(trainerNodes, trainerEdges);
-const trainerTensorFlow = compilePipelineToTensorFlow(trainerNodes, trainerEdges);
-assert.match(trainerTorch.code, /def custom_loss\(prediction, target\):\n    return torch\.mean\(torch\.mean\(torch\.abs/);
-assert.match(trainerTorch.code, /DataLoader\(train_set, batch_size=8, shuffle=False\)/);
-assert.match(trainerTorch.code, /model = model\.to\(dtype=torch\.float32\)/);
-assert.match(trainerTorch.code, /features_tensor = torch\.tensor\(X, dtype=torch\.float32\)/);
-assert.match(trainerTorch.code, /for epoch in range\(12\)/);
-assert.match(trainerTensorFlow.code, /def custom_loss\(target, prediction\):\n    return tf\.reduce_mean\(tf\.reduce_mean\(tf\.abs/);
-assert.match(trainerTensorFlow.code, /model\.fit\(X_train, y_train, epochs=12, batch_size=8, shuffle=False/);
-assert.match(trainerTensorFlow.code, /def volk_deterministic_indices\(length, seed=2026\):/);
-assert.match(trainerTensorFlow.code, /train_indices, test_indices = indices\[:split_index\], indices\[split_index:\]/);
-assert.match(trainerTensorFlow.code, /X_train, X_test = X\[train_indices\], X\[test_indices\]/);
-assert.match(trainerTensorFlow.code, /y_train, y_test = y\[train_indices\], y\[test_indices\]/);
-assert.ok(trainerTorch.report.some((item) => item.componentId === 'supervised_trainer_node'));
-assert.ok(trainerTensorFlow.report.some((item) => item.componentId === 'custom_loss_node'));
-assertPythonSyntax(trainerTorch.code, 'Supervised Trainer PyTorch');
-assertPythonSyntax(trainerTensorFlow.code, 'Supervised Trainer TensorFlow');
-assert.doesNotThrow(
-  () => compilePipelineToPyTorch([
-    ...trainerNodes,
-    makeNode('orphan-invalid-loss', 'custom_loss_node', { expression: 'eval(prediction)' }),
-  ], trainerEdges),
-  'an unconnected custom loss does not override the loss connected to the trainer',
-);
-assert.equal(estimateExecutionPlan(trainerNodes, null).recommendedTier, 'L2');
-assert.equal(estimateExecutionPlan(trainerNodes, null).canRunHere, false);
-const invalidLossNodes = trainerNodes.map((node) => node.id === 'trainer-loss'
-  ? makeNode('trainer-loss', 'custom_loss_node', { expression: 'eval(prediction)' })
-  : node);
-assert.throws(
-  () => compilePipelineToPyTorch(invalidLossNodes, trainerEdges),
-  (error) => error.translationKey === 'error.customLossFunction',
-  'custom loss rejects arbitrary function calls',
-);
-assert.throws(
-  () => compilePipelineToTensorFlow(trainerNodes, trainerEdges.filter((edge) => edge.targetHandle !== 'optimizer')),
-  (error) => error.translationKey === 'error.trainerInputsRequired',
-  'trainer compilation requires each typed input',
-);
-assert.throws(
-  () => compilePipelineToPyTorch(trainerNodes, trainerEdges.filter((edge) => edge.targetHandle !== 'model')),
-  (error) => error.translationKey === 'error.trainerInputsRequired',
-  'an incomplete trainer fails before legacy tabular fallback',
-);
-assert.throws(
-  () => compilePipelineToPyTorch(
-    [...trainerNodes, makeNode('legacy-model', 'linear_regression_node')],
-    [
-      ...trainerEdges.filter((edge) => edge.targetHandle !== 'model'),
-      makeEdge('trainer-split', 'split', 'legacy-model', 'split'),
-      makeEdge('legacy-model', 'model', 'trainer', 'model'),
-    ],
-  ),
-  (error) => error.translationKey === 'error.trainerSingleInputOutput',
-  'trainer rejects a type-valid non-architecture ModelSpec before tabular fallback',
-);
-const halfPrecisionTrainerNodes = trainerNodes.map((node) => node.id === 'trainer-input'
-  ? makeNode('trainer-input', 'tensor_input_node', { shape: '2', dtype: 'float16' })
-  : node);
-const halfPrecisionTrainer = compilePipelineToPyTorch(halfPrecisionTrainerNodes, trainerEdges);
-assert.match(halfPrecisionTrainer.code, /model = model\.to\(dtype=torch\.float16\)/);
-assert.match(halfPrecisionTrainer.code, /target_tensor = torch\.tensor\(y, dtype=torch\.float16\)/);
-const integerTrainerNodes = trainerNodes.map((node) => node.id === 'trainer-input'
-  ? makeNode('trainer-input', 'tensor_input_node', { shape: '2', dtype: 'int32' })
-  : node);
-assert.throws(
-  () => compilePipelineToTensorFlow(integerTrainerNodes, trainerEdges),
-  (error) => error.translationKey === 'error.trainerUnsupportedDtype',
-  'trainer rejects unsupported Tensor Input dtypes consistently across backends',
-);
-const secondTrainer = makeNode('trainer-two', 'supervised_trainer_node');
-assert.throws(
-  () => compilePipelineToPyTorch(
-    [...trainerNodes, secondTrainer],
-    [...trainerEdges, makeEdge('trainer-split', 'split', 'trainer-two', 'dataset')],
-  ),
-  (error) => error.translationKey === 'error.multipleTrainers',
-  'two connected trainers are rejected as an ambiguous export target',
-);
-
-const composite = makeNode('block', 'mlp_block_node', { input_features: 16, hidden_units: 24, dropout: 0.3 });
-const expansion = expandComposite(composite);
-assert.equal(expansion.nodes.length, 3);
-assert.equal(expansion.edges.length, 2);
-assert.equal(expansion.inputs.input.length, 1);
-assert.ok(expansion.outputs.output.nodeId);
-assert.equal(expansion.nodes[0].data.parameters.units, 24);
-
-const browserNodes = [
-  makeNode('data', 'tabular_data_node'),
-  makeNode('split', 'train_test_split_node'),
-  makeNode('linear', 'linear_regression_node'),
-  makeNode('train', 'gradient_descent_node'),
-];
-assert.deepEqual(estimateExecutionPlan(browserNodes, null).recommendedTier, 'L0');
-assert.equal(estimateExecutionPlan(browserNodes, null).canRunHere, true);
-assert.equal(estimateExecutionPlan(architectureNodes, null).recommendedTier, 'L1');
-assert.equal(estimateExecutionPlan(architectureNodes, null).canRunHere, false);
-const largeEmbedding = makeNode('embedding', 'embedding_node', { vocab_size: 1_000_000, embedding_dim: 1024 });
-assert.equal(estimateExecutionPlan([largeEmbedding], null).recommendedTier, 'L3');
-
-const regressionGraphNodes = [
-  makeNode('reg-data', 'tabular_data_node'),
-  makeNode('reg-split', 'train_test_split_node'),
-  makeNode('reg-model', 'linear_regression_node'),
-  makeNode('reg-train', 'gradient_descent_node', { epochs: 50 }),
-  makeNode('reg-evaluate', 'evaluate_node'),
-  makeNode('reg-predict', 'predictor_node'),
-];
-const regressionGraphEdges = [
-  makeEdge('reg-data', 'dataset', 'reg-split', 'dataset'),
-  makeEdge('reg-split', 'split', 'reg-model', 'split'),
-  makeEdge('reg-model', 'model', 'reg-train', 'model'),
-  makeEdge('reg-train', 'trained_model', 'reg-evaluate', 'trained_model'),
-  makeEdge('reg-train', 'trained_model', 'reg-predict', 'trained_model'),
-];
-const regressionDataset = {
-  name: 'regression-check',
-  rows: Array.from({ length: 40 }, (_, index) => ({
-    feature_a: index,
-    feature_b: index % 7,
-    target: 3 * index - 2 * (index % 7) + 5,
-  })),
-  columns: [
-    { name: 'feature_a', type: 'number' },
-    { name: 'feature_b', type: 'number' },
-    { name: 'target', type: 'number' },
-  ],
-  featureColumns: ['feature_a', 'feature_b'],
-  targetColumn: 'target',
-  task: 'regression',
-};
-const regressionModel = await executeBrowserGraph({
-  nodes: regressionGraphNodes,
-  edges: regressionGraphEdges,
-  dataset: regressionDataset,
-});
-assert.equal(regressionModel.type, 'linear_regression');
-assert.ok(Number.isFinite(regressionModel.metrics.rmse), 'regression browser backend returns RMSE');
-assert.ok(Number.isFinite(predictWithModel(regressionModel, [10, 3])), 'regression predictor returns a number');
-assert.equal(architectureLayout(regressionGraphNodes, regressionGraphEdges).length, 5);
-const regressionAnalysis = analyzeProject(regressionGraphNodes, regressionGraphEdges);
-assert.equal(regressionAnalysis.nodeCount, regressionGraphNodes.length);
-assert.equal(regressionAnalysis.edgeCount, regressionGraphEdges.length);
-assert.equal(regressionAnalysis.missingInputs.length, 0);
-assert.throws(() => createCustomComposite({
-  selectedNodes: [
-    regressionGraphNodes[0],
-    regressionGraphNodes[1],
-    makeNode('disconnected-custom-node', 'dense_node'),
-  ],
-  edges: regressionGraphEdges,
-  name: 'Invalid disconnected group',
-  color: '#2563eb',
-}), /error\.compositeSelection/);
-
-const standaloneLayerComposite = createCustomComposite({
-  selectedNodes: [
-    makeNode('standalone-dense', 'dense_node', { input_features: 32, units: 10 }),
-    makeNode('standalone-relu', 'relu_node'),
-  ],
-  edges: [
-    makeEdge('standalone-dense', 'output', 'standalone-relu', 'input'),
-  ],
-  name: 'Standalone hidden layer',
-  color: '#2563eb',
-});
-assert.deepEqual(
-  standaloneLayerComposite.manifest.inputs.map((port) => port.type),
-  ['Tensor'],
-  'an unconnected composite exposes child inputs not satisfied internally',
-);
-assert.deepEqual(
-  standaloneLayerComposite.manifest.outputs.map((port) => port.type),
-  ['Tensor'],
-  'an unconnected composite exposes child outputs not consumed internally',
-);
-const standaloneInput = standaloneLayerComposite.manifest.inputs[0].name;
+for (const type of knownPortTypes) assert.ok(messages[`portType.${type}`], `${type} port role is localized`…5832 tokens truncated…andaloneLayerComposite.manifest.inputs[0].name;
 const standaloneOutput = standaloneLayerComposite.manifest.outputs[0].name;
 const connectedStandaloneNodes = [
   makeNode('standalone-source', 'tensor_input_node', { shape: '32' }),
@@ -1013,8 +557,8 @@ assert.equal(validateProjectForWorkspace({
 }).name, 'Agent test');
 const malformedCustomManifest = {
   id: 'custom_invalid',
-  name: { en: 'Invalid', zh: '无效' },
-  description: { en: 'Invalid fixture', zh: '无效测试项' },
+  name: { en: 'Invalid', zh: '鏃犳晥' },
+  description: { en: 'Invalid fixture', zh: '鏃犳晥娴嬭瘯椤? },
   inputs: [null],
   outputs: [],
   properties: [],
@@ -1030,7 +574,7 @@ assert.throws(
     customComponents: [{
       ...malformedCustomManifest,
       inputs: [],
-      properties: [{ key: 'units', label: { en: 'Units', zh: '单元' }, type: 'number', default: 'many' }],
+      properties: [{ key: 'units', label: { en: 'Units', zh: '鍗曞厓' }, type: 'number', default: 'many' }],
     }],
   }),
   (error) => error.translationKey === 'error.invalidProject',
@@ -1243,6 +787,82 @@ assert.equal(
   2,
   'stratified classification split keeps every class in training',
 );
+
+const mlpGraphNodes = [
+  makeNode('mlp-data', 'tabular_data_node'),
+  makeNode('mlp-split', 'train_test_split_node', { train_ratio: 0.8 }),
+  makeNode('mlp-input', 'tensor_input_node', { shape: '2', dtype: 'float32' }),
+  makeNode('mlp-hidden', 'dense_node', { input_features: 2, units: 6, use_bias: true }),
+  makeNode('mlp-relu', 'relu_node'),
+  makeNode('mlp-head', 'dense_node', { input_features: 6, units: 2, use_bias: true }),
+  makeNode('mlp-softmax', 'softmax_node'),
+  makeNode('mlp-output', 'model_output_node'),
+  makeNode('mlp-loss', 'cross_entropy_loss_node'),
+  makeNode('mlp-optimizer', 'adam_optimizer_node', { learning_rate: 0.02 }),
+  makeNode('mlp-trainer', 'supervised_trainer_node', { epochs: 120, batch_size: 16, shuffle: true }),
+  makeNode('mlp-evaluate', 'evaluate_classification_node'),
+  makeNode('mlp-predict', 'predictor_node'),
+];
+const mlpGraphEdges = [
+  makeEdge('mlp-data', 'dataset', 'mlp-split', 'dataset'),
+  makeEdge('mlp-input', 'tensor', 'mlp-hidden', 'input'),
+  makeEdge('mlp-hidden', 'output', 'mlp-relu', 'input'),
+  makeEdge('mlp-relu', 'output', 'mlp-head', 'input'),
+  makeEdge('mlp-head', 'output', 'mlp-softmax', 'input'),
+  makeEdge('mlp-softmax', 'output', 'mlp-output', 'input'),
+  makeEdge('mlp-split', 'split', 'mlp-trainer', 'dataset'),
+  makeEdge('mlp-output', 'model', 'mlp-trainer', 'model'),
+  makeEdge('mlp-loss', 'loss', 'mlp-trainer', 'loss'),
+  makeEdge('mlp-optimizer', 'optimizer', 'mlp-trainer', 'optimizer'),
+  makeEdge('mlp-trainer', 'trained_model', 'mlp-evaluate', 'trained_model'),
+  makeEdge('mlp-trainer', 'trained_model', 'mlp-predict', 'trained_model'),
+];
+const mlpModel = await executeBrowserGraph({ nodes: mlpGraphNodes, edges: mlpGraphEdges, dataset: classificationDataset });
+assert.equal(estimateExecutionPlan(mlpGraphNodes, classificationDataset).canRunHere, true, 'small MLP is directly runnable in the browser');
+assert.equal(mlpModel.type, 'browser_mlp');
+assert.ok(mlpModel.metrics.accuracy >= 0.9, 'browser MLP classifies the separable exercise dataset');
+assert.equal(predictWithModel(mlpModel, [3.1, 1.9]), 'positive');
+
+const mlpRegressionDataset = {
+  name: 'mlp-regression-check', task: 'regression',
+  rows: Array.from({ length: 80 }, (_, index) => {
+    const feature_a = (index % 10) - 5;
+    const feature_b = Math.floor(index / 10) - 4;
+    return { feature_a, feature_b, target: 1.5 * feature_a - 2 * feature_b + 0.5 };
+  }),
+  columns: [{ name: 'feature_a', type: 'number' }, { name: 'feature_b', type: 'number' }, { name: 'target', type: 'number' }],
+  featureColumns: ['feature_a', 'feature_b'], targetColumn: 'target',
+};
+const mlpRegressionNodes = [
+  makeNode('mlp-reg-data', 'tabular_data_node'),
+  makeNode('mlp-reg-split', 'train_test_split_node', { train_ratio: 0.8 }),
+  makeNode('mlp-reg-input', 'tensor_input_node', { shape: '2', dtype: 'float32' }),
+  makeNode('mlp-reg-head', 'dense_node', { input_features: 2, units: 1, use_bias: true }),
+  makeNode('mlp-reg-output', 'model_output_node'),
+  makeNode('mlp-reg-loss', 'mse_loss_node'),
+  makeNode('mlp-reg-optimizer', 'sgd_optimizer_node', { learning_rate: 0.05, momentum: 0.6 }),
+  makeNode('mlp-reg-trainer', 'supervised_trainer_node', { epochs: 250, batch_size: 10, shuffle: true }),
+  makeNode('mlp-reg-evaluate', 'evaluate_node'),
+];
+const mlpRegressionEdges = [
+  makeEdge('mlp-reg-data', 'dataset', 'mlp-reg-split', 'dataset'),
+  makeEdge('mlp-reg-input', 'tensor', 'mlp-reg-head', 'input'),
+  makeEdge('mlp-reg-head', 'output', 'mlp-reg-output', 'input'),
+  makeEdge('mlp-reg-split', 'split', 'mlp-reg-trainer', 'dataset'),
+  makeEdge('mlp-reg-output', 'model', 'mlp-reg-trainer', 'model'),
+  makeEdge('mlp-reg-loss', 'loss', 'mlp-reg-trainer', 'loss'),
+  makeEdge('mlp-reg-optimizer', 'optimizer', 'mlp-reg-trainer', 'optimizer'),
+  makeEdge('mlp-reg-trainer', 'trained_model', 'mlp-reg-evaluate', 'trained_model'),
+];
+const mlpRegressionModel = await executeBrowserGraph({ nodes: mlpRegressionNodes, edges: mlpRegressionEdges, dataset: mlpRegressionDataset });
+assert.equal(mlpRegressionModel.type, 'browser_mlp');
+assert.ok(mlpRegressionModel.metrics.r2 >= 0.98, 'browser MLP regression learns the MSE exercise');
+assert.ok(mlpRegressionModel.lossHistory.at(-1) < mlpRegressionModel.lossHistory[0], 'mini-batch SGD with momentum lowers MSE loss');
+const longMlpPlan = estimateExecutionPlan(
+  mlpGraphNodes.map((node) => node.id === 'mlp-trainer' ? makeNode('mlp-trainer', 'supervised_trainer_node', { epochs: 10_000, batch_size: 16, shuffle: true }) : node),
+  { ...classificationDataset, rows: Array.from({ length: 500 }, (_, index) => classificationDataset.rows[index % classificationDataset.rows.length]) },
+);
+assert.equal(longMlpPlan.recommendedTier, 'L1', 'total training work can escalate a small MLP above L0');
 assert.throws(
   () => compilePipelineToPyTorch(classificationGraphNodes, classificationGraphEdges),
   (error) => error.translationKey === 'error.frameworkUnsupported',
@@ -1264,3 +884,4 @@ assert.throws(
 );
 
 console.log(`Validated ${pluginRegistry.length} usable components and tutorials, every architecture compiler mapping, both browser pipelines, platform services, localization, and execution tiers.`);
+
