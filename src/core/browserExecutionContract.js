@@ -140,7 +140,7 @@ export function analyzeBrowserExecutionGraph({ nodes, edges, dataset, alreadyFla
     const dense = layers.filter((node) => node.data.manifest.op === 'dense');
     if (!dense.length) return failure('error.browserMlpArchitecture', flattened);
     for (const node of layers) {
-      if (node.data.manifest.op === 'softmax' && ![-1, 0].includes(Number(node.data.parameters.axis))) {
+      if (node.data.manifest.op === 'softmax' && Number(node.data.parameters.axis) !== -1) {
         return failure('error.browserMlpArchitecture', flattened);
       }
       if (node.data.manifest.op !== 'dense') continue;
