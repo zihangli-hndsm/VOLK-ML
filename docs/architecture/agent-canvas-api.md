@@ -133,6 +133,12 @@ Failures reject with `CanvasAgentError`. Its stable `code` identifies the class 
 
 Consumers must check `bridge.apiVersion` or `canvas.apiVersion`. Changing a required command, payload, snapshot-field meaning, or error-code meaning requires incrementing `CANVAS_AGENT_API_VERSION` and documenting migration behavior. Additive optional fields may be introduced within the same version.
 
+## Browser exercise suite
+
+The opt-in browser exercise suite runs only when the application URL contains `?agent-test=1`. It opens the single mounted Canvas Agent instance through the public bridge, records the initial project, and restores it after the test.
+
+The suite checks registry discovery and default creation for every registered component, then constructs and runs deterministic Iris KNN and Wine regression exercises through the API. It renders a compact pass/fail status in `#volk-ml-agent-test-result` for browser automation. The suite deliberately does not call download methods, so an unattended browser test never creates files.
+
 ## Implementation boundary
 
 - `src/core/canvasAgent.js` owns pure graph operations, snapshot construction, API validation, and the global bridge.
