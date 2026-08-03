@@ -330,6 +330,16 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
     && expandedNodes.find((node) => node.id === edge.target)?.data.manifest.id === 'predictor_node'
   ))) return false;
   const featureCount = model.featureColumns.length;
+  const testSamplesAreValid = (classification) => (
+    model.test === undefined
+    || (Array.isArray(model.test)
+      && model.test.length === model.testRows
+      && model.test.every((sample) => (
+        sample && typeof sample === 'object'
+        && finiteArray(sample.x, featureCount)
+        && (classification ? typeof sample.y === 'string' && sample.y : Number.isFinite(sample.y))
+      )))
+  );
   if (model.type === 'browser_mlp') {
     if (
       sourceManifest.id !== 'supervised_trainer_node'
@@ -348,6 +358,7 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
       || !Array.isArray(model.labels)
       || !Number.isInteger(model.epochs) || model.epochs <= 0
       || !Number.isFinite(model.learningRate) || model.learningRate <= 0
+      || !testSamplesAreValid(model.task === 'classification')
     ) return false;
     let width = featureCount;
     for (const layer of model.layers) {
@@ -389,7 +400,8 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
       && Number.isFinite(model.normalization.yMean)
       && Number.isFinite(model.normalization.yStd) && model.normalization.yStd !== 0
       && Number.isInteger(model.epochs) && model.epochs > 0
-      && Number.isFinite(model.learningRate) && model.learningRate > 0;
+      && Number.isFinite(model.learningRate) && model.learningRate > 0
+      && testSamplesAreValid(false);
   }
   return dataset.task === 'classification'
     && sourceManifest.id === 'knn_node'
@@ -403,7 +415,8 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
     && model.normalization && typeof model.normalization === 'object'
     && finiteArray(model.normalization.means, featureCount)
     && finiteArray(model.normalization.stds, featureCount)
-    && model.normalization.stds.every((value) => value !== 0);
+    && model.normalization.stds.every((value) => value !== 0)
+    && testSamplesAreValid(true);
 }
 
 export function validateProjectForWorkspace(rawProject) {
