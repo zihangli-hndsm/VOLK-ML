@@ -27,8 +27,8 @@ Every manifest uses component schema version `2` and has this conceptual shape:
     step: 1
   }],
   runtime: {
-    minimumTier: 'L1',
-    browserBackend: 'none'
+    minimumTier: 'L0',
+    browserBackend: 'cpu'
   },
   compatibility: {
     pytorch: 'exact',
@@ -112,7 +112,7 @@ Supervised Trainer is the explicit boundary between model definition and trainin
 
 ## Runtime and compatibility
 
-`runtime.minimumTier` is the lowest plausible execution environment:
+`runtime.minimumTier` is the lowest plausible execution environment. It is a backend capability floor, not a statement about model family or a guarantee that every graph using the component is small enough to run there:
 
 - `L0`: browser CPU
 - `L1`: browser WebGPU

@@ -3,7 +3,7 @@ import { componentById } from './components.js';
 import { assessConnection } from './connections.js';
 import { flattenCustomComposites } from './customComposites.js';
 
-export const PROJECT_VERSION = 7;
+export const PROJECT_VERSION = 8;
 
 const oldSamplePositions = {
   'pipeline-data': { x: 40, y: 180 },
@@ -300,7 +300,7 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
   if (model === null || model === undefined) return true;
   if (
     !model || typeof model !== 'object' || Array.isArray(model)
-    || !['linear_regression', 'knn_classifier'].includes(model.type)
+    || !['linear_regression', 'knn_classifier', 'browser_mlp'].includes(model.type)
     || typeof model.sourceNodeId !== 'string' || !model.sourceNodeId
     || !Array.isArray(model.featureColumns) || model.featureColumns.length === 0
     || !model.featureColumns.every((column) => typeof column === 'string' && column)
@@ -316,7 +316,7 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
   const topLevelIds = new Set(topLevelNodes.map((node) => node.id));
   const sourceNodes = expandedNodes.filter((node) => (node.data.runtimeOwnerId ?? node.id) === model.sourceNodeId);
   const sourceManifest = sourceNodes.find((node) => (
-    ['gradient_descent_node', 'knn_node'].includes(node.data.manifest.id)
+    ['gradient_descent_node', 'knn_node', 'supervised_trainer_node'].includes(node.data.manifest.id)
   ))?.data.manifest;
   if (
     !topLevelIds.has(model.sourceNodeId) || !sourceManifest || !dataset
@@ -330,6 +330,61 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
     && expandedNodes.find((node) => node.id === edge.target)?.data.manifest.id === 'predictor_node'
   ))) return false;
   const featureCount = model.featureColumns.length;
+  const testSamplesAreValid = (classification) => (
+    model.test === undefined
+    || (Array.isArray(model.test)
+      && model.test.length === model.testRows
+      && model.test.every((sample) => (
+        sample && typeof sample === 'object'
+        && finiteArray(sample.x, featureCount)
+        && (classification ? typeof sample.y === 'string' && sample.y : Number.isFinite(sample.y))
+      )))
+  );
+  if (model.type === 'browser_mlp') {
+    if (
+      sourceManifest.id !== 'supervised_trainer_node'
+      || !['regression', 'classification'].includes(model.task)
+      || dataset.task !== model.task
+      || typeof model.modelNodeId !== 'string' || !model.modelNodeId
+      || !expandedNodes.some((node) => (
+        (node.data.runtimeOwnerId ?? node.id) === model.modelNodeId
+        && node.data.manifest.id === 'model_output_node'
+      ))
+      || !model.normalization || typeof model.normalization !== 'object'
+      || !finiteArray(model.normalization.means, featureCount)
+      || !finiteArray(model.normalization.stds, featureCount)
+      || model.normalization.stds.some((value) => value === 0)
+      || !Array.isArray(model.layers) || model.layers.length === 0
+      || !Array.isArray(model.labels)
+      || !Number.isInteger(model.epochs) || model.epochs <= 0
+      || !Number.isFinite(model.learningRate) || model.learningRate <= 0
+      || !testSamplesAreValid(model.task === 'classification')
+    ) return false;
+    let width = featureCount;
+    let denseLayers = 0;
+    for (const layer of model.layers) {
+      if (!layer || typeof layer !== 'object' || Array.isArray(layer) || layer.adam !== undefined || layer.sgd !== undefined) return false;
+      if (layer.op === 'dense') {
+        if (
+          !Number.isInteger(layer.input_features) || layer.input_features !== width
+          || !Number.isInteger(layer.units) || layer.units <= 0
+          || typeof layer.use_bias !== 'boolean'
+          || !Array.isArray(layer.weights) || layer.weights.length !== layer.units
+          || !layer.weights.every((row) => finiteArray(row, width))
+          || !finiteArray(layer.bias, layer.units)
+        ) return false;
+        width = layer.units;
+        denseLayers += 1;
+      } else if (!['relu', 'sigmoid', 'tanh', 'softmax'].includes(layer.op)) return false;
+    }
+    if (model.task === 'classification') {
+      return denseLayers > 0 && model.layers.at(-1)?.op === 'softmax'
+        && model.labels.length === width && model.labels.length >= 2
+        && model.labels.every((label) => typeof label === 'string' && label)
+        && new Set(model.labels).size === model.labels.length;
+    }
+    return denseLayers > 0 && width === 1 && model.layers.at(-1)?.op !== 'softmax' && model.labels.length === 0;
+  }
   if (model.type === 'linear_regression') {
     return dataset.task === 'regression'
       && sourceManifest.id === 'gradient_descent_node'
@@ -347,7 +402,8 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
       && Number.isFinite(model.normalization.yMean)
       && Number.isFinite(model.normalization.yStd) && model.normalization.yStd !== 0
       && Number.isInteger(model.epochs) && model.epochs > 0
-      && Number.isFinite(model.learningRate) && model.learningRate > 0;
+      && Number.isFinite(model.learningRate) && model.learningRate > 0
+      && testSamplesAreValid(false);
   }
   return dataset.task === 'classification'
     && sourceManifest.id === 'knn_node'
@@ -361,7 +417,8 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
     && model.normalization && typeof model.normalization === 'object'
     && finiteArray(model.normalization.means, featureCount)
     && finiteArray(model.normalization.stds, featureCount)
-    && model.normalization.stds.every((value) => value !== 0);
+    && model.normalization.stds.every((value) => value !== 0)
+    && testSamplesAreValid(true);
 }
 
 export function validateProjectForWorkspace(rawProject) {
@@ -426,3 +483,4 @@ export function validateProjectForWorkspace(rawProject) {
   if (!trainedModelIsValid(project.trainedModel, validationNodes, expanded.nodes, expanded.edges, project.data)) invalidProject();
   return project;
 }
+

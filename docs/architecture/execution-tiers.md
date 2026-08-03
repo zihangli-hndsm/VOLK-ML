@@ -11,9 +11,9 @@
 | L2 | Local Python | No | Larger PyTorch/TensorFlow models on the user's machine |
 | L3 | Remote GPU | No | Large models or datasets requiring a managed accelerator |
 
-Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines. L1–L3 expose design/export guidance.
+Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines, plus a deliberately small browser-CPU MLP: tabular data, a Tensor Input, sequential Dense layers with ReLU/Sigmoid/Tanh/Softmax activations, Model Output, MSE or cross-entropy loss, SGD or Adam, and Supervised Trainer. L1鈥揕3 expose design/export guidance.
 
-Supervised Trainer and Custom Loss declare L2 because their implemented path is generated local Python, not browser execution. Adding them to an architecture therefore changes the recommendation to Local Python even when the model itself would otherwise be L1.
+The browser MLP supports numeric tabular data and one sequential input/output path only. Classification needs one Softmax output per class and cross-entropy; regression needs one output and MSE. Trainer updates are true mini-batch updates: gradients are accumulated for `batch_size` examples before one SGD (including momentum) or Adam update. CNN, sequence, attention, normalization, Dropout, custom loss, AdamW, multi-input/output architectures, and non-tabular bindings remain export-only. Supervised Trainer is L0 when used with this supported subset and remains exportable to local Python for its wider source-generation contract.
 
 ## Estimator inputs
 
@@ -21,6 +21,7 @@ Supervised Trainer and Custom Loss declare L2 because their implemented path is 
 
 - per-component parameter estimates;
 - approximate operations per step;
+- estimated training steps and total training operations for connected Trainers;
 - training-state memory;
 - activation memory;
 - dataset size;
@@ -36,6 +37,8 @@ The result includes:
   parameters,
   peakMemoryMB,
   operationsPerStep,
+  trainingSteps,
+  trainingOperations,
   estimatedSeconds,
   canRunHere,
   browserBackendComplete,
@@ -54,7 +57,7 @@ Estimates are guardrails, not benchmarks. They are deliberately conservative and
 - Activation memory is at least 8 MiB and otherwise estimated from operation count.
 - Dataset storage is estimated at 32 bytes per cell.
 - Peak memory adds a 35% safety margin.
-- Convolution estimates assume a representative `64 × 64` spatial area.
+- Convolution estimates assume a representative `64 脳 64` spatial area.
 - Sequence and attention estimates assume a representative length of `128`.
 - Folded user-created composites are recursively expanded before estimation, so grouping a graph does not change its parameter, operation, or backend guidance.
 
@@ -72,6 +75,8 @@ The estimator first honors the maximum `runtime.minimumTier` required by any sel
 
 A dataset larger than 100 MiB also raises the recommendation to at least L2. A dataset warning reason appears above 30 MiB.
 
+For connected Supervised Trainers, total training work is estimated from the dataset rows, training ratio, batch size, epochs, and per-example operations. It raises the recommendation at more than 250 million operations (L1), 3 billion (L2), or 20 billion (L3); estimates above 10, 120, or 800 CPU seconds raise to the same tiers. These are guardrails for browser responsiveness, not timing promises.
+
 Threshold comparisons are strict `>` comparisons. Add boundary tests before changing them.
 
 ## Browser execution decision
@@ -81,6 +86,7 @@ Threshold comparisons are strict `>` comparisons. Add boundary tests before chan
 ```text
 recommendedTier === L0
 and every selected component has a browser backend
+and the graph contains a complete supported execution topology
 ```
 
 WebGPU detection does not make L1 runnable today because the WebGPU executor is not implemented. It only affects explanatory guidance.
@@ -96,13 +102,17 @@ The browser executor separately validates:
 - the active graph is acyclic;
 - a supported data source and browser backend exist.
 
+The shared browser-execution contract is used by both the estimator and executor. It requires exactly one active trained-model root (KNN, Gradient Descent, or Supervised Trainer), validates its complete typed input path and compatible downstream evaluator or Predictor, and rejects unrelated active branches.
+
+For the browser MLP, the contract requires a connected Supervised Trainer with its DatasetSplit, ModelSpec, LossSpec, and OptimizerSpec inputs. It also checks a single sequential tabular architecture, that the Tensor Input width equals the selected dataset feature count, Dense widths, usable dataset rows, task-specific output semantics, and a non-empty classification test split. Browser preprocessing treats null, undefined, empty, and whitespace-only cells as missing; this shared rule is applied before both preflight and execution. Classification requires cross-entropy, final Softmax on the last axis (`-1`), and one output per class; regression requires MSE, one output, and no final Softmax. Training uses a reproducible but distinct shuffle per epoch and aborts rather than persisting non-finite training state or metrics. A design-only Tensor Input 鈫?Model Output graph may be exported, but is never presented as runnable.
+
 Do not weaken browser validation because the tier estimator recommends L0; they answer different questions.
 
 ## Assigning a component tier
 
-Use the lowest tier that can plausibly execute the component while preserving intended interactivity:
+Use the lowest tier that has a complete backend while preserving intended interactivity. A component family alone does not determine a tier: the manifest supplies the backend floor and estimates may only raise it.
 
-- Set L0 only after implementing and testing its browser CPU backend.
+- Set L0 only after implementing and testing its browser CPU backend. A small Dense-based model may therefore be L0, while a larger instance of the same components escalates by the thresholds above.
 - Set L1 for browser-oriented neural operations without a CPU backend, while WebGPU remains planned.
 - Set L2 when a Python runtime or unsupported browser dependency is required.
 - Set L3 when the operation inherently expects remote accelerator-scale resources.
@@ -118,3 +128,4 @@ The estimator may still escalate above a component's declared minimum based on g
 5. Update localized reasons in `src/locales/ui.js` when user guidance changes.
 6. Keep `executionTiers[].available` false until an end-to-end runtime exists.
 7. Run the validation baseline in `overview.md`.
+

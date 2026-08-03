@@ -57,6 +57,8 @@ const passThrough = (
   compatibility,
 ) => component({
   id, op, name: text(en, zh), description: text(descriptionEn, descriptionZh), category, properties, compatibility,
+  minimumTier: ['relu', 'sigmoid', 'tanh', 'softmax'].includes(op) ? 'L0' : 'L1',
+  browserBackend: ['relu', 'sigmoid', 'tanh', 'softmax'].includes(op) ? 'cpu' : 'none',
 });
 
 const regressionComponents = [
@@ -139,12 +141,14 @@ const architectureComponents = [
       stringProperty('shape', 'Shape', '形状', '32'),
       selectProperty('dtype', 'Data Type', '数据类型', 'float32', ['float32', 'float16', 'int32']),
     ],
+    minimumTier: 'L0', browserBackend: 'cpu',
   }),
   component({
     id: 'model_output_node', op: 'model_output', kind: 'sink',
     name: text('Model Output', '模型输出'),
     description: text('Marks a tensor as a model output.', '将张量标记为模型输出。'),
     category: 'Core', inputs: [input('input')], outputs: [output('model', 'ModelSpec')], properties: [],
+    minimumTier: 'L0', browserBackend: 'cpu',
   }),
   component({
     id: 'dense_node', op: 'dense',
@@ -156,6 +160,7 @@ const architectureComponents = [
       numberProperty('units', 'Output Units', '输出单元数', 64),
       booleanProperty('use_bias', 'Use Bias', '使用偏置', true),
     ],
+    minimumTier: 'L0', browserBackend: 'cpu',
   }),
   component({
     id: 'conv2d_node', op: 'conv2d',
@@ -269,18 +274,21 @@ const architectureComponents = [
     name: text('Mean Squared Error', '均方误差'),
     description: text('Configures mean squared error loss.', '配置均方误差损失。'),
     category: 'Losses', inputs: [], outputs: [output('loss', 'LossSpec')], properties: [],
+    minimumTier: 'L0', browserBackend: 'cpu',
   }),
   component({
     id: 'cross_entropy_loss_node', op: 'cross_entropy_loss', kind: 'loss',
     name: text('Cross Entropy Loss', '交叉熵损失'),
     description: text('Configures multiclass cross entropy loss.', '配置多类别交叉熵损失。'),
     category: 'Losses', inputs: [], outputs: [output('loss', 'LossSpec')], properties: [],
+    minimumTier: 'L0', browserBackend: 'cpu',
   }),
   component({
     id: 'binary_cross_entropy_loss_node', op: 'binary_cross_entropy_loss', kind: 'loss',
     name: text('Binary Cross Entropy', '二元交叉熵'),
     description: text('Configures binary cross entropy loss.', '配置二元交叉熵损失。'),
     category: 'Losses', inputs: [], outputs: [output('loss', 'LossSpec')], properties: [],
+    minimumTier: 'L2', browserBackend: 'none',
   }),
   component({
     id: 'custom_loss_node', op: 'custom_loss', kind: 'loss',
@@ -304,6 +312,7 @@ const architectureComponents = [
       sliderProperty('learning_rate', 'Learning Rate', '学习率', 0.01, 0.0001, 0.5, 0.0001),
       sliderProperty('momentum', 'Momentum', '动量', 0, 0, 0.99, 0.01),
     ],
+    minimumTier: 'L0', browserBackend: 'cpu',
   }),
   component({
     id: 'adam_optimizer_node', op: 'adam_optimizer', kind: 'optimizer',
@@ -311,6 +320,7 @@ const architectureComponents = [
     description: text('Configures the Adam optimizer.', '配置 Adam 优化器。'),
     category: 'Optimizers', inputs: [], outputs: [output('optimizer', 'OptimizerSpec')],
     properties: [sliderProperty('learning_rate', 'Learning Rate', '学习率', 0.001, 0.00001, 0.1, 0.00001)],
+    minimumTier: 'L0', browserBackend: 'cpu',
   }),
   component({
     id: 'adamw_optimizer_node', op: 'adamw_optimizer', kind: 'optimizer',
@@ -339,7 +349,7 @@ const architectureComponents = [
       numberProperty('batch_size', 'Batch Size', '批次大小', 32, 1, 8192),
       booleanProperty('shuffle', 'Shuffle Training Data', '打乱训练数据', true),
     ],
-    minimumTier: 'L2',
+    minimumTier: 'L0', browserBackend: 'cpu',
   }),
 ];
 

@@ -1,4 +1,5 @@
 import { flattenCustomComposites } from './customComposites.js';
+import { analyzeBrowserExecutionGraph } from './browserExecutionContract.js';
 
 const tierOrder = ['L0', 'L1', 'L2', 'L3'];
 
@@ -73,7 +74,9 @@ const maximumTier = (current, next) => (
 );
 
 export function estimateExecutionPlan(nodes, dataset, capabilities = {}) {
-  const planNodes = flattenCustomComposites(nodes, []).nodes;
+  const flattened = flattenCustomComposites(nodes, capabilities.edges ?? []);
+  const planNodes = flattened.nodes;
+  const planEdges = capabilities.edges ? flattened.edges : null;
   let parameters = 0;
   let operationsPerStep = 0;
   let minimumTier = 'L0';
@@ -94,24 +97,44 @@ export function estimateExecutionPlan(nodes, dataset, capabilities = {}) {
   const activationBytes = Math.max(8 * 1024 * 1024, operationsPerStep * 0.08);
   const datasetCells = dataset ? dataset.rows.length * Math.max(1, dataset.columns.length) : 0;
   const datasetBytes = datasetCells * 32;
+  const trainer = planNodes.find((node) => node.data.manifest.op === 'supervised_trainer');
+  const nodeById = new Map(planNodes.map((node) => [node.id, node]));
+  const connectedSplitId = trainer && planEdges?.find((edge) => edge.target === trainer.id && edge.targetHandle === 'dataset')?.source;
+  const split = nodeById.get(connectedSplitId) ?? planNodes.find((node) => node.data.manifest.op === 'train_test_split');
+  const trainRatio = Number(split?.data.parameters.train_ratio ?? 0.8);
+  const trainingExamples = dataset ? Math.max(1, Math.floor(dataset.rows.length * trainRatio)) : 1;
+  const trainingSteps = trainer ? Math.max(1, Number(trainer.data.parameters.epochs)) * Math.ceil(trainingExamples / Math.max(1, Number(trainer.data.parameters.batch_size))) : 1;
+  const trainingOperations = operationsPerStep * trainingExamples * (trainer ? Math.max(1, Number(trainer.data.parameters.epochs)) : 1);
   const peakBytes = (parameters * bytesPerParameter + activationBytes + datasetBytes) * 1.35;
   const peakMemoryMB = peakBytes / (1024 ** 2);
-  const cpuSeconds = Math.max(0.05, operationsPerStep / 25_000_000);
-  const webgpuSeconds = Math.max(0.02, operationsPerStep / 500_000_000);
+  const cpuSeconds = Math.max(0.05, trainingOperations / 25_000_000);
+  const webgpuSeconds = Math.max(0.02, trainingOperations / 500_000_000);
 
   let recommendedTier = minimumTier;
   if (parameters > 50_000_000 || peakMemoryMB > 1024 || operationsPerStep > 20_000_000_000) recommendedTier = 'L3';
   else if (parameters > 5_000_000 || peakMemoryMB > 384 || operationsPerStep > 2_000_000_000) recommendedTier = maximumTier(recommendedTier, 'L2');
   else if (parameters > 100_000 || peakMemoryMB > 128 || operationsPerStep > 10_000_000) recommendedTier = maximumTier(recommendedTier, 'L1');
 
+  if (trainingOperations > 20_000_000_000 || cpuSeconds > 800) recommendedTier = 'L3';
+  else if (trainingOperations > 3_000_000_000 || cpuSeconds > 120) recommendedTier = maximumTier(recommendedTier, 'L2');
+  else if (trainingOperations > 250_000_000 || cpuSeconds > 10) recommendedTier = maximumTier(recommendedTier, 'L1');
+
   if (datasetBytes > 100 * 1024 * 1024) recommendedTier = maximumTier(recommendedTier, 'L2');
-  const canRunHere = recommendedTier === 'L0' && browserBackendComplete;
+  const topologyComplete = analyzeBrowserExecutionGraph({
+    nodes: planNodes,
+    edges: planEdges ?? [],
+    dataset,
+    alreadyFlattened: true,
+  }).valid;
+  const canRunHere = recommendedTier === 'L0' && browserBackendComplete && topologyComplete;
   const webgpuDetected = Boolean(capabilities.webgpu);
   const reasons = [];
   if (parameters > 100_000) reasons.push('tier.reason.parameters');
   if (peakMemoryMB > 128) reasons.push('tier.reason.memory');
   if (operationsPerStep > 10_000_000) reasons.push('tier.reason.compute');
+  if (trainingOperations > 250_000_000) reasons.push('tier.reason.trainingCompute');
   if (!browserBackendComplete) reasons.push('tier.reason.backend');
+  if (!topologyComplete) reasons.push('tier.reason.incompleteGraph');
   if (recommendedTier === 'L1' && !webgpuDetected) reasons.push('tier.reason.noWebgpu');
   if (datasetBytes > 30 * 1024 * 1024) reasons.push('tier.reason.dataset');
 
@@ -120,6 +143,8 @@ export function estimateExecutionPlan(nodes, dataset, capabilities = {}) {
     parameters: Math.round(parameters),
     peakMemoryMB: Number(peakMemoryMB.toFixed(1)),
     operationsPerStep: Math.round(operationsPerStep),
+    trainingSteps,
+    trainingOperations: Math.round(trainingOperations),
     estimatedSeconds: Number((recommendedTier === 'L0' ? cpuSeconds : webgpuSeconds).toFixed(2)),
     canRunHere,
     browserBackendComplete,

@@ -22,7 +22,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
 | Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
-| Browser runtime | `src/core/browserRuntime.js` | Typed execution validation, linear regression, KNN classification, evaluation, prediction |
+| Browser runtime | `src/core/browserRuntime.js`, `src/core/browserExecutionContract.js` | One shared execution contract plus linear regression, KNN classification, small tabular MLP training, evaluation, prediction |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
@@ -56,8 +56,8 @@ flowchart TD
 - Canvas nodes retain their manifest and user parameters.
 - The mounted workspace exposes a serializable canvas snapshot and validated commands through `globalThis.__VOLK_ML_AGENT__`; it does not expose React internals or create a network listener.
 - Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
-- Project JSON stores the project name, graph, custom composite definitions, workspace preferences, dataset, and trained L0 model.
-- `PROJECT_VERSION` in `src/core/project.js` is currently `7`.
+- Project JSON version 8 stores the project name, graph, custom composite definitions, workspace preferences, dataset, and trained L0 model. Browser MLP persistence keeps inference layers, normalization, labels, and metrics while omitting optimizer moment state; imported models are validated against their Trainer graph and dataset before use.
+- `PROJECT_VERSION` in `src/core/project.js` is currently `8`.
 - Import first migrates legacy graph contracts, then resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
 - Version 5 migrates legacy KNN `model` edges to `trained_model`; obsolete visualization-only `boundary` edges are removed because the current KNN runtime no longer produces a mesh.
 - Version 6 adds the project name and reusable custom-composite catalog.
@@ -71,7 +71,7 @@ flowchart TD
 - Stage color has one stable meaning: green for data, blue for models, orange for training, and violet for outputs. Runtime status remains a separate ring.
 - The component library is a collapsible stage → category tree. Deleting a saved custom definition removes it from the reusable catalog but deliberately keeps existing canvas instances intact.
 - The architecture view derives topological layers from the same graph without changing saved node positions.
-- Neural training keeps model definition and runtime data binding separate. `Tensor Input → layers → Model Output` defines the model, while Supervised Trainer explicitly joins that `ModelSpec` with `DatasetSplit`, `LossSpec`, and `OptimizerSpec` to generate an L2 Python training loop.
+- Neural training keeps model definition and runtime data binding separate. `Tensor Input → layers → Model Output` defines the model, while Supervised Trainer explicitly joins that `ModelSpec` with `DatasetSplit`, `LossSpec`, and `OptimizerSpec`. The small sequential tabular MLP subset can run at L0; the wider Trainer contract generates an L2 Python training loop.
 - Custom Loss expressions use a small framework-neutral tensor DSL and are parsed before export; project JSON never executes user-authored JavaScript or injects raw Python.
 - Custom composites are copy-style definitions. They can contain preset or custom composites, expand for editing, collapse to their original instance, and flatten recursively before execution or source compilation.
 - Project explanation begins with deterministic topology and connection analysis. A user may optionally provide a compatible chat-completion endpoint, model name, and in-memory API key for follow-up questions.
@@ -121,7 +121,7 @@ Generated framework code should also receive focused assertions. When a compiler
 
 ## Current intentional limitations
 
-- Connected tabular linear-regression and KNN-classification pipelines run in the browser.
+- Connected tabular linear-regression, KNN-classification, and the documented small sequential MLP pipelines run in the browser.
 - Browser WebGPU, local Python orchestration, and remote GPU execution are not implemented.
 - A connected Supervised Trainer exports a complete single-input/single-output tabular training loop. Architecture-only exports still leave dataset binding and the loop to the user.
 - Shape inference is not yet a first-class IR pass; several layer dimensions remain explicit component properties.

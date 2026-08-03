@@ -50,7 +50,7 @@ export function createLocalPlatformServices() {
     compute: Object.freeze({
       targets: Object.freeze(['browser-cpu']),
       canExecuteInBrowser(plan) {
-        return plan.recommendedTier === 'L0' && plan.browserBackendComplete;
+        return plan.canRunHere === true;
       },
       async submit() { throw unavailable('compute.submit'); },
       async getJob() { throw unavailable('compute.getJob'); },
