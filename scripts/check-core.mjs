@@ -1248,6 +1248,23 @@ assert.equal(
   2,
   'stratified classification split keeps every class in training',
 );
+await assert.rejects(
+  executeBrowserGraph({
+    nodes: classificationGraphNodes,
+    edges: classificationGraphEdges,
+    dataset: {
+      ...classificationDataset,
+      name: 'singleton-classes-check',
+      rows: [
+        { feature_a: 0, feature_b: 0, label: 'first' },
+        { feature_a: 1, feature_b: 1, label: 'second' },
+        { feature_a: 2, feature_b: 2, label: 'third' },
+      ],
+    },
+  }),
+  (error) => error.translationKey === 'error.classificationTestRequired',
+  'classification rejects a stratified split with no test samples',
+);
 
 const mlpGraphNodes = [
   makeNode('mlp-data', 'tabular_data_node'),
@@ -1331,6 +1348,33 @@ const persistedFoldedMlpProject = validateProjectForWorkspace(JSON.parse(JSON.st
   data: classificationDataset, trainedModel: foldedMlpModel,
 })));
 assert.equal(persistedFoldedMlpProject.trainedModel.type, 'browser_mlp', 'folded MLP survives import validation');
+const foldedTrainerSelection = new Set([
+  'mlp-input', 'mlp-hidden', 'mlp-relu', 'mlp-head', 'mlp-softmax', 'mlp-output',
+  'mlp-loss', 'mlp-optimizer', 'mlp-trainer',
+]);
+const foldedTrainer = createCustomComposite({
+  selectedNodes: mlpGraphNodes.filter((node) => foldedTrainerSelection.has(node.id)),
+  edges: mlpGraphEdges,
+  name: 'Folded browser MLP Trainer',
+  color: '#ea580c',
+});
+const foldedTrainerNodes = [
+  ...mlpGraphNodes.filter((node) => !foldedTrainerSelection.has(node.id)),
+  foldedTrainer.instance,
+];
+const foldedTrainerModel = await executeBrowserGraph({
+  nodes: foldedTrainerNodes,
+  edges: foldedTrainer.nextEdges,
+  dataset: classificationDataset,
+});
+assert.equal(foldedTrainerModel.sourceNodeId, foldedTrainer.instance.id, 'folded Trainer persists its stable top-level owner ID');
+const persistedFoldedTrainerProject = validateProjectForWorkspace(JSON.parse(JSON.stringify({
+  format: 'VOLK-ML', version: PROJECT_VERSION, name: 'Persisted folded browser Trainer',
+  graph: { nodes: foldedTrainerNodes, edges: foldedTrainer.nextEdges },
+  customComponents: [foldedTrainer.manifest],
+  data: classificationDataset, trainedModel: foldedTrainerModel,
+})));
+assert.equal(persistedFoldedTrainerProject.trainedModel.type, 'browser_mlp', 'folded Trainer survives import validation');
 
 const secondMlpNodes = mlpGraphNodes.map((node) => ({ ...node, id: `second-${node.id}` }));
 const secondMlpEdges = mlpGraphEdges.map((edge) => ({
@@ -1377,6 +1421,14 @@ assert.equal(
   estimateExecutionPlan(emptyMlpNodes, classificationDataset, { edges: emptyMlpEdges }).canRunHere,
   false,
   'tier guidance requires at least one supported Dense layer in a browser MLP',
+);
+const mismatchedMlpNodes = mlpGraphNodes.map((node) => (
+  node.id === 'mlp-hidden' ? makeNode('mlp-hidden', 'dense_node', { input_features: 3, units: 6, use_bias: true }) : node
+));
+assert.equal(
+  estimateExecutionPlan(mismatchedMlpNodes, classificationDataset, { edges: mlpGraphEdges }).canRunHere,
+  false,
+  'tier guidance rejects Dense widths that do not match the preceding tensor',
 );
 
 const mlpRegressionDataset = {
