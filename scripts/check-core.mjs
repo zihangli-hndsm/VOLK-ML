@@ -786,7 +786,7 @@ const browserNodes = [
   makeNode('train', 'gradient_descent_node'),
 ];
 assert.deepEqual(estimateExecutionPlan(browserNodes, null).recommendedTier, 'L0');
-assert.equal(estimateExecutionPlan(browserNodes, null).canRunHere, true);
+assert.equal(estimateExecutionPlan(browserNodes, null).canRunHere, false, 'a tier estimate without a connected graph and usable data is not executable');
 assert.equal(estimateExecutionPlan(architectureNodes, null).recommendedTier, 'L0');
 assert.equal(estimateExecutionPlan(architectureNodes, null).canRunHere, false, 'an architecture without a complete browser training graph cannot run');
 assert.equal(
@@ -833,6 +833,11 @@ const regressionModel = await executeBrowserGraph({
   edges: regressionGraphEdges,
   dataset: regressionDataset,
 });
+assert.equal(
+  estimateExecutionPlan(regressionGraphNodes, regressionDataset, { edges: regressionGraphEdges }).canRunHere,
+  true,
+  'a complete regression execution contract is directly runnable',
+);
 assert.equal(regressionModel.type, 'linear_regression');
 assert.ok(Number.isFinite(regressionModel.metrics.rmse), 'regression browser backend returns RMSE');
 assert.ok(Number.isFinite(predictWithModel(regressionModel, [10, 3])), 'regression predictor returns a number');
@@ -1130,8 +1135,7 @@ assert.throws(
   (error) => error.translationKey === 'error.invalidProject',
   'workspace project validation must reject malformed trained models',
 );
-const { test: omittedRegressionTest, ...persistedRegressionModel } = regressionModel;
-assert.ok(omittedRegressionTest.length > 0);
+const persistedRegressionModel = regressionModel;
 assert.equal(validateProjectForWorkspace({
   format: 'VOLK-ML',
   version: PROJECT_VERSION,
@@ -1226,6 +1230,27 @@ const classificationModel = await executeBrowserGraph({
 assert.equal(classificationModel.type, 'knn_classifier');
 assert.ok(classificationModel.metrics.accuracy >= 0.9, 'KNN browser backend classifies the separable test set');
 assert.equal(predictWithModel(classificationModel, [3.1, 1.9]), 'positive');
+assert.equal(
+  estimateExecutionPlan(classificationGraphNodes, classificationDataset, { edges: classificationGraphEdges }).canRunHere,
+  true,
+  'a complete KNN classification contract is directly runnable',
+);
+assert.equal(
+  estimateExecutionPlan(regressionGraphNodes, classificationDataset, { edges: regressionGraphEdges }).canRunHere,
+  false,
+  'linear regression is not advertised for a classification dataset',
+);
+const incompleteKnnNodes = [
+  makeNode('incomplete-data', 'tabular_data_node'),
+  makeNode('incomplete-knn', 'knn_node'),
+  makeNode('incomplete-evaluate', 'evaluate_classification_node'),
+];
+const incompleteKnnEdges = [makeEdge('incomplete-knn', 'trained_model', 'incomplete-evaluate', 'trained_model')];
+assert.equal(
+  estimateExecutionPlan(incompleteKnnNodes, classificationDataset, { edges: incompleteKnnEdges }).canRunHere,
+  false,
+  'KNN requires its own connected Tabular Data input',
+);
 
 const imbalancedClassificationModel = await executeBrowserGraph({
   nodes: classificationGraphNodes,
@@ -1308,6 +1333,15 @@ const persistedMlpProject = validateProjectForWorkspace(JSON.parse(JSON.stringif
 })));
 assert.equal(persistedMlpProject.trainedModel.type, 'browser_mlp');
 assert.equal(predictWithModel(persistedMlpProject.trainedModel, [3.1, 1.9]), 'positive', 'imported MLP remains usable for prediction');
+assert.throws(
+  () => validateProjectForWorkspace({
+    format: 'VOLK-ML', version: PROJECT_VERSION, name: 'Malformed MLP test rows',
+    graph: { nodes: mlpGraphNodes, edges: mlpGraphEdges }, customComponents: [],
+    data: classificationDataset, trainedModel: { ...mlpModel, test: [{ x: [NaN, 0], y: 'positive' }] },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'persisted MLP test samples must remain finite and agree with the saved count',
+);
 
 const hiddenSoftmaxModel = await executeBrowserGraph({
   nodes: mlpGraphNodes.map((node) => node.id === 'mlp-relu' ? makeNode('mlp-relu', 'softmax_node') : node),
@@ -1392,6 +1426,15 @@ await assert.rejects(
   (error) => error.translationKey === 'error.multipleTrainingRoots',
   'browser execution rejects ambiguous canvases with multiple supervised Trainers',
 );
+await assert.rejects(
+  executeBrowserGraph({
+    nodes: [...mlpGraphNodes, ...classificationGraphNodes],
+    edges: [...mlpGraphEdges, ...classificationGraphEdges],
+    dataset: classificationDataset,
+  }),
+  (error) => error.translationKey === 'error.multipleTrainingRoots',
+  'browser execution rejects mixed MLP and KNN training roots',
+);
 assert.equal(
   estimateExecutionPlan(
     [...mlpGraphNodes, ...secondMlpNodes],
@@ -1401,6 +1444,15 @@ assert.equal(
   false,
   'tier guidance does not advertise a multi-Trainer canvas as runnable',
 );
+assert.equal(
+  estimateExecutionPlan(
+    [...mlpGraphNodes, ...classificationGraphNodes],
+    classificationDataset,
+    { edges: [...mlpGraphEdges, ...classificationGraphEdges] },
+  ).canRunHere,
+  false,
+  'tier guidance rejects mixed browser training roots',
+);
 
 const bceMlpNodes = mlpGraphNodes.map((node) => (
   node.id === 'mlp-loss' ? makeNode('mlp-loss', 'binary_cross_entropy_loss_node') : node
@@ -1408,6 +1460,32 @@ const bceMlpNodes = mlpGraphNodes.map((node) => (
 const bceMlpPlan = estimateExecutionPlan(bceMlpNodes, classificationDataset, { edges: mlpGraphEdges });
 assert.equal(bceMlpPlan.canRunHere, false, 'binary cross entropy remains export-only until its browser backend exists');
 assert.equal(bceMlpPlan.recommendedTier, 'L2');
+const classificationMseNodes = mlpGraphNodes.map((node) => (
+  node.id === 'mlp-loss' ? makeNode('mlp-loss', 'mse_loss_node') : node
+));
+assert.equal(
+  estimateExecutionPlan(classificationMseNodes, classificationDataset, { edges: mlpGraphEdges }).canRunHere,
+  false,
+  'classification MLPs require cross entropy and a Softmax head before Run is enabled',
+);
+const wrongMlpEvaluatorNodes = [
+  ...mlpGraphNodes,
+  makeNode('mlp-wrong-evaluate', 'evaluate_node'),
+];
+const wrongMlpEvaluatorEdges = [
+  ...mlpGraphEdges,
+  makeEdge('mlp-trainer', 'trained_model', 'mlp-wrong-evaluate', 'trained_model'),
+];
+assert.equal(
+  estimateExecutionPlan(wrongMlpEvaluatorNodes, classificationDataset, { edges: wrongMlpEvaluatorEdges }).canRunHere,
+  false,
+  'a classification MLP cannot be wired to a regression evaluator',
+);
+await assert.rejects(
+  executeBrowserGraph({ nodes: wrongMlpEvaluatorNodes, edges: wrongMlpEvaluatorEdges, dataset: classificationDataset }),
+  (error) => error.translationKey === 'error.wrongEvaluator',
+  'the runtime shares the evaluator compatibility contract',
+);
 
 const emptyMlpNodes = mlpGraphNodes.filter((node) => !['mlp-hidden', 'mlp-relu', 'mlp-head', 'mlp-softmax'].includes(node.id));
 const emptyMlpEdges = [
@@ -1466,6 +1544,24 @@ const mlpRegressionModel = await executeBrowserGraph({ nodes: mlpRegressionNodes
 assert.equal(mlpRegressionModel.type, 'browser_mlp');
 assert.ok(mlpRegressionModel.metrics.r2 >= 0.98, 'browser MLP regression learns the MSE exercise');
 assert.ok(mlpRegressionModel.lossHistory.at(-1) < mlpRegressionModel.lossHistory[0], 'mini-batch SGD with momentum lowers MSE loss');
+const softmaxRegressionNodes = [
+  ...mlpRegressionNodes.slice(0, 5),
+  makeNode('mlp-reg-softmax', 'softmax_node'),
+  ...mlpRegressionNodes.slice(5),
+];
+const softmaxRegressionEdges = mlpRegressionEdges.flatMap((edge) => (
+  edge.source === 'mlp-reg-head' && edge.target === 'mlp-reg-output'
+    ? [
+      makeEdge('mlp-reg-head', 'output', 'mlp-reg-softmax', 'input'),
+      makeEdge('mlp-reg-softmax', 'output', 'mlp-reg-output', 'input'),
+    ]
+    : [edge]
+));
+assert.equal(
+  estimateExecutionPlan(softmaxRegressionNodes, mlpRegressionDataset, { edges: softmaxRegressionEdges }).canRunHere,
+  false,
+  'a one-unit Softmax regression head is rejected before it can silently stop learning',
+);
 const longMlpPlan = estimateExecutionPlan(
   mlpGraphNodes.map((node) => node.id === 'mlp-trainer' ? makeNode('mlp-trainer', 'supervised_trainer_node', { epochs: 10_000, batch_size: 16, shuffle: true }) : node),
   { ...classificationDataset, rows: Array.from({ length: 500 }, (_, index) => classificationDataset.rows[index % classificationDataset.rows.length]) },
@@ -1491,7 +1587,10 @@ assert.throws(
 const localPlatform = validatePlatformServices(createLocalPlatformServices());
 assert.equal(localPlatform.apiVersion, PLATFORM_API_VERSION);
 assert.equal(localPlatform.projects.mode, 'indexeddb');
-assert.equal(localPlatform.compute.canExecuteInBrowser(estimateExecutionPlan(browserNodes, null)), true);
+assert.equal(
+  localPlatform.compute.canExecuteInBrowser(estimateExecutionPlan(regressionGraphNodes, regressionDataset, { edges: regressionGraphEdges })),
+  true,
+);
 assert.equal(localPlatform.compute.canExecuteInBrowser(estimateExecutionPlan(architectureNodes, null)), false);
 await assert.rejects(localPlatform.compute.submit({}), (error) => (
   error.code === 'PLATFORM_CAPABILITY_UNAVAILABLE'
