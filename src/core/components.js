@@ -288,7 +288,7 @@ const architectureComponents = [
     name: text('Binary Cross Entropy', '二元交叉熵'),
     description: text('Configures binary cross entropy loss.', '配置二元交叉熵损失。'),
     category: 'Losses', inputs: [], outputs: [output('loss', 'LossSpec')], properties: [],
-    minimumTier: 'L0', browserBackend: 'cpu',
+    minimumTier: 'L2', browserBackend: 'none',
   }),
   component({
     id: 'custom_loss_node', op: 'custom_loss', kind: 'loss',
