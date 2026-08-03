@@ -10,7 +10,7 @@ VOLK-ML is a mobile-friendly visual ML builder with three distinct responsibilit
 2. compile supported graphs to PyTorch or TensorFlow/Keras source;
 3. execute deliberately small regression and classification L0 pipelines directly in the browser.
 
-Source compilation does not imply browser executability. L1–L3 currently guide export and environment selection rather than providing an in-app runtime.
+Source compilation does not imply browser executability. L1鈥揕3 currently guide export and environment selection rather than providing an in-app runtime.
 
 ## Active source map
 
@@ -22,12 +22,12 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
 | Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
-| Browser runtime | `src/core/browserRuntime.js` | Typed execution validation, linear regression, KNN classification, evaluation, prediction |
+| Browser runtime | `src/core/browserRuntime.js` | Typed execution validation, linear regression, KNN classification, small tabular MLP training, evaluation, prediction |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
 | Framework-neutral compiler | `src/core/compiler.js` | VOLK IR, graph selection, compatibility report, PyTorch and TensorFlow generation |
-| Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
+| Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0鈥揕3 recommendation |
 | Hosted-service boundary | `src/platform/services.js` | Versioned account, project, collaboration, and compute provider contract with local defaults |
 | Localization runtime | `src/i18n.js` | Message resolution, localized errors, parallel-language rendering |
 | UI messages | `src/locales/ui.js` | Active English and Chinese UI copy |
@@ -69,9 +69,9 @@ flowchart TD
 - Every registered operation has its own semantic visual. The same visual vocabulary becomes animated only inside the component guide after the learner presses play; activation curves are sampled from their mathematical functions rather than hand-drawn approximations.
 - The linear-regression guide includes a lazy-loaded playground. It uses the first feature and target from the current regression dataset (or local example points), samples large datasets evenly over sorted x values, and recomputes the line, residuals, and MSE as weight or bias changes.
 - Stage color has one stable meaning: green for data, blue for models, orange for training, and violet for outputs. Runtime status remains a separate ring.
-- The component library is a collapsible stage → category tree. Deleting a saved custom definition removes it from the reusable catalog but deliberately keeps existing canvas instances intact.
+- The component library is a collapsible stage 鈫?category tree. Deleting a saved custom definition removes it from the reusable catalog but deliberately keeps existing canvas instances intact.
 - The architecture view derives topological layers from the same graph without changing saved node positions.
-- Neural training keeps model definition and runtime data binding separate. `Tensor Input → layers → Model Output` defines the model, while Supervised Trainer explicitly joins that `ModelSpec` with `DatasetSplit`, `LossSpec`, and `OptimizerSpec` to generate an L2 Python training loop.
+- Neural training keeps model definition and runtime data binding separate. `Tensor Input 鈫?layers 鈫?Model Output` defines the model, while Supervised Trainer explicitly joins that `ModelSpec` with `DatasetSplit`, `LossSpec`, and `OptimizerSpec`. The small sequential tabular MLP subset can run at L0; the wider Trainer contract generates an L2 Python training loop.
 - Custom Loss expressions use a small framework-neutral tensor DSL and are parsed before export; project JSON never executes user-authored JavaScript or injects raw Python.
 - Custom composites are copy-style definitions. They can contain preset or custom composites, expand for editing, collapse to their original instance, and flatten recursively before execution or source compilation.
 - Project explanation begins with deterministic topology and connection analysis. A user may optionally provide a compatible chat-completion endpoint, model name, and in-memory API key for follow-up questions.
@@ -101,7 +101,7 @@ Do not make an unavailable backend appear runnable. Update availability only whe
 | --- | --- | --- |
 | Add a layer, loss, optimizer, or composite | `component-manifest.md` | Registry, compiler mappings, tests, localization when UI copy changes |
 | Fix PyTorch/TensorFlow conversion | `compiler-ir.md` | Compiler and focused source assertions |
-| Change “too large for browser” behavior | `execution-tiers.md` | Tier estimator, UI messages, threshold tests |
+| Change 鈥渢oo large for browser鈥?behavior | `execution-tiers.md` | Tier estimator, UI messages, threshold tests |
 | Add a browser-executable algorithm | All three documents | Manifest runtime metadata, browser runner, estimator, tests |
 | Add cloud storage, collaboration, or remote execution | `platform-services.md` | External provider implementation plus contract tests |
 | Change agent canvas commands or snapshots | `agent-canvas-api.md` | Pure command helpers, workspace adapter, API version, and contract tests |
@@ -121,10 +121,11 @@ Generated framework code should also receive focused assertions. When a compiler
 
 ## Current intentional limitations
 
-- Connected tabular linear-regression and KNN-classification pipelines run in the browser.
+- Connected tabular linear-regression, KNN-classification, and the documented small sequential MLP pipelines run in the browser.
 - Browser WebGPU, local Python orchestration, and remote GPU execution are not implemented.
 - A connected Supervised Trainer exports a complete single-input/single-output tabular training loop. Architecture-only exports still leave dataset binding and the loop to the user.
 - Shape inference is not yet a first-class IR pass; several layer dimensions remain explicit component properties.
 - Framework conversion quality is declared per component and may be `adapted`, `approximate`, or `unsupported`.
 - The optional conversational explanation endpoint must support a chat-completion request shape and browser CORS; no API key is persisted.
 - The Canvas Agent API controls one mounted browser workspace and has no remote authentication or transport. External agent hosts must provide those boundaries themselves.
+
