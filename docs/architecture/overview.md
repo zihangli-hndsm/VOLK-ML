@@ -22,7 +22,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
 | Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
-| Browser runtime | `src/core/browserRuntime.js` | Typed execution validation, linear regression, KNN classification, small tabular MLP training, evaluation, prediction |
+| Browser runtime | `src/core/browserRuntime.js`, `src/core/browserExecutionContract.js` | One shared execution contract plus linear regression, KNN classification, small tabular MLP training, evaluation, prediction |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
