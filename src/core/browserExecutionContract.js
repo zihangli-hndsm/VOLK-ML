@@ -3,16 +3,39 @@ import { flattenCustomComposites } from './customComposites.js';
 const activationOps = new Set(['relu', 'sigmoid', 'tanh', 'softmax']);
 const rootOps = new Set(['supervised_trainer', 'knn_classifier', 'gradient_descent']);
 
-const validRows = (dataset, classification) => (dataset?.rows ?? []).map((row) => {
-  const values = (dataset.featureColumns ?? []).map((column) => Number(row[column]));
-  const target = row?.[dataset.targetColumn];
-  if (!values.every(Number.isFinite) || target === null || target === undefined || target === '') return null;
-  return { x: values, y: classification ? String(target) : Number(target) };
-}).filter((sample) => sample && (classification || Number.isFinite(sample.y)));
-
-const classificationSplitHasTest = (rows) => (
-  [...new Map(rows.map((row) => [row.y, 0])).keys()].some((label) => rows.filter((row) => row.y === label).length > 1)
+export const isBrowserMissingValue = (value) => (
+  value === null
+  || value === undefined
+  || (typeof value === 'string' && value.trim() === '')
 );
+
+// This is deliberately shared with the browser runtime: preflight guidance and
+// execution must agree on which tabular rows exist and whether a class can test.
+export function profileBrowserDataset(dataset) {
+  const classification = dataset?.task === 'classification';
+  const featureColumns = dataset?.featureColumns ?? [];
+  const samples = [];
+  const labelCounts = new Map();
+  (dataset?.rows ?? []).forEach((row, index) => {
+    const rawFeatures = featureColumns.map((column) => row?.[column]);
+    const rawTarget = row?.[dataset?.targetColumn];
+    if (rawFeatures.some(isBrowserMissingValue) || isBrowserMissingValue(rawTarget)) return;
+    const x = rawFeatures.map(Number);
+    if (!x.every(Number.isFinite)) return;
+    const y = classification ? String(rawTarget) : Number(rawTarget);
+    if (!classification && !Number.isFinite(y)) return;
+    samples.push({ index, x, y });
+    if (classification) labelCounts.set(y, (labelCounts.get(y) ?? 0) + 1);
+  });
+  return {
+    classification,
+    featureCount: featureColumns.length,
+    samples,
+    labelCounts,
+    classCount: labelCounts.size,
+    classificationSplitHasTest: [...labelCounts.values()].some((count) => count > 1),
+  };
+}
 
 function port(manifest, direction, handle) {
   return (direction === 'input' ? manifest.inputs : manifest.outputs).find((item) => item.name === handle);
@@ -41,7 +64,9 @@ export function analyzeBrowserExecutionGraph({ nodes, edges, dataset, alreadyFla
   for (const edge of graphEdges) {
     const source = nodeById.get(edge.source);
     const target = nodeById.get(edge.target);
-    if (!source || !target || !port(source.data.manifest, 'output', edge.sourceHandle) || !port(target.data.manifest, 'input', edge.targetHandle)) {
+    const sourcePort = source && port(source.data.manifest, 'output', edge.sourceHandle);
+    const targetPort = target && port(target.data.manifest, 'input', edge.targetHandle);
+    if (!source || !target || !sourcePort || !targetPort || sourcePort.type !== targetPort.type) {
       return failure('error.invalidConnection', flattened);
     }
   }
@@ -67,14 +92,14 @@ export function analyzeBrowserExecutionGraph({ nodes, edges, dataset, alreadyFla
     const data = split && requireSource(split, 'dataset', 'tabular_data');
     return data ? split : null;
   };
-  const classification = dataset.task === 'classification';
-  const rows = validRows(dataset, classification);
+  const dataProfile = profileBrowserDataset(dataset);
+  const { classification, samples: rows, classCount, classificationSplitHasTest, featureCount } = dataProfile;
   if (rows.length < 3) return failure('error.tooFewRows', flattened);
 
   if (root.data.manifest.op === 'knn_classifier') {
     if (!classification) return failure('error.classificationDatasetRequired', flattened);
-    if (new Set(rows.map((row) => row.y)).size < 2) return failure('error.classificationNeedsClasses', flattened);
-    if (!classificationSplitHasTest(rows)) return failure('error.classificationTestRequired', flattened);
+    if (classCount < 2) return failure('error.classificationNeedsClasses', flattened);
+    if (!classificationSplitHasTest) return failure('error.classificationTestRequired', flattened);
     if (!requireSource(root, 'dataset', 'tabular_data')) return failure('error.invalidConnection', flattened);
   } else if (root.data.manifest.op === 'gradient_descent') {
     if (classification) return failure('error.regressionDatasetRequired', flattened);
@@ -107,7 +132,7 @@ export function analyzeBrowserExecutionGraph({ nodes, edges, dataset, alreadyFla
     }
     allowed.add(current.id);
     const dimensions = String(current.data.parameters.shape ?? '').split(',').map((part) => Number(part.trim()));
-    if (dimensions.length !== 1 || !Number.isInteger(dimensions[0]) || dimensions[0] <= 0 || current.data.parameters.dtype === 'int32') {
+    if (dimensions.length !== 1 || !Number.isInteger(dimensions[0]) || dimensions[0] <= 0 || dimensions[0] !== featureCount || current.data.parameters.dtype === 'int32') {
       return failure('error.browserMlpShape', flattened);
     }
     let width = dimensions[0];
@@ -115,6 +140,9 @@ export function analyzeBrowserExecutionGraph({ nodes, edges, dataset, alreadyFla
     const dense = layers.filter((node) => node.data.manifest.op === 'dense');
     if (!dense.length) return failure('error.browserMlpArchitecture', flattened);
     for (const node of layers) {
+      if (node.data.manifest.op === 'softmax' && ![-1, 0].includes(Number(node.data.parameters.axis))) {
+        return failure('error.browserMlpArchitecture', flattened);
+      }
       if (node.data.manifest.op !== 'dense') continue;
       const inputFeatures = Number(node.data.parameters.input_features);
       const units = Number(node.data.parameters.units);
@@ -123,7 +151,7 @@ export function analyzeBrowserExecutionGraph({ nodes, edges, dataset, alreadyFla
     }
     const finalOp = layers.at(-1)?.data.manifest.op;
     if (classification) {
-      if (new Set(rows.map((row) => row.y)).size < 2 || !classificationSplitHasTest(rows) || loss.data.manifest.op !== 'cross_entropy_loss' || finalOp !== 'softmax' || width !== new Set(rows.map((row) => row.y)).size) {
+      if (classCount < 2 || !classificationSplitHasTest || loss.data.manifest.op !== 'cross_entropy_loss' || finalOp !== 'softmax' || width !== classCount) {
         return failure('error.browserMlpClassification', flattened);
       }
     } else if (loss.data.manifest.op !== 'mse_loss' || width !== 1 || finalOp === 'softmax') {
@@ -144,3 +172,4 @@ export function analyzeBrowserExecutionGraph({ nodes, edges, dataset, alreadyFla
   if (activeNodes.some((node) => !allowed.has(node.id))) return failure('error.invalidConnection', flattened);
   return { valid: true, reason: null, root, task: dataset.task, flattened };
 }
+
