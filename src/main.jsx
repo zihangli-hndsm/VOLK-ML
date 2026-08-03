@@ -30,6 +30,7 @@ import {
   updateAgentNode,
   validateAgentDataset,
 } from './core/canvasAgent';
+import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
@@ -1191,6 +1192,14 @@ function Workspace() {
       subscribe: forward('subscribe'),
     });
     return installCanvasAgentBridge(api, window);
+  }, []);
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get('agent-test') !== '1') return undefined;
+    let active = true;
+    runCanvasAgentExerciseSuite(window).then((result) => {
+      if (active) window.__VOLK_ML_AGENT_TEST_RESULT__ = result;
+    });
+    return () => { active = false; };
   }, []);
   useEffect(() => {
     if (!agentSubscribersRef.current.size) return;
