@@ -1314,6 +1314,70 @@ assert.equal(
   true,
   'folded MLP nodes and edges share one flattened topology for tier guidance',
 );
+const foldedMlpModel = await executeBrowserGraph({
+  nodes: foldedMlpNodes,
+  edges: foldedMlpArchitecture.nextEdges,
+  dataset: classificationDataset,
+});
+assert.equal(
+  foldedMlpModel.modelNodeId,
+  foldedMlpArchitecture.instance.id,
+  'folded MLP persistence uses the stable top-level composite instance ID',
+);
+const persistedFoldedMlpProject = validateProjectForWorkspace(JSON.parse(JSON.stringify({
+  format: 'VOLK-ML', version: PROJECT_VERSION, name: 'Persisted folded browser MLP',
+  graph: { nodes: foldedMlpNodes, edges: foldedMlpArchitecture.nextEdges },
+  customComponents: [foldedMlpArchitecture.manifest],
+  data: classificationDataset, trainedModel: foldedMlpModel,
+})));
+assert.equal(persistedFoldedMlpProject.trainedModel.type, 'browser_mlp', 'folded MLP survives import validation');
+
+const secondMlpNodes = mlpGraphNodes.map((node) => ({ ...node, id: `second-${node.id}` }));
+const secondMlpEdges = mlpGraphEdges.map((edge) => ({
+  ...edge,
+  id: `second-${edge.id}`,
+  source: `second-${edge.source}`,
+  target: `second-${edge.target}`,
+}));
+await assert.rejects(
+  executeBrowserGraph({
+    nodes: [...mlpGraphNodes, ...secondMlpNodes],
+    edges: [...mlpGraphEdges, ...secondMlpEdges],
+    dataset: classificationDataset,
+  }),
+  (error) => error.translationKey === 'error.multipleTrainingRoots',
+  'browser execution rejects ambiguous canvases with multiple supervised Trainers',
+);
+assert.equal(
+  estimateExecutionPlan(
+    [...mlpGraphNodes, ...secondMlpNodes],
+    classificationDataset,
+    { edges: [...mlpGraphEdges, ...secondMlpEdges] },
+  ).canRunHere,
+  false,
+  'tier guidance does not advertise a multi-Trainer canvas as runnable',
+);
+
+const bceMlpNodes = mlpGraphNodes.map((node) => (
+  node.id === 'mlp-loss' ? makeNode('mlp-loss', 'binary_cross_entropy_loss_node') : node
+));
+const bceMlpPlan = estimateExecutionPlan(bceMlpNodes, classificationDataset, { edges: mlpGraphEdges });
+assert.equal(bceMlpPlan.canRunHere, false, 'binary cross entropy remains export-only until its browser backend exists');
+assert.equal(bceMlpPlan.recommendedTier, 'L2');
+
+const emptyMlpNodes = mlpGraphNodes.filter((node) => !['mlp-hidden', 'mlp-relu', 'mlp-head', 'mlp-softmax'].includes(node.id));
+const emptyMlpEdges = [
+  ...mlpGraphEdges.filter((edge) => (
+    !['mlp-hidden', 'mlp-relu', 'mlp-head', 'mlp-softmax'].includes(edge.source)
+    && !['mlp-hidden', 'mlp-relu', 'mlp-head', 'mlp-softmax'].includes(edge.target)
+  )),
+  makeEdge('mlp-input', 'tensor', 'mlp-output', 'input'),
+];
+assert.equal(
+  estimateExecutionPlan(emptyMlpNodes, classificationDataset, { edges: emptyMlpEdges }).canRunHere,
+  false,
+  'tier guidance requires at least one supported Dense layer in a browser MLP',
+);
 
 const mlpRegressionDataset = {
   name: 'mlp-regression-check', task: 'regression',
