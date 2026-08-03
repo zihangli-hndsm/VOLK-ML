@@ -78,7 +78,7 @@ function publishResult(target, result) {
     output.style.cssText = 'position:fixed;bottom:12px;right:12px;z-index:99999;max-width:420px;padding:10px 14px;border-radius:10px;background:#0f172a;color:#f8fafc;font:12px ui-monospace,monospace;box-shadow:0 8px 20px #0004';
     target.document.body.append(output);
   }
-  const detail = result.error ? ` 鈥?${result.error.code}: ${result.error.message}` : '';
+  const detail = result.error ? ` — ${result.error.code}: ${result.error.message}` : '';
   output.textContent = `Canvas Agent exercises: ${result.status} (${result.cases.length} cases)${detail}`;
 }
 
@@ -143,7 +143,7 @@ async function testWineRegression(canvas) {
   await canvas.run();
   const state = canvas.getState();
   check(state.execution.runtime.status === 'succeeded', 'Wine regression did not finish successfully.');
-  check(state.execution.runtime.result?.metrics?.r2 >= 0.98, 'Wine regression R虏 is below the accepted exercise baseline.');
+  check(state.execution.runtime.result?.metrics?.r2 >= 0.98, 'Wine regression R² is below the accepted exercise baseline.');
 }
 
 async function testBrowserMlp(canvas) {
@@ -207,7 +207,7 @@ async function testBrowserMlpRegression(canvas) {
   const state = canvas.getState();
   check(state.execution.recommendation.canRunHere, 'Small MLP regression should be recommended for browser execution.');
   check(state.execution.runtime.status === 'succeeded', 'Small MLP regression did not finish successfully.');
-  check(state.execution.runtime.result?.metrics?.r2 >= 0.98, 'Small MLP regression R虏 is below the accepted exercise baseline.');
+  check(state.execution.runtime.result?.metrics?.r2 >= 0.98, 'Small MLP regression R² is below the accepted exercise baseline.');
 }
 
 export async function runCanvasAgentExerciseSuite(target = window) {
@@ -267,4 +267,3 @@ export async function runCanvasAgentExerciseSuite(target = window) {
   }
   return result;
 }
-
