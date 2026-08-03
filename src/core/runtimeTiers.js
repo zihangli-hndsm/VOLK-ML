@@ -81,7 +81,34 @@ function browserTopologyComplete(nodes, edges = null) {
     && (ops.has('mse_loss') || ops.has('cross_entropy_loss'))
     && (ops.has('sgd_optimizer') || ops.has('adam_optimizer'));
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
-  const trainer = nodes.find((node) => node.data.manifest.op === 'supervised_trainer');
+  const trainers = nodes.filter((node) => node.data.manifest.op === 'supervised_trainer');
+  if (trainers.length !== 1) return false;
+  const trainer = trainers[0];
+  const incomingEdge = (targetId, targetHandle) => edges.find((edge) => (
+    edge.target === targetId && edge.targetHandle === targetHandle
+  ));
+  const modelEdge = incomingEdge(trainer.id, 'model');
+  const lossEdge = incomingEdge(trainer.id, 'loss');
+  const optimizerEdge = incomingEdge(trainer.id, 'optimizer');
+  if (
+    !modelEdge
+    || !['mse_loss', 'cross_entropy_loss'].includes(nodeById.get(lossEdge?.source)?.data.manifest.op)
+    || !['sgd_optimizer', 'adam_optimizer'].includes(nodeById.get(optimizerEdge?.source)?.data.manifest.op)
+  ) return false;
+  let current = nodeById.get(modelEdge.source);
+  let denseCount = 0;
+  const visited = new Set();
+  while (current && current.data.manifest.op !== 'tensor_input') {
+    if (visited.has(current.id)) return false;
+    visited.add(current.id);
+    const op = current.data.manifest.op;
+    if (!['model_output', 'dense', 'relu', 'sigmoid', 'tanh', 'softmax'].includes(op)) return false;
+    if (op === 'dense') denseCount += 1;
+    const previous = incomingEdge(current.id, 'input');
+    if (!previous) return false;
+    current = nodeById.get(previous.source);
+  }
+  if (!current || denseCount === 0) return false;
   const requiredInputs = new Map([
     ['dataset', 'train_test_split'], ['model', 'model_output'],
     ['loss', null], ['optimizer', null],
