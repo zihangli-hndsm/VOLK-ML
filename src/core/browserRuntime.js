@@ -1,17 +1,11 @@
 import { localizedError } from '../i18n.js';
 import { flattenCustomComposites } from './customComposites.js';
-import { analyzeBrowserExecutionGraph } from './browserExecutionContract.js';
+import { analyzeBrowserExecutionGraph, profileBrowserDataset } from './browserExecutionContract.js';
 
 function resolvePort(manifest, direction, handleId) {
   const ports = direction === 'output' ? manifest.outputs : manifest.inputs;
   return ports.find((port) => port.name === handleId) ?? (ports.length === 1 ? ports[0] : null);
 }
-
-const isMissing = (value) => (
-  value === null
-  || value === undefined
-  || (typeof value === 'string' && value.trim() === '')
-);
 
 function deterministicShuffle(samples) {
   const shuffled = [...samples];
@@ -62,24 +56,6 @@ function stratifiedSplit(samples, trainRatio) {
     train: deterministicShuffle(train),
     test: deterministicShuffle(test),
   };
-}
-
-function numericSamples(dataset) {
-  return dataset.rows.map((row, index) => {
-    const rawFeatures = dataset.featureColumns.map((column) => row[column]);
-    const rawTarget = row[dataset.targetColumn];
-    if (rawFeatures.some(isMissing) || isMissing(rawTarget)) return null;
-    return { index, x: rawFeatures.map(Number), y: Number(rawTarget) };
-  }).filter((sample) => sample && sample.x.every(Number.isFinite) && Number.isFinite(sample.y));
-}
-
-function classificationSamples(dataset) {
-  return dataset.rows.map((row, index) => {
-    const rawFeatures = dataset.featureColumns.map((column) => row[column]);
-    const rawTarget = row[dataset.targetColumn];
-    if (rawFeatures.some(isMissing) || isMissing(rawTarget)) return null;
-    return { index, x: rawFeatures.map(Number), y: String(rawTarget) };
-  }).filter((sample) => sample && sample.x.every(Number.isFinite));
 }
 
 function featureNormalization(samples, featureCount) {
@@ -465,7 +441,7 @@ export async function executeBrowserGraph({
       output = dataset;
     } else if (manifestId === 'train_test_split_node') {
       const sourceDataset = inputValue(node, 'dataset');
-      const valid = sourceDataset.task === 'classification' ? classificationSamples(sourceDataset) : numericSamples(sourceDataset);
+      const valid = profileBrowserDataset(sourceDataset).samples;
       if (valid.length < 3) throw localizedError('error.tooFewRows');
       const { train, test } = sourceDataset.task === 'classification'
         ? stratifiedSplit(valid, node.data.parameters.train_ratio)
@@ -608,7 +584,7 @@ export async function executeBrowserGraph({
       if (sourceDataset.task !== 'classification') {
         throw localizedError('error.classificationDatasetRequired');
       }
-      const valid = classificationSamples(sourceDataset);
+      const valid = profileBrowserDataset(sourceDataset).samples;
       if (valid.length < 3) throw localizedError('error.tooFewRows');
       if (new Set(valid.map((sample) => sample.y)).size < 2) {
         throw localizedError('error.classificationNeedsClasses');
@@ -697,3 +673,4 @@ export async function executeBrowserGraph({
   if (!finalModel) throw localizedError('error.noTrainedModel');
   return finalModel;
 }
+
