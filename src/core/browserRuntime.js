@@ -371,6 +371,9 @@ export function compileExecutionGraph(nodes, edges) {
   if (!order.some((node) => node.data.manifest.id === 'tabular_data_node')) {
     throw localizedError('error.dataNodeRequired');
   }
+  if (activeNodes.filter((node) => node.data.manifest.op === 'supervised_trainer').length > 1) {
+    throw localizedError('error.multipleTrainingRoots');
+  }
   return { order, incoming };
 }
 
@@ -486,7 +489,11 @@ export async function executeBrowserGraph({
       output = { ...architecture, layers: [...architecture.layers, { op: manifestOp }] };
     } else if (manifestOp === 'model_output') {
       const architecture = inputValue(node, 'input');
-      output = { ...architecture, type: 'neural_model_spec', modelNodeId: node.id };
+      output = {
+        ...architecture,
+        type: 'neural_model_spec',
+        modelNodeId: node.data.runtimeOwnerId ?? node.id,
+      };
     } else if (manifestOp === 'cross_entropy_loss' || manifestOp === 'mse_loss') {
       output = { op: manifestOp };
     } else if (manifestOp === 'sgd_optimizer' || manifestOp === 'adam_optimizer') {
