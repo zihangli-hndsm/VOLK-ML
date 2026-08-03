@@ -119,7 +119,7 @@ const source = await canvas.exportCode('tensorflow');
 await canvas.exportCode('pytorch', { download: true });
 ```
 
-`run()` invokes the shared browser execution path and updates node status plus runtime timestamps, active node IDs, losses, result summary, and serialized error details. It is limited to supported L0 browser pipelines. A Supervised Trainer and other L1-L3 graphs remain available for inspection and source export but are not presented as locally executable.
+`run()` invokes the shared browser execution path and updates node status plus runtime timestamps, active node IDs, losses, result summary, and serialized error details. It is limited to supported L0 browser pipelines: linear regression, KNN classification, and the documented small sequential tabular MLP. A Supervised Trainer can run only with that browser MLP subset; other L1-L3 graphs remain available for inspection and source export but are not presented as locally executable.
 
 The runner records a semantic signature of its graph parameters, topology, and dataset. If the interactive editor changes any of those inputs before execution finishes, the stale result is discarded with `WORKSPACE_CHANGED`; layout-only movement does not invalidate it.
 
@@ -133,12 +133,6 @@ Failures reject with `CanvasAgentError`. Its stable `code` identifies the class 
 
 Consumers must check `bridge.apiVersion` or `canvas.apiVersion`. Changing a required command, payload, snapshot-field meaning, or error-code meaning requires incrementing `CANVAS_AGENT_API_VERSION` and documenting migration behavior. Additive optional fields may be introduced within the same version.
 
-## Browser exercise suite
-
-The opt-in browser exercise suite runs only when the application URL contains `?agent-test=1`. It opens the single mounted Canvas Agent instance through the public bridge, records the initial project, and restores it after the test.
-
-The suite checks registry discovery and default creation for every registered component, then constructs and runs deterministic Iris KNN and Wine regression exercises through the API. It renders a compact pass/fail status in `#volk-ml-agent-test-result` for browser automation. The suite deliberately does not call download methods, so an unattended browser test never creates files.
-
 ## Implementation boundary
 
 - `src/core/canvasAgent.js` owns pure graph operations, snapshot construction, API validation, and the global bridge.
@@ -146,3 +140,4 @@ The suite checks registry discovery and default creation for every registered co
 - `scripts/check-core.mjs` verifies graph-command invariants, snapshot detachment, API forwarding, instance discovery, and bridge teardown.
 
 Keep Agent operations at this boundary rather than scripting React Flow DOM elements. That preserves stable IDs, project portability, and the same semantic validation for human and Agent edits.
+
