@@ -12,14 +12,14 @@ Every manifest uses component schema version `2` and has this conceptual shape:
   id: 'dense_node',
   op: 'dense',
   kind: 'layer',
-  name: { en: 'Dense / Linear', zh: '全连接 / 线性层' },
+  name: { en: 'Dense / Linear', zh: '鍏ㄨ繛鎺?/ 绾挎€у眰' },
   description: { en: '...', zh: '...' },
   category: 'Layers',
   inputs: [{ name: 'input', type: 'Tensor' }],
   outputs: [{ name: 'output', type: 'Tensor' }],
   properties: [{
     key: 'units',
-    label: { en: 'Output Units', zh: '输出单元数' },
+    label: { en: 'Output Units', zh: '杈撳嚭鍗曞厓鏁? },
     type: 'number',
     default: 64,
     min: 1,
@@ -27,8 +27,8 @@ Every manifest uses component schema version `2` and has this conceptual shape:
     step: 1
   }],
   runtime: {
-    minimumTier: 'L1',
-    browserBackend: 'none'
+    minimumTier: 'L0',
+    browserBackend: 'cpu'
   },
   compatibility: {
     pytorch: 'exact',
@@ -112,7 +112,7 @@ Supervised Trainer is the explicit boundary between model definition and trainin
 
 ## Runtime and compatibility
 
-`runtime.minimumTier` is the lowest plausible execution environment:
+`runtime.minimumTier` is the lowest plausible execution environment. It is a backend capability floor, not a statement about model family or a guarantee that every graph using the component is small enough to run there:
 
 - `L0`: browser CPU
 - `L1`: browser WebGPU
@@ -192,3 +192,4 @@ Do not hide behavior inside a composite that cannot be represented by its expand
 9. Run the validation baseline in `overview.md`.
 
 For a composite, also test expansion count, port mappings, and parent-property substitution.
+
