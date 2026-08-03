@@ -149,6 +149,11 @@ function activationGradient(output, op) {
   return output.map(() => 1);
 }
 
+function softmaxGradient(output, upstream) {
+  const projection = output.reduce((sum, value, index) => sum + value * upstream[index], 0);
+  return output.map((value, index) => value * (upstream[index] - projection));
+}
+
 function initializeDense(inputSize, units, useBias, seed) {
   let state = seed;
   const next = () => {
@@ -256,7 +261,11 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
       const layer = layers[index];
       const previous = trace[index].output;
       if (layer.op !== 'dense') {
-        if (layer.op !== 'softmax') delta = delta.map((value, unit) => value * activationGradient(trace[index + 1].output, layer.op)[unit]);
+        if (layer.op === 'softmax') {
+          if (index !== layers.length - 1) delta = softmaxGradient(trace[index + 1].output, delta);
+        } else {
+          delta = delta.map((value, unit) => value * activationGradient(trace[index + 1].output, layer.op)[unit]);
+        }
         continue;
       }
       const propagated = previous.map((_, feature) => layer.weights.reduce((sum, row, unit) => sum + row[feature] * delta[unit], 0));
@@ -296,10 +305,11 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
         await onYield();
       }
     }
+    const inferenceLayers = layers.map(({ adam, sgd, ...layer }) => layer);
     return {
       type: 'browser_mlp', sourceNodeId: trainer.id, modelNodeId: architecture.modelNodeId,
       featureColumns: sourceDataset.featureColumns, targetColumn: sourceDataset.targetColumn,
-      layers, normalization, labels, task: sourceDataset.task, test: split.test,
+      layers: inferenceLayers, normalization, labels, task: sourceDataset.task, test: split.test,
       trainRows: split.train.length, testRows: split.test.length, metrics: null, lossHistory: history,
       epochs, learningRate, trainedAt: new Date().toISOString(), hasPredictor: false,
     };
@@ -666,4 +676,3 @@ export async function executeBrowserGraph({
   if (!finalModel) throw localizedError('error.noTrainedModel');
   return finalModel;
 }
-
