@@ -50,7 +50,7 @@ export function createLocalPlatformServices() {
     compute: Object.freeze({
       targets: Object.freeze(['browser-cpu']),
       canExecuteInBrowser(plan) {
-        return plan.recommendedTier === 'L0' && plan.browserBackendComplete;
+        return plan.canRunHere === true;
       },
       async submit() { throw unavailable('compute.submit'); },
       async getJob() { throw unavailable('compute.getJob'); },
@@ -92,3 +92,4 @@ export function resolvePlatformServices(candidate = globalThis.__VOLK_ML_PLATFOR
     ? validatePlatformServices(candidate)
     : createLocalPlatformServices();
 }
+
