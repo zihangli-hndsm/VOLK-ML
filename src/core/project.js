@@ -361,6 +361,7 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
       || !testSamplesAreValid(model.task === 'classification')
     ) return false;
     let width = featureCount;
+    let denseLayers = 0;
     for (const layer of model.layers) {
       if (!layer || typeof layer !== 'object' || Array.isArray(layer) || layer.adam !== undefined || layer.sgd !== undefined) return false;
       if (layer.op === 'dense') {
@@ -373,15 +374,16 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
           || !finiteArray(layer.bias, layer.units)
         ) return false;
         width = layer.units;
+        denseLayers += 1;
       } else if (!['relu', 'sigmoid', 'tanh', 'softmax'].includes(layer.op)) return false;
     }
     if (model.task === 'classification') {
-      return model.layers.at(-1)?.op === 'softmax'
+      return denseLayers > 0 && model.layers.at(-1)?.op === 'softmax'
         && model.labels.length === width && model.labels.length >= 2
         && model.labels.every((label) => typeof label === 'string' && label)
         && new Set(model.labels).size === model.labels.length;
     }
-    return width === 1 && model.labels.length === 0;
+    return denseLayers > 0 && width === 1 && model.layers.at(-1)?.op !== 'softmax' && model.labels.length === 0;
   }
   if (model.type === 'linear_regression') {
     return dataset.task === 'regression'
@@ -481,3 +483,4 @@ export function validateProjectForWorkspace(rawProject) {
   if (!trainedModelIsValid(project.trainedModel, validationNodes, expanded.nodes, expanded.edges, project.data)) invalidProject();
   return project;
 }
+
