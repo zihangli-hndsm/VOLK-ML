@@ -102,7 +102,9 @@ The browser executor separately validates:
 - the active graph is acyclic;
 - a supported data source and browser backend exist.
 
-For the browser MLP, the topology gate requires a connected Supervised Trainer with its DatasetSplit, ModelSpec, LossSpec, and OptimizerSpec inputs. A design-only Tensor Input → Model Output graph may be exported, but is never presented as runnable.
+The shared browser-execution contract is used by both the estimator and executor. It requires exactly one active trained-model root (KNN, Gradient Descent, or Supervised Trainer), validates its complete typed input path and compatible downstream evaluator or Predictor, and rejects unrelated active branches.
+
+For the browser MLP, the contract requires a connected Supervised Trainer with its DatasetSplit, ModelSpec, LossSpec, and OptimizerSpec inputs. It also checks a single sequential tabular architecture, Dense widths, usable dataset rows, task-specific output semantics, and a non-empty classification test split. Classification requires cross-entropy, final Softmax, and one output per class; regression requires MSE, one output, and no final Softmax. A design-only Tensor Input → Model Output graph may be exported, but is never presented as runnable.
 
 Do not weaken browser validation because the tier estimator recommends L0; they answer different questions.
 
