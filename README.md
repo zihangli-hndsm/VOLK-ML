@@ -94,6 +94,12 @@ The active implementation uses:
 
 Start with [`docs/architecture/overview.md`](docs/architecture/overview.md). The canvas command contract is documented in [`docs/architecture/agent-canvas-api.md`](docs/architecture/agent-canvas-api.md), and the cloud boundary in [`docs/architecture/platform-services.md`](docs/architecture/platform-services.md).
 
+## Development workflow
+
+Contributions follow **Design -> Development -> Acceptance -> Pull request**. Agree on the goal, scope, approach, acceptance criteria, and test plan before implementation; open a pull request only after the agreed checks pass and the acceptance evidence has been reported. VOLK-ML does not use a Codex automated review-submit loop.
+
+See [`docs/development-workflow.md`](docs/development-workflow.md) for the stage gates and required acceptance report, and [`AGENTS.md`](AGENTS.md) for repository-specific implementation standards.
+
 ## Build
 
 ```bash
