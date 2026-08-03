@@ -140,4 +140,3 @@ Consumers must check `bridge.apiVersion` or `canvas.apiVersion`. Changing a requ
 - `scripts/check-core.mjs` verifies graph-command invariants, snapshot detachment, API forwarding, instance discovery, and bridge teardown.
 
 Keep Agent operations at this boundary rather than scripting React Flow DOM elements. That preserves stable IDs, project portability, and the same semantic validation for human and Agent edits.
-
