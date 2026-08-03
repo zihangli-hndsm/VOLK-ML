@@ -247,6 +247,13 @@ function binaryOutputUsesProbabilities(ir) {
     .some((node) => node.inputs.some((connection) => nodeById.get(connection.source)?.op === 'sigmoid'));
 }
 
+function categoricalOutputUsesProbabilities(ir) {
+  const nodeById = new Map(ir.nodes.map((node) => [node.id, node]));
+  return ir.nodes
+    .filter((node) => node.op === 'model_output')
+    .some((node) => node.inputs.some((connection) => nodeById.get(connection.source)?.op === 'softmax'));
+}
+
 function compilerError(key, params = {}) {
   const error = new Error(key);
   error.translationKey = key;
@@ -292,10 +299,10 @@ function customLossError(error) {
     arguments: 'error.customLossArguments',
     prediction: 'error.customLossPrediction',
   }[error.code] ?? 'error.customLossUnexpected';
-  return compilerError(key, { token: error.token || '∅' });
+  return compilerError(key, { token: error.token || '鈭? });
 }
 
-function pytorchLossLines(loss, probabilityOutput) {
+function pytorchLossLines(loss, probabilityOutput, categoricalProbabilityOutput = false) {
   if (loss?.op === 'custom_loss') {
     try {
       const expression = compileLossExpression(loss.parameters.expression, 'pytorch');
@@ -306,12 +313,14 @@ function pytorchLossLines(loss, probabilityOutput) {
   }
   return [{
     mse_loss: 'criterion = nn.MSELoss()',
-    cross_entropy_loss: 'criterion = nn.CrossEntropyLoss()',
+    cross_entropy_loss: categoricalProbabilityOutput
+      ? 'criterion = lambda prediction, target: nn.NLLLoss()(torch.log(prediction.clamp_min(1e-12)), target)'
+      : 'criterion = nn.CrossEntropyLoss()',
     binary_cross_entropy_loss: probabilityOutput ? 'criterion = nn.BCELoss()' : 'criterion = nn.BCEWithLogitsLoss()',
   }[loss?.op] ?? 'criterion = nn.MSELoss()'];
 }
 
-function tensorflowLossDefinition(loss, probabilityOutput) {
+function tensorflowLossDefinition(loss, probabilityOutput, categoricalProbabilityOutput = false) {
   if (loss?.op === 'custom_loss') {
     try {
       const expression = compileLossExpression(loss.parameters.expression, 'tensorflow');
@@ -327,7 +336,7 @@ function tensorflowLossDefinition(loss, probabilityOutput) {
     lines: [],
     name: {
       mse_loss: '"mse"',
-      cross_entropy_loss: 'keras.losses.SparseCategoricalCrossentropy(from_logits=True)',
+      cross_entropy_loss: `keras.losses.SparseCategoricalCrossentropy(from_logits=${pythonBoolean(!categoricalProbabilityOutput)})`,
       binary_cross_entropy_loss: `keras.losses.BinaryCrossentropy(from_logits=${pythonBoolean(!probabilityOutput)})`,
     }[loss?.op] ?? '"mse"',
   };
@@ -371,16 +380,17 @@ function tensorflowSplitLines(trainRatio) {
 function trainingConfiguration(ir, framework) {
   const { trainer, split, loss, optimizer } = trainerContext(ir);
   const probabilityOutput = binaryOutputUsesProbabilities(ir);
+  const categoricalProbabilityOutput = categoricalOutputUsesProbabilities(ir);
   if (!trainer) {
     if (framework === 'pytorch') {
       return [
-        ...pytorchLossLines(loss, probabilityOutput),
+        ...pytorchLossLines(loss, probabilityOutput, categoricalProbabilityOutput),
         `optimizer = ${optimizerExpression(optimizer, framework)}`,
         '',
         '# Connect your DataLoader and training loop here.',
       ];
     }
-    const configuredLoss = tensorflowLossDefinition(loss, probabilityOutput);
+    const configuredLoss = tensorflowLossDefinition(loss, probabilityOutput, categoricalProbabilityOutput);
     return [
       ...configuredLoss.lines,
       `model.compile(optimizer=${optimizerExpression(optimizer, framework)}, loss=${configuredLoss.name})`,
@@ -415,7 +425,7 @@ function trainingConfiguration(ir, framework) {
       'train_set, test_set = random_split(dataset, [train_size, len(dataset) - train_size], generator=torch.Generator().manual_seed(2026))',
       `train_loader = DataLoader(train_set, batch_size=${batchSize}, shuffle=${pythonBoolean(trainer.parameters.shuffle ?? true)})`,
       '',
-      ...pytorchLossLines(loss, probabilityOutput),
+      ...pytorchLossLines(loss, probabilityOutput, categoricalProbabilityOutput),
       `optimizer = ${optimizerExpression(optimizer, framework)}`,
       'loss_history = []',
       `for epoch in range(${epochs}):`,
@@ -429,7 +439,7 @@ function trainingConfiguration(ir, framework) {
       '    loss_history.append(float(loss.detach()))',
     ];
   }
-  const configuredLoss = tensorflowLossDefinition(loss, probabilityOutput);
+  const configuredLoss = tensorflowLossDefinition(loss, probabilityOutput, categoricalProbabilityOutput);
   return [
     '# Replace this loader with the dataset saved in the VOLK-ML project JSON.',
     'X, y = load_tabular_data()',
@@ -616,3 +626,4 @@ export function compileGraph(nodes, edges, framework) {
 
 export const compilePipelineToPyTorch = (nodes, edges) => compileGraph(nodes, edges, 'pytorch');
 export const compilePipelineToTensorFlow = (nodes, edges) => compileGraph(nodes, edges, 'tensorflow');
+
