@@ -12,14 +12,14 @@ Every manifest uses component schema version `2` and has this conceptual shape:
   id: 'dense_node',
   op: 'dense',
   kind: 'layer',
-  name: { en: 'Dense / Linear', zh: '鍏ㄨ繛鎺?/ 绾挎€у眰' },
+  name: { en: 'Dense / Linear', zh: '全连接 / 线性层' },
   description: { en: '...', zh: '...' },
   category: 'Layers',
   inputs: [{ name: 'input', type: 'Tensor' }],
   outputs: [{ name: 'output', type: 'Tensor' }],
   properties: [{
     key: 'units',
-    label: { en: 'Output Units', zh: '杈撳嚭鍗曞厓鏁? },
+    label: { en: 'Output Units', zh: '输出单元数' },
     type: 'number',
     default: 64,
     min: 1,
@@ -192,4 +192,3 @@ Do not hide behavior inside a composite that cannot be represented by its expand
 9. Run the validation baseline in `overview.md`.
 
 For a composite, also test expansion count, port mappings, and parent-property substitution.
-
