@@ -260,6 +260,7 @@ export const messages = {
   'error.datasetMissing': { en: 'Tabular Data has no dataset. Open the Data workspace and import one.', zh: '表格数据节点没有数据集。请打开数据工作区并导入数据。' },
   'error.tooFewRows': { en: 'Train/Test Split needs at least three complete numeric rows.', zh: '训练/测试集划分至少需要三行完整的数值数据。' },
   'error.classificationNeedsClasses': { en: 'Classification needs at least two distinct target classes.', zh: '分类任务至少需要两个不同的目标类别。' },
+  'error.classificationTestRequired': { en: 'Classification needs at least one test sample after splitting.', zh: '分类任务划分后至少需要一个测试样本。' },
   'error.regressionDatasetRequired': { en: 'This pipeline needs a dataset configured for regression.', zh: '该管线需要配置为回归任务的数据集。' },
   'error.classificationDatasetRequired': { en: 'This pipeline needs a dataset configured for classification.', zh: '该管线需要配置为分类任务的数据集。' },
   'error.wrongEvaluator': { en: 'The connected evaluation component does not match this model type.', zh: '连接的评估组件与当前模型类型不匹配。' },
