@@ -11,7 +11,7 @@
 | L2 | Local Python | No | Larger PyTorch/TensorFlow models on the user's machine |
 | L3 | Remote GPU | No | Large models or datasets requiring a managed accelerator |
 
-Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines, plus a deliberately small browser-CPU MLP: tabular data, a Tensor Input, sequential Dense layers with ReLU/Sigmoid/Tanh/Softmax activations, Model Output, MSE or cross-entropy loss, SGD or Adam, and Supervised Trainer. L1鈥揕3 expose design/export guidance.
+Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines, plus a deliberately small browser-CPU MLP: tabular data, a Tensor Input, sequential Dense layers with ReLU/Sigmoid/Tanh/Softmax activations, Model Output, MSE or cross-entropy loss, SGD or Adam, and Supervised Trainer. L1–L3 expose design/export guidance.
 
 The browser MLP supports numeric tabular data and one sequential input/output path only. Classification needs one Softmax output per class and cross-entropy; regression needs one output and MSE. Trainer updates are true mini-batch updates: gradients are accumulated for `batch_size` examples before one SGD (including momentum) or Adam update. CNN, sequence, attention, normalization, Dropout, custom loss, AdamW, multi-input/output architectures, and non-tabular bindings remain export-only. Supervised Trainer is L0 when used with this supported subset and remains exportable to local Python for its wider source-generation contract.
 
@@ -57,7 +57,7 @@ Estimates are guardrails, not benchmarks. They are deliberately conservative and
 - Activation memory is at least 8 MiB and otherwise estimated from operation count.
 - Dataset storage is estimated at 32 bytes per cell.
 - Peak memory adds a 35% safety margin.
-- Convolution estimates assume a representative `64 脳 64` spatial area.
+- Convolution estimates assume a representative `64 × 64` spatial area.
 - Sequence and attention estimates assume a representative length of `128`.
 - Folded user-created composites are recursively expanded before estimation, so grouping a graph does not change its parameter, operation, or backend guidance.
 
@@ -102,7 +102,7 @@ The browser executor separately validates:
 - the active graph is acyclic;
 - a supported data source and browser backend exist.
 
-For the browser MLP, the topology gate requires a connected Supervised Trainer with its DatasetSplit, ModelSpec, LossSpec, and OptimizerSpec inputs. A design-only Tensor Input 鈫?Model Output graph may be exported, but is never presented as runnable.
+For the browser MLP, the topology gate requires a connected Supervised Trainer with its DatasetSplit, ModelSpec, LossSpec, and OptimizerSpec inputs. A design-only Tensor Input → Model Output graph may be exported, but is never presented as runnable.
 
 Do not weaken browser validation because the tier estimator recommends L0; they answer different questions.
 
@@ -126,4 +126,3 @@ The estimator may still escalate above a component's declared minimum based on g
 5. Update localized reasons in `src/locales/ui.js` when user guidance changes.
 6. Keep `executionTiers[].available` false until an end-to-end runtime exists.
 7. Run the validation baseline in `overview.md`.
-
