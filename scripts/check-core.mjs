@@ -413,25 +413,7 @@ assert.deepEqual(concatenateVisualData, {
   result: '[a,b,c,d]',
   axis: -1,
 }, 'concatenate visual matches the default one-dimensional axis');
-for (const type of knownPo…9864 tokens truncated…: true }),
-  makeNode('mlp-relu', 'relu_node'),
-  makeNode('mlp-head', 'dense_node', { input_features: 6, units: 2, use_bias: true }),
-  makeNode('mlp-softmax', 'softmax_node'),
-  makeNode('mlp-output', 'model_output_node'),
-  makeNode('mlp-loss', 'cross_entropy_loss_node'),
-  makeNode('mlp-optimizer', 'adam_optimizer_node', { learning_rate: 0.02 }),
-  makeNode('mlp-trainer', 'supervised_trainer_node', { epochs: 120, batch_size: 16, shuffle: true }),
-  makeNode('mlp-evaluate', 'evaluate_classification_node'),
-  makeNode('mlp-predict', 'predictor_node'),
-];
-const mlpGraphEdges = [
-  makeEdge('mlp-data', 'dataset', 'mlp-split', 'dataset'),
-  makeEdge('mlp-input', 'tensor', 'mlp-hidden', 'input'),
-  makeEdge('mlp-hidden', 'output', 'mlp-relu', 'input'),
-  makeEdge('mlp-relu', 'output', 'mlp-head', 'input'),
-  makeEdge('mlp-head', 'output', 'mlp-softmax', 'input'),
-  makeEdge('mlp-softmax', 'output', 'mlp-output', 'input'),
-  makeEdge('mlp-split', 'split', 'mlp-trainer', 'dataset'),
+for (const type of knownPo…10099 tokens truncated…dge('mlp-split', 'split', 'mlp-trainer', 'dataset'),
   makeEdge('mlp-output', 'model', 'mlp-trainer', 'model'),
   makeEdge('mlp-loss', 'loss', 'mlp-trainer', 'loss'),
   makeEdge('mlp-optimizer', 'optimizer', 'mlp-trainer', 'optimizer'),
@@ -476,6 +458,10 @@ const hiddenSoftmaxModel = await executeBrowserGraph({
   dataset: classificationDataset,
 });
 assert.ok(hiddenSoftmaxModel.metrics.accuracy >= 0.9, 'an intermediate Softmax propagates its full Jacobian-vector product');
+const exportedBrowserMlpTorch = compilePipelineToPyTorch(mlpGraphNodes, mlpGraphEdges);
+const exportedBrowserMlpTensorflow = compilePipelineToTensorFlow(mlpGraphNodes, mlpGraphEdges);
+assert.match(exportedBrowserMlpTorch.code, /nn\.NLLLoss\(\)\(torch\.log\(prediction\.clamp_min\(1e-12\)\), target\)/, 'Softmax classification exports probability-aware PyTorch cross entropy');
+assert.match(exportedBrowserMlpTensorflow.code, /SparseCategoricalCrossentropy\(from_logits=False\)/, 'Softmax classification exports probability-aware TensorFlow cross entropy');
 
 const foldedMlpArchitecture = createCustomComposite({
   selectedNodes: mlpGraphNodes.filter((node) => ['mlp-input', 'mlp-hidden', 'mlp-relu', 'mlp-head', 'mlp-softmax', 'mlp-output'].includes(node.id)),
@@ -673,6 +659,14 @@ assert.equal(
   estimateExecutionPlan(unsupportedSoftmaxAxisNodes, classificationDataset, { edges: mlpGraphEdges }).canRunHere,
   false,
   'tier guidance does not advertise unsupported browser Softmax axes as runnable',
+);
+const batchSoftmaxAxisNodes = mlpGraphNodes.map((node) => (
+  node.id === 'mlp-softmax' ? makeNode('mlp-softmax', 'softmax_node', { axis: 0 }) : node
+));
+assert.equal(
+  estimateExecutionPlan(batchSoftmaxAxisNodes, classificationDataset, { edges: mlpGraphEdges }).canRunHere,
+  false,
+  'tier guidance rejects batch-axis Softmax because browser MLPs execute one sample at a time',
 );
 const wrongTypeMlpNodes = mlpGraphNodes.map((node) => (
   node.id === 'mlp-data' ? makeNode('mlp-data', 'tensor_input_node', { shape: '2', dtype: 'float32' }) : node
