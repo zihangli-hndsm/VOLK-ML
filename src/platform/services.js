@@ -92,4 +92,3 @@ export function resolvePlatformServices(candidate = globalThis.__VOLK_ML_PLATFOR
     ? validatePlatformServices(candidate)
     : createLocalPlatformServices();
 }
-
