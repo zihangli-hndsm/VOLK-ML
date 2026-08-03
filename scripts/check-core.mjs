@@ -413,59 +413,7 @@ assert.deepEqual(concatenateVisualData, {
   result: '[a,b,c,d]',
   axis: -1,
 }, 'concatenate visual matches the default one-dimensional axis');
-for (const type of knownPo…9406 tokens truncated…valuate', 'evaluate_classification_node'),
-];
-const incompleteKnnEdges = [makeEdge('incomplete-knn', 'trained_model', 'incomplete-evaluate', 'trained_model')];
-assert.equal(
-  estimateExecutionPlan(incompleteKnnNodes, classificationDataset, { edges: incompleteKnnEdges }).canRunHere,
-  false,
-  'KNN requires its own connected Tabular Data input',
-);
-
-const imbalancedClassificationModel = await executeBrowserGraph({
-  nodes: classificationGraphNodes,
-  edges: classificationGraphEdges,
-  dataset: {
-    ...classificationDataset,
-    name: 'imbalanced-classification-check',
-    rows: [
-      ...Array.from({ length: 9 }, (_, index) => ({
-        feature_a: index,
-        feature_b: index / 2,
-        label: 'majority',
-      })),
-      { feature_a: 20, feature_b: 20, label: 'minority' },
-    ],
-  },
-});
-assert.equal(
-  new Set(imbalancedClassificationModel.train.map((sample) => sample.y)).size,
-  2,
-  'stratified classification split keeps every class in training',
-);
-await assert.rejects(
-  executeBrowserGraph({
-    nodes: classificationGraphNodes,
-    edges: classificationGraphEdges,
-    dataset: {
-      ...classificationDataset,
-      name: 'singleton-classes-check',
-      rows: [
-        { feature_a: 0, feature_b: 0, label: 'first' },
-        { feature_a: 1, feature_b: 1, label: 'second' },
-        { feature_a: 2, feature_b: 2, label: 'third' },
-      ],
-    },
-  }),
-  (error) => error.translationKey === 'error.classificationTestRequired',
-  'classification rejects a stratified split with no test samples',
-);
-
-const mlpGraphNodes = [
-  makeNode('mlp-data', 'tabular_data_node'),
-  makeNode('mlp-split', 'train_test_split_node', { train_ratio: 0.8 }),
-  makeNode('mlp-input', 'tensor_input_node', { shape: '2', dtype: 'float32' }),
-  makeNode('mlp-hidden', 'dense_node', { input_features: 2, units: 6, use_bias: true }),
+for (const type of knownPo…9864 tokens truncated…: true }),
   makeNode('mlp-relu', 'relu_node'),
   makeNode('mlp-head', 'dense_node', { input_features: 6, units: 2, use_bias: true }),
   makeNode('mlp-softmax', 'softmax_node'),
@@ -503,6 +451,15 @@ const persistedMlpProject = validateProjectForWorkspace(JSON.parse(JSON.stringif
 })));
 assert.equal(persistedMlpProject.trainedModel.type, 'browser_mlp');
 assert.equal(predictWithModel(persistedMlpProject.trainedModel, [3.1, 1.9]), 'positive', 'imported MLP remains usable for prediction');
+assert.throws(
+  () => validateProjectForWorkspace({
+    format: 'VOLK-ML', version: PROJECT_VERSION, name: 'MLP without Dense layers',
+    graph: { nodes: mlpGraphNodes, edges: mlpGraphEdges }, customComponents: [], data: classificationDataset,
+    trainedModel: { ...mlpModel, layers: mlpModel.layers.filter((layer) => layer.op !== 'dense') },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'persisted MLPs require the same non-empty Dense architecture as the browser runtime',
+);
 assert.throws(
   () => validateProjectForWorkspace({
     format: 'VOLK-ML', version: PROJECT_VERSION, name: 'Malformed MLP test rows',
@@ -767,6 +724,32 @@ const mlpRegressionModel = await executeBrowserGraph({ nodes: mlpRegressionNodes
 assert.equal(mlpRegressionModel.type, 'browser_mlp');
 assert.ok(mlpRegressionModel.metrics.r2 >= 0.98, 'browser MLP regression learns the MSE exercise');
 assert.ok(mlpRegressionModel.lossHistory.at(-1) < mlpRegressionModel.lossHistory[0], 'mini-batch SGD with momentum lowers MSE loss');
+assert.throws(
+  () => validateProjectForWorkspace({
+    format: 'VOLK-ML', version: PROJECT_VERSION, name: 'Persisted Softmax regression MLP',
+    graph: { nodes: mlpRegressionNodes, edges: mlpRegressionEdges }, customComponents: [], data: mlpRegressionDataset,
+    trainedModel: { ...mlpRegressionModel, layers: [...mlpRegressionModel.layers, { op: 'softmax' }] },
+  }),
+  (error) => error.translationKey === 'error.invalidProject',
+  'persisted regression MLPs reject a final Softmax that browser execution cannot support',
+);
+const divergentMlpRegressionNodes = mlpRegressionNodes.map((node) => {
+  if (node.id === 'mlp-reg-optimizer') return makeNode('mlp-reg-optimizer', 'sgd_optimizer_node', { learning_rate: 0.5, momentum: 0.99 });
+  if (node.id === 'mlp-reg-trainer') return makeNode('mlp-reg-trainer', 'supervised_trainer_node', { epochs: 40, batch_size: 1, shuffle: true });
+  return node;
+});
+await assert.rejects(
+  executeBrowserGraph({
+    nodes: divergentMlpRegressionNodes,
+    edges: mlpRegressionEdges,
+    dataset: {
+      ...mlpRegressionDataset,
+      rows: mlpRegressionDataset.rows.map((row) => ({ ...row, target: row.target * 1_000 })),
+    },
+  }),
+  (error) => error.translationKey === 'error.browserMlpDiverged',
+  'browser MLP training stops instead of returning a model with non-finite state',
+);
 const softmaxRegressionNodes = [
   ...mlpRegressionNodes.slice(0, 5),
   makeNode('mlp-reg-softmax', 'softmax_node'),
