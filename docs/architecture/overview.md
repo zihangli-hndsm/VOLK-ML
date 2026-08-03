@@ -57,7 +57,7 @@ flowchart TD
 - The mounted workspace exposes a serializable canvas snapshot and validated commands through `globalThis.__VOLK_ML_AGENT__`; it does not expose React internals or create a network listener.
 - Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
 - Project JSON version 8 stores the project name, graph, custom composite definitions, workspace preferences, dataset, and trained L0 model. Browser MLP persistence keeps inference layers, normalization, labels, and metrics while omitting optimizer moment state; imported models are validated against their Trainer graph and dataset before use.
-- `PROJECT_VERSION` in `src/core/project.js` is currently `7`.
+- `PROJECT_VERSION` in `src/core/project.js` is currently `8`.
 - Import first migrates legacy graph contracts, then resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
 - Version 5 migrates legacy KNN `model` edges to `trained_model`; obsolete visualization-only `boundary` edges are removed because the current KNN runtime no longer produces a mesh.
 - Version 6 adds the project name and reusable custom-composite catalog.
