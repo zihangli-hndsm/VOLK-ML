@@ -465,6 +465,9 @@ export async function executeBrowserGraph({
       const { train, test } = sourceDataset.task === 'classification'
         ? stratifiedSplit(valid, node.data.parameters.train_ratio)
         : splitSamples(valid, node.data.parameters.train_ratio);
+      if (sourceDataset.task === 'classification' && test.length === 0) {
+        throw localizedError('error.classificationTestRequired');
+      }
       output = {
         dataset: sourceDataset,
         train,
@@ -506,7 +509,12 @@ export async function executeBrowserGraph({
       output = await trainBrowserMlp({
         architecture: inputValue(node, 'model'), split: inputValue(node, 'dataset'),
         loss: inputValue(node, 'loss'), optimizer: inputValue(node, 'optimizer'),
-        trainer: { ...node.data.parameters, id: node.id }, onLoss, onYield,
+        trainer: {
+          ...node.data.parameters,
+          id: node.data.runtimeOwnerId ?? node.id,
+        },
+        onLoss,
+        onYield,
       });
       finalModel = output;
     } else if (manifestId === 'linear_regression_node') {
@@ -601,6 +609,7 @@ export async function executeBrowserGraph({
         throw localizedError('error.classificationNeedsClasses');
       }
       const { train, test } = stratifiedSplit(valid, node.data.parameters.train_ratio);
+      if (test.length === 0) throw localizedError('error.classificationTestRequired');
       if (new Set(train.map((sample) => sample.y)).size < 2) {
         throw localizedError('error.classificationNeedsClasses');
       }
