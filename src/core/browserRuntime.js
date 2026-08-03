@@ -1,5 +1,6 @@
 import { localizedError } from '../i18n.js';
 import { flattenCustomComposites } from './customComposites.js';
+import { analyzeBrowserExecutionGraph } from './browserExecutionContract.js';
 
 function resolvePort(manifest, direction, handleId) {
   const ports = direction === 'output' ? manifest.outputs : manifest.inputs;
@@ -371,9 +372,6 @@ export function compileExecutionGraph(nodes, edges) {
   if (!order.some((node) => node.data.manifest.id === 'tabular_data_node')) {
     throw localizedError('error.dataNodeRequired');
   }
-  if (activeNodes.filter((node) => node.data.manifest.op === 'supervised_trainer').length > 1) {
-    throw localizedError('error.multipleTrainingRoots');
-  }
   return { order, incoming };
 }
 
@@ -444,6 +442,13 @@ export async function executeBrowserGraph({
   const flattened = flattenCustomComposites(nodes, edges);
   const plan = compileExecutionGraph(flattened.nodes, flattened.edges);
   if (!dataset) throw localizedError('error.datasetMissing');
+  const contract = analyzeBrowserExecutionGraph({
+    nodes: flattened.nodes,
+    edges: flattened.edges,
+    dataset,
+    alreadyFlattened: true,
+  });
+  if (!contract.valid) throw localizedError(contract.reason);
   const outputs = new Map();
   let finalModel = null;
   const inputValue = (node, inputName) => {
