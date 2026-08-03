@@ -7,15 +7,26 @@ function resolvePort(manifest, direction, handleId) {
   return ports.find((port) => port.name === handleId) ?? (ports.length === 1 ? ports[0] : null);
 }
 
-function deterministicShuffle(samples) {
+function deterministicShuffle(samples, seed = 2026) {
   const shuffled = [...samples];
-  let seed = 2026;
+  let state = seed >>> 0;
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    seed = (seed * 1664525 + 1013904223) % 4294967296;
-    const target = seed % (index + 1);
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    const target = state % (index + 1);
     [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
   }
   return shuffled;
+}
+
+function valuesAreFinite(value) {
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (Array.isArray(value)) return value.every(valuesAreFinite);
+  if (value && typeof value === 'object') return Object.values(value).every(valuesAreFinite);
+  return true;
+}
+
+function requireFiniteTrainingState(...values) {
+  if (!values.every(valuesAreFinite)) throw localizedError('error.browserMlpDiverged');
 }
 
 function splitSamples(samples, trainRatio) {
@@ -197,6 +208,7 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
   if (!isClassification && (outputUnits !== 1 || loss.op !== 'mse_loss')) throw localizedError('error.browserMlpRegression');
   const normalization = featureNormalization(split.train, inputSize);
   const normalizedTrain = split.train.map((sample) => ({ ...sample, x: normalizeFeatures(sample.x, normalization) }));
+  requireFiniteTrainingState(normalization, normalizedTrain);
   const history = [];
   const learningRate = Number(optimizer.learning_rate);
   const epochs = Number(trainer.epochs);
@@ -223,6 +235,7 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
   ));
   const accumulateSampleGradients = (sample, gradients) => {
     const { values, trace } = forwardNeural(layers, sample.x);
+    requireFiniteTrainingState(values, trace);
     let delta;
     let sampleLoss;
     if (isClassification) {
@@ -234,6 +247,7 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
       sampleLoss = error ** 2;
       delta = [2 * error];
     }
+    requireFiniteTrainingState(sampleLoss, delta);
     for (let index = layers.length - 1; index >= 0; index -= 1) {
       const layer = layers[index];
       const previous = trace[index].output;
@@ -252,6 +266,7 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
       if (layer.use_bias) gradients[index].bias.forEach((_, unit) => { gradients[index].bias[unit] += delta[unit]; });
       delta = propagated;
     }
+    requireFiniteTrainingState(gradients, delta);
     return sampleLoss;
   };
   const applyBatchGradients = (gradients, examplesInBatch) => {
@@ -265,24 +280,29 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
         value - applyGradient(layer, unit, null, gradients[index].bias[unit] / examplesInBatch, true)
       ));
     });
+    requireFiniteTrainingState(layers);
   };
   return (async () => {
     for (let epoch = 0; epoch < epochs; epoch += 1) {
-      const examples = trainer.shuffle ? deterministicShuffle(normalizedTrain) : normalizedTrain;
+      const examples = trainer.shuffle ? deterministicShuffle(normalizedTrain, 2026 + epoch) : normalizedTrain;
       let epochLoss = 0;
       for (let start = 0; start < examples.length; start += batchSize) {
         const batch = examples.slice(start, start + batchSize);
         const gradients = emptyGradients();
         batch.forEach((sample) => { epochLoss += accumulateSampleGradients(sample, gradients); });
+        requireFiniteTrainingState(epochLoss);
         applyBatchGradients(gradients, batch.length);
       }
-      history.push(epochLoss / examples.length);
+      const averageLoss = epochLoss / examples.length;
+      requireFiniteTrainingState(averageLoss);
+      history.push(averageLoss);
       if (epoch % Math.max(1, Math.floor(epochs / 50)) === 0 || epoch === epochs - 1) {
         onLoss([...history]);
         await onYield();
       }
     }
     const inferenceLayers = layers.map(({ adam, sgd, ...layer }) => layer);
+    requireFiniteTrainingState(inferenceLayers, history);
     return {
       type: 'browser_mlp', sourceNodeId: trainer.id, modelNodeId: architecture.modelNodeId,
       featureColumns: sourceDataset.featureColumns, targetColumn: sourceDataset.targetColumn,
@@ -626,6 +646,7 @@ export async function executeBrowserGraph({
         const total = predictions.reduce((sum, item) => sum + (item.actual - testMean) ** 2, 0);
         const residual = predictions.reduce((sum, item) => sum + (item.actual - item.predicted) ** 2, 0);
         trained.metrics = { rmse: Math.sqrt(mse), r2: total ? 1 - residual / total : 0, trainRows: trained.trainRows, testRows: trained.testRows };
+        requireFiniteTrainingState(trained.metrics);
       } else if (trained.type !== 'linear_regression') {
         throw localizedError('error.wrongEvaluator');
       } else {
@@ -635,6 +656,7 @@ export async function executeBrowserGraph({
         const total = predictions.reduce((sum, item) => sum + (item.actual - testMean) ** 2, 0);
         const residual = predictions.reduce((sum, item) => sum + (item.actual - item.predicted) ** 2, 0);
         trained.metrics = { rmse: Math.sqrt(mse), r2: total ? 1 - residual / total : 0, trainRows: trained.trainRows, testRows: trained.testRows };
+        requireFiniteTrainingState(trained.metrics);
       }
       output = trained.metrics;
       finalModel = trained;
@@ -654,6 +676,7 @@ export async function executeBrowserGraph({
           return sum + (precision + recall ? (2 * precision * recall) / (precision + recall) : 0);
         }, 0) / labels.length;
         trained.metrics = { accuracy: correct / predictions.length, macroF1, classes: labels.length, trainRows: trained.trainRows, testRows: trained.testRows };
+        requireFiniteTrainingState(trained.metrics);
       } else if (trained.type !== 'knn_classifier') {
         throw localizedError('error.wrongEvaluator');
       } else trained.metrics = evaluateClassification(trained);
