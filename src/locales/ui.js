@@ -269,6 +269,7 @@ export const messages = {
   'error.browserMlpArchitecture': { en: 'The browser MLP supports a sequential stack of Dense and supported activation layers.', zh: '浏览器 MLP 仅支持由全连接层和已支持激活层组成的顺序堆栈。' },
   'error.browserMlpClassification': { en: 'Browser MLP classification requires one softmax output per class and cross-entropy loss.', zh: '浏览器 MLP 分类需要每类一个 Softmax 输出以及交叉熵损失。' },
   'error.browserMlpRegression': { en: 'Browser MLP regression requires one output unit and mean squared error loss.', zh: '浏览器 MLP 回归需要一个输出单元和均方误差损失。' },
+  'error.browserMlpDiverged': { en: 'Browser MLP training diverged. Lower the learning rate or momentum and try again.', zh: '浏览器 MLP 训练已发散。请降低学习率或动量后重试。' },
   'error.noTrainedModel': { en: 'Pipeline did not produce a trained model.', zh: '管线未生成已训练模型。' },
   'error.invalidProject': { en: 'Invalid VOLK-ML project', zh: '无效的 VOLK-ML 项目' },
   'error.unknownComponent': { en: 'Unknown component: {component}', zh: '未知组件：{component}' },
