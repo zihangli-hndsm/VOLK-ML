@@ -98,17 +98,34 @@ function browserTopologyComplete(nodes, edges = null) {
   let current = nodeById.get(modelEdge.source);
   let denseCount = 0;
   const visited = new Set();
+  const architecture = [];
   while (current && current.data.manifest.op !== 'tensor_input') {
     if (visited.has(current.id)) return false;
     visited.add(current.id);
     const op = current.data.manifest.op;
     if (!['model_output', 'dense', 'relu', 'sigmoid', 'tanh', 'softmax'].includes(op)) return false;
     if (op === 'dense') denseCount += 1;
+    architecture.push(current);
     const previous = incomingEdge(current.id, 'input');
     if (!previous) return false;
     current = nodeById.get(previous.source);
   }
   if (!current || denseCount === 0) return false;
+  const inputDimensions = String(current.data.parameters.shape ?? '').split(',').map((part) => Number(part.trim()));
+  if (
+    inputDimensions.length !== 1
+    || !Number.isInteger(inputDimensions[0])
+    || inputDimensions[0] <= 0
+    || current.data.parameters.dtype === 'int32'
+  ) return false;
+  let width = inputDimensions[0];
+  for (const node of architecture.reverse()) {
+    if (node.data.manifest.op !== 'dense') continue;
+    const inputFeatures = Number(node.data.parameters.input_features);
+    const units = Number(node.data.parameters.units);
+    if (!Number.isInteger(inputFeatures) || inputFeatures !== width || !Number.isInteger(units) || units <= 0) return false;
+    width = units;
+  }
   const requiredInputs = new Map([
     ['dataset', 'train_test_split'], ['model', 'model_output'],
     ['loss', null], ['optimizer', null],
