@@ -336,7 +336,10 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
       || !['regression', 'classification'].includes(model.task)
       || dataset.task !== model.task
       || typeof model.modelNodeId !== 'string' || !model.modelNodeId
-      || !expandedNodes.some((node) => node.id === model.modelNodeId && node.data.manifest.id === 'model_output_node')
+      || !expandedNodes.some((node) => (
+        (node.data.runtimeOwnerId ?? node.id) === model.modelNodeId
+        && node.data.manifest.id === 'model_output_node'
+      ))
       || !model.normalization || typeof model.normalization !== 'object'
       || !finiteArray(model.normalization.means, featureCount)
       || !finiteArray(model.normalization.stds, featureCount)
