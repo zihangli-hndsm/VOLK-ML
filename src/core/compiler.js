@@ -299,7 +299,7 @@ function customLossError(error) {
     arguments: 'error.customLossArguments',
     prediction: 'error.customLossPrediction',
   }[error.code] ?? 'error.customLossUnexpected';
-  return compilerError(key, { token: error.token || '鈭? });
+  return compilerError(key, { token: error.token || 'unknown' });
 }
 
 function pytorchLossLines(loss, probabilityOutput, categoricalProbabilityOutput = false) {
