@@ -689,8 +689,7 @@ function Workspace() {
     }
     if (!pendingConnection) { setNotice(t('connection.tapOutputFirst')); return; }
     const connection = { source: pendingConnection.nodeId, sourceHandle: pendingConnection.port.name, target: nodeId, targetHandle: port.name };
-    const ass
-essment = assess(connection);
+    const assessment = assess(connection);
     if (!assessment.valid) { setNotice(connectionNotice(assessment)); return; }
     setEdges((current) => addEdge({ ...connection, id: `tap-${crypto.randomUUID()}`, type: 'deletable' }, current));
     setPendingConnection(null);
@@ -943,8 +942,7 @@ essment = assess(connection);
         label: origin.label,
         manifest: rebuilt.manifest,
         parameters: rebuilt.parameters,
-        stat
-us: 'idle',
+        status: 'idle',
       },
     };
     setNodes((current) => [...current.filter((node) => !groupIds.has(node.id)), parent]);
