@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check": "node scripts/check-core.mjs",\n    "check:compiler": "node scripts/check-compiler-syntax.mjs",
+    "check": "node scripts/check-core.mjs",
+    "check:compiler": "node scripts/check-compiler-syntax.mjs",
     "build": "vite build",
     "preview": "vite preview"
   },
