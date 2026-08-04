@@ -283,7 +283,8 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
     requireFiniteTrainingState(layers);
   };
   return (async () => {
-    for (let epoch = 0; epoch < epochs; epoch += 1) {
+    for (let epoch 
+= 0; epoch < epochs; epoch += 1) {
       const examples = trainer.shuffle ? deterministicShuffle(normalizedTrain, 2026 + epoch) : normalizedTrain;
       let epochLoss = 0;
       for (let start = 0; start < examples.length; start += batchSize) {
@@ -568,6 +569,7 @@ export async function executeBrowserGraph({
           (weight, feature) => weight - spec.learningRate * (dw[feature] / normalized.length),
         );
         bias -= spec.learningRate * (db / normalized.length);
+
         history.push(loss);
         if (epoch % Math.max(1, Math.floor(epochs / 50)) === 0 || epoch === epochs - 1) {
           onLoss([...history]);

@@ -177,6 +177,154 @@ export function createCustomComposite({
   return { manifest, instance, nextEdges };
 }
 
+// Rebuild a folded instance from the nodes that are still present on the
+// canvas.  This deliberately returns a new manifest object: the saved
+// catalogue definition remains a copy-style template and is not mutated.
+export function rebuildCompositeInstance({ origin, groupNodes, edges }) {
+  const tierOrder = ['L0', 'L1', 'L2', 'L3'];
+  const qualityOrder = ['exact', 'adapted', 'approximate', 'unsupported'];
+  const selectedIds = new Set(groupNodes.map((node) => node.id));
+  const nodeById = new Map(groupNodes.map((node) => [node.id, node]));
+  const internalEdges = edges.filter((edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target));
+  const incomingEdges = edges.filter((edge) => !selectedIds.has(edge.source) && selectedIds.has(edge.target));
+  const outgoingEdges = edges.filter((edge) => selectedIds.has(edge.source) && !selectedIds.has(edge.target));
+  const keyById = new Map(groupNodes.map((node, index) => [node.id, node.data.compositionKey ?? `node_${index + 1}`]));
+  const minX = Math.min(...groupNodes.map((node) => node.position.x));
+  const minY = Math.min(...groupNodes.map((node) => node.position.y));
+  const usedInputs = new Set();
+  const usedOutputs = new Set();
+  const inputs = [];
+  const outputs = [];
+  const inputMappings = {};
+  const outputMappings = {};
+  const inputPortByEndpoint = new Map();
+  const outputPortByEndpoint = new Map();
+  const oldInputs = origin.manifest.composition?.inputs ?? {};
+  const oldOutputs = origin.manifest.composition?.outputs ?? {};
+  const originalSpecs = new Map((origin.manifest.composition?.nodes ?? []).map((spec) => [spec.key, spec]));
+  const parentParameters = Object.fromEntries((origin.manifest.properties ?? []).map((property) => [
+    property.key,
+    origin.parameters?.[property.key] ?? property.default,
+  ]));
+  const oldInputForEndpoint = new Map(Object.entries(oldInputs).flatMap(([port, targets]) => (
+    targets.map((target) => [`${target.node}:${target.port}`, port])
+  )));
+  const oldOutputForEndpoint = new Map(Object.entries(oldOutputs).map(([port, source]) => [`${source.node}:${source.port}`, port]));
+  const unique = (used, preferred, fallback) => {
+    const base = preferred && !used.has(preferred) ? preferred : fallback.replace(/[^a-zA-Z0-9_]/g, '_');
+    let name = base;
+    let suffix = 2;
+    while (used.has(name)) name = `${base}_${suffix++}`;
+    used.add(name);
+    return name;
+  };
+  const exposeInput = (node, portName) => {
+    const endpoint = `${keyById.get(node.id)}:${portName}`;
+    if (inputPortByEndpoint.has(endpoint)) return inputPortByEndpoint.get(endpoint);
+    const manifestPort = node.data.manifest.inputs.find((port) => port.name === portName);
+    const name = unique(usedInputs, oldInputForEndpoint.get(endpoint), `${keyById.get(node.id)}_${portName}`);
+    inputs.push({ name, type: manifestPort?.type ?? 'Tensor' });
+    inputMappings[name] = [{ node: keyById.get(node.id), port: portName }];
+    inputPortByEndpoint.set(endpoint, name);
+    return name;
+  };
+  const exposeOutput = (node, portName) => {
+    const endpoint = `${keyById.get(node.id)}:${portName}`;
+    if (outputPortByEndpoint.has(endpoint)) return outputPortByEndpoint.get(endpoint);
+    const manifestPort = node.data.manifest.outputs.find((port) => port.name === portName);
+    const name = unique(usedOutputs, oldOutputForEndpoint.get(endpoint), `${keyById.get(node.id)}_${portName}`);
+    outputs.push({ name, type: manifestPort?.type ?? 'Tensor' });
+    outputMappings[name] = { node: keyById.get(node.id), port: portName };
+    outputPortByEndpoint.set(endpoint, name);
+    return name;
+  };
+  const satisfiedInputs = new Set(internalEdges.map((edge) => `${edge.target}:${edge.targetHandle}`));
+  const consumedOutputs = new Set(internalEdges.map((edge) => `${edge.source}:${edge.sourceHandle}`));
+  groupNodes.forEach((node) => {
+    node.data.manifest.inputs.forEach((port) => {
+      if (!satisfiedInputs.has(`${node.id}:${port.name}`)) exposeInput(node, port.name);
+    });
+    node.data.manifest.outputs.forEach((port) => {
+      if (!consumedOutputs.has(`${node.id}:${port.name}`)) exposeOutput(node, port.name);
+    });
+  });
+  const redirected = [
+    ...incomingEdges.map((edge) => ({ ...edge, target: origin.id, targetHandle: exposeInput(nodeById.get(edge.target), edge.targetHandle) })),
+    ...outgoingEdges.map((edge) => ({ ...edge, source: origin.id, sourceHandle: exposeOutput(nodeById.get(edge.source), edge.sourceHandle) })),
+  ];
+  const deduplicated = [...new Map(redirected.map((edge) => [
+    `${edge.source}:${edge.sourceHandle}:${edge.target}:${edge.targetHandle}`,
+    { ...edge, type: 'deletable' },
+  ])).values()];
+  const manifest = {
+    ...origin.manifest,
+    customComposite: true,
+    inputs,
+    outputs,
+    runtime: {
+      ...origin.manifest.runtime,
+      minimumTier: groupNodes.reduce((highest, node) => (
+        tierOrder.indexOf(node.data.manifest.runtime?.minimumTier ?? 'L0') > tierOrder.indexOf(highest)
+          ? node.data.manifest.runtime
+?.minimumTier ?? 'L0'
+          : highest
+      ), 'L0'),
+      browserBackend: groupNodes.every((node) => node.data.manifest.runtime?.browserBackend === 'cpu')
+        ? 'cpu'
+        : 'none',
+    },
+    compatibility: {
+      ...origin.manifest.compatibility,
+      pytorch: groupNodes.reduce((lowest, node) => {
+        const quality = node.data.manifest.compatibility?.pytorch ?? 'unsupported';
+        return qualityOrder.indexOf(quality) > qualityOrder.indexOf(lowest) ? quality : lowest;
+      }, 'exact'),
+      tensorflow: groupNodes.reduce((lowest, node) => {
+        const quality = node.data.manifest.compatibility?.tensorflow ?? 'unsupported';
+        return qualityOrder.indexOf(quality) > qualityOrder.indexOf(lowest) ? quality : lowest;
+      }, 'exact'),
+    },
+    composition: {
+      nodes: groupNodes.map((node) => {
+        const key = keyById.get(node.id);
+        const original = originalSpecs.get(key);
+        const parameters = { ...defaults(node.data.manifest), ...node.data.parameters };
+        Object.entries(original?.parameters ?? {}).forEach(([propertyKey, value]) => {
+          if (typeof value !== 'string' || !value.startsWith('$')) return;
+          const parentKey = value.slice(1);
+          if (Object.is(parameters[propertyKey], parentParameters[parentKey])) {
+            parameters[propertyKey] = value;
+          }
+        });
+        return {
+          key,
+          componentId: node.data.manifest.id,
+          manifest: node.data.manifest.customComposite ? node.data.manifest : undefined,
+          parameters,
+          position: { x: node.position.x - minX, y: node.position.y - minY },
+        };
+      }),
+      edges: internalEdges.map((edge) => ({
+        source: keyById.get(edge.source), sourceHandle: edge.sourceHandle,
+        target: keyById.get(edge.target), targetHandle: edge.targetHandle,
+      })),
+      inputs: inputMappings,
+      outputs: outputMappings,
+    },
+  };
+  const activePropertyKeys = new Set(
+    manifest.composition.nodes.flatMap((node) => Object.values(node.parameters)
+      .filter((value) => typeof value === 'string' && value.startsWith('$'))
+      .map((value) => value.slice(1))),
+  );
+  manifest.properties = (origin.manifest.properties ?? []).filter((property) => activePropertyKeys.has(property.key));
+  const parameters = Object.fromEntries(manifest.properties.map((property) => [
+    property.key,
+    parentParameters[property.key] ?? property.default,
+  ]));
+  return { manifest, parameters, position: { x: minX, y: minY }, edges: deduplicated };
+}
+
 export function flattenCustomComposites(nodes, edges) {
   let expandedNodes = nodes;
   let expandedEdges = edges;
@@ -222,3 +370,4 @@ export function flattenCustomComposites(nodes, edges) {
   }
   return { nodes: expandedNodes, edges: expandedEdges };
 }
+

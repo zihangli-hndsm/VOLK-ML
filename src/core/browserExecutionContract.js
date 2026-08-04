@@ -41,8 +41,21 @@ function port(manifest, direction, handle) {
   return (direction === 'input' ? manifest.inputs : manifest.outputs).find((item) => item.name === handle);
 }
 
-function failure(reason, flattened) {
-  return { valid: false, reason, flattened };
+function failure(reason, flattened, nodeIds = [], translationParams = {}) {
+  const ownerById = new Map(flattened.nodes.map((node) => [
+    node.id,
+    node.data.runtimeOwnerId ?? node.id,
+  ]));
+  const resolvedNodeIds = nodeIds.length
+    ? [...new Set(nodeIds.map((id) => ownerById.get(id) ?? id))]
+    : [...new Set(flattened.nodes.map((node) => node.data.runtimeOwnerId ?? node.id))];
+  return {
+    valid: false,
+    reason,
+    flattened,
+    nodeIds: resolvedNodeIds,
+    translationParams,
+  };
 }
 
 export function analyzeBrowserExecutionGraph({ nodes, edges, dataset, alreadyFlattened = false }) {
@@ -67,13 +80,39 @@ export function analyzeBrowserExecutionGraph({ nodes, edges, dataset, alreadyFla
     const sourcePort = source && port(source.data.manifest, 'output', edge.sourceHandle);
     const targetPort = target && port(target.data.manifest, 'input', edge.targetHandle);
     if (!source || !target || !sourcePort || !targetPort || sourcePort.type !== targetPort.type) {
-      return failure('error.invalidConnection', flattened);
+      return failure('error.invalidConnection', flattened, [edge.source, edge.target], {
+        source: source?.data.manifest.name,
+        target: target?.data.manifest.name,
+      });
     }
   }
   for (const node of activeNodes) {
     for (const input of node.data.manifest.inputs) {
-      if (incoming(node, input.name).length !== 1) return failure('error.missingInput', flattened);
+      if (incoming(node, input.name).length !== 1) {
+        return failure('error.missingInput', flattened, [node.id], {
+          node: node.data.manifest.name,
+          input: input.name,
+        });
+      }
     }
+  }
+  const indegree = new Map(activeNodes.map((node) => [
+    node.id,
+    graphEdges.filter((edge) => edge.target === node.id).length,
+  ]));
+  const queue = activeNodes.filter((node) => indegree.get(node.id) === 0).map((node) => node.id);
+  let visited = 0;
+  while (queue.length) {
+    const id = queue.shift();
+    visited += 1;
+    outgoing(nodeById.get(id)).forEach((edge) => {
+      const next = indegree.get(edge.target) - 1;
+      indegree.set(edge.target, next);
+      if (next === 0) queue.push(edge.target);
+    });
+  }
+  if (visited !== activeNodes.length) {
+    return failure('error.pipelineCycle', flattened, activeNodes.filter((node) => indegree.get(node.id) > 0).map((node) => node.id));
   }
   if (!dataset) return failure('error.datasetMissing', flattened);
   const roots = activeNodes.filter((node) => rootOps.has(node.data.manifest.op));
