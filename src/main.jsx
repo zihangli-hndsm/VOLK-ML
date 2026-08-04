@@ -6,10 +6,11 @@ import '@xyflow/react/dist/style.css';
 import { languages, localizedError, resolveMessage, translateError } from './i18n';
 import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
 import { executeBrowserGraph, predictWithModel } from './core/browserRuntime';
+import { analyzeBrowserExecutionGraph } from './core/browserExecutionContract';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
 import { PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from './core/project';
 import { safeProjectFilename } from './core/localProjects';
-import { createCustomComposite } from './core/customComposites';
+import { createCustomComposite, rebuildCompositeInstance } from './core/customComposites';
 import { assessConnection } from './core/connections';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
 import { stageForManifest, stageStyles, visualKindForManifest } from './core/visualLanguage';
@@ -201,7 +202,8 @@ function PipelineNode({ id, data, selected }) {
     <p className="mt-2 text-[10px] font-bold uppercase tracking-wide text-slate-400">{t('framework.pytorch')} {t(`compatibility.${data.manifest.compatibility?.pytorch ?? 'unsupported'}`)} · {t('framework.tensorflow')} {t(`compatibility.${data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</p>
     <div className="mt-3 flex flex-wrap gap-1 text-[11px] text-slate-500">{data.manifest.outputs.map((output) => {
       const active = pendingConnection?.nodeId === id && pendingConnection?.port.name === output.name;
-      return <button key={output.name} title={`${t('common.output')}: ${readablePortType(output.type, t)}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'output', nodeId: id, port: output }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-left text-xs font-bold transition ${active ? 'border-amber-400 bg-amber-100 text-amber-800 ring-2 ring-amber-200' : 'border-slate-200 bg-slate-100 hover:border-blue-400'}`}>{output.name} · {readablePortType(output.type, t)} ▶</button>;
+      return <button key={output.name} title={`${t('common.output')}: ${readablePortType(output.
+type, t)}`} onClick={(event) => { event.stopPropagation(); onPortTap({ direction: 'output', nodeId: id, port: output }); }} className={`nodrag nopan rounded-full border px-3 py-2 text-left text-xs font-bold transition ${active ? 'border-amber-400 bg-amber-100 text-amber-800 ring-2 ring-amber-200' : 'border-slate-200 bg-slate-100 hover:border-blue-400'}`}>{output.name} · {readablePortType(output.type, t)} ▶</button>;
     })}</div>
     </div>
     <div className={`grid min-h-44 place-items-center border-l border-slate-100 p-2 ${stageStyle.soft}`} style={data.manifest.color ? { backgroundColor: `${data.manifest.color}18` } : undefined}><VisualGlyph kind={visualKindForManifest(data.manifest)} className="h-full w-full" /></div>
@@ -338,7 +340,8 @@ function DataDialog({ open, onClose, dataset, onDataset }) {
           <div className="overflow-hidden rounded-2xl border"><div className="flex items-center justify-between bg-slate-50 px-4 py-3"><div><p className="font-bold">{dataset.name}</p><p className="text-xs text-slate-500">{t('data.shape', { rows: dataset.rows.length, columns: dataset.columns.length })}</p></div></div><div className="overflow-x-auto"><table className="min-w-full text-left text-xs"><thead className="bg-slate-100"><tr>{dataset.columns.map((column) => <th key={column.name} className="whitespace-nowrap px-3 py-2"><span className="font-bold">{column.name}</span><span className="ml-2 text-[10px] font-normal text-slate-400">{column.type}</span></th>)}</tr></thead><tbody>{dataset.rows.slice(0, 8).map((row, index) => <tr key={index} className="border-t">{dataset.columns.map((column) => <td key={column.name} className="max-w-40 truncate px-3 py-2">{String(row[column.name] ?? '')}</td>)}</tr>)}</tbody></table></div></div>
           <div className="space-y-4 rounded-2xl bg-slate-50 p-4"><label className="block text-sm font-black">{t('data.task')}<select value={dataset.task ?? 'regression'} onChange={(event) => { const task = event.target.value; const eligibleTargets = task === 'classification' ? dataset.columns : dataset.columns.filter((column) => column.type === 'number'); const targetColumn = eligibleTargets.some((column) => column.name === dataset.targetColumn) ? dataset.targetColumn : eligibleTargets.at(-1)?.name ?? ''; onDataset({ ...dataset, task, targetColumn, featureColumns: dataset.featureColumns.filter((column) => column !== targetColumn) }); }} className="mt-2 w-full rounded-xl border bg-white p-2"><option value="regression">{t('data.regression')}</option><option value="classification">{t('data.classification')}</option></select></label><div><p className="text-sm font-black">{t('data.inputFeatures')}</p><div className="mt-2 max-h-36 space-y-2 overflow-auto">{dataset.columns.filter((column) => column.type === 'number' && column.name !== dataset.targetColumn).map((column) => <label key={column.name} className="flex items-center gap-2 text-sm"><input type="checkbox" checked={dataset.featureColumns.includes(column.name)} onChange={() => toggleFeature(column.name)} />{column.name}</label>)}</div></div><label className="block text-sm font-black">{t('data.target')}<select value={dataset.targetColumn} onChange={(event) => onDataset({ ...dataset, targetColumn: event.target.value, featureColumns: dataset.featureColumns.filter((column) => column !== event.target.value) })} className="mt-2 w-full rounded-xl border bg-white p-2">{dataset.columns.filter((column) => dataset.task === 'classification' || column.type === 'number').map((column) => <option key={column.name}>{column.name}</option>)}</select></label><div className="rounded-xl bg-white p-3 text-xs text-slate-500"><p>{t('data.task')}: <strong className="text-slate-900">{t(`data.${dataset.task ?? 'regression'}`)}</strong></p><p className="mt-1">{t('data.splitHint')}</p><p className="mt-1">{t('data.missingHint')}</p></div></div>
         </div>
-        <button disabled={!dataset.featureColumns.length || !dataset.targetColumn} onClick={onClose} className="mt-5 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-40">{t('data.use')}</button>
+        <button disabled={!dataset.featureColumns.length || !dataset.targetColumn} o
+nClick={onClose} className="mt-5 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-40">{t('data.use')}</button>
       </>}
     </section>
   </div>;
@@ -408,7 +411,7 @@ function PropertyControl({ property, value, onChange }) {
   return <><input className={property.type === 'slider' ? 'mt-3 w-full accent-blue-600' : inputClass} type={property.type === 'slider' ? 'range' : property.type === 'number' ? 'number' : 'text'} min={property.min} max={property.max} step={property.step} value={value} onChange={(event) => onChange(property.type === 'text' ? event.target.value : Number(event.target.value))} />{property.type === 'slider' && <span className="mt-2 block text-sm text-slate-500">{value}</span>}</>;
 }
 
-function RunnerDialog({ open, onClose, nodes, edges, dataset, model, runtime, onRun, onOpenData, onExport }) {
+function RunnerDialog({ open, onClose, nodes, edges, dataset, model, runtime, onRun, onValidation, onOpenData, onExport }) {
   const { t } = useVividTranslation();
   const [inputs, setInputs] = useState({});
   const [prediction, setPrediction] = useState(null);
@@ -418,7 +421,9 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, runtime, on
     nodes: nodes.map((node) => ({ id: node.id, manifestId: node.data.manifest.id, parameters: node.data.parameters })),
     edges: edges.map((edge) => ({ source: edge.source, sourceHandle: edge.sourceHandle, target: edge.target, targetHandle: edge.targetHandle })),
   }), [nodes, edges]);
-  const executionPlan = useMemo(() => executionPlanFor(nodes, edges, dataset), [graphSignature, dataset]);
+  // Always derive cards from current props so a Run-triggered render cannot
+  // retain stale workload values.
+  const executionPlan = executionPlanFor(nodes, edges, dataset);
   const needsDataset = useMemo(() => {
     const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
     return nodes.some(
@@ -435,13 +440,20 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, runtime, on
         const connectedEdges = edges.filter(
           (edge) => connectedIds.has(edge.source) && connectedIds.has(edge.target),
         );
+        const contract = analyzeBrowserExecutionGraph({ nodes, edges, dataset });
+        if (!contract.valid) {
+          onValidation(contract.nodeIds ?? []);
+          const error = localizedError(contract.reason, contract.translationParams);
+          error.nodeIds = contract.nodeIds;
+          throw error;
+        }
         const ir = graphToIR(connectedNodes, connectedEdges);
         const nodeById = new Map(connectedNodes.map((node) => [node.id, node]));
         setPlanNames(ir.nodes.filter((node) => edges.some((edge) => edge.source === node.id || edge.target === node.id)).map((node) => t(nodeById.get(node.id).data.manifest.name)));
       }
       catch (error) { setPlanNames([]); setGraphError(translateError(error, t)); }
     }
-  }, [open, graphSignature, t]);
+  }, [open, graphSignature, dataset, onValidation, t]);
   if (!open) return null;
   const running = runtime.status === 'running';
   const losses = runtime.status === 'idle' ? model?.lossHistory ?? [] : runtime.losses ?? [];
@@ -466,7 +478,8 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, runtime, on
       {visibleError && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">⚠ {visibleError}</div>}
       {needsDataset && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div className="mt-4"><LossChart values={losses} /></div><button disabled={running || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button></div>
-        <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="font-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
+        <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="f
+ont-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
       </div> : <div className="mt-5 rounded-3xl border border-dashed border-slate-300 p-8 text-center text-slate-500"><p className="text-3xl">⇧</p><p className="mt-3 font-bold">{t('tier.useHigherTier', { tier: executionPlan.recommendedTier })}</p><p className="mt-1 text-sm">{t('tier.designStillAvailable')}</p></div>}
     </section>
   </div>;
@@ -559,9 +572,11 @@ function Workspace() {
     const customById = new Map((project.customComponents ?? []).map((manifest) => [manifest.id, manifest]));
     const restoredNodes = project.graph.nodes.map((node) => {
       const manifestId = node.data?.manifest?.id;
-      const currentManifest = componentById.get(manifestId)
-        ?? customById.get(manifestId)
-        ?? node.data?.manifest;
+      const currentManifest = node.data?.manifest?.customComposite === true
+        ? node.data.manifest
+        : componentById.get(manifestId)
+          ?? customById.get(manifestId)
+          ?? node.data?.manifest;
       if (!currentManifest) throw localizedError('error.unknownComponent', { component: manifestId });
       return {
         ...node,
@@ -674,7 +689,8 @@ function Workspace() {
     }
     if (!pendingConnection) { setNotice(t('connection.tapOutputFirst')); return; }
     const connection = { source: pendingConnection.nodeId, sourceHandle: pendingConnection.port.name, target: nodeId, targetHandle: port.name };
-    const assessment = assess(connection);
+    const ass
+essment = assess(connection);
     if (!assessment.valid) { setNotice(connectionNotice(assessment)); return; }
     setEdges((current) => addEdge({ ...connection, id: `tap-${crypto.randomUUID()}`, type: 'deletable' }, current));
     setPendingConnection(null);
@@ -731,6 +747,20 @@ function Workspace() {
     workspaceStateRef.current = { ...workspaceStateRef.current, nodes: nextNodes };
     setNodes(nextNodes);
   }, [setNodes]);
+  const handleRunnerValidation = useCallback((nodeIds) => {
+    const state = workspaceStateRef.current;
+    const knownIds = new Set(state.nodes.map((node) => node.id));
+    const ids = [...new Set(nodeIds.filter((id) => knownIds.has(id)))];
+    const fallbackIds = ids.length
+      ? ids
+      : state.nodes.filter((node) => state.edges.some((edge) => edge.source === node.id || edge.target === node.id)).map((node) => node.id);
+    const nextNodes = state.nodes.map((node) => fallbackIds.includes(node.id)
+      ? { ...node, data: { ...node.data, status: 'error' } }
+      : { ...node, data: { ...node.data, status: 'idle' } });
+    workspaceStateRef.current = { ...state, nodes: nextNodes };
+    setNodes(nextNodes);
+    if (fallbackIds[0]) setSelectedId(fallbackIds[0]);
+  }, [setNodes]);
   const runBrowserGraph = useCallback(async () => {
     const state = workspaceStateRef.current;
     if (state.runtime.status === 'running') {
@@ -739,6 +769,7 @@ function Workspace() {
     const startedAt = new Date().toISOString();
     const startedWithSignature = canvasExecutionInputSignature(state.nodes, state.edges, state.dataset);
     let currentNode = null;
+    let validationNodeIds = [];
     setNodeStatus(state.nodes.map((node) => node.id), 'idle');
     updateRuntime({
       status: 'running',
@@ -750,6 +781,13 @@ function Workspace() {
       finishedAt: null,
     });
     try {
+      const contract = analyzeBrowserExecutionGraph({ nodes: state.nodes, edges: state.edges, dataset: state.dataset });
+      if (!contract.valid) {
+        validationNodeIds = contract.nodeIds ?? [];
+        const error = localizedError(contract.reason, contract.translationParams);
+        error.nodeIds = validationNodeIds;
+        throw error;
+      }
       const plan = executionPlanFor(state.nodes, state.edges, state.dataset);
       if (!plan.canRunHere) throw localizedError('error.higherTierRequired', { tier: plan.recommendedTier });
       const finalModel = await executeBrowserGraph({
@@ -807,7 +845,11 @@ function Workspace() {
           finishedAt: new Date().toISOString(),
         });
       } else {
-        if (currentNode) setNodeStatus([currentNode.id], 'error');
+        const errorIds = validationNodeIds.length
+          ? validationNodeIds
+          : currentNode ? [currentNode.id] : state.nodes.map((node) => node.id);
+        setNodeStatus(errorIds, 'error');
+        if (validationNodeIds[0]) setSelectedId(validationNodeIds[0]);
         updateRuntime((current) => ({
           ...current,
           status: 'failed',
@@ -891,45 +933,24 @@ function Workspace() {
     if (!origin) return;
     const groupNodes = nodes.filter((node) => node.data.compositeOrigin?.id === origin.id);
     const groupIds = new Set(groupNodes.map((node) => node.id));
-    const nodeById = new Map(groupNodes.map((node) => [node.id, node]));
-    const inputPort = (edge) => Object.entries(origin.manifest.composition.inputs).find(([, targets]) => (
-      targets.some((target) => (
-        target.node === nodeById.get(edge.target)?.data.compositionKey
-        && target.port === edge.targetHandle
-      ))
-    ))?.[0];
-    const outputPort = (edge) => Object.entries(origin.manifest.composition.outputs).find(([, source]) => (
-      source.node === nodeById.get(edge.source)?.data.compositionKey
-      && source.port === edge.sourceHandle
-    ))?.[0];
-    const redirected = [];
-    edges.filter((edge) => !groupIds.has(edge.source) && groupIds.has(edge.target)).forEach((edge) => {
-      const targetHandle = inputPort(edge);
-      if (targetHandle) redirected.push({ ...edge, target: origin.id, targetHandle });
-    });
-    edges.filter((edge) => groupIds.has(edge.source) && !groupIds.has(edge.target)).forEach((edge) => {
-      const sourceHandle = outputPort(edge);
-      if (sourceHandle) redirected.push({ ...edge, source: origin.id, sourceHandle });
-    });
-    const deduplicated = [...new Map(redirected.map((edge) => [
-      `${edge.source}:${edge.sourceHandle}:${edge.target}:${edge.targetHandle}`,
-      edge,
-    ])).values()];
+    if (!groupNodes.length) return;
+    const rebuilt = rebuildCompositeInstance({ origin, groupNodes, edges });
     const parent = {
       id: origin.id,
       type: 'pipelineNode',
-      position: origin.position,
+      position: rebuilt.position,
       data: {
         label: origin.label,
-        manifest: origin.manifest,
-        parameters: origin.parameters,
-        status: 'idle',
+        manifest: rebuilt.manifest,
+        parameters: rebuilt.parameters,
+        stat
+us: 'idle',
       },
     };
     setNodes((current) => [...current.filter((node) => !groupIds.has(node.id)), parent]);
     setEdges([
       ...edges.filter((edge) => !groupIds.has(edge.source) && !groupIds.has(edge.target)),
-      ...deduplicated,
+      ...rebuilt.edges,
     ].map((edge) => ({ ...edge, type: 'deletable' })));
     setSelectedId(parent.id);
     setModel(null);
@@ -1198,7 +1219,8 @@ function Workspace() {
     if (new URLSearchParams(window.location.search).get('agent-test') !== '1') return undefined;
     let active = true;
     runCanvasAgentExerciseSuite(window).then((result) => {
-      if (active) window.__VOLK_ML_AGENT_TEST_RESULT__ = result;
+      if (active) window.__VOLK_ML_AGENT_
+TEST_RESULT__ = result;
     });
     return () => { active = false; };
   }, []);
@@ -1266,10 +1288,11 @@ function Workspace() {
       </motion.aside>
     </main>
     {notice && <button onClick={() => setNotice('')} className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice} · ✕</button>}
-    {restoreCandidate && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/60 p-4"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 className="text-xl font-black">{t('project.restoreTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('project.restoreDescription')}</p><p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">{restoreCandidate.name || t('project.sampleName')}</p><div className="mt-5 grid grid-cols-2 gap-2"><button onClick={() => { applyProject(restoreCandidate); setRestoreCandidate(null); setLocalReady(true); }} className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white">{t('project.restore')}</button><button onClick={() => { platformServices.projects.remove().finally(() => { setRestoreCandidate(null); setLocalReady(true); }); }} className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700">{t('project.startFresh')}</button></div></section></div>}
+    {restoreCandidate && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/60 p-4"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2x
+l"><h2 className="text-xl font-black">{t('project.restoreTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('project.restoreDescription')}</p><p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">{restoreCandidate.name || t('project.sampleName')}</p><div className="mt-5 grid grid-cols-2 gap-2"><button onClick={() => { applyProject(restoreCandidate); setRestoreCandidate(null); setLocalReady(true); }} className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white">{t('project.restore')}</button><button onClick={() => { platformServices.projects.remove().finally(() => { setRestoreCandidate(null); setLocalReady(true); }); }} className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700">{t('project.startFresh')}</button></div></section></div>}
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
-    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} runtime={runtime} onRun={runBrowserGraph} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
+    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} runtime={runtime} onRun={runBrowserGraph} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
     <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
@@ -1277,3 +1300,4 @@ function Workspace() {
 }
 
 createRoot(document.getElementById('root')).render(<LanguageProvider><Workspace /></LanguageProvider>);
+

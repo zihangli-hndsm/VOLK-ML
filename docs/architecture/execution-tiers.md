@@ -11,7 +11,7 @@
 | L2 | Local Python | No | Larger PyTorch/TensorFlow models on the user's machine |
 | L3 | Remote GPU | No | Large models or datasets requiring a managed accelerator |
 
-Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines, plus a deliberately small browser-CPU MLP: tabular data, a Tensor Input, sequential Dense layers with ReLU/Sigmoid/Tanh/Softmax activations, Model Output, MSE or cross-entropy loss, SGD or Adam, and Supervised Trainer. L1鈥揕3 expose design/export guidance.
+Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines, plus a deliberately small browser-CPU MLP: tabular data, a Tensor Input, sequential Dense layers with ReLU/Sigmoid/Tanh/Softmax activations, Model Output, MSE or cross-entropy loss, SGD or Adam, and Supervised Trainer. L1–L3 expose design/export guidance.
 
 The browser MLP supports numeric tabular data and one sequential input/output path only. Classification needs one Softmax output per class and cross-entropy; regression needs one output and MSE. Trainer updates are true mini-batch updates: gradients are accumulated for `batch_size` examples before one SGD (including momentum) or Adam update. CNN, sequence, attention, normalization, Dropout, custom loss, AdamW, multi-input/output architectures, and non-tabular bindings remain export-only. Supervised Trainer is L0 when used with this supported subset and remains exportable to local Python for its wider source-generation contract.
 
@@ -57,7 +57,7 @@ Estimates are guardrails, not benchmarks. They are deliberately conservative and
 - Activation memory is at least 8 MiB and otherwise estimated from operation count.
 - Dataset storage is estimated at 32 bytes per cell.
 - Peak memory adds a 35% safety margin.
-- Convolution estimates assume a representative `64 脳 64` spatial area.
+- Convolution estimates assume a representative `64 × 64` spatial area.
 - Sequence and attention estimates assume a representative length of `128`.
 - Folded user-created composites are recursively expanded before estimation, so grouping a graph does not change its parameter, operation, or backend guidance.
 
@@ -104,7 +104,7 @@ The browser executor separately validates:
 
 The shared browser-execution contract is used by both the estimator and executor. It requires exactly one active trained-model root (KNN, Gradient Descent, or Supervised Trainer), validates its complete typed input path and compatible downstream evaluator or Predictor, and rejects unrelated active branches.
 
-For the browser MLP, the contract requires a connected Supervised Trainer with its DatasetSplit, ModelSpec, LossSpec, and OptimizerSpec inputs. It also checks a single sequential tabular architecture, that the Tensor Input width equals the selected dataset feature count, Dense widths, usable dataset rows, task-specific output semantics, and a non-empty classification test split. Browser preprocessing treats null, undefined, empty, and whitespace-only cells as missing; this shared rule is applied before both preflight and execution. Classification requires cross-entropy, final Softmax on the last axis (`-1`), and one output per class; regression requires MSE, one output, and no final Softmax. Training uses a reproducible but distinct shuffle per epoch and aborts rather than persisting non-finite training state or metrics. A design-only Tensor Input 鈫?Model Output graph may be exported, but is never presented as runnable.
+For the browser MLP, the contract requires a connected Supervised Trainer with its DatasetSplit, ModelSpec, LossSpec, and OptimizerSpec inputs. It also checks a single sequential tabular architecture, that the Tensor Input width equals the selected dataset feature count, Dense widths, usable dataset rows, task-specific output semantics, and a non-empty classification test split. Browser preprocessing treats null, undefined, empty, and whitespace-only cells as missing; this shared rule is applied before both preflight and execution. Classification requires cross-entropy, final Softmax on the last axis (`-1`), and one output per class; regression requires MSE, one output, and no final Softmax. Training uses a reproducible but distinct shuffle per epoch and aborts rather than persisting non-finite training state or metrics. A design-only Tensor Input → Model Output graph may be exported, but is never presented as runnable.
 
 Do not weaken browser validation because the tier estimator recommends L0; they answer different questions.
 

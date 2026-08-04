@@ -278,7 +278,8 @@ function customManifestIsValid(manifest, availableManifests, ancestors = new Set
     const childPort = child?.outputs.find((port) => port.name === source?.port);
     const endpoint = `${source?.node}:${source?.port}`;
     if (mappedOutputs.has(endpoint)) return false;
-    mappedOutputs.add(endpoint);
+    mapped
+Outputs.add(endpoint);
     return childPort && childPort.type === parentOutputByName.get(parentName)?.type;
   });
   return inputsValid && outputsValid;
@@ -446,9 +447,12 @@ export function validateProjectForWorkspace(rawProject) {
   const validationNodes = [];
   project.graph.nodes.forEach((node) => {
     const embeddedManifest = node?.data?.manifest;
-    const manifest = componentById.get(embeddedManifest?.id)
-      ?? customById.get(embeddedManifest?.id)
-      ?? (embeddedManifest?.customComposite && customManifestIsValid(embeddedManifest, customById) ? embeddedManifest : null);
+    const embeddedInstance = embeddedManifest?.customComposite === true
+      ? (customManifestIsValid(embeddedManifest, customById) ? embeddedManifest : null)
+      : null;
+    const manifest = embeddedInstance
+      ?? componentById.get(embeddedManifest?.id)
+      ?? customById.get(embeddedManifest?.id);
     if (
       !node || typeof node !== 'object'
       || typeof node.id !== 'string' || !node.id.trim() || nodeIds.has(node.id)
