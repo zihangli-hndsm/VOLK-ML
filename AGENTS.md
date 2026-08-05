@@ -88,3 +88,14 @@
 - Do not open a pull request until Acceptance passes. A development branch is allowed before then, but it must not be treated as accepted or ready for review.
 - Do not run a Codex automated review-submit loop and do not repeatedly post `@codex review`. Automated review and CI feedback do not replace the agreed acceptance plan.
 - Feedback received after opening a pull request is a new validation signal. Classify it against the accepted design; material changes return to Design, while in-scope fixes pass through Development and Acceptance before the branch is updated.
+
+## Changelog
+
+- Every accepted change set is recorded in `CHANGELOG.md` before a pull request is opened, so the pull request always contains the entry for its own changes.
+- Entries are append-only. Never edit, rewrite, reorder, or delete an existing entry. If an earlier entry needs a correction, add a new entry that states the correction instead of changing the old one.
+- One entry per accepted change set (one development cycle / one pull request), headed by the ISO date, containing:
+  - the goal and what changed (user-visible behavior first);
+  - the affected areas or files;
+  - the validation and acceptance evidence;
+  - known limitations or follow-ups, if any.
+- Record the entry immediately after Acceptance passes. A cycle is not ready for a pull request until its changelog entry exists.
