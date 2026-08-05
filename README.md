@@ -4,6 +4,10 @@ VOLK-ML (Vivid Online Learning Kit for Machine Learning) is a bilingual visual M
 
 [Open the browser demo](https://zihangli-hndsm.github.io/VOLK-ML/)
 
+## Teaching examples
+
+The app ships with a gallery of ready-made pipelines, one per common ML task — house price regression, KNN classification, spam detection with a small MLP, CNN, embedding-based recommendation, LSTM sentiment analysis, and more. Open **Examples** in the header or see [`examples/README.md`](examples/README.md). Planned tasks and infrastructure work are tracked in [`docs/roadmap.md`](docs/roadmap.md).
+
 ## What works today
 
 - Build typed machine-learning graphs on a desktop, tablet, or phone, in English, Chinese, or parallel bilingual mode.

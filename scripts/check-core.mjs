@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
+import { readFileSync, readdirSync } from 'node:fs';
 import {
   COMPONENT_SCHEMA_VERSION,
   componentById,
@@ -1817,6 +1818,26 @@ assert.throws(
   /missing account\.getCurrentUser/,
 );
 
-console.
-log(`Validated ${pluginRegistry.length} usable components and tutorials, every architecture compiler mapping, both browser pipelines, platform services, localization, and execution tiers.`);
+// Every bundled teaching example must load, run when marked runnable, and export when marked exportable.
+{
+  const examplesUrl = new URL('../examples/', import.meta.url);
+  const exampleFiles = readdirSync(examplesUrl).filter((name) => name.endsWith('.volkml.json')).sort();
+  const runnable = new Set(['house-price-regression', 'iris-knn-classification', 'spam-mlp-classification']);
+  const browserOnly = new Set(['iris-knn-classification']);
+  assert.ok(exampleFiles.length >= 8, `expected at least 8 teaching examples, found ${exampleFiles.length}`);
+  for (const file of exampleFiles) {
+    const slug = file.replace(/\.volkml\.json$/, '');
+    const project = validateProjectForWorkspace(JSON.parse(readFileSync(new URL(file, examplesUrl), 'utf-8')));
+    const { nodes, edges } = project.graph;
+    if (!browserOnly.has(slug)) {
+      assertPythonSyntax(compilePipelineToPyTorch(nodes, edges).code, `${slug} PyTorch`);
+      assertPythonSyntax(compilePipelineToTensorFlow(nodes, edges).code, `${slug} TensorFlow`);
+    }
+    if (runnable.has(slug)) {
+      const model = await executeBrowserGraph({ nodes, edges, dataset: project.data });
+      assert.ok(model, `${slug} should train in the browser`);
+    }
+  }
+  console.log(`Validated ${pluginRegistry.length} usable components and tutorials, every architecture compiler mapping, both browser pipelines, platform services, localization, execution tiers, and ${exampleFiles.length} teaching examples.`);
+}
 
