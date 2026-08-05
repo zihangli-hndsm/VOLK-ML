@@ -95,6 +95,8 @@ The browser runtime in `src/core/browserRuntime.js` is separate from `src/core/c
 
 Do not make an unavailable backend appear runnable. Update availability only when an end-to-end runtime, UI path, and validation exist.
 
+- Validation and runtime failures highlight only the components the execution contract can attribute the failure to. Dataset-level and graph-level errors (missing data, no edges, no training root) surface the error message without painting canvas nodes red.
+
 ## Change routing
 
 | Change | Read next | Usually update |

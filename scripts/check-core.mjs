@@ -92,8 +92,9 @@ const makeEdge = (source, sourceHandle, target, targetHandle) => ({
 });
 
 const assertPythonSyntax = (code, label) => {
+  const python = ['python3', 'python'].find((candidate) => spawnSync(candidate, ['--version'], { encoding: 'utf-8' }).status === 0) ?? 'python3';
   const result = spawnSync(
-    'python3',
+    python,
     ['-c', 'import ast, sys; ast.parse(sys.stdin.read())'],
     { input: code, encoding: 'utf-8' },
   );
@@ -297,8 +298,7 @@ const secondAgentApi = createCanvasAgentApi({ ...{
   removeNode: async (nodeId) => ({ nodeId }),
   connect: async () => ({ edgeId: 'new-edge' }),
   disconnect: async (edgeId) => ({ edgeId }),
-  select
-Node: async (nodeId) => ({ nodeId }),
+  selectNode: async (nodeId) => ({ nodeId }),
   renameProject: async (name) => ({ name }),
   setDataset: async (dataset) => ({ hasDataset: Boolean(dataset) }),
   loadProject: async (project) => ({ name: project.name }),
@@ -498,8 +498,7 @@ assert.equal(assessConnection({
 }, architectureNodes, []).reason, 'type', 'different semantic port roles remain incompatible');
 assert.equal(assessConnection({
   source: 'input', sourceHandle: 'tensor', target: 'dense', targetHandle: 'input',
-}, architectureNodes, architectur
-eEdges).reason, 'occupied', 'one input accepts one incoming edge');
+}, architectureNodes, architectureEdges).reason, 'occupied', 'one input accepts one incoming edge');
 assert.equal(assessConnection({
   source: 'relu', sourceHandle: 'output', target: 'input', targetHandle: 'tensor',
 }, architectureNodes, architectureEdges).reason, 'missingPort');
@@ -714,8 +713,7 @@ assertPythonSyntax(trainerTensorFlow.code, 'Supervised Trainer TensorFlow');
 assert.doesNotThrow(
   () => compilePipelineToPyTorch([
     ...trainerNodes,
-    makeNode('orphan-invalid-loss', '
-custom_loss_node', { expression: 'eval(prediction)' }),
+    makeNode('orphan-invalid-loss', 'custom_loss_node', { expression: 'eval(prediction)' }),
   ], trainerEdges),
   'an unconnected custom loss does not override the loss connected to the trainer',
 );
@@ -925,6 +923,26 @@ const invalidRegressionAnalysis = analyzeBrowserExecutionGraph({
 });
 assert.equal(invalidRegressionAnalysis.valid, false);
 assert.deepEqual(invalidRegressionAnalysis.nodeIds, ['reg-model']);
+const emptyGraphAnalysis = analyzeBrowserExecutionGraph({
+  nodes: regressionGraphNodes,
+  edges: [],
+  dataset: regressionDataset,
+});
+assert.equal(emptyGraphAnalysis.valid, false);
+assert.deepEqual(emptyGraphAnalysis.nodeIds, [], 'graph-level validation failures do not attribute every node');
+const missingDatasetAnalysis = analyzeBrowserExecutionGraph({
+  nodes: regressionGraphNodes,
+  edges: regressionGraphEdges,
+});
+assert.equal(missingDatasetAnalysis.valid, false);
+assert.deepEqual(missingDatasetAnalysis.nodeIds, [], 'dataset-level validation failures do not highlight a component');
+const wrongEvaluatorAnalysis = analyzeBrowserExecutionGraph({
+  nodes: [...regressionGraphNodes, makeNode('reg-eval-class', 'evaluate_classification_node')],
+  edges: [...regressionGraphEdges, makeEdge('reg-train', 'trained_model', 'reg-eval-class', 'trained_model')],
+  dataset: regressionDataset,
+});
+assert.equal(wrongEvaluatorAnalysis.valid, false);
+assert.deepEqual(wrongEvaluatorAnalysis.nodeIds, ['reg-eval-class'], 'a wrong evaluator highlights only the evaluator component');
 const regressionModel = await executeBrowserGraph({
   nodes: regressionGraphNodes,
   edges: regressionGraphEdges,
@@ -984,8 +1002,7 @@ const connectedStandaloneNodes = [
 ];
 const connectedStandaloneEdges = [
   makeEdge('standalone-source', 'tensor', standaloneLayerComposite.instance.id, standaloneInput),
-  makeEdge(standaloneLayerCom
-posite.instance.id, standaloneOutput, 'standalone-sink', 'model'),
+  makeEdge(standaloneLayerComposite.instance.id, standaloneOutput, 'standalone-sink', 'model'),
 ];
 const flattenedStandalone = flattenCustomComposites(
   connectedStandaloneNodes,
@@ -1304,8 +1321,7 @@ const classificationDataset = {
   name: 'classification-check',
   rows: Array.from({ length: 60 }, (_, index) => {
     const positive = index % 2 === 0;
-    const offset = Ma
-th.floor(index / 2) * 0.01;
+    const offset = Math.floor(index / 2) * 0.01;
     return {
       feature_a: (positive ? 3 : -3) + offset,
       feature_b: (positive ? 2 : -2) - offset,

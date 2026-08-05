@@ -278,8 +278,7 @@ function customManifestIsValid(manifest, availableManifests, ancestors = new Set
     const childPort = child?.outputs.find((port) => port.name === source?.port);
     const endpoint = `${source?.node}:${source?.port}`;
     if (mappedOutputs.has(endpoint)) return false;
-    mapped
-Outputs.add(endpoint);
+    mappedOutputs.add(endpoint);
     return childPort && childPort.type === parentOutputByName.get(parentName)?.type;
   });
   return inputsValid && outputsValid;

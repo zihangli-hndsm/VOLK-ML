@@ -17,6 +17,7 @@ export const messages = {
   'nav.architecture': { en: 'Architecture', zh: '架构' },
   'nav.explain': { en: 'Explain', zh: '解释' },
   'nav.group': { en: 'Compose', zh: '组合' },
+  'nav.multiSelect': { en: 'Multi', zh: '多选' },
 
   'common.close': { en: 'Close', zh: '关闭' },
   'common.width': { en: 'Width', zh: '宽度' },
