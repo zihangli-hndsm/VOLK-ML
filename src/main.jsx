@@ -1,10 +1,11 @@
 import React, { Suspense, createContext, lazy, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ReactFlow, Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, MiniMap, Position, addEdge, getSmoothStepPath, useEdgesState, useNodesState } from '@xyflow/react';
+import { ReactFlow, Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, MiniMap, Position, addEdge, getNodesBounds, getSmoothStepPath, useEdgesState, useNodesState } from '@xyflow/react';
 import { motion } from 'framer-motion';
 import '@xyflow/react/dist/style.css';
 import { languages, localizedError, resolveMessage, translateError } from './i18n';
 import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
+import { describeRows, sampleDatasets } from './core/sampleDatasets';
 import { executeBrowserGraph, predictWithModel } from './core/browserRuntime';
 import { analyzeBrowserExecutionGraph } from './core/browserExecutionContract';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
@@ -35,6 +36,7 @@ import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
+import ExamplesDialog from './components/ExamplesDialog';
 import VisualGlyph from './components/VisualGlyph';
 
 const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
@@ -269,49 +271,6 @@ function parseCsv(text) {
   return rows.slice(1).map((cells) => Object.fromEntries(headers.map((header, index) => [header, cells[index] ?? ''])));
 }
 
-function describeRows(rows) {
-  if (!rows.length || typeof rows[0] !== 'object' || Array.isArray(rows[0])) throw localizedError('error.objectRows');
-  const names = [...new Set(rows.flatMap((row) => Object.keys(row)))];
-  return names.map((name) => {
-    const present = rows.map((row) => row[name]).filter((value) => value !== '' && value !== null && value !== undefined);
-    const numericCount = present.filter((value) => Number.isFinite(Number(value))).length;
-    return { name, type: present.length > 0 && numericCount === present.length ? 'number' : 'text', missing: rows.length - present.length };
-  });
-}
-
-function makeSampleDataset() {
-  const rows = Array.from({ length: 100 }, (_, index) => {
-    const studyHours = 1 + (index % 20) * 0.45;
-    const practiceTests = (index * 7) % 11;
-    const score = 35 + studyHours * 4.8 + practiceTests * 1.7 + Math.sin(index * 1.9) * 2;
-    return { study_hours: Number(studyHours.toFixed(2)), practice_tests: practiceTests, exam_score: Number(score.toFixed(2)) };
-  });
-  return { name: 'exam_scores_sample', rows, columns: describeRows(rows), featureColumns: ['study_hours', 'practice_tests'], targetColumn: 'exam_score', task: 'regression', trainRatio: 0.8 };
-}
-
-function makeClassificationSampleDataset() {
-  const labels = ['setosa', 'versicolor', 'virginica'];
-  const rows = Array.from({ length: 90 }, (_, index) => {
-    const group = index % labels.length;
-    const offset = Math.floor(index / labels.length);
-    return {
-      sepal_length: Number((4.8 + group * 0.9 + Math.sin(offset) * 0.18).toFixed(2)),
-      sepal_width: Number((3.5 - group * 0.35 + Math.cos(offset * 1.3) * 0.12).toFixed(2)),
-      petal_length: Number((1.4 + group * 2.05 + Math.sin(offset * 0.7) * 0.2).toFixed(2)),
-      species: labels[group],
-    };
-  });
-  return {
-    name: 'flower_classification_sample',
-    rows,
-    columns: describeRows(rows),
-    featureColumns: ['sepal_length', 'sepal_width', 'petal_length'],
-    targetColumn: 'species',
-    task: 'classification',
-    trainRatio: 0.8,
-  };
-}
-
 function DataDialog({ open, onClose, dataset, onDataset }) {
   const { t } = useVividTranslation();
   const fileRef = useRef(null);
@@ -334,7 +293,7 @@ function DataDialog({ open, onClose, dataset, onDataset }) {
   return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" onMouseDown={onClose}>
     <section className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
       <div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="text-xl font-black">{t('data.title')}</h2><p className="mt-1 text-sm text-slate-500">{t('data.privacy')}</p></div><button aria-label={t('common.close')} className="rounded-full p-2 hover:bg-slate-100" onClick={onClose}>✕</button></div>
-      <div className="mt-5 flex flex-wrap gap-2"><button onClick={() => fileRef.current?.click()} className="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">↑ {t('data.upload')}</button><button onClick={() => onDataset(makeSampleDataset())} className="rounded-xl bg-slate-100 px-4 py-2 font-bold">{t('data.regressionSample')}</button><button onClick={() => onDataset(makeClassificationSampleDataset())} className="rounded-xl bg-slate-100 px-4 py-2 font-bold">{t('data.classificationSample')}</button><input ref={fileRef} type="file" accept=".csv,.json,text/csv,application/json" className="hidden" onChange={loadFile} /></div>
+      <div className="mt-5 flex flex-wrap gap-2"><button onClick={() => fileRef.current?.click()} className="rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">↑{t('data.upload')}</button>{sampleDatasets.map((sample) => <button key={sample.labelKey} onClick={() => onDataset(sample.dataset)} className="rounded-xl bg-slate-100 px-4 py-2 font-bold">{t(sample.labelKey)}</button>)}<input ref={fileRef} type="file" accept=".csv,.json,text/csv,application/json" className="hidden" onChange={loadFile} /></div>
       {!dataset ? <div className="mt-8 grid min-h-56 place-items-center rounded-3xl border-2 border-dashed border-slate-200 text-center text-slate-400"><div><p className="text-4xl">▦</p><p className="mt-3 font-bold">{t('data.empty')}</p></div></div> : <>
         <div className="mt-5 grid gap-4 lg:grid-cols-[1fr_300px]">
           <div className="overflow-hidden rounded-2xl border"><div className="flex items-center justify-between bg-slate-50 px-4 py-3"><div><p className="font-bold">{dataset.name}</p><p className="text-xs text-slate-500">{t('data.shape', { rows: dataset.rows.length, columns: dataset.columns.length })}</p></div></div><div className="overflow-x-auto"><table className="min-w-full text-left text-xs"><thead className="bg-slate-100"><tr>{dataset.columns.map((column) => <th key={column.name} className="whitespace-nowrap px-3 py-2"><span className="font-bold">{column.name}</span><span className="ml-2 text-[10px] font-normal text-slate-400">{column.type}</span></th>)}</tr></thead><tbody>{dataset.rows.slice(0, 8).map((row, index) => <tr key={index} className="border-t">{dataset.columns.map((column) => <td key={column.name} className="max-w-40 truncate px-3 py-2">{String(row[column.name] ?? '')}</td>)}</tr>)}</tbody></table></div></div>
@@ -501,6 +460,7 @@ function Workspace() {
   const [runnerOpen, setRunnerOpen] = useState(false);
   const [explanationOpen, setExplanationOpen] = useState(false);
   const [compositeOpen, setCompositeOpen] = useState(false);
+  const [examplesOpen, setExamplesOpen] = useState(false);
   const [tutorialManifest, setTutorialManifest] = useState(null);
   const [projectName, setProjectName] = useState(() => t('project.sampleName'));
   const [customComponents, setCustomComponents] = useState([]);
@@ -522,6 +482,7 @@ function Workspace() {
   const agentAdapterRef = useRef(null);
   const flowWrapperRef = useRef(null);
   const reactFlowInstanceRef = useRef(null);
+  const pendingFitRef = useRef(false);
   workspaceStateRef.current = {
     projectName,
     fallbackProjectName: t('project.sampleName'),
@@ -624,6 +585,7 @@ function Workspace() {
     setDataset(project.data ?? null);
     setModel(project.trainedModel ?? null);
     setRuntime(nextRuntime);
+    pendingFitRef.current = true;
     return project;
   }, [setNodes, setEdges, setLanguages, t]);
 
@@ -757,6 +719,82 @@ function Workspace() {
     if (changes.length) onNodesChange(changes);
     setSelectedId(null);
   }, [nodes, onNodesChange]);
+  const fitCanvasToContainer = useCallback(() => {
+    const container = flowWrapperRef.current;
+    const instance = reactFlowInstanceRef.current;
+    if (!container || !instance?.setViewport) return false;
+    const rect = container.getBoundingClientRect();
+    if (rect.width < 20 || rect.height < 20) return false;
+    const bounds = getNodesBounds(nodes);
+    if (!bounds.width || !bounds.height) return false;
+    const padding = 0.18;
+    const zoom = Math.min(
+      rect.width / (bounds.width * (1 + padding * 2)),
+      rect.height / (bounds.height * (1 + padding * 2)),
+      2,
+    );
+    instance.setViewport({
+      x: rect.width / 2 - (bounds.x + bounds.width / 2) * zoom,
+      y: rect.height / 2 - (bounds.y + bounds.height / 2) * zoom,
+      zoom,
+    });
+    return true;
+  }, [nodes]);
+  const fitCanvasRef = useRef(fitCanvasToContainer);
+  fitCanvasRef.current = fitCanvasToContainer;
+  const settleTimersRef = useRef(new Set());
+  const fitCanvasWithResettle = () => {
+    let previous = null;
+    let stable = 0;
+    let attempts = 0;
+    const attempt = () => {
+      attempts += 1;
+      const fitted = fitCanvasRef.current();
+      if (!fitted || attempts >= 16) return;
+      const viewport = reactFlowInstanceRef.current?.getViewport?.();
+      const key = viewport ? `${viewport.x.toFixed(2)},${viewport.y.toFixed(2)},${viewport.zoom.toFixed(4)}` : null;
+      if (key && key === previous) {
+        stable += 1;
+        if (stable >= 2) return;
+      } else {
+        stable = 0;
+      }
+      previous = key;
+      settleTimersRef.current.add(setTimeout(attempt, 250));
+    };
+    settleTimersRef.current.forEach((id) => clearTimeout(id));
+    settleTimersRef.current.clear();
+    attempt();
+  };
+  useEffect(() => {
+    const container = flowWrapperRef.current;
+    if (!container || typeof ResizeObserver === 'undefined') return undefined;
+    let frame = 0;
+    const scheduleFit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(fitCanvasWithResettle);
+    };
+    const observer = new ResizeObserver(scheduleFit);
+    observer.observe(container);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, []);
+  useEffect(() => {
+    if (!pendingFitRef.current) return undefined;
+    pendingFitRef.current = false;
+    let attempt = 0;
+    settleTimersRef.current.forEach((id) => clearTimeout(id));
+    settleTimersRef.current.clear();
+    const tryFit = () => {
+      if (attempt >= 4) return;
+      attempt += 1;
+      fitCanvasWithResettle();
+    };
+    const frame = requestAnimationFrame(tryFit);
+    return () => cancelAnimationFrame(frame);
+  }, [nodes]);
   const updateRuntime = useCallback((update) => {
     const current = workspaceStateRef.current.runtime;
     const next = typeof update === 'function' ? update(current) : update;
@@ -1284,6 +1322,7 @@ function Workspace() {
         <button className="rounded-xl bg-violet-100 px-3 py-2 font-bold text-violet-700" onClick={() => setExplanationOpen(true)}>✦ <span className="hidden xl:inline">{t('nav.explain')}</span></button>
         <button disabled={selectedNodes.length < 2} className="rounded-xl bg-blue-100 px-3 py-2 font-bold text-blue-700 disabled:opacity-40" onClick={() => setCompositeOpen(true)}>▣ <span className="hidden xl:inline">{t('nav.group')}</span></button>
         <button aria-pressed={multiSelectMode} className={`rounded-xl px-3 py-2 font-bold ${multiSelectMode ? 'bg-blue-600 text-white' : 'bg-slate-100'}`} onClick={() => setMultiSelectMode((value) => !value)}>☑ <span className="hidden xl:inline">{t('nav.multiSelect')}</span></button>
+        <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setExamplesOpen(true)}>◇ <span className="hidden xl:inline">{t('nav.examples')}</span></button>
         <button className={`rounded-xl px-3 py-2 font-bold ${dataset ? 'bg-blue-100 text-blue-700' : 'bg-slate-100'}`} onClick={() => setDataOpen(true)}>▦ <span className="hidden sm:inline">{t('nav.data')}</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={exportProject}>↓ <span className="hidden md:inline">JSON</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => importRef.current?.click()}>↑ <span className="hidden md:inline">{t('nav.import')}</span></button>
@@ -1305,7 +1344,7 @@ function Workspace() {
 
       <section ref={flowWrapperRef} className="relative col-start-2 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-xl">
         {pendingConnection && <div className="absolute left-1/2 top-3 z-20 flex max-w-[calc(100%_-_24px)] -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-xl"><span className="truncate">{pendingConnection.port.name} · {readablePortType(pendingConnection.type, t)} → {t('connection.tapMatching')}</span><button aria-label={t('common.close')} className="nodrag rounded-full bg-white/20 px-2 py-1" onClick={() => setPendingConnection(null)}>✕</button></div>}
-        {viewMode === 'canvas' ? <ConnectionContext.Provider value={{ pendingConnection, onPortTap, onDeleteNode: deleteNode, onDeleteEdge: deleteEdge, onOpenTutorial: setTutorialManifest, canConnectToInput }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onInit={(instance) => { reactFlowInstanceRef.current = instance; }} onNodeClick={handleCanvasNodeClick} onPaneClick={handleCanvasPaneClick} nodeTypes={{ pipelineNode: PipelineNode }} edgeTypes={edgeTypes} fitView><Background /><MiniMap pannable zoomable nodeColor={(node) => stageStyles[stageForManifest(node.data.manifest)].hex} /><Controls /></ReactFlow></ConnectionContext.Provider> : <ArchitectureView nodes={nodes} edges={edges} onSelect={setSelectedId} t={t} />}
+        {viewMode === 'canvas' ? <ConnectionContext.Provider value={{ pendingConnection, onPortTap, onDeleteNode: deleteNode, onDeleteEdge: deleteEdge, onOpenTutorial: setTutorialManifest, canConnectToInput }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onInit={(instance) => { reactFlowInstanceRef.current = instance; fitCanvasWithResettle(); }} onNodeClick={handleCanvasNodeClick} onPaneClick={handleCanvasPaneClick} nodeTypes={{ pipelineNode: PipelineNode }} edgeTypes={edgeTypes}><Background /><MiniMap pannable zoomable nodeColor={(node) => stageStyles[stageForManifest(node.data.manifest)].hex} /><Controls /></ReactFlow></ConnectionContext.Provider> : <ArchitectureView nodes={nodes} edges={edges} onSelect={setSelectedId} t={t} />}
       </section>
 
       <motion.aside initial={false} animate={{ x: rightOpen ? 0 : '110%' }} style={{ width: `min(${rightWidth}px, calc(100vw - 24px))` }} className={`${asideBase} right-3 lg:transform-none ${rightOpen ? 'lg:block' : 'lg:hidden'}`}>
@@ -1322,6 +1361,7 @@ function Workspace() {
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
     <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} runtime={runtime} onRun={runBrowserGraph} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
     <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
+    <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
   </div>;

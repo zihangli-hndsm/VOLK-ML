@@ -1,0 +1,598 @@
+{
+  "format": "VOLK-ML",
+  "version": 8,
+  "name": "Sentiment Analysis (LSTM)",
+  "savedAt": "2026-08-05T06:48:50.062Z",
+  "language": {
+    "primary": "en",
+    "secondary": "zh"
+  },
+  "workspace": {
+    "libraryMode": "detailed",
+    "leftWidth": 300,
+    "rightWidth": 384,
+    "viewMode": "canvas"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "senti-input",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Tensor Input",
+            "zh": "张量输入"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tensor_input_node",
+            "op": "tensor_input",
+            "kind": "source",
+            "name": {
+              "en": "Tensor Input",
+              "zh": "张量输入"
+            },
+            "description": {
+              "en": "Declares a model input shape and dtype.",
+              "zh": "声明模型的输入形状和数据类型。"
+            },
+            "category": "Core",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "tensor",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "shape",
+                "label": {
+                  "en": "Shape",
+                  "zh": "形状"
+                },
+                "type": "text",
+                "default": "32"
+              },
+              {
+                "key": "dtype",
+                "label": {
+                  "en": "Data Type",
+                  "zh": "数据类型"
+                },
+                "type": "select",
+                "default": "float32",
+                "options": [
+                  "float32",
+                  "float16",
+                  "int32"
+                ]
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "shape": "12",
+            "dtype": "int32"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "senti-embed",
+        "type": "pipelineNode",
+        "position": {
+          "x": 380,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Embedding",
+            "zh": "嵌入层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "embedding_node",
+            "op": "embedding",
+            "kind": "layer",
+            "name": {
+              "en": "Embedding",
+              "zh": "嵌入层"
+            },
+            "description": {
+              "en": "Maps integer token IDs to dense vectors.",
+              "zh": "将整数 token ID 映射为稠密向量。"
+            },
+            "category": "Sequence",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "vocab_size",
+                "label": {
+                  "en": "Vocabulary Size",
+                  "zh": "词表大小"
+                },
+                "type": "number",
+                "default": 10000,
+                "min": 2,
+                "max": 1000000,
+                "step": 1
+              },
+              {
+                "key": "embedding_dim",
+                "label": {
+                  "en": "Embedding Dimension",
+                  "zh": "嵌入维度"
+                },
+                "type": "number",
+                "default": 128,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "vocab_size": 5000,
+            "embedding_dim": 32
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "senti-lstm",
+        "type": "pipelineNode",
+        "position": {
+          "x": 720,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "LSTM",
+            "zh": "LSTM"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "lstm_node",
+            "op": "lstm",
+            "kind": "layer",
+            "name": {
+              "en": "LSTM",
+              "zh": "LSTM"
+            },
+            "description": {
+              "en": "Processes sequences with long short-term memory cells.",
+              "zh": "使用长短期记忆单元处理序列。"
+            },
+            "category": "Sequence",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_size",
+                "label": {
+                  "en": "Input Size",
+                  "zh": "输入维度"
+                },
+                "type": "number",
+                "default": 128,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "hidden_size",
+                "label": {
+                  "en": "Hidden Size",
+                  "zh": "隐藏维度"
+                },
+                "type": "number",
+                "default": 256,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "layers",
+                "label": {
+                  "en": "Layers",
+                  "zh": "层数"
+                },
+                "type": "number",
+                "default": 1,
+                "min": 1,
+                "max": 16,
+                "step": 1
+              },
+              {
+                "key": "bidirectional",
+                "label": {
+                  "en": "Bidirectional",
+                  "zh": "双向"
+                },
+                "type": "boolean",
+                "default": false
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "adapted"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "input_size": 32,
+            "hidden_size": 16,
+            "layers": 1,
+            "bidirectional": false
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "senti-drop",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1060,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Dropout",
+            "zh": "Dropout"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "dropout_node",
+            "op": "dropout",
+            "kind": "layer",
+            "name": {
+              "en": "Dropout",
+              "zh": "Dropout"
+            },
+            "description": {
+              "en": "Randomly drops activations during training.",
+              "zh": "训练时随机丢弃激活值。"
+            },
+            "category": "Regularization",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "rate",
+                "label": {
+                  "en": "Dropout Rate",
+                  "zh": "丢弃率"
+                },
+                "type": "slider",
+                "default": 0.2,
+                "min": 0,
+                "max": 0.9,
+                "step": 0.05
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "rate": 0.2
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "senti-head",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1400,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Dense / Linear",
+            "zh": "全连接 / 线性层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "dense_node",
+            "op": "dense",
+            "kind": "layer",
+            "name": {
+              "en": "Dense / Linear",
+              "zh": "全连接 / 线性层"
+            },
+            "description": {
+              "en": "Applies a learned affine transformation.",
+              "zh": "应用可学习的仿射变换。"
+            },
+            "category": "Layers",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_features",
+                "label": {
+                  "en": "Input Features",
+                  "zh": "输入特征数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "units",
+                "label": {
+                  "en": "Output Units",
+                  "zh": "输出单元数"
+                },
+                "type": "number",
+                "default": 64,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "use_bias",
+                "label": {
+                  "en": "Use Bias",
+                  "zh": "使用偏置"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "input_features": 16,
+            "units": 1,
+            "use_bias": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "senti-tanh",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1740,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Tanh",
+            "zh": "Tanh"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tanh_node",
+            "op": "tanh",
+            "kind": "layer",
+            "name": {
+              "en": "Tanh",
+              "zh": "Tanh"
+            },
+            "description": {
+              "en": "Applies hyperbolic tangent activation.",
+              "zh": "应用双曲正切激活。"
+            },
+            "category": "Activations",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "senti-output",
+        "type": "pipelineNode",
+        "position": {
+          "x": 2080,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Model Output",
+            "zh": "模型输出"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "model_output_node",
+            "op": "model_output",
+            "kind": "sink",
+            "name": {
+              "en": "Model Output",
+              "zh": "模型输出"
+            },
+            "description": {
+              "en": "Marks a tensor as a model output.",
+              "zh": "将张量标记为模型输出。"
+            },
+            "category": "Core",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "model",
+                "type": "ModelSpec"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "senti-input-embed",
+        "source": "senti-input",
+        "sourceHandle": "tensor",
+        "target": "senti-embed",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "senti-embed-lstm",
+        "source": "senti-embed",
+        "sourceHandle": "output",
+        "target": "senti-lstm",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "senti-lstm-drop",
+        "source": "senti-lstm",
+        "sourceHandle": "output",
+        "target": "senti-drop",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "senti-drop-head",
+        "source": "senti-drop",
+        "sourceHandle": "output",
+        "target": "senti-head",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "senti-head-tanh",
+        "source": "senti-head",
+        "sourceHandle": "output",
+        "target": "senti-tanh",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "senti-tanh-output",
+        "source": "senti-tanh",
+        "sourceHandle": "output",
+        "target": "senti-output",
+        "targetHandle": "input",
+        "type": "deletable"
+      }
+    ]
+  },
+  "customComponents": [],
+  "data": null,
+  "trainedModel": null
+}

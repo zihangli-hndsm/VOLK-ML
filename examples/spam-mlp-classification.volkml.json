@@ -1,0 +1,1329 @@
+{
+  "format": "VOLK-ML",
+  "version": 8,
+  "name": "Spam Detection (MLP)",
+  "savedAt": "2026-08-05T06:48:49.211Z",
+  "language": {
+    "primary": "en",
+    "secondary": "zh"
+  },
+  "workspace": {
+    "libraryMode": "detailed",
+    "leftWidth": 300,
+    "rightWidth": 384,
+    "viewMode": "canvas"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "spam-data",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Tabular Data",
+            "zh": "表格数据"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tabular_data_node",
+            "op": "tabular_data",
+            "kind": "data",
+            "name": {
+              "en": "Tabular Data",
+              "zh": "表格数据"
+            },
+            "description": {
+              "en": "Provides the CSV or JSON dataset configured in the Data workspace.",
+              "zh": "提供在数据工作区配置的 CSV 或 JSON 数据集。"
+            },
+            "category": "Data",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-split",
+        "type": "pipelineNode",
+        "position": {
+          "x": 380,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Train/Test Split",
+            "zh": "训练/测试集划分"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "train_test_split_node",
+            "op": "train_test_split",
+            "kind": "data",
+            "name": {
+              "en": "Train/Test Split",
+              "zh": "训练/测试集划分"
+            },
+            "description": {
+              "en": "Cleans numeric rows and creates a deterministic train/test split.",
+              "zh": "清理数值行并确定性划分训练集与测试集。"
+            },
+            "category": "Data",
+            "inputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "split",
+                "type": "DatasetSplit"
+              }
+            ],
+            "properties": [
+              {
+                "key": "train_ratio",
+                "label": {
+                  "en": "Training Ratio",
+                  "zh": "训练集比例"
+                },
+                "type": "slider",
+                "default": 0.8,
+                "min": 0.5,
+                "max": 0.9,
+                "step": 0.05
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "train_ratio": 0.8
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-input",
+        "type": "pipelineNode",
+        "position": {
+          "x": 470,
+          "y": 400
+        },
+        "data": {
+          "label": {
+            "en": "Tensor Input",
+            "zh": "张量输入"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tensor_input_node",
+            "op": "tensor_input",
+            "kind": "source",
+            "name": {
+              "en": "Tensor Input",
+              "zh": "张量输入"
+            },
+            "description": {
+              "en": "Declares a model input shape and dtype.",
+              "zh": "声明模型的输入形状和数据类型。"
+            },
+            "category": "Core",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "tensor",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "shape",
+                "label": {
+                  "en": "Shape",
+                  "zh": "形状"
+                },
+                "type": "text",
+                "default": "32"
+              },
+              {
+                "key": "dtype",
+                "label": {
+                  "en": "Data Type",
+                  "zh": "数据类型"
+                },
+                "type": "select",
+                "default": "float32",
+                "options": [
+                  "float32",
+                  "float16",
+                  "int32"
+                ]
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "shape": "2",
+            "dtype": "float32"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-hidden",
+        "type": "pipelineNode",
+        "position": {
+          "x": 810,
+          "y": 400
+        },
+        "data": {
+          "label": {
+            "en": "Dense / Linear",
+            "zh": "全连接 / 线性层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "dense_node",
+            "op": "dense",
+            "kind": "layer",
+            "name": {
+              "en": "Dense / Linear",
+              "zh": "全连接 / 线性层"
+            },
+            "description": {
+              "en": "Applies a learned affine transformation.",
+              "zh": "应用可学习的仿射变换。"
+            },
+            "category": "Layers",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_features",
+                "label": {
+                  "en": "Input Features",
+                  "zh": "输入特征数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "units",
+                "label": {
+                  "en": "Output Units",
+                  "zh": "输出单元数"
+                },
+                "type": "number",
+                "default": 64,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "use_bias",
+                "label": {
+                  "en": "Use Bias",
+                  "zh": "使用偏置"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "input_features": 2,
+            "units": 6,
+            "use_bias": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-relu",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1150,
+          "y": 400
+        },
+        "data": {
+          "label": {
+            "en": "ReLU",
+            "zh": "ReLU"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "relu_node",
+            "op": "relu",
+            "kind": "layer",
+            "name": {
+              "en": "ReLU",
+              "zh": "ReLU"
+            },
+            "description": {
+              "en": "Applies rectified linear activation.",
+              "zh": "应用修正线性激活。"
+            },
+            "category": "Activations",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-head",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1490,
+          "y": 400
+        },
+        "data": {
+          "label": {
+            "en": "Dense / Linear",
+            "zh": "全连接 / 线性层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "dense_node",
+            "op": "dense",
+            "kind": "layer",
+            "name": {
+              "en": "Dense / Linear",
+              "zh": "全连接 / 线性层"
+            },
+            "description": {
+              "en": "Applies a learned affine transformation.",
+              "zh": "应用可学习的仿射变换。"
+            },
+            "category": "Layers",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_features",
+                "label": {
+                  "en": "Input Features",
+                  "zh": "输入特征数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "units",
+                "label": {
+                  "en": "Output Units",
+                  "zh": "输出单元数"
+                },
+                "type": "number",
+                "default": 64,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "use_bias",
+                "label": {
+                  "en": "Use Bias",
+                  "zh": "使用偏置"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "input_features": 6,
+            "units": 2,
+            "use_bias": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-softmax",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1830,
+          "y": 400
+        },
+        "data": {
+          "label": {
+            "en": "Softmax",
+            "zh": "Softmax"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "softmax_node",
+            "op": "softmax",
+            "kind": "layer",
+            "name": {
+              "en": "Softmax",
+              "zh": "Softmax"
+            },
+            "description": {
+              "en": "Normalizes logits into probabilities.",
+              "zh": "将 logits 归一化为概率。"
+            },
+            "category": "Activations",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "axis",
+                "label": {
+                  "en": "Axis",
+                  "zh": "轴"
+                },
+                "type": "number",
+                "default": -1,
+                "min": -8,
+                "max": 8,
+                "step": 1
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "axis": -1
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-output",
+        "type": "pipelineNode",
+        "position": {
+          "x": 2170,
+          "y": 400
+        },
+        "data": {
+          "label": {
+            "en": "Model Output",
+            "zh": "模型输出"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "model_output_node",
+            "op": "model_output",
+            "kind": "sink",
+            "name": {
+              "en": "Model Output",
+              "zh": "模型输出"
+            },
+            "description": {
+              "en": "Marks a tensor as a model output.",
+              "zh": "将张量标记为模型输出。"
+            },
+            "category": "Core",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "model",
+                "type": "ModelSpec"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-loss",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1400,
+          "y": 500
+        },
+        "data": {
+          "label": {
+            "en": "Cross Entropy Loss",
+            "zh": "交叉熵损失"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "cross_entropy_loss_node",
+            "op": "cross_entropy_loss",
+            "kind": "loss",
+            "name": {
+              "en": "Cross Entropy Loss",
+              "zh": "交叉熵损失"
+            },
+            "description": {
+              "en": "Configures multiclass cross entropy loss.",
+              "zh": "配置多类别交叉熵损失。"
+            },
+            "category": "Losses",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "loss",
+                "type": "LossSpec"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-optimizer",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1740,
+          "y": 500
+        },
+        "data": {
+          "label": {
+            "en": "SGD Optimizer",
+            "zh": "SGD 优化器"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "sgd_optimizer_node",
+            "op": "sgd_optimizer",
+            "kind": "optimizer",
+            "name": {
+              "en": "SGD Optimizer",
+              "zh": "SGD 优化器"
+            },
+            "description": {
+              "en": "Configures stochastic gradient descent.",
+              "zh": "配置随机梯度下降。"
+            },
+            "category": "Optimizers",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "optimizer",
+                "type": "OptimizerSpec"
+              }
+            ],
+            "properties": [
+              {
+                "key": "learning_rate",
+                "label": {
+                  "en": "Learning Rate",
+                  "zh": "学习率"
+                },
+                "type": "slider",
+                "default": 0.01,
+                "min": 0.0001,
+                "max": 0.5,
+                "step": 0.0001
+              },
+              {
+                "key": "momentum",
+                "label": {
+                  "en": "Momentum",
+                  "zh": "动量"
+                },
+                "type": "slider",
+                "default": 0,
+                "min": 0,
+                "max": 0.99,
+                "step": 0.01
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "learning_rate": 0.08,
+            "momentum": 0
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-trainer",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1400,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Supervised Trainer",
+            "zh": "监督训练器"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "supervised_trainer_node",
+            "op": "supervised_trainer",
+            "kind": "training",
+            "name": {
+              "en": "Supervised Trainer",
+              "zh": "监督训练器"
+            },
+            "description": {
+              "en": "Binds split data, a model, a loss, and an optimizer into an exportable training loop.",
+              "zh": "把划分后的数据、模型、损失函数和优化器组合成可导出的训练循环。"
+            },
+            "category": "Training",
+            "inputs": [
+              {
+                "name": "dataset",
+                "type": "DatasetSplit"
+              },
+              {
+                "name": "model",
+                "type": "ModelSpec"
+              },
+              {
+                "name": "loss",
+                "type": "LossSpec"
+              },
+              {
+                "name": "optimizer",
+                "type": "OptimizerSpec"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "properties": [
+              {
+                "key": "epochs",
+                "label": {
+                  "en": "Epochs",
+                  "zh": "训练轮数"
+                },
+                "type": "number",
+                "default": 20,
+                "min": 1,
+                "max": 10000,
+                "step": 1
+              },
+              {
+                "key": "batch_size",
+                "label": {
+                  "en": "Batch Size",
+                  "zh": "批次大小"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 8192,
+                "step": 1
+              },
+              {
+                "key": "shuffle",
+                "label": {
+                  "en": "Shuffle Training Data",
+                  "zh": "打乱训练数据"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "epochs": 120,
+            "batch_size": 16,
+            "shuffle": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-evaluate",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1740,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Evaluate Classification",
+            "zh": "分类评估"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "evaluate_classification_node",
+            "op": "evaluate_classification",
+            "kind": "evaluation",
+            "name": {
+              "en": "Evaluate Classification",
+              "zh": "分类评估"
+            },
+            "description": {
+              "en": "Computes accuracy and macro F1 on a connected classifier test set.",
+              "zh": "在连接的分类器测试集上计算准确率和宏平均 F1。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "metrics",
+                "type": "Metrics"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-predict",
+        "type": "pipelineNode",
+        "position": {
+          "x": 2080,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Interactive Predictor",
+            "zh": "交互预测器"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "predictor_node",
+            "op": "interactive_predictor",
+            "kind": "inference",
+            "name": {
+              "en": "Interactive Predictor",
+              "zh": "交互预测器"
+            },
+            "description": {
+              "en": "Creates an input form for trying the connected trained model.",
+              "zh": "为连接的已训练模型创建交互输入表单。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "prediction",
+                "type": "Prediction"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "spam-data-split",
+        "source": "spam-data",
+        "sourceHandle": "dataset",
+        "target": "spam-split",
+        "targetHandle": "dataset",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-input-hidden",
+        "source": "spam-input",
+        "sourceHandle": "tensor",
+        "target": "spam-hidden",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-hidden-relu",
+        "source": "spam-hidden",
+        "sourceHandle": "output",
+        "target": "spam-relu",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-relu-head",
+        "source": "spam-relu",
+        "sourceHandle": "output",
+        "target": "spam-head",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-head-softmax",
+        "source": "spam-head",
+        "sourceHandle": "output",
+        "target": "spam-softmax",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-softmax-output",
+        "source": "spam-softmax",
+        "sourceHandle": "output",
+        "target": "spam-output",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-split-trainer",
+        "source": "spam-split",
+        "sourceHandle": "split",
+        "target": "spam-trainer",
+        "targetHandle": "dataset",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-output-trainer",
+        "source": "spam-output",
+        "sourceHandle": "model",
+        "target": "spam-trainer",
+        "targetHandle": "model",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-loss-trainer",
+        "source": "spam-loss",
+        "sourceHandle": "loss",
+        "target": "spam-trainer",
+        "targetHandle": "loss",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-optimizer-trainer",
+        "source": "spam-optimizer",
+        "sourceHandle": "optimizer",
+        "target": "spam-trainer",
+        "targetHandle": "optimizer",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-trainer-evaluate",
+        "source": "spam-trainer",
+        "sourceHandle": "trained_model",
+        "target": "spam-evaluate",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-trainer-predict",
+        "source": "spam-trainer",
+        "sourceHandle": "trained_model",
+        "target": "spam-predict",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      }
+    ]
+  },
+  "customComponents": [],
+  "data": {
+    "name": "Email Spam",
+    "task": "classification",
+    "rows": [
+      {
+        "word_count": 3,
+        "link_count": 2,
+        "label": "spam"
+      },
+      {
+        "word_count": -3,
+        "link_count": -2,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.015,
+        "link_count": 1.985,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.985,
+        "link_count": -2.015,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.03,
+        "link_count": 1.97,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.97,
+        "link_count": -2.03,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.045,
+        "link_count": 1.955,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.955,
+        "link_count": -2.045,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.06,
+        "link_count": 1.94,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.94,
+        "link_count": -2.06,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.075,
+        "link_count": 1.925,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.925,
+        "link_count": -2.075,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.09,
+        "link_count": 1.91,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.91,
+        "link_count": -2.09,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.105,
+        "link_count": 1.895,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.895,
+        "link_count": -2.105,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.12,
+        "link_count": 1.88,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.88,
+        "link_count": -2.12,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.135,
+        "link_count": 1.865,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.865,
+        "link_count": -2.135,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.15,
+        "link_count": 1.85,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.85,
+        "link_count": -2.15,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.165,
+        "link_count": 1.835,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.835,
+        "link_count": -2.165,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.18,
+        "link_count": 1.82,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.82,
+        "link_count": -2.18,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.195,
+        "link_count": 1.805,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.805,
+        "link_count": -2.195,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.21,
+        "link_count": 1.79,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.79,
+        "link_count": -2.21,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.225,
+        "link_count": 1.775,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.775,
+        "link_count": -2.225,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.24,
+        "link_count": 1.76,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.76,
+        "link_count": -2.24,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.255,
+        "link_count": 1.745,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.745,
+        "link_count": -2.255,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.27,
+        "link_count": 1.73,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.73,
+        "link_count": -2.27,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.285,
+        "link_count": 1.715,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.715,
+        "link_count": -2.285,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.3,
+        "link_count": 1.7,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.7,
+        "link_count": -2.3,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.315,
+        "link_count": 1.685,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.685,
+        "link_count": -2.315,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.33,
+        "link_count": 1.67,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.67,
+        "link_count": -2.33,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.345,
+        "link_count": 1.655,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.655,
+        "link_count": -2.345,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.36,
+        "link_count": 1.64,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.64,
+        "link_count": -2.36,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.375,
+        "link_count": 1.625,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.625,
+        "link_count": -2.375,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.39,
+        "link_count": 1.61,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.61,
+        "link_count": -2.39,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.405,
+        "link_count": 1.595,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.595,
+        "link_count": -2.405,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.42,
+        "link_count": 1.58,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.58,
+        "link_count": -2.42,
+        "label": "ham"
+      },
+      {
+        "word_count": 3.435,
+        "link_count": 1.565,
+        "label": "spam"
+      },
+      {
+        "word_count": -2.565,
+        "link_count": -2.435,
+        "label": "ham"
+      }
+    ],
+    "columns": [
+      {
+        "name": "word_count",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "link_count",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "label",
+        "type": "text",
+        "missing": 0
+      }
+    ],
+    "featureColumns": [
+      "word_count",
+      "link_count"
+    ],
+    "targetColumn": "label",
+    "trainRatio": 0.8
+  },
+  "trainedModel": null
+}

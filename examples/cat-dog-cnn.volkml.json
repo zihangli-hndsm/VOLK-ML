@@ -1,0 +1,559 @@
+{
+  "format": "VOLK-ML",
+  "version": 8,
+  "name": "Cat vs Dog Image Classification (CNN)",
+  "savedAt": "2026-08-05T06:48:49.768Z",
+  "language": {
+    "primary": "en",
+    "secondary": "zh"
+  },
+  "workspace": {
+    "libraryMode": "detailed",
+    "leftWidth": 300,
+    "rightWidth": 384,
+    "viewMode": "canvas"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "cnn-input",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Tensor Input",
+            "zh": "张量输入"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tensor_input_node",
+            "op": "tensor_input",
+            "kind": "source",
+            "name": {
+              "en": "Tensor Input",
+              "zh": "张量输入"
+            },
+            "description": {
+              "en": "Declares a model input shape and dtype.",
+              "zh": "声明模型的输入形状和数据类型。"
+            },
+            "category": "Core",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "tensor",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "shape",
+                "label": {
+                  "en": "Shape",
+                  "zh": "形状"
+                },
+                "type": "text",
+                "default": "32"
+              },
+              {
+                "key": "dtype",
+                "label": {
+                  "en": "Data Type",
+                  "zh": "数据类型"
+                },
+                "type": "select",
+                "default": "float32",
+                "options": [
+                  "float32",
+                  "float16",
+                  "int32"
+                ]
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "shape": "784",
+            "dtype": "float32"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "cnn-reshape",
+        "type": "pipelineNode",
+        "position": {
+          "x": 380,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Reshape",
+            "zh": "重塑形状"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "reshape_node",
+            "op": "reshape",
+            "kind": "layer",
+            "name": {
+              "en": "Reshape",
+              "zh": "重塑形状"
+            },
+            "description": {
+              "en": "Changes tensor shape without changing values.",
+              "zh": "在不改变数值的情况下修改张量形状。"
+            },
+            "category": "Shape",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "shape",
+                "label": {
+                  "en": "Target Shape",
+                  "zh": "目标形状"
+                },
+                "type": "text",
+                "default": "32"
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "shape": "1,28,28"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "cnn-block",
+        "type": "pipelineNode",
+        "position": {
+          "x": 720,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Conv Block",
+            "zh": "卷积模块"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "conv_block_node",
+            "op": "conv_block",
+            "kind": "composite",
+            "name": {
+              "en": "Conv Block",
+              "zh": "卷积模块"
+            },
+            "description": {
+              "en": "Conv2D, BatchNorm, ReLU, and pooling as an expandable subgraph.",
+              "zh": "由二维卷积、批归一化、ReLU 和池化组成的可展开子图。"
+            },
+            "category": "Composite",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_channels",
+                "label": {
+                  "en": "Input Channels",
+                  "zh": "输入通道数"
+                },
+                "type": "number",
+                "default": 3,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "filters",
+                "label": {
+                  "en": "Output Channels",
+                  "zh": "输出通道数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "kernel_size",
+                "label": {
+                  "en": "Kernel Size",
+                  "zh": "卷积核大小"
+                },
+                "type": "number",
+                "default": 3,
+                "min": 1,
+                "max": 15,
+                "step": 1
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "adapted"
+            },
+            "composition": {
+              "nodes": [
+                {
+                  "key": "conv",
+                  "componentId": "conv2d_node",
+                  "parameters": {
+                    "input_channels": "$input_channels",
+                    "filters": "$filters",
+                    "kernel_size": "$kernel_size"
+                  }
+                },
+                {
+                  "key": "norm",
+                  "componentId": "batch_norm2d_node",
+                  "parameters": {
+                    "channels": "$filters"
+                  }
+                },
+                {
+                  "key": "activation",
+                  "componentId": "relu_node",
+                  "parameters": {}
+                },
+                {
+                  "key": "pool",
+                  "componentId": "max_pool2d_node",
+                  "parameters": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source": "conv",
+                  "sourceHandle": "output",
+                  "target": "norm",
+                  "targetHandle": "input"
+                },
+                {
+                  "source": "norm",
+                  "sourceHandle": "output",
+                  "target": "activation",
+                  "targetHandle": "input"
+                },
+                {
+                  "source": "activation",
+                  "sourceHandle": "output",
+                  "target": "pool",
+                  "targetHandle": "input"
+                }
+              ],
+              "inputs": {
+                "input": [
+                  {
+                    "node": "conv",
+                    "port": "input"
+                  }
+                ]
+              },
+              "outputs": {
+                "output": {
+                  "node": "pool",
+                  "port": "output"
+                }
+              }
+            }
+          },
+          "parameters": {
+            "input_channels": 1,
+            "filters": 8,
+            "kernel_size": 3
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "cnn-flatten",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1060,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Flatten",
+            "zh": "展平"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "flatten_node",
+            "op": "flatten",
+            "kind": "layer",
+            "name": {
+              "en": "Flatten",
+              "zh": "展平"
+            },
+            "description": {
+              "en": "Flattens all non-batch dimensions.",
+              "zh": "展平批次维以外的所有维度。"
+            },
+            "category": "Shape",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "cnn-head",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1400,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Dense / Linear",
+            "zh": "全连接 / 线性层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "dense_node",
+            "op": "dense",
+            "kind": "layer",
+            "name": {
+              "en": "Dense / Linear",
+              "zh": "全连接 / 线性层"
+            },
+            "description": {
+              "en": "Applies a learned affine transformation.",
+              "zh": "应用可学习的仿射变换。"
+            },
+            "category": "Layers",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_features",
+                "label": {
+                  "en": "Input Features",
+                  "zh": "输入特征数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "units",
+                "label": {
+                  "en": "Output Units",
+                  "zh": "输出单元数"
+                },
+                "type": "number",
+                "default": 64,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "use_bias",
+                "label": {
+                  "en": "Use Bias",
+                  "zh": "使用偏置"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "input_features": 128,
+            "units": 2,
+            "use_bias": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "cnn-output",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1740,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Model Output",
+            "zh": "模型输出"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "model_output_node",
+            "op": "model_output",
+            "kind": "sink",
+            "name": {
+              "en": "Model Output",
+              "zh": "模型输出"
+            },
+            "description": {
+              "en": "Marks a tensor as a model output.",
+              "zh": "将张量标记为模型输出。"
+            },
+            "category": "Core",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "model",
+                "type": "ModelSpec"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "cnn-input-reshape",
+        "source": "cnn-input",
+        "sourceHandle": "tensor",
+        "target": "cnn-reshape",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "cnn-reshape-block",
+        "source": "cnn-reshape",
+        "sourceHandle": "output",
+        "target": "cnn-block",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "cnn-block-flatten",
+        "source": "cnn-block",
+        "sourceHandle": "output",
+        "target": "cnn-flatten",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "cnn-flatten-head",
+        "source": "cnn-flatten",
+        "sourceHandle": "output",
+        "target": "cnn-head",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "cnn-head-output",
+        "source": "cnn-head",
+        "sourceHandle": "output",
+        "target": "cnn-output",
+        "targetHandle": "input",
+        "type": "deletable"
+      }
+    ]
+  },
+  "customComponents": [],
+  "data": null,
+  "trainedModel": null
+}

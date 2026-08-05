@@ -1,0 +1,601 @@
+{
+  "format": "VOLK-ML",
+  "version": 8,
+  "name": "Movie Recommendation (Embedding)",
+  "savedAt": "2026-08-05T06:48:49.911Z",
+  "language": {
+    "primary": "en",
+    "secondary": "zh"
+  },
+  "workspace": {
+    "libraryMode": "detailed",
+    "leftWidth": 300,
+    "rightWidth": 384,
+    "viewMode": "canvas"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "mov-user",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 120
+        },
+        "data": {
+          "label": {
+            "en": "Tensor Input",
+            "zh": "张量输入"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tensor_input_node",
+            "op": "tensor_input",
+            "kind": "source",
+            "name": {
+              "en": "Tensor Input",
+              "zh": "张量输入"
+            },
+            "description": {
+              "en": "Declares a model input shape and dtype.",
+              "zh": "声明模型的输入形状和数据类型。"
+            },
+            "category": "Core",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "tensor",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "shape",
+                "label": {
+                  "en": "Shape",
+                  "zh": "形状"
+                },
+                "type": "text",
+                "default": "32"
+              },
+              {
+                "key": "dtype",
+                "label": {
+                  "en": "Data Type",
+                  "zh": "数据类型"
+                },
+                "type": "select",
+                "default": "float32",
+                "options": [
+                  "float32",
+                  "float16",
+                  "int32"
+                ]
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "shape": "1",
+            "dtype": "int32"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "mov-movie",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 360
+        },
+        "data": {
+          "label": {
+            "en": "Tensor Input",
+            "zh": "张量输入"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tensor_input_node",
+            "op": "tensor_input",
+            "kind": "source",
+            "name": {
+              "en": "Tensor Input",
+              "zh": "张量输入"
+            },
+            "description": {
+              "en": "Declares a model input shape and dtype.",
+              "zh": "声明模型的输入形状和数据类型。"
+            },
+            "category": "Core",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "tensor",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "shape",
+                "label": {
+                  "en": "Shape",
+                  "zh": "形状"
+                },
+                "type": "text",
+                "default": "32"
+              },
+              {
+                "key": "dtype",
+                "label": {
+                  "en": "Data Type",
+                  "zh": "数据类型"
+                },
+                "type": "select",
+                "default": "float32",
+                "options": [
+                  "float32",
+                  "float16",
+                  "int32"
+                ]
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "shape": "1",
+            "dtype": "int32"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "mov-user-embed",
+        "type": "pipelineNode",
+        "position": {
+          "x": 380,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Embedding",
+            "zh": "嵌入层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "embedding_node",
+            "op": "embedding",
+            "kind": "layer",
+            "name": {
+              "en": "Embedding",
+              "zh": "嵌入层"
+            },
+            "description": {
+              "en": "Maps integer token IDs to dense vectors.",
+              "zh": "将整数 token ID 映射为稠密向量。"
+            },
+            "category": "Sequence",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "vocab_size",
+                "label": {
+                  "en": "Vocabulary Size",
+                  "zh": "词表大小"
+                },
+                "type": "number",
+                "default": 10000,
+                "min": 2,
+                "max": 1000000,
+                "step": 1
+              },
+              {
+                "key": "embedding_dim",
+                "label": {
+                  "en": "Embedding Dimension",
+                  "zh": "嵌入维度"
+                },
+                "type": "number",
+                "default": 128,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "vocab_size": 1000,
+            "embedding_dim": 32
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "mov-movie-embed",
+        "type": "pipelineNode",
+        "position": {
+          "x": 380,
+          "y": 360
+        },
+        "data": {
+          "label": {
+            "en": "Embedding",
+            "zh": "嵌入层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "embedding_node",
+            "op": "embedding",
+            "kind": "layer",
+            "name": {
+              "en": "Embedding",
+              "zh": "嵌入层"
+            },
+            "description": {
+              "en": "Maps integer token IDs to dense vectors.",
+              "zh": "将整数 token ID 映射为稠密向量。"
+            },
+            "category": "Sequence",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "vocab_size",
+                "label": {
+                  "en": "Vocabulary Size",
+                  "zh": "词表大小"
+                },
+                "type": "number",
+                "default": 10000,
+                "min": 2,
+                "max": 1000000,
+                "step": 1
+              },
+              {
+                "key": "embedding_dim",
+                "label": {
+                  "en": "Embedding Dimension",
+                  "zh": "嵌入维度"
+                },
+                "type": "number",
+                "default": 128,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "vocab_size": 2000,
+            "embedding_dim": 32
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "mov-concat",
+        "type": "pipelineNode",
+        "position": {
+          "x": 720,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Concatenate",
+            "zh": "拼接"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "concatenate_node",
+            "op": "concatenate",
+            "kind": "merge",
+            "name": {
+              "en": "Concatenate",
+              "zh": "拼接"
+            },
+            "description": {
+              "en": "Concatenates two tensors along an axis.",
+              "zh": "沿指定轴拼接两个张量。"
+            },
+            "category": "Merge",
+            "inputs": [
+              {
+                "name": "a",
+                "type": "Tensor"
+              },
+              {
+                "name": "b",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "axis",
+                "label": {
+                  "en": "Axis",
+                  "zh": "轴"
+                },
+                "type": "number",
+                "default": -1,
+                "min": -8,
+                "max": 8,
+                "step": 1
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "axis": -1
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "mov-head",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1060,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Dense / Linear",
+            "zh": "全连接 / 线性层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "dense_node",
+            "op": "dense",
+            "kind": "layer",
+            "name": {
+              "en": "Dense / Linear",
+              "zh": "全连接 / 线性层"
+            },
+            "description": {
+              "en": "Applies a learned affine transformation.",
+              "zh": "应用可学习的仿射变换。"
+            },
+            "category": "Layers",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_features",
+                "label": {
+                  "en": "Input Features",
+                  "zh": "输入特征数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "units",
+                "label": {
+                  "en": "Output Units",
+                  "zh": "输出单元数"
+                },
+                "type": "number",
+                "default": 64,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "use_bias",
+                "label": {
+                  "en": "Use Bias",
+                  "zh": "使用偏置"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "input_features": 64,
+            "units": 1,
+            "use_bias": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "mov-output",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1400,
+          "y": 180
+        },
+        "data": {
+          "label": {
+            "en": "Model Output",
+            "zh": "模型输出"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "model_output_node",
+            "op": "model_output",
+            "kind": "sink",
+            "name": {
+              "en": "Model Output",
+              "zh": "模型输出"
+            },
+            "description": {
+              "en": "Marks a tensor as a model output.",
+              "zh": "将张量标记为模型输出。"
+            },
+            "category": "Core",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "model",
+                "type": "ModelSpec"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "mov-user-embed",
+        "source": "mov-user",
+        "sourceHandle": "tensor",
+        "target": "mov-user-embed",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "mov-movie-embed",
+        "source": "mov-movie",
+        "sourceHandle": "tensor",
+        "target": "mov-movie-embed",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "mov-embed-a",
+        "source": "mov-user-embed",
+        "sourceHandle": "output",
+        "target": "mov-concat",
+        "targetHandle": "a",
+        "type": "deletable"
+      },
+      {
+        "id": "mov-embed-b",
+        "source": "mov-movie-embed",
+        "sourceHandle": "output",
+        "target": "mov-concat",
+        "targetHandle": "b",
+        "type": "deletable"
+      },
+      {
+        "id": "mov-concat-head",
+        "source": "mov-concat",
+        "sourceHandle": "output",
+        "target": "mov-head",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "mov-head-output",
+        "source": "mov-head",
+        "sourceHandle": "output",
+        "target": "mov-output",
+        "targetHandle": "input",
+        "type": "deletable"
+      }
+    ]
+  },
+  "customComponents": [],
+  "data": null,
+  "trainedModel": null
+}
