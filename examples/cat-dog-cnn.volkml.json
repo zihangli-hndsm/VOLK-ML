@@ -2,7 +2,7 @@
   "format": "VOLK-ML",
   "version": 8,
   "name": "Cat vs Dog Image Classification (CNN)",
-  "savedAt": "2026-08-05T06:48:49.768Z",
+  "savedAt": "2026-08-05T07:51:13.423Z",
   "language": {
     "primary": "en",
     "secondary": "zh"
@@ -20,7 +20,7 @@
         "type": "pipelineNode",
         "position": {
           "x": 40,
-          "y": 180
+          "y": 660
         },
         "data": {
           "label": {
@@ -94,8 +94,8 @@
         "id": "cnn-reshape",
         "type": "pipelineNode",
         "position": {
-          "x": 380,
-          "y": 180
+          "x": 560,
+          "y": 660
         },
         "data": {
           "label": {
@@ -159,8 +159,8 @@
         "id": "cnn-block",
         "type": "pipelineNode",
         "position": {
-          "x": 720,
-          "y": 180
+          "x": 1080,
+          "y": 660
         },
         "data": {
           "label": {
@@ -316,8 +316,8 @@
         "id": "cnn-flatten",
         "type": "pipelineNode",
         "position": {
-          "x": 1060,
-          "y": 180
+          "x": 1600,
+          "y": 660
         },
         "data": {
           "label": {
@@ -369,8 +369,8 @@
         "id": "cnn-head",
         "type": "pipelineNode",
         "position": {
-          "x": 1400,
-          "y": 180
+          "x": 2120,
+          "y": 660
         },
         "data": {
           "label": {
@@ -460,8 +460,8 @@
         "id": "cnn-output",
         "type": "pipelineNode",
         "position": {
-          "x": 1740,
-          "y": 180
+          "x": 2640,
+          "y": 660
         },
         "data": {
           "label": {

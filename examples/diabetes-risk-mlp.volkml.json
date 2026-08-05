@@ -2,7 +2,7 @@
   "format": "VOLK-ML",
   "version": 8,
   "name": "Diabetes Risk Prediction (Residual MLP)",
-  "savedAt": "2026-08-05T06:48:49.621Z",
+  "savedAt": "2026-08-05T07:51:13.283Z",
   "language": {
     "primary": "en",
     "secondary": "zh"
@@ -20,7 +20,7 @@
         "type": "pipelineNode",
         "position": {
           "x": 40,
-          "y": 180
+          "y": 660
         },
         "data": {
           "label": {
@@ -67,8 +67,8 @@
         "id": "dia-split",
         "type": "pipelineNode",
         "position": {
-          "x": 380,
-          "y": 180
+          "x": 560,
+          "y": 660
         },
         "data": {
           "label": {
@@ -135,8 +135,8 @@
         "id": "dia-input",
         "type": "pipelineNode",
         "position": {
-          "x": 470,
-          "y": 400
+          "x": 40,
+          "y": 80
         },
         "data": {
           "label": {
@@ -210,8 +210,8 @@
         "id": "dia-block",
         "type": "pipelineNode",
         "position": {
-          "x": 810,
-          "y": 400
+          "x": 560,
+          "y": 80
         },
         "data": {
           "label": {
@@ -355,8 +355,8 @@
         "id": "dia-residual",
         "type": "pipelineNode",
         "position": {
-          "x": 1150,
-          "y": 400
+          "x": 1080,
+          "y": 80
         },
         "data": {
           "label": {
@@ -490,8 +490,8 @@
         "id": "dia-norm",
         "type": "pipelineNode",
         "position": {
-          "x": 1490,
-          "y": 400
+          "x": 1600,
+          "y": 80
         },
         "data": {
           "label": {
@@ -555,8 +555,8 @@
         "id": "dia-gelu",
         "type": "pipelineNode",
         "position": {
-          "x": 1830,
-          "y": 400
+          "x": 2120,
+          "y": 80
         },
         "data": {
           "label": {
@@ -608,8 +608,8 @@
         "id": "dia-head",
         "type": "pipelineNode",
         "position": {
-          "x": 2170,
-          "y": 400
+          "x": 2640,
+          "y": 80
         },
         "data": {
           "label": {
@@ -699,8 +699,8 @@
         "id": "dia-sigmoid",
         "type": "pipelineNode",
         "position": {
-          "x": 2510,
-          "y": 400
+          "x": 3160,
+          "y": 80
         },
         "data": {
           "label": {
@@ -752,8 +752,8 @@
         "id": "dia-output",
         "type": "pipelineNode",
         "position": {
-          "x": 2850,
-          "y": 400
+          "x": 3680,
+          "y": 80
         },
         "data": {
           "label": {
@@ -805,8 +805,8 @@
         "id": "dia-loss",
         "type": "pipelineNode",
         "position": {
-          "x": 2420,
-          "y": 520
+          "x": 3160,
+          "y": 1240
         },
         "data": {
           "label": {
@@ -853,8 +853,8 @@
         "id": "dia-optimizer",
         "type": "pipelineNode",
         "position": {
-          "x": 2760,
-          "y": 520
+          "x": 3680,
+          "y": 1240
         },
         "data": {
           "label": {
@@ -916,8 +916,8 @@
         "id": "dia-trainer",
         "type": "pipelineNode",
         "position": {
-          "x": 1740,
-          "y": 180
+          "x": 3680,
+          "y": 660
         },
         "data": {
           "label": {
@@ -1019,8 +1019,8 @@
         "id": "dia-evaluate",
         "type": "pipelineNode",
         "position": {
-          "x": 2080,
-          "y": 180
+          "x": 4200,
+          "y": 660
         },
         "data": {
           "label": {

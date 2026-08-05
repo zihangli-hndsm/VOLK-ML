@@ -2,7 +2,7 @@
   "format": "VOLK-ML",
   "version": 8,
   "name": "Energy Demand Forecasting (MLP + Custom Loss)",
-  "savedAt": "2026-08-05T06:48:49.478Z",
+  "savedAt": "2026-08-05T07:51:13.142Z",
   "language": {
     "primary": "en",
     "secondary": "zh"
@@ -20,7 +20,7 @@
         "type": "pipelineNode",
         "position": {
           "x": 40,
-          "y": 180
+          "y": 660
         },
         "data": {
           "label": {
@@ -67,8 +67,8 @@
         "id": "en-split",
         "type": "pipelineNode",
         "position": {
-          "x": 380,
-          "y": 180
+          "x": 560,
+          "y": 660
         },
         "data": {
           "label": {
@@ -135,8 +135,8 @@
         "id": "en-input",
         "type": "pipelineNode",
         "position": {
-          "x": 470,
-          "y": 400
+          "x": 40,
+          "y": 80
         },
         "data": {
           "label": {
@@ -210,8 +210,8 @@
         "id": "en-hidden",
         "type": "pipelineNode",
         "position": {
-          "x": 810,
-          "y": 400
+          "x": 560,
+          "y": 80
         },
         "data": {
           "label": {
@@ -301,8 +301,8 @@
         "id": "en-head",
         "type": "pipelineNode",
         "position": {
-          "x": 1150,
-          "y": 400
+          "x": 1080,
+          "y": 80
         },
         "data": {
           "label": {
@@ -392,8 +392,8 @@
         "id": "en-output",
         "type": "pipelineNode",
         "position": {
-          "x": 1490,
-          "y": 400
+          "x": 1600,
+          "y": 80
         },
         "data": {
           "label": {
@@ -445,8 +445,8 @@
         "id": "en-loss",
         "type": "pipelineNode",
         "position": {
-          "x": 1400,
-          "y": 500
+          "x": 1080,
+          "y": 1240
         },
         "data": {
           "label": {
@@ -505,8 +505,8 @@
         "id": "en-optimizer",
         "type": "pipelineNode",
         "position": {
-          "x": 1740,
-          "y": 500
+          "x": 1600,
+          "y": 1240
         },
         "data": {
           "label": {
@@ -581,8 +581,8 @@
         "id": "en-trainer",
         "type": "pipelineNode",
         "position": {
-          "x": 1400,
-          "y": 180
+          "x": 1600,
+          "y": 660
         },
         "data": {
           "label": {
@@ -684,8 +684,8 @@
         "id": "en-evaluate",
         "type": "pipelineNode",
         "position": {
-          "x": 1740,
-          "y": 180
+          "x": 2120,
+          "y": 660
         },
         "data": {
           "label": {

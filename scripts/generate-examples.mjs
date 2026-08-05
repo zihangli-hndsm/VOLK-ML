@@ -56,9 +56,12 @@ const sampleByName = (name) => {
 };
 
 const X = 40;
-const STEP = 340;
-const row = (index) => ({ x: X + index * STEP, y: 180 });
-const side = (index) => ({ x: X + index * STEP + 90, y: 400 });
+const STEP = 520;
+const topRow = (index) => ({ x: X + index * STEP, y: 80 });
+const midRow = (index) => ({ x: X + index * STEP, y: 660 });
+const bottomRow = (index) => ({ x: X + index * STEP, y: 1240 });
+const forkTop = (index) => ({ x: X + index * STEP, y: 120 });
+const forkBottom = (index) => ({ x: X + index * STEP, y: 700 });
 
 const housePriceDataset = () => {
   const rows = Array.from({ length: 90 }, (_, index) => {
@@ -130,12 +133,12 @@ const examples = [];
 // 1. House price regression (L0 runnable)
 {
   const nodes = [
-    makeNode('hp-data', 'tabular_data_node', row(0)),
-    makeNode('hp-split', 'train_test_split_node', row(1), { train_ratio: 0.8 }),
-    makeNode('hp-linear', 'linear_regression_node', row(2), { learning_rate: 0.05 }),
-    makeNode('hp-train', 'gradient_descent_node', row(3), { epochs: 250 }),
-    makeNode('hp-evaluate', 'evaluate_node', row(4)),
-    makeNode('hp-predict', 'predictor_node', row(5)),
+    makeNode('hp-data', 'tabular_data_node', midRow(0)),
+    makeNode('hp-split', 'train_test_split_node', midRow(1), { train_ratio: 0.8 }),
+    makeNode('hp-linear', 'linear_regression_node', midRow(2), { learning_rate: 0.05 }),
+    makeNode('hp-train', 'gradient_descent_node', midRow(3), { epochs: 250 }),
+    makeNode('hp-evaluate', 'evaluate_node', forkTop(4)),
+    makeNode('hp-predict', 'predictor_node', forkBottom(4)),
   ];
   const edges = [
     makeEdge('hp-data-split', 'hp-data', 'dataset', 'hp-split', 'dataset'),
@@ -150,10 +153,10 @@ const examples = [];
 // 2. Iris KNN classification (L0 runnable)
 {
   const nodes = [
-    makeNode('iris-data', 'tabular_data_node', row(0)),
-    makeNode('iris-knn', 'knn_node', row(1), { k_value: 3, train_ratio: 0.8 }),
-    makeNode('iris-evaluate', 'evaluate_classification_node', row(2)),
-    makeNode('iris-predict', 'predictor_node', row(3)),
+    makeNode('iris-data', 'tabular_data_node', midRow(0)),
+    makeNode('iris-knn', 'knn_node', midRow(1), { k_value: 3, train_ratio: 0.8 }),
+    makeNode('iris-evaluate', 'evaluate_classification_node', forkTop(3)),
+    makeNode('iris-predict', 'predictor_node', forkBottom(3)),
   ];
   const edges = [
     makeEdge('iris-data-knn', 'iris-data', 'dataset', 'iris-knn', 'dataset'),
@@ -166,19 +169,19 @@ const examples = [];
 // 3. Spam detection with a small MLP (L0 runnable)
 {
   const nodes = [
-    makeNode('spam-data', 'tabular_data_node', row(0)),
-    makeNode('spam-split', 'train_test_split_node', row(1), { train_ratio: 0.8 }),
-    makeNode('spam-input', 'tensor_input_node', side(1), { shape: '2', dtype: 'float32' }),
-    makeNode('spam-hidden', 'dense_node', side(2), { input_features: 2, units: 6, use_bias: true }),
-    makeNode('spam-relu', 'relu_node', side(3)),
-    makeNode('spam-head', 'dense_node', side(4), { input_features: 6, units: 2, use_bias: true }),
-    makeNode('spam-softmax', 'softmax_node', side(5)),
-    makeNode('spam-output', 'model_output_node', side(6)),
-    makeNode('spam-loss', 'cross_entropy_loss_node', { x: X + 4 * STEP, y: 500 }),
-    makeNode('spam-optimizer', 'sgd_optimizer_node', { x: X + 5 * STEP, y: 500 }, { learning_rate: 0.08, momentum: 0 }),
-    makeNode('spam-trainer', 'supervised_trainer_node', row(4), { epochs: 120, batch_size: 16, shuffle: true }),
-    makeNode('spam-evaluate', 'evaluate_classification_node', row(5)),
-    makeNode('spam-predict', 'predictor_node', row(6)),
+    makeNode('spam-data', 'tabular_data_node', midRow(0)),
+    makeNode('spam-split', 'train_test_split_node', midRow(1), { train_ratio: 0.8 }),
+    makeNode('spam-input', 'tensor_input_node', topRow(0), { shape: '2', dtype: 'float32' }),
+    makeNode('spam-hidden', 'dense_node', topRow(1), { input_features: 2, units: 6, use_bias: true }),
+    makeNode('spam-relu', 'relu_node', topRow(2)),
+    makeNode('spam-head', 'dense_node', topRow(3), { input_features: 6, units: 2, use_bias: true }),
+    makeNode('spam-softmax', 'softmax_node', topRow(4)),
+    makeNode('spam-output', 'model_output_node', topRow(5)),
+    makeNode('spam-loss', 'cross_entropy_loss_node', bottomRow(4)),
+    makeNode('spam-optimizer', 'sgd_optimizer_node', bottomRow(5), { learning_rate: 0.08, momentum: 0 }),
+    makeNode('spam-trainer', 'supervised_trainer_node', midRow(5), { epochs: 120, batch_size: 16, shuffle: true }),
+    makeNode('spam-evaluate', 'evaluate_classification_node', forkTop(7)),
+    makeNode('spam-predict', 'predictor_node', forkBottom(7)),
   ];
   const edges = [
     makeEdge('spam-data-split', 'spam-data', 'dataset', 'spam-split', 'dataset'),
@@ -200,16 +203,16 @@ const examples = [];
 // 4. Energy demand MLP with a custom loss (export)
 {
   const nodes = [
-    makeNode('en-data', 'tabular_data_node', row(0)),
-    makeNode('en-split', 'train_test_split_node', row(1), { train_ratio: 0.8 }),
-    makeNode('en-input', 'tensor_input_node', side(1), { shape: '2', dtype: 'float32' }),
-    makeNode('en-hidden', 'dense_node', side(2), { input_features: 2, units: 8, use_bias: true }),
-    makeNode('en-head', 'dense_node', side(3), { input_features: 8, units: 1, use_bias: true }),
-    makeNode('en-output', 'model_output_node', side(4)),
-    makeNode('en-loss', 'custom_loss_node', { x: X + 4 * STEP, y: 500 }, { expression: 'mean(square(prediction - target))' }),
-    makeNode('en-optimizer', 'adamw_optimizer_node', { x: X + 5 * STEP, y: 500 }, { learning_rate: 0.001, weight_decay: 0.01 }),
-    makeNode('en-trainer', 'supervised_trainer_node', row(4), { epochs: 200, batch_size: 16, shuffle: true }),
-    makeNode('en-evaluate', 'evaluate_node', row(5)),
+    makeNode('en-data', 'tabular_data_node', midRow(0)),
+    makeNode('en-split', 'train_test_split_node', midRow(1), { train_ratio: 0.8 }),
+    makeNode('en-input', 'tensor_input_node', topRow(0), { shape: '2', dtype: 'float32' }),
+    makeNode('en-hidden', 'dense_node', topRow(1), { input_features: 2, units: 8, use_bias: true }),
+    makeNode('en-head', 'dense_node', topRow(2), { input_features: 8, units: 1, use_bias: true }),
+    makeNode('en-output', 'model_output_node', topRow(3)),
+    makeNode('en-loss', 'custom_loss_node', bottomRow(2), { expression: 'mean(square(prediction - target))' }),
+    makeNode('en-optimizer', 'adamw_optimizer_node', bottomRow(3), { learning_rate: 0.001, weight_decay: 0.01 }),
+    makeNode('en-trainer', 'supervised_trainer_node', midRow(3), { epochs: 200, batch_size: 16, shuffle: true }),
+    makeNode('en-evaluate', 'evaluate_node', midRow(4)),
   ];
   const edges = [
     makeEdge('en-data-split', 'en-data', 'dataset', 'en-split', 'dataset'),
@@ -228,20 +231,20 @@ const examples = [];
 // 5. Diabetes risk with residual MLP blocks (export)
 {
   const nodes = [
-    makeNode('dia-data', 'tabular_data_node', row(0)),
-    makeNode('dia-split', 'train_test_split_node', row(1), { train_ratio: 0.8 }),
-    makeNode('dia-input', 'tensor_input_node', side(1), { shape: '6', dtype: 'float32' }),
-    makeNode('dia-block', 'mlp_block_node', side(2), { input_features: 6, hidden_units: 12, dropout: 0.1 }),
-    makeNode('dia-residual', 'residual_mlp_block_node', side(3), { features: 12 }),
-    makeNode('dia-norm', 'layer_norm_node', side(4), { normalized_shape: '12' }),
-    makeNode('dia-gelu', 'gelu_node', side(5)),
-    makeNode('dia-head', 'dense_node', side(6), { input_features: 12, units: 1, use_bias: true }),
-    makeNode('dia-sigmoid', 'sigmoid_node', side(7)),
-    makeNode('dia-output', 'model_output_node', side(8)),
-    makeNode('dia-loss', 'binary_cross_entropy_loss_node', { x: X + 7 * STEP, y: 520 }),
-    makeNode('dia-optimizer', 'adam_optimizer_node', { x: X + 8 * STEP, y: 520 }, { learning_rate: 0.005 }),
-    makeNode('dia-trainer', 'supervised_trainer_node', row(5), { epochs: 150, batch_size: 16, shuffle: true }),
-    makeNode('dia-evaluate', 'evaluate_classification_node', row(6)),
+    makeNode('dia-data', 'tabular_data_node', midRow(0)),
+    makeNode('dia-split', 'train_test_split_node', midRow(1), { train_ratio: 0.8 }),
+    makeNode('dia-input', 'tensor_input_node', topRow(0), { shape: '6', dtype: 'float32' }),
+    makeNode('dia-block', 'mlp_block_node', topRow(1), { input_features: 6, hidden_units: 12, dropout: 0.1 }),
+    makeNode('dia-residual', 'residual_mlp_block_node', topRow(2), { features: 12 }),
+    makeNode('dia-norm', 'layer_norm_node', topRow(3), { normalized_shape: '12' }),
+    makeNode('dia-gelu', 'gelu_node', topRow(4)),
+    makeNode('dia-head', 'dense_node', topRow(5), { input_features: 12, units: 1, use_bias: true }),
+    makeNode('dia-sigmoid', 'sigmoid_node', topRow(6)),
+    makeNode('dia-output', 'model_output_node', topRow(7)),
+    makeNode('dia-loss', 'binary_cross_entropy_loss_node', bottomRow(6)),
+    makeNode('dia-optimizer', 'adam_optimizer_node', bottomRow(7), { learning_rate: 0.005 }),
+    makeNode('dia-trainer', 'supervised_trainer_node', midRow(7), { epochs: 150, batch_size: 16, shuffle: true }),
+    makeNode('dia-evaluate', 'evaluate_classification_node', midRow(8)),
   ];
   const edges = [
     makeEdge('dia-data-split', 'dia-data', 'dataset', 'dia-split', 'dataset'),
@@ -264,12 +267,12 @@ const examples = [];
 // 6. Cat vs dog CNN architecture (export-only until image data support)
 {
   const nodes = [
-    makeNode('cnn-input', 'tensor_input_node', row(0), { shape: '784', dtype: 'float32' }),
-    makeNode('cnn-reshape', 'reshape_node', row(1), { shape: '1,28,28' }),
-    makeNode('cnn-block', 'conv_block_node', row(2), { input_channels: 1, filters: 8, kernel_size: 3 }),
-    makeNode('cnn-flatten', 'flatten_node', row(3)),
-    makeNode('cnn-head', 'dense_node', row(4), { input_features: 128, units: 2, use_bias: true }),
-    makeNode('cnn-output', 'model_output_node', row(5)),
+    makeNode('cnn-input', 'tensor_input_node', midRow(0), { shape: '784', dtype: 'float32' }),
+    makeNode('cnn-reshape', 'reshape_node', midRow(1), { shape: '1,28,28' }),
+    makeNode('cnn-block', 'conv_block_node', midRow(2), { input_channels: 1, filters: 8, kernel_size: 3 }),
+    makeNode('cnn-flatten', 'flatten_node', midRow(3)),
+    makeNode('cnn-head', 'dense_node', midRow(4), { input_features: 128, units: 2, use_bias: true }),
+    makeNode('cnn-output', 'model_output_node', midRow(5)),
   ];
   const edges = [
     makeEdge('cnn-input-reshape', 'cnn-input', 'tensor', 'cnn-reshape', 'input'),
@@ -284,13 +287,13 @@ const examples = [];
 // 7. Movie recommendation with embeddings (export-only)
 {
   const nodes = [
-    makeNode('mov-user', 'tensor_input_node', { x: X, y: 120 }, { shape: '1', dtype: 'int32' }),
-    makeNode('mov-movie', 'tensor_input_node', { x: X, y: 360 }, { shape: '1', dtype: 'int32' }),
-    makeNode('mov-user-embed', 'embedding_node', row(1), { vocab_size: 1000, embedding_dim: 32 }),
-    makeNode('mov-movie-embed', 'embedding_node', { x: X + STEP, y: 360 }, { vocab_size: 2000, embedding_dim: 32 }),
-    makeNode('mov-concat', 'concatenate_node', row(2), { axis: -1 }),
-    makeNode('mov-head', 'dense_node', row(3), { input_features: 64, units: 1, use_bias: true }),
-    makeNode('mov-output', 'model_output_node', row(4)),
+    makeNode('mov-user', 'tensor_input_node', { x: X, y: 80 }, { shape: '1', dtype: 'int32' }),
+    makeNode('mov-movie', 'tensor_input_node', { x: X, y: 480 }, { shape: '1', dtype: 'int32' }),
+    makeNode('mov-user-embed', 'embedding_node', { x: X + STEP, y: 80 }, { vocab_size: 1000, embedding_dim: 32 }),
+    makeNode('mov-movie-embed', 'embedding_node', { x: X + STEP, y: 480 }, { vocab_size: 2000, embedding_dim: 32 }),
+    makeNode('mov-concat', 'concatenate_node', { x: X + 2 * STEP, y: 300 }, { axis: -1 }),
+    makeNode('mov-head', 'dense_node', { x: X + 3 * STEP, y: 300 }, { input_features: 64, units: 1, use_bias: true }),
+    makeNode('mov-output', 'model_output_node', { x: X + 4 * STEP, y: 300 }),
   ];
   const edges = [
     makeEdge('mov-user-embed', 'mov-user', 'tensor', 'mov-user-embed', 'input'),
@@ -306,13 +309,13 @@ const examples = [];
 // 8. Sentiment analysis with an LSTM (export-only)
 {
   const nodes = [
-    makeNode('senti-input', 'tensor_input_node', row(0), { shape: '12', dtype: 'int32' }),
-    makeNode('senti-embed', 'embedding_node', row(1), { vocab_size: 5000, embedding_dim: 32 }),
-    makeNode('senti-lstm', 'lstm_node', row(2), { input_size: 32, hidden_size: 16, layers: 1, bidirectional: false }),
-    makeNode('senti-drop', 'dropout_node', row(3), { rate: 0.2 }),
-    makeNode('senti-head', 'dense_node', row(4), { input_features: 16, units: 1, use_bias: true }),
-    makeNode('senti-tanh', 'tanh_node', row(5)),
-    makeNode('senti-output', 'model_output_node', row(6)),
+    makeNode('senti-input', 'tensor_input_node', midRow(0), { shape: '12', dtype: 'int32' }),
+    makeNode('senti-embed', 'embedding_node', midRow(1), { vocab_size: 5000, embedding_dim: 32 }),
+    makeNode('senti-lstm', 'lstm_node', midRow(2), { input_size: 32, hidden_size: 16, layers: 1, bidirectional: false }),
+    makeNode('senti-drop', 'dropout_node', midRow(3), { rate: 0.2 }),
+    makeNode('senti-head', 'dense_node', midRow(4), { input_features: 16, units: 1, use_bias: true }),
+    makeNode('senti-tanh', 'tanh_node', midRow(5)),
+    makeNode('senti-output', 'model_output_node', midRow(6)),
   ];
   const edges = [
     makeEdge('senti-input-embed', 'senti-input', 'tensor', 'senti-embed', 'input'),
