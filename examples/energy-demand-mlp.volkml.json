@@ -2,7 +2,7 @@
   "format": "VOLK-ML",
   "version": 8,
   "name": "Energy Demand Forecasting (MLP + Custom Loss)",
-  "savedAt": "2026-08-05T07:51:13.142Z",
+  "savedAt": "2026-08-05T07:57:14.888Z",
   "language": {
     "primary": "en",
     "secondary": "zh"
@@ -816,403 +816,403 @@
     "rows": [
       {
         "temperature": -5,
-        "humidity": -4,
-        "energy_demand": 1
+        "humidity": 35,
+        "energy_demand": 186.25
       },
       {
-        "temperature": -4,
-        "humidity": -4,
-        "energy_demand": 2.5
-      },
-      {
-        "temperature": -3,
-        "humidity": -4,
-        "energy_demand": 4
-      },
-      {
-        "temperature": -2,
-        "humidity": -4,
-        "energy_demand": 5.5
-      },
-      {
-        "temperature": -1,
-        "humidity": -4,
-        "energy_demand": 7
+        "temperature": -2.5,
+        "humidity": 40,
+        "energy_demand": 174.435
       },
       {
         "temperature": 0,
-        "humidity": -4,
-        "energy_demand": 8.5
+        "humidity": 45,
+        "energy_demand": 161.749
       },
       {
-        "temperature": 1,
-        "humidity": -4,
-        "energy_demand": 10
+        "temperature": 2.5,
+        "humidity": 50,
+        "energy_demand": 147.851
       },
       {
-        "temperature": 2,
-        "humidity": -4,
-        "energy_demand": 11.5
+        "temperature": 5,
+        "humidity": 55,
+        "energy_demand": 133.133
       },
       {
-        "temperature": 3,
-        "humidity": -4,
-        "energy_demand": 13
+        "temperature": 7.5,
+        "humidity": 60,
+        "energy_demand": 118.486
       },
       {
-        "temperature": 4,
-        "humidity": -4,
-        "energy_demand": 14.5
+        "temperature": 10,
+        "humidity": 65,
+        "energy_demand": 104.758
+      },
+      {
+        "temperature": 12.5,
+        "humidity": 70,
+        "energy_demand": 92.237
+      },
+      {
+        "temperature": 15,
+        "humidity": 75,
+        "energy_demand": 92.483
+      },
+      {
+        "temperature": 17.5,
+        "humidity": 80,
+        "energy_demand": 110.587
+      },
+      {
+        "temperature": 20,
+        "humidity": 85,
+        "energy_demand": 127.729
+      },
+      {
+        "temperature": 22.5,
+        "humidity": 90,
+        "energy_demand": 143.67
+      },
+      {
+        "temperature": 25,
+        "humidity": 35,
+        "energy_demand": 137.901
+      },
+      {
+        "temperature": 27.5,
+        "humidity": 40,
+        "energy_demand": 153.344
+      },
+      {
+        "temperature": 30,
+        "humidity": 45,
+        "energy_demand": 169.792
+      },
+      {
+        "temperature": 32.5,
+        "humidity": 50,
+        "energy_demand": 187.427
       },
       {
         "temperature": -5,
-        "humidity": -3,
-        "energy_demand": -1
+        "humidity": 55,
+        "energy_demand": 193.713
       },
       {
-        "temperature": -4,
-        "humidity": -3,
-        "energy_demand": 0.5
-      },
-      {
-        "temperature": -3,
-        "humidity": -3,
-        "energy_demand": 2
-      },
-      {
-        "temperature": -2,
-        "humidity": -3,
-        "energy_demand": 3.5
-      },
-      {
-        "temperature": -1,
-        "humidity": -3,
-        "energy_demand": 5
+        "temperature": -2.5,
+        "humidity": 60,
+        "energy_demand": 181.718
       },
       {
         "temperature": 0,
-        "humidity": -3,
-        "energy_demand": 6.5
+        "humidity": 65,
+        "energy_demand": 168.681
       },
       {
-        "temperature": 1,
-        "humidity": -3,
-        "energy_demand": 8
+        "temperature": 2.5,
+        "humidity": 70,
+        "energy_demand": 154.473
       },
       {
-        "temperature": 2,
-        "humidity": -3,
-        "energy_demand": 9.5
+        "temperature": 5,
+        "humidity": 75,
+        "energy_demand": 139.674
       },
       {
-        "temperature": 3,
-        "humidity": -3,
-        "energy_demand": 11
+        "temperature": 7.5,
+        "humidity": 80,
+        "energy_demand": 125.225
       },
       {
-        "temperature": 4,
-        "humidity": -3,
-        "energy_demand": 12.5
+        "temperature": 10,
+        "humidity": 85,
+        "energy_demand": 111.852
+      },
+      {
+        "temperature": 12.5,
+        "humidity": 90,
+        "energy_demand": 99.631
+      },
+      {
+        "temperature": 15,
+        "humidity": 35,
+        "energy_demand": 78.937
+      },
+      {
+        "temperature": 17.5,
+        "humidity": 40,
+        "energy_demand": 96.826
+      },
+      {
+        "temperature": 20,
+        "humidity": 45,
+        "energy_demand": 113.608
+      },
+      {
+        "temperature": 22.5,
+        "humidity": 50,
+        "energy_demand": 129.263
+      },
+      {
+        "temperature": 25,
+        "humidity": 55,
+        "energy_demand": 144.455
+      },
+      {
+        "temperature": 27.5,
+        "humidity": 60,
+        "energy_demand": 160.13
+      },
+      {
+        "temperature": 30,
+        "humidity": 65,
+        "energy_demand": 176.939
+      },
+      {
+        "temperature": 32.5,
+        "humidity": 70,
+        "energy_demand": 194.847
       },
       {
         "temperature": -5,
-        "humidity": -2,
-        "energy_demand": -3
+        "humidity": 75,
+        "energy_demand": 201.151
       },
       {
-        "temperature": -4,
-        "humidity": -2,
-        "energy_demand": -1.5
-      },
-      {
-        "temperature": -3,
-        "humidity": -2,
-        "energy_demand": 0
-      },
-      {
-        "temperature": -2,
-        "humidity": -2,
-        "energy_demand": 1.5
-      },
-      {
-        "temperature": -1,
-        "humidity": -2,
-        "energy_demand": 3
+        "temperature": -2.5,
+        "humidity": 80,
+        "energy_demand": 188.909
       },
       {
         "temperature": 0,
-        "humidity": -2,
-        "energy_demand": 4.5
+        "humidity": 85,
+        "energy_demand": 175.509
       },
       {
-        "temperature": 1,
-        "humidity": -2,
-        "energy_demand": 6
+        "temperature": 2.5,
+        "humidity": 90,
+        "energy_demand": 161.042
       },
       {
-        "temperature": 2,
-        "humidity": -2,
-        "energy_demand": 7.5
+        "temperature": 5,
+        "humidity": 35,
+        "energy_demand": 125.246
       },
       {
-        "temperature": 3,
-        "humidity": -2,
-        "energy_demand": 9
+        "temperature": 7.5,
+        "humidity": 40,
+        "energy_demand": 111.06
       },
       {
-        "temperature": 4,
-        "humidity": -2,
-        "energy_demand": 10.5
+        "temperature": 10,
+        "humidity": 45,
+        "energy_demand": 98.05
+      },
+      {
+        "temperature": 12.5,
+        "humidity": 50,
+        "energy_demand": 86.071
+      },
+      {
+        "temperature": 15,
+        "humidity": 55,
+        "energy_demand": 86.353
+      },
+      {
+        "temperature": 17.5,
+        "humidity": 60,
+        "energy_demand": 103.965
+      },
+      {
+        "temperature": 20,
+        "humidity": 65,
+        "energy_demand": 120.386
+      },
+      {
+        "temperature": 22.5,
+        "humidity": 70,
+        "energy_demand": 135.814
+      },
+      {
+        "temperature": 25,
+        "humidity": 75,
+        "energy_demand": 151.052
+      },
+      {
+        "temperature": 27.5,
+        "humidity": 80,
+        "energy_demand": 167.016
+      },
+      {
+        "temperature": 30,
+        "humidity": 85,
+        "energy_demand": 184.184
+      },
+      {
+        "temperature": 32.5,
+        "humidity": 90,
+        "energy_demand": 202.302
       },
       {
         "temperature": -5,
-        "humidity": -1,
-        "energy_demand": -5
+        "humidity": 35,
+        "energy_demand": 187.54
       },
       {
-        "temperature": -4,
-        "humidity": -1,
-        "energy_demand": -3.5
-      },
-      {
-        "temperature": -3,
-        "humidity": -1,
-        "energy_demand": -2
-      },
-      {
-        "temperature": -2,
-        "humidity": -1,
-        "energy_demand": -0.5
-      },
-      {
-        "temperature": -1,
-        "humidity": -1,
-        "energy_demand": 1
+        "temperature": -2.5,
+        "humidity": 40,
+        "energy_demand": 174.995
       },
       {
         "temperature": 0,
-        "humidity": -1,
-        "energy_demand": 2.5
+        "humidity": 45,
+        "energy_demand": 161.24
       },
       {
-        "temperature": 1,
-        "humidity": -1,
-        "energy_demand": 4
+        "temperature": 2.5,
+        "humidity": 50,
+        "energy_demand": 146.581
       },
       {
-        "temperature": 2,
-        "humidity": -1,
-        "energy_demand": 5.5
+        "temperature": 5,
+        "humidity": 55,
+        "energy_demand": 131.873
       },
       {
-        "temperature": 3,
-        "humidity": -1,
-        "energy_demand": 7
+        "temperature": 7.5,
+        "humidity": 60,
+        "energy_demand": 118
       },
       {
-        "temperature": 4,
-        "humidity": -1,
-        "energy_demand": 8.5
+        "temperature": 10,
+        "humidity": 65,
+        "energy_demand": 105.34
+      },
+      {
+        "temperature": 12.5,
+        "humidity": 70,
+        "energy_demand": 93.535
+      },
+      {
+        "temperature": 15,
+        "humidity": 75,
+        "energy_demand": 93.709
+      },
+      {
+        "temperature": 17.5,
+        "humidity": 80,
+        "energy_demand": 110.998
+      },
+      {
+        "temperature": 20,
+        "humidity": 85,
+        "energy_demand": 127.075
+      },
+      {
+        "temperature": 22.5,
+        "humidity": 90,
+        "energy_demand": 142.348
+      },
+      {
+        "temperature": 25,
+        "humidity": 35,
+        "energy_demand": 136.713
+      },
+      {
+        "temperature": 27.5,
+        "humidity": 40,
+        "energy_demand": 153.011
+      },
+      {
+        "temperature": 30,
+        "humidity": 45,
+        "energy_demand": 170.515
+      },
+      {
+        "temperature": 32.5,
+        "humidity": 50,
+        "energy_demand": 188.768
       },
       {
         "temperature": -5,
-        "humidity": 0,
-        "energy_demand": -7
+        "humidity": 55,
+        "energy_demand": 194.859
       },
       {
-        "temperature": -4,
-        "humidity": 0,
-        "energy_demand": -5.5
-      },
-      {
-        "temperature": -3,
-        "humidity": 0,
-        "energy_demand": -4
-      },
-      {
-        "temperature": -2,
-        "humidity": 0,
-        "energy_demand": -2.5
-      },
-      {
-        "temperature": -1,
-        "humidity": 0,
-        "energy_demand": -1
+        "temperature": -2.5,
+        "humidity": 60,
+        "energy_demand": 181.973
       },
       {
         "temperature": 0,
-        "humidity": 0,
-        "energy_demand": 0.5
+        "humidity": 65,
+        "energy_demand": 167.891
       },
       {
-        "temperature": 1,
-        "humidity": 0,
-        "energy_demand": 2
+        "temperature": 2.5,
+        "humidity": 70,
+        "energy_demand": 153.117
       },
       {
-        "temperature": 2,
-        "humidity": 0,
-        "energy_demand": 3.5
+        "temperature": 5,
+        "humidity": 75,
+        "energy_demand": 138.575
       },
       {
-        "temperature": 3,
-        "humidity": 0,
-        "energy_demand": 5
+        "temperature": 7.5,
+        "humidity": 80,
+        "energy_demand": 125.049
       },
       {
-        "temperature": 4,
-        "humidity": 0,
-        "energy_demand": 6.5
+        "temperature": 10,
+        "humidity": 85,
+        "energy_demand": 112.707
       },
       {
-        "temperature": -5,
-        "humidity": 1,
-        "energy_demand": -9
+        "temperature": 12.5,
+        "humidity": 90,
+        "energy_demand": 100.997
       },
       {
-        "temperature": -4,
-        "humidity": 1,
-        "energy_demand": -7.5
+        "temperature": 15,
+        "humidity": 35,
+        "energy_demand": 79.986
       },
       {
-        "temperature": -3,
-        "humidity": 1,
-        "energy_demand": -6
+        "temperature": 17.5,
+        "humidity": 40,
+        "energy_demand": 96.922
       },
       {
-        "temperature": -2,
-        "humidity": 1,
-        "energy_demand": -4.5
+        "temperature": 20,
+        "humidity": 45,
+        "energy_demand": 112.692
       },
       {
-        "temperature": -1,
-        "humidity": 1,
-        "energy_demand": -3
+        "temperature": 22.5,
+        "humidity": 50,
+        "energy_demand": 127.89
       },
       {
-        "temperature": 0,
-        "humidity": 1,
-        "energy_demand": -1.5
+        "temperature": 25,
+        "humidity": 55,
+        "energy_demand": 143.459
       },
       {
-        "temperature": 1,
-        "humidity": 1,
-        "energy_demand": 0
+        "temperature": 27.5,
+        "humidity": 60,
+        "energy_demand": 160.114
       },
       {
-        "temperature": 2,
-        "humidity": 1,
-        "energy_demand": 1.5
+        "temperature": 30,
+        "humidity": 65,
+        "energy_demand": 177.913
       },
       {
-        "temperature": 3,
-        "humidity": 1,
-        "energy_demand": 3
-      },
-      {
-        "temperature": 4,
-        "humidity": 1,
-        "energy_demand": 4.5
-      },
-      {
-        "temperature": -5,
-        "humidity": 2,
-        "energy_demand": -11
-      },
-      {
-        "temperature": -4,
-        "humidity": 2,
-        "energy_demand": -9.5
-      },
-      {
-        "temperature": -3,
-        "humidity": 2,
-        "energy_demand": -8
-      },
-      {
-        "temperature": -2,
-        "humidity": 2,
-        "energy_demand": -6.5
-      },
-      {
-        "temperature": -1,
-        "humidity": 2,
-        "energy_demand": -5
-      },
-      {
-        "temperature": 0,
-        "humidity": 2,
-        "energy_demand": -3.5
-      },
-      {
-        "temperature": 1,
-        "humidity": 2,
-        "energy_demand": -2
-      },
-      {
-        "temperature": 2,
-        "humidity": 2,
-        "energy_demand": -0.5
-      },
-      {
-        "temperature": 3,
-        "humidity": 2,
-        "energy_demand": 1
-      },
-      {
-        "temperature": 4,
-        "humidity": 2,
-        "energy_demand": 2.5
-      },
-      {
-        "temperature": -5,
-        "humidity": 3,
-        "energy_demand": -13
-      },
-      {
-        "temperature": -4,
-        "humidity": 3,
-        "energy_demand": -11.5
-      },
-      {
-        "temperature": -3,
-        "humidity": 3,
-        "energy_demand": -10
-      },
-      {
-        "temperature": -2,
-        "humidity": 3,
-        "energy_demand": -8.5
-      },
-      {
-        "temperature": -1,
-        "humidity": 3,
-        "energy_demand": -7
-      },
-      {
-        "temperature": 0,
-        "humidity": 3,
-        "energy_demand": -5.5
-      },
-      {
-        "temperature": 1,
-        "humidity": 3,
-        "energy_demand": -4
-      },
-      {
-        "temperature": 2,
-        "humidity": 3,
-        "energy_demand": -2.5
-      },
-      {
-        "temperature": 3,
-        "humidity": 3,
-        "energy_demand": -1
-      },
-      {
-        "temperature": 4,
-        "humidity": 3,
-        "energy_demand": 0.5
+        "temperature": 32.5,
+        "humidity": 70,
+        "energy_demand": 196.22
       }
     ],
     "columns": [

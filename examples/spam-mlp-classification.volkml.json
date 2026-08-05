@@ -2,7 +2,7 @@
   "format": "VOLK-ML",
   "version": 8,
   "name": "Spam Detection (MLP)",
-  "savedAt": "2026-08-05T07:51:12.873Z",
+  "savedAt": "2026-08-05T07:57:14.624Z",
   "language": {
     "primary": "en",
     "secondary": "zh"
@@ -1001,303 +1001,303 @@
     "task": "classification",
     "rows": [
       {
-        "word_count": 3,
+        "word_count": 140,
+        "link_count": 3,
+        "label": "spam"
+      },
+      {
+        "word_count": 50,
+        "link_count": 0,
+        "label": "ham"
+      },
+      {
+        "word_count": 147,
+        "link_count": 4,
+        "label": "spam"
+      },
+      {
+        "word_count": 53,
+        "link_count": 1,
+        "label": "ham"
+      },
+      {
+        "word_count": 154,
+        "link_count": 5,
+        "label": "spam"
+      },
+      {
+        "word_count": 56,
         "link_count": 2,
-        "label": "spam"
-      },
-      {
-        "word_count": -3,
-        "link_count": -2,
         "label": "ham"
       },
       {
-        "word_count": 3.015,
-        "link_count": 1.985,
+        "word_count": 161,
+        "link_count": 6,
         "label": "spam"
       },
       {
-        "word_count": -2.985,
-        "link_count": -2.015,
+        "word_count": 59,
+        "link_count": 0,
         "label": "ham"
       },
       {
-        "word_count": 3.03,
-        "link_count": 1.97,
+        "word_count": 168,
+        "link_count": 7,
         "label": "spam"
       },
       {
-        "word_count": -2.97,
-        "link_count": -2.03,
+        "word_count": 62,
+        "link_count": 1,
         "label": "ham"
       },
       {
-        "word_count": 3.045,
-        "link_count": 1.955,
+        "word_count": 175,
+        "link_count": 3,
         "label": "spam"
       },
       {
-        "word_count": -2.955,
-        "link_count": -2.045,
+        "word_count": 65,
+        "link_count": 2,
         "label": "ham"
       },
       {
-        "word_count": 3.06,
-        "link_count": 1.94,
+        "word_count": 182,
+        "link_count": 4,
         "label": "spam"
       },
       {
-        "word_count": -2.94,
-        "link_count": -2.06,
+        "word_count": 68,
+        "link_count": 0,
         "label": "ham"
       },
       {
-        "word_count": 3.075,
-        "link_count": 1.925,
+        "word_count": 189,
+        "link_count": 5,
         "label": "spam"
       },
       {
-        "word_count": -2.925,
-        "link_count": -2.075,
+        "word_count": 71,
+        "link_count": 1,
         "label": "ham"
       },
       {
-        "word_count": 3.09,
-        "link_count": 1.91,
+        "word_count": 196,
+        "link_count": 6,
         "label": "spam"
       },
       {
-        "word_count": -2.91,
-        "link_count": -2.09,
+        "word_count": 74,
+        "link_count": 2,
         "label": "ham"
       },
       {
-        "word_count": 3.105,
-        "link_count": 1.895,
+        "word_count": 203,
+        "link_count": 7,
         "label": "spam"
       },
       {
-        "word_count": -2.895,
-        "link_count": -2.105,
+        "word_count": 77,
+        "link_count": 0,
         "label": "ham"
       },
       {
-        "word_count": 3.12,
-        "link_count": 1.88,
+        "word_count": 210,
+        "link_count": 3,
         "label": "spam"
       },
       {
-        "word_count": -2.88,
-        "link_count": -2.12,
+        "word_count": 80,
+        "link_count": 1,
         "label": "ham"
       },
       {
-        "word_count": 3.135,
-        "link_count": 1.865,
+        "word_count": 217,
+        "link_count": 4,
         "label": "spam"
       },
       {
-        "word_count": -2.865,
-        "link_count": -2.135,
+        "word_count": 83,
+        "link_count": 2,
         "label": "ham"
       },
       {
-        "word_count": 3.15,
-        "link_count": 1.85,
+        "word_count": 224,
+        "link_count": 5,
         "label": "spam"
       },
       {
-        "word_count": -2.85,
-        "link_count": -2.15,
+        "word_count": 86,
+        "link_count": 0,
         "label": "ham"
       },
       {
-        "word_count": 3.165,
-        "link_count": 1.835,
+        "word_count": 231,
+        "link_count": 6,
         "label": "spam"
       },
       {
-        "word_count": -2.835,
-        "link_count": -2.165,
+        "word_count": 89,
+        "link_count": 1,
         "label": "ham"
       },
       {
-        "word_count": 3.18,
-        "link_count": 1.82,
+        "word_count": 238,
+        "link_count": 7,
         "label": "spam"
       },
       {
-        "word_count": -2.82,
-        "link_count": -2.18,
+        "word_count": 92,
+        "link_count": 2,
         "label": "ham"
       },
       {
-        "word_count": 3.195,
-        "link_count": 1.805,
+        "word_count": 245,
+        "link_count": 3,
         "label": "spam"
       },
       {
-        "word_count": -2.805,
-        "link_count": -2.195,
+        "word_count": 95,
+        "link_count": 0,
         "label": "ham"
       },
       {
-        "word_count": 3.21,
-        "link_count": 1.79,
+        "word_count": 252,
+        "link_count": 4,
         "label": "spam"
       },
       {
-        "word_count": -2.79,
-        "link_count": -2.21,
+        "word_count": 98,
+        "link_count": 1,
         "label": "ham"
       },
       {
-        "word_count": 3.225,
-        "link_count": 1.775,
+        "word_count": 259,
+        "link_count": 5,
         "label": "spam"
       },
       {
-        "word_count": -2.775,
-        "link_count": -2.225,
+        "word_count": 101,
+        "link_count": 2,
         "label": "ham"
       },
       {
-        "word_count": 3.24,
-        "link_count": 1.76,
+        "word_count": 146,
+        "link_count": 6,
         "label": "spam"
       },
       {
-        "word_count": -2.76,
-        "link_count": -2.24,
+        "word_count": 104,
+        "link_count": 0,
         "label": "ham"
       },
       {
-        "word_count": 3.255,
-        "link_count": 1.745,
+        "word_count": 153,
+        "link_count": 7,
         "label": "spam"
       },
       {
-        "word_count": -2.745,
-        "link_count": -2.255,
+        "word_count": 107,
+        "link_count": 1,
         "label": "ham"
       },
       {
-        "word_count": 3.27,
-        "link_count": 1.73,
+        "word_count": 160,
+        "link_count": 3,
         "label": "spam"
       },
       {
-        "word_count": -2.73,
-        "link_count": -2.27,
+        "word_count": 110,
+        "link_count": 2,
         "label": "ham"
       },
       {
-        "word_count": 3.285,
-        "link_count": 1.715,
+        "word_count": 167,
+        "link_count": 4,
         "label": "spam"
       },
       {
-        "word_count": -2.715,
-        "link_count": -2.285,
+        "word_count": 113,
+        "link_count": 0,
         "label": "ham"
       },
       {
-        "word_count": 3.3,
-        "link_count": 1.7,
+        "word_count": 174,
+        "link_count": 5,
         "label": "spam"
       },
       {
-        "word_count": -2.7,
-        "link_count": -2.3,
+        "word_count": 116,
+        "link_count": 1,
         "label": "ham"
       },
       {
-        "word_count": 3.315,
-        "link_count": 1.685,
+        "word_count": 181,
+        "link_count": 6,
         "label": "spam"
       },
       {
-        "word_count": -2.685,
-        "link_count": -2.315,
+        "word_count": 119,
+        "link_count": 2,
         "label": "ham"
       },
       {
-        "word_count": 3.33,
-        "link_count": 1.67,
+        "word_count": 188,
+        "link_count": 7,
         "label": "spam"
       },
       {
-        "word_count": -2.67,
-        "link_count": -2.33,
+        "word_count": 52,
+        "link_count": 0,
         "label": "ham"
       },
       {
-        "word_count": 3.345,
-        "link_count": 1.655,
+        "word_count": 195,
+        "link_count": 3,
         "label": "spam"
       },
       {
-        "word_count": -2.655,
-        "link_count": -2.345,
+        "word_count": 55,
+        "link_count": 1,
         "label": "ham"
       },
       {
-        "word_count": 3.36,
-        "link_count": 1.64,
+        "word_count": 202,
+        "link_count": 4,
         "label": "spam"
       },
       {
-        "word_count": -2.64,
-        "link_count": -2.36,
+        "word_count": 58,
+        "link_count": 2,
         "label": "ham"
       },
       {
-        "word_count": 3.375,
-        "link_count": 1.625,
+        "word_count": 209,
+        "link_count": 5,
         "label": "spam"
       },
       {
-        "word_count": -2.625,
-        "link_count": -2.375,
+        "word_count": 61,
+        "link_count": 0,
         "label": "ham"
       },
       {
-        "word_count": 3.39,
-        "link_count": 1.61,
+        "word_count": 216,
+        "link_count": 6,
         "label": "spam"
       },
       {
-        "word_count": -2.61,
-        "link_count": -2.39,
+        "word_count": 64,
+        "link_count": 1,
         "label": "ham"
       },
       {
-        "word_count": 3.405,
-        "link_count": 1.595,
+        "word_count": 223,
+        "link_count": 7,
         "label": "spam"
       },
       {
-        "word_count": -2.595,
-        "link_count": -2.405,
-        "label": "ham"
-      },
-      {
-        "word_count": 3.42,
-        "link_count": 1.58,
-        "label": "spam"
-      },
-      {
-        "word_count": -2.58,
-        "link_count": -2.42,
-        "label": "ham"
-      },
-      {
-        "word_count": 3.435,
-        "link_count": 1.565,
-        "label": "spam"
-      },
-      {
-        "word_count": -2.565,
-        "link_count": -2.435,
+        "word_count": 67,
+        "link_count": 2,
         "label": "ham"
       }
     ],
