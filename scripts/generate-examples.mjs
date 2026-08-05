@@ -334,10 +334,24 @@ const assertPythonSyntax = (code, label) => {
   if (result.status !== 0) throw new Error(`${label} generated invalid Python:\n${result.stderr}`);
 };
 
+const assertPlausibleDataset = (data, label) => {
+  if (!data) return;
+  if (!Array.isArray(data.rows) || data.rows.length === 0) throw new Error(`${label} dataset has no rows`);
+  for (const row of data.rows) {
+    for (const column of data.columns) {
+      const value = row?.[column.name];
+      if (column.type === 'number' && !Number.isFinite(Number(value))) {
+        throw new Error(`${label} dataset contains a non-finite value in ${column.name}`);
+      }
+    }
+  }
+};
+
 mkdirSync(examplesDir, { recursive: true });
 for (const example of examples) {
   const project = buildProject(example.name, example.nodes, example.edges, example.data);
   validateProjectForWorkspace(project);
+  assertPlausibleDataset(example.data, example.slug);
   const file = path.join(examplesDir, `${example.slug}.volkml.json`);
   writeFileSync(file, `${JSON.stringify(project, null, 2)}\n`);
   if (example.exportable !== false) {
@@ -349,7 +363,8 @@ for (const example of examples) {
   if (example.runnable) {
     const result = await executeBrowserGraph({ nodes: example.nodes, edges: example.edges, dataset: example.data });
     if (!result) throw new Error(`${example.slug} did not produce a trained model.`);
-    console.log(`${example.slug}: ${example.exportable === false ? 'export skipped (KNN is browser-only)' : 'export ok'}, run ok (${result.type})`);
+    const metrics = result.metrics ? JSON.stringify(result.metrics) : 'n/a';
+    console.log(`${example.slug}: ${example.exportable === false ? 'export skipped (KNN is browser-only)' : 'export ok'}, run ok (${result.type}), metrics=${metrics}`);
   } else {
     console.log(`${example.slug}: export ok`);
   }

@@ -79,12 +79,15 @@ function wineQuality() {
 
 function energyDemand() {
   const rows = Array.from({ length: 80 }, (_, index) => {
-    const temperature = (index % 10) - 5;
-    const humidity = Math.floor(index / 10) - 4;
+    const temperature = Number((-5 + (index % 16) * 2.5).toFixed(2));
+    const humidity = 35 + (index % 12) * 5;
+    // Demand follows a U-shape over temperature: heating below the comfort point,
+    // cooling above it, plus a mild humidity term and deterministic noise.
+    const demand = 60 + Math.abs(temperature - 14) * 6 + humidity * 0.35 + Math.sin(index * 0.8) * 2;
     return {
-      temperature: Number(temperature.toFixed(2)),
-      humidity: Number(humidity.toFixed(2)),
-      energy_demand: Number((1.5 * temperature - 2 * humidity + 0.5).toFixed(3)),
+      temperature,
+      humidity,
+      energy_demand: Number(demand.toFixed(3)),
     };
   });
   return dataset('Energy Demand', 'regression', rows, ['temperature', 'humidity'], 'energy_demand');
@@ -92,14 +95,19 @@ function energyDemand() {
 
 function emailSpam() {
   const rows = Array.from({ length: 60 }, (_, index) => {
-    const positive = index % 2 === 0;
-    const offset = Math.floor(index / 2) * 0.015;
-    const wordCount = (positive ? 3 : -3) + offset;
-    const linkCount = (positive ? 2 : -2) - offset;
+    const spam = index % 2 === 0;
+    const instance = Math.floor(index / 2);
+    // Spam tends to be verbose with many links; ham is short with few links.
+    const wordCount = spam
+      ? 140 + ((instance * 7) % 120)
+      : 50 + ((instance * 3) % 70);
+    const linkCount = spam
+      ? 3 + (instance % 5)
+      : instance % 3;
     return {
-      word_count: Number(wordCount.toFixed(3)),
-      link_count: Number(linkCount.toFixed(3)),
-      label: positive ? 'spam' : 'ham',
+      word_count: wordCount,
+      link_count: linkCount,
+      label: spam ? 'spam' : 'ham',
     };
   });
   return dataset('Email Spam', 'classification', rows, ['word_count', 'link_count'], 'label');
