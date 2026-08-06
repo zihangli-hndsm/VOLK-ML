@@ -1,19 +1,18 @@
 import React, { useEffect, useState } from 'react';
 import { tutorialFor } from '../core/tutorials.js';
 import { visualKindForManifest } from '../core/visualLanguage.js';
-import LinearRegressionPlayground from './LinearRegressionPlayground.jsx';
+import { playgroundsFor } from '../core/playgrounds/registry.js';
 import VisualGlyph from './VisualGlyph.jsx';
 
-export default function TutorialDialog({ manifest, dataset, onClose, t }) {
+export default function TutorialDialog({ manifest, dataset, onOpenPlayground, onClose, t }) {
   const [playing, setPlaying] = useState(false);
-  const [playgroundOpen, setPlaygroundOpen] = useState(false);
   useEffect(() => {
     setPlaying(false);
-    setPlaygroundOpen(false);
   }, [manifest?.id]);
   if (!manifest) return null;
   const tutorial = tutorialFor(manifest);
   if (!tutorial) return null;
+  const availablePlaygrounds = playgroundsFor({ manifest, dataset });
   return <div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-3 sm:p-5" onMouseDown={onClose}>
     <section className="max-h-[94vh] w-full max-w-4xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-7" onMouseDown={(event) => event.stopPropagation()}>
       <div className="flex items-start justify-between gap-4">
@@ -38,9 +37,12 @@ export default function TutorialDialog({ manifest, dataset, onClose, t }) {
           <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4"><h3 className="text-xs font-black uppercase tracking-wider text-amber-700">{t('tutorial.example')}</h3><p className="mt-2 text-sm leading-6 text-amber-950">{t(tutorial.example)}</p></section>
         </div>
       </div>
-      {manifest.op === 'linear_regression' && <div className="mt-6">
-        <button onClick={() => setPlaygroundOpen((value) => !value)} className="w-full rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white shadow-lg hover:bg-blue-700">{playgroundOpen ? t('playground.close') : t('playground.open')}</button>
-        {playgroundOpen && <LinearRegressionPlayground dataset={dataset} t={t} />}
+      {availablePlaygrounds.length > 0 && <div className="mt-6 space-y-2">
+        {availablePlaygrounds.map((playground) => <button
+          key={playground.id}
+          onClick={() => onOpenPlayground(playground.id)}
+          className="w-full rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white shadow-lg hover:bg-blue-700"
+        >{t('playground.open')} · {t(playground.titleKey)}</button>)}
       </div>}
     </section>
   </div>;
