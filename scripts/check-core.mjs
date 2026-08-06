@@ -42,6 +42,7 @@ import {
   parseLossExpression,
 } from '../src/core/lossExpression.js';
 import {
+  buildNormalizedRegressionHistory,
   buildRegressionTrainingHistory,
   fallbackRegressionPoints,
   gradientDescentStep,
@@ -60,6 +61,7 @@ import {
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
 import {
+  fitKnn,
   fitFeatureNormalization,
   normalizeFeatures,
   rankNeighbors,
@@ -1934,23 +1936,21 @@ assert.throws(
   assert.ok(uniformlySamplePoints(lrPoints, 80).length <= 80, 'dataset sampling is bounded');
 
   // KNN shared math and playground equivalence.
-  const knnPoints = Array.from({ length: 60 }, (_, index) => ({
-    id: `k${index}`,
-    features: { a: (index % 6) - 3 + (index % 2), b: Math.floor(index / 6) - 5 },
-    label: index % 2 === 0 ? 'red' : 'blue',
+  const knnSamples = Array.from({ length: 60 }, (_, index) => ({
+    index,
+    x: [(index % 6) - 3 + (index % 2), Math.floor(index / 6) - 5],
+    y: index % 2 === 0 ? 'red' : 'blue',
   }));
-  const knnSource = { kind: 'example', name: 'Example', fingerprint: 'knn-test', points: knnPoints, featureColumns: ['a', 'b'] };
+  const knnSource = { kind: 'example', name: 'Example', fingerprint: 'knn-test', samples: knnSamples, featureColumns: ['a', 'b'], trainRatio: 0.8 };
   const knnBase = createPlaygroundSession(knnPlayground, { source: knnSource, controls: { k: 5 } });
   assert.ok(knnBase.controls.k >= 1 && knnBase.controls.k <= 20, 'k respects bounds');
+  assert.ok(knnBase.modelState.fit.trainRows < knnSamples.length, 'KNN playground splits data into train and test');
   const regionsOff = derivePlaygroundSnapshot(knnBase);
   assert.equal(regionsOff.scene.decisionRegions.cells.length, 0, 'decision regions are off by default');
   const regionsOn = derivePlaygroundSnapshot(dispatchPlaygroundAction(knnBase, { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true }));
   assert.ok(regionsOn.scene.decisionRegions.cells.length <= 48 * 48, 'decision region count respects the resolution cap');
 
-  const train = knnPoints.map((point) => ({ x: [point.features.a, point.features.b], y: point.label }));
-  const normalization = fitFeatureNormalization(train, 2);
-  const normalizedTrain = train.map((sample) => ({ ...sample, x: normalizeFeatures(sample.x, normalization) }));
-  const runtimeModel = { type: 'knn_classifier', train: normalizedTrain, normalization, k: 5 };
+  const runtimeModel = fitKnn({ samples: knnSamples, k: 5, trainRatio: 0.8 });
   const query = [0.4, -0.2];
   const runtimePrediction = predictWithModel(runtimeModel, query);
   let knnReveal = createPlaygroundSession(knnPlayground, { source: knnSource, controls: { k: 5, queryX: 0.4, queryY: -0.2 } });
@@ -1959,6 +1959,25 @@ assert.throws(
   const knnScene = derivePlaygroundSnapshot(knnReveal).scene;
   assert.equal(knnScene.voting.predictedLabel, runtimePrediction, 'playground and runtime produce the same KNN prediction');
   assert.equal(knnScene.neighbors.length, 5, 'neighbor ranks are stable and bounded by k');
+  const trainIds = new Set(knnScene.points.map((point) => point.id));
+  assert.ok(
+    knnScene.neighbors.every((neighbor) => trainIds.has(neighbor.pointId)),
+    'playground neighbors come only from the training split (no test leakage)',
+  );
+  // Deterministic point editing.
+  const deterministicA = dispatchPlaygroundAction(knnBase, { type: 'ADD_TRAINING_POINT', x: 0.1, y: 0.2, label: 'red' });
+  const deterministicB = dispatchPlaygroundAction(knnBase, { type: 'ADD_TRAINING_POINT', x: 0.1, y: 0.2, label: 'red' });
+  assert.deepEqual(
+    derivePlaygroundSnapshot(deterministicA).scene.points.map((point) => point.id),
+    derivePlaygroundSnapshot(deterministicB).scene.points.map((point) => point.id),
+    'added training points get deterministic ids',
+  );
+  // Normalized regression training does not diverge on large-scale data.
+  const largeScalePoints = Array.from({ length: 120 }, (_, index) => ({ x: 50 + index * 1.3, y: 100 + index * 4.7 }));
+  const normalizedHistory = buildNormalizedRegressionHistory(largeScalePoints, { learningRate: 0.05, steps: 20 });
+  const last = normalizedHistory.history.at(-1);
+  assert.ok(Number.isFinite(last.loss) && Number.isFinite(last.weight) && Number.isFinite(last.bias), 'normalized regression stays finite on large-scale data');
+  assert.ok(last.loss < normalizedHistory.history[0].loss, 'normalized regression loss decreases on large-scale data');
   const tieTrain = [
     { id: 0, x: [1, 0], y: 'a' },
     { id: 1, x: [-1, 0], y: 'b' },

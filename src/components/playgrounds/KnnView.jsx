@@ -8,10 +8,8 @@ export default function KnnView({ snapshot, t, onAddPoint, onMovePoint }) {
   const dragRef = useRef(null);
   const labels = [...new Set(scene.points.map((point) => point.label))].sort();
   const colorByLabel = Object.fromEntries(labels.map((label, index) => [label, LABEL_COLORS[index % LABEL_COLORS.length]]));
-  const useNormalized = scene.normalize;
-  const displayPoint = (point) => ({ x: useNormalized ? point.normalizedX : point.x, y: useNormalized ? point.normalizedY : point.y });
-  const query = useNormalized ? { x: scene.query.normalizedX, y: scene.query.normalizedY } : { x: scene.query.x, y: scene.query.y };
-  const displayPoints = scene.points.map((point) => ({ ...point, ...displayPoint(point) }));
+  const displayPoints = scene.points;
+  const query = { x: scene.query.x, y: scene.query.y };
   const xs = displayPoints.map((point) => point.x);
   const ys = displayPoints.map((point) => point.y);
   const xSpan = Math.max(0.5, Math.max(...xs) - Math.min(...xs));
@@ -58,7 +56,8 @@ export default function KnnView({ snapshot, t, onAddPoint, onMovePoint }) {
   };
   const handlePointerUp = () => { dragRef.current = null; };
   const selectedNeighbors = scene.neighbors.filter((neighbor) => neighbor.selected);
-  return <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none" role="img"
+  return <>
+    <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none" role="img"
     aria-label={t('playground.knn.chartLabel')}
     onPointerDown={handlePointerDown}
     onPointerMove={handlePointerMove}
@@ -95,5 +94,24 @@ export default function KnnView({ snapshot, t, onAddPoint, onMovePoint }) {
     <circle cx={xToSvg(query.x)} cy={yToSvg(query.y)} r="7" fill="#0f172a" stroke="white" strokeWidth="2" />
     <text x="334" y="358" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">{snapshot.controls.xFeature}</text>
     <text x="15" y="170" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 15 170)">{snapshot.controls.yFeature}</text>
-  </svg>;
+  </svg>
+  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+    <p className="text-xs font-black uppercase tracking-wider text-slate-500">{t('playground.knn.votes')}</p>
+    <div className="mt-2 space-y-1">
+      {Object.entries(scene.voting.counts).map(([label, count]) => {
+        const total = Object.values(scene.voting.counts).reduce((sum, value) => sum + value, 0) || 1;
+        const predicted = scene.voting.predictedLabel === label;
+        return <div key={label} className="flex items-center gap-2 text-sm">
+          <span className="w-16 truncate font-bold" style={{ color: colorByLabel[label] }}>{label}</span>
+          <div className="h-4 flex-1 overflow-hidden rounded-full bg-white">
+            <div className="h-full rounded-full" style={{ width: `${(count / total) * 100}%`, background: colorByLabel[label] ?? '#94a3b8' }} />
+          </div>
+          <span className="w-6 text-right font-mono font-bold text-slate-700">{count}</span>
+          {predicted && <span className="text-xs font-black text-slate-900">←</span>}
+        </div>;
+      })}
+      {scene.voting.tie && <p className="mt-1 text-xs font-bold text-amber-700">{t('playground.knn.voteTie')}</p>}
+    </div>
+  </div>
+  </>;
 }
