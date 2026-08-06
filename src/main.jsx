@@ -33,10 +33,13 @@ import {
   validateAgentDataset,
 } from './core/canvasAgent';
 import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
+import { createPlaygroundAgentApi } from './core/playgroundAgent';
+import { createPlaygroundHost } from './core/playgroundHost';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
 import ExamplesDialog from './components/ExamplesDialog';
+import PlaygroundDialog from './components/playgrounds/PlaygroundDialog';
 import VisualGlyph from './components/VisualGlyph';
 
 const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
@@ -461,6 +464,8 @@ function Workspace() {
   const [explanationOpen, setExplanationOpen] = useState(false);
   const [compositeOpen, setCompositeOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
+  const [playgroundOpen, setPlaygroundOpen] = useState(false);
+  const [playgroundId, setPlaygroundId] = useState(null);
   const [tutorialManifest, setTutorialManifest] = useState(null);
   const [projectName, setProjectName] = useState(() => t('project.sampleName'));
   const [customComponents, setCustomComponents] = useState([]);
@@ -480,6 +485,12 @@ function Workspace() {
   const lastDownloadSignature = useRef('');
   const workspaceStateRef = useRef(null);
   const agentAdapterRef = useRef(null);
+  const playgroundHostRef = useRef(null);
+  const playgroundAgentRef = useRef(null);
+  if (!playgroundHostRef.current) {
+    playgroundHostRef.current = createPlaygroundHost({ getDataset: () => workspaceStateRef.current.dataset });
+    playgroundAgentRef.current = createPlaygroundAgentApi(playgroundHostRef.current);
+  }
   const flowWrapperRef = useRef(null);
   const reactFlowInstanceRef = useRef(null);
   const pendingFitRef = useRef(false);
@@ -947,6 +958,16 @@ function Workspace() {
     setNotice(t('library.customDeleted', { name: t(manifest.name) }));
   };
   const updateParameter = (key, value) => { setNodes((current) => current.map((node) => node.id === selectedNode?.id ? { ...node, data: { ...node.data, parameters: { ...node.data.parameters, [key]: value }, status: 'idle' } } : node)); setModel(null); };
+  useEffect(() => {
+    const host = playgroundHostRef.current;
+    if (!host) return;
+    try {
+      const current = host.getState();
+      if (!current || current.source.kind !== 'workspace-dataset' || current.source.stale) return;
+      const probe = host.currentSourceFingerprint();
+      if (probe && probe.fingerprint !== current.source.fingerprint) host.markSourceStale();
+    } catch { /* no playground session open */ }
+  }, [dataset]);
   const exportCode = (framework) => {
     try {
       const result = framework === 'tensorflow' ? compilePipelineToTensorFlow(nodes, edges) : compilePipelineToPyTorch(nodes, edges);
@@ -1240,6 +1261,7 @@ function Workspace() {
   }, []);
   agentAdapterRef.current = {
     getState: getAgentSnapshot,
+    playground: playgroundAgentRef.current,
     listComponents: () => [...pluginRegistry, ...workspaceStateRef.current.customComponents].map(summarizeAgentComponent),
     addNode: agentAddNode,
     updateNode: agentUpdateNode,
@@ -1264,6 +1286,7 @@ function Workspace() {
     const api = createCanvasAgentApi({
       instanceId: instanceIdRef.current,
       getState: forward('getState'),
+      playground: playgroundAgentRef.current,
       listComponents: forward('listComponents'),
       addNode: forward('addNode'),
       updateNode: forward('updateNode'),
@@ -1363,7 +1386,8 @@ function Workspace() {
     <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
     <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
-    {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
+    {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => { setPlaygroundId(id); setPlaygroundOpen(true); }} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
+    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} host={playgroundHostRef.current} onClose={() => setPlaygroundOpen(false)} t={t} />
   </div>;
 }
 
