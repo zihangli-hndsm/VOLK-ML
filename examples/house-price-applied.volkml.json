@@ -1,0 +1,1477 @@
+{
+  "format": "VOLK-ML",
+  "version": 8,
+  "name": "example.housePrice.title",
+  "savedAt": "2026-08-06T00:00:00.000Z",
+  "language": {
+    "primary": "en",
+    "secondary": "zh"
+  },
+  "workspace": {
+    "libraryMode": "detailed",
+    "leftWidth": 300,
+    "rightWidth": 384,
+    "viewMode": "canvas"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "hp-data",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Tabular Data",
+            "zh": "表格数据"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tabular_data_node",
+            "op": "tabular_data",
+            "kind": "data",
+            "name": {
+              "en": "Tabular Data",
+              "zh": "表格数据"
+            },
+            "description": {
+              "en": "Provides the CSV or JSON dataset configured in the Data workspace.",
+              "zh": "提供在数据工作区配置的 CSV 或 JSON 数据集。"
+            },
+            "category": "Data",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "hp-split",
+        "type": "pipelineNode",
+        "position": {
+          "x": 560,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Train/Test Split",
+            "zh": "训练/测试集划分"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "train_test_split_node",
+            "op": "train_test_split",
+            "kind": "data",
+            "name": {
+              "en": "Train/Test Split",
+              "zh": "训练/测试集划分"
+            },
+            "description": {
+              "en": "Cleans numeric rows and creates a deterministic train/test split.",
+              "zh": "清理数值行并确定性划分训练集与测试集。"
+            },
+            "category": "Data",
+            "inputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "split",
+                "type": "DatasetSplit"
+              }
+            ],
+            "properties": [
+              {
+                "key": "train_ratio",
+                "label": {
+                  "en": "Training Ratio",
+                  "zh": "训练集比例"
+                },
+                "type": "slider",
+                "default": 0.8,
+                "min": 0.5,
+                "max": 0.9,
+                "step": 0.05
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "train_ratio": 0.8
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "hp-linear",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1080,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Linear Regression",
+            "zh": "线性回归"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "linear_regression_node",
+            "op": "linear_regression",
+            "kind": "model",
+            "name": {
+              "en": "Linear Regression",
+              "zh": "线性回归"
+            },
+            "description": {
+              "en": "Fits a linear model to predict continuous values.",
+              "zh": "拟合线性模型来预测连续数值。"
+            },
+            "category": "Models",
+            "inputs": [
+              {
+                "name": "split",
+                "type": "DatasetSplit"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "model",
+                "type": "ModelSpec"
+              }
+            ],
+            "properties": [
+              {
+                "key": "learning_rate",
+                "label": {
+                  "en": "Learning Rate",
+                  "zh": "学习率"
+                },
+                "type": "slider",
+                "default": 0.01,
+                "min": 0.001,
+                "max": 0.2,
+                "step": 0.001
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "learning_rate": 0.05
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "hp-train",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1600,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Gradient Descent",
+            "zh": "梯度下降"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "gradient_descent_node",
+            "op": "gradient_descent",
+            "kind": "training",
+            "name": {
+              "en": "Gradient Descent",
+              "zh": "梯度下降"
+            },
+            "description": {
+              "en": "Trains the connected browser model with iterative gradient descent.",
+              "zh": "使用迭代梯度下降训练已连接的浏览器模型。"
+            },
+            "category": "Training",
+            "inputs": [
+              {
+                "name": "model",
+                "type": "ModelSpec"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "properties": [
+              {
+                "key": "epochs",
+                "label": {
+                  "en": "Training Epochs",
+                  "zh": "训练轮数"
+                },
+                "type": "slider",
+                "default": 100,
+                "min": 10,
+                "max": 500,
+                "step": 10
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "epochs": 300
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "hp-evaluate",
+        "type": "pipelineNode",
+        "position": {
+          "x": 2120,
+          "y": 120
+        },
+        "data": {
+          "label": {
+            "en": "Evaluate Regression",
+            "zh": "回归评估"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "evaluate_node",
+            "op": "evaluate_regression",
+            "kind": "evaluation",
+            "name": {
+              "en": "Evaluate Regression",
+              "zh": "回归评估"
+            },
+            "description": {
+              "en": "Computes RMSE and R² on the connected test set.",
+              "zh": "在连接的测试集上计算 RMSE 和 R²。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "metrics",
+                "type": "Metrics"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "hp-predict",
+        "type": "pipelineNode",
+        "position": {
+          "x": 2120,
+          "y": 700
+        },
+        "data": {
+          "label": {
+            "en": "Interactive Predictor",
+            "zh": "交互预测器"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "predictor_node",
+            "op": "interactive_predictor",
+            "kind": "inference",
+            "name": {
+              "en": "Interactive Predictor",
+              "zh": "交互预测器"
+            },
+            "description": {
+              "en": "Creates an input form for trying the connected trained model.",
+              "zh": "为连接的已训练模型创建交互输入表单。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "prediction",
+                "type": "Prediction"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "hp-data-split",
+        "source": "hp-data",
+        "sourceHandle": "dataset",
+        "target": "hp-split",
+        "targetHandle": "dataset",
+        "type": "deletable"
+      },
+      {
+        "id": "hp-split-linear",
+        "source": "hp-split",
+        "sourceHandle": "split",
+        "target": "hp-linear",
+        "targetHandle": "split",
+        "type": "deletable"
+      },
+      {
+        "id": "hp-linear-train",
+        "source": "hp-linear",
+        "sourceHandle": "model",
+        "target": "hp-train",
+        "targetHandle": "model",
+        "type": "deletable"
+      },
+      {
+        "id": "hp-train-evaluate",
+        "source": "hp-train",
+        "sourceHandle": "trained_model",
+        "target": "hp-evaluate",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      },
+      {
+        "id": "hp-train-predict",
+        "source": "hp-train",
+        "sourceHandle": "trained_model",
+        "target": "hp-predict",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      }
+    ]
+  },
+  "customComponents": [],
+  "data": {
+    "name": "House Prices",
+    "task": "regression",
+    "rows": [
+      {
+        "area_sqm": 208.078,
+        "bedrooms": 4,
+        "age_years": 8,
+        "price": 365.672
+      },
+      {
+        "area_sqm": 119.792,
+        "bedrooms": 3,
+        "age_years": 29,
+        "price": 200.6
+      },
+      {
+        "area_sqm": 193.439,
+        "bedrooms": 4,
+        "age_years": 44,
+        "price": 326.976
+      },
+      {
+        "area_sqm": 155.825,
+        "bedrooms": 4,
+        "age_years": 30,
+        "price": 272.353
+      },
+      {
+        "area_sqm": 202.886,
+        "bedrooms": 4,
+        "age_years": 27,
+        "price": 354.207
+      },
+      {
+        "area_sqm": 147.602,
+        "bedrooms": 3,
+        "age_years": 29,
+        "price": 257.481
+      },
+      {
+        "area_sqm": 71.222,
+        "bedrooms": 1,
+        "age_years": 16,
+        "price": 123.097
+      },
+      {
+        "area_sqm": 56.273,
+        "bedrooms": 3,
+        "age_years": 18,
+        "price": 132.995
+      },
+      {
+        "area_sqm": 103.204,
+        "bedrooms": 1,
+        "age_years": 18,
+        "price": 175.518
+      },
+      {
+        "area_sqm": 167.613,
+        "bedrooms": 4,
+        "age_years": 41,
+        "price": 325.658
+      },
+      {
+        "area_sqm": 86.619,
+        "bedrooms": 2,
+        "age_years": 6,
+        "price": 180.19
+      },
+      {
+        "area_sqm": 163.714,
+        "bedrooms": 2,
+        "age_years": 4,
+        "price": 298.46
+      },
+      {
+        "area_sqm": 204.436,
+        "bedrooms": 4,
+        "age_years": 4,
+        "price": 370.138
+      },
+      {
+        "area_sqm": 105.615,
+        "bedrooms": 2,
+        "age_years": 21,
+        "price": 182.365
+      },
+      {
+        "area_sqm": 81.101,
+        "bedrooms": 2,
+        "age_years": 8,
+        "price": 160.854
+      },
+      {
+        "area_sqm": 51.183,
+        "bedrooms": 2,
+        "age_years": 2,
+        "price": 129.476
+      },
+      {
+        "area_sqm": 148.29,
+        "bedrooms": 3,
+        "age_years": 35,
+        "price": 242.324
+      },
+      {
+        "area_sqm": 97.687,
+        "bedrooms": 1,
+        "age_years": 18,
+        "price": 154.834
+      },
+      {
+        "area_sqm": 121.21,
+        "bedrooms": 3,
+        "age_years": 25,
+        "price": 214.059
+      },
+      {
+        "area_sqm": 167.924,
+        "bedrooms": 2,
+        "age_years": 22,
+        "price": 282.153
+      },
+      {
+        "area_sqm": 109.96,
+        "bedrooms": 1,
+        "age_years": 31,
+        "price": 167.84
+      },
+      {
+        "area_sqm": 175.928,
+        "bedrooms": 3,
+        "age_years": 38,
+        "price": 259.385
+      },
+      {
+        "area_sqm": 101.274,
+        "bedrooms": 1,
+        "age_years": 29,
+        "price": 182.318
+      },
+      {
+        "area_sqm": 71.579,
+        "bedrooms": 1,
+        "age_years": 42,
+        "price": 111.803
+      },
+      {
+        "area_sqm": 187.692,
+        "bedrooms": 4,
+        "age_years": 2,
+        "price": 346.206
+      },
+      {
+        "area_sqm": 63.101,
+        "bedrooms": 2,
+        "age_years": 22,
+        "price": 162.718
+      },
+      {
+        "area_sqm": 168.419,
+        "bedrooms": 2,
+        "age_years": 1,
+        "price": 309.206
+      },
+      {
+        "area_sqm": 195.762,
+        "bedrooms": 3,
+        "age_years": 44,
+        "price": 326.229
+      },
+      {
+        "area_sqm": 96.776,
+        "bedrooms": 1,
+        "age_years": 34,
+        "price": 161.261
+      },
+      {
+        "area_sqm": 74.371,
+        "bedrooms": 1,
+        "age_years": 44,
+        "price": 98.834
+      },
+      {
+        "area_sqm": 62.5,
+        "bedrooms": 3,
+        "age_years": 15,
+        "price": 132.598
+      },
+      {
+        "area_sqm": 113.659,
+        "bedrooms": 2,
+        "age_years": 21,
+        "price": 220.006
+      },
+      {
+        "area_sqm": 100.834,
+        "bedrooms": 3,
+        "age_years": 38,
+        "price": 192.786
+      },
+      {
+        "area_sqm": 146.873,
+        "bedrooms": 2,
+        "age_years": 7,
+        "price": 262.133
+      },
+      {
+        "area_sqm": 137.698,
+        "bedrooms": 1,
+        "age_years": 7,
+        "price": 220.23
+      },
+      {
+        "area_sqm": 165.236,
+        "bedrooms": 3,
+        "age_years": 41,
+        "price": 300.735
+      },
+      {
+        "area_sqm": 105.296,
+        "bedrooms": 3,
+        "age_years": 16,
+        "price": 222.498
+      },
+      {
+        "area_sqm": 78.832,
+        "bedrooms": 2,
+        "age_years": 29,
+        "price": 135.396
+      },
+      {
+        "area_sqm": 196.712,
+        "bedrooms": 3,
+        "age_years": 14,
+        "price": 368.969
+      },
+      {
+        "area_sqm": 112.016,
+        "bedrooms": 2,
+        "age_years": 9,
+        "price": 218.888
+      },
+      {
+        "area_sqm": 134.884,
+        "bedrooms": 2,
+        "age_years": 41,
+        "price": 223.151
+      },
+      {
+        "area_sqm": 167.06,
+        "bedrooms": 3,
+        "age_years": 10,
+        "price": 291.863
+      },
+      {
+        "area_sqm": 57.206,
+        "bedrooms": 1,
+        "age_years": 39,
+        "price": 101.472
+      },
+      {
+        "area_sqm": 188.932,
+        "bedrooms": 4,
+        "age_years": 16,
+        "price": 335.29
+      },
+      {
+        "area_sqm": 174.767,
+        "bedrooms": 4,
+        "age_years": 44,
+        "price": 291.501
+      },
+      {
+        "area_sqm": 113.836,
+        "bedrooms": 2,
+        "age_years": 12,
+        "price": 208.157
+      },
+      {
+        "area_sqm": 73.388,
+        "bedrooms": 2,
+        "age_years": 25,
+        "price": 138.122
+      },
+      {
+        "area_sqm": 100.473,
+        "bedrooms": 3,
+        "age_years": 35,
+        "price": 183.679
+      },
+      {
+        "area_sqm": 77.714,
+        "bedrooms": 1,
+        "age_years": 15,
+        "price": 137.306
+      },
+      {
+        "area_sqm": 96.245,
+        "bedrooms": 1,
+        "age_years": 25,
+        "price": 167.894
+      },
+      {
+        "area_sqm": 68.474,
+        "bedrooms": 2,
+        "age_years": 31,
+        "price": 114.717
+      },
+      {
+        "area_sqm": 109.874,
+        "bedrooms": 1,
+        "age_years": 33,
+        "price": 171.661
+      },
+      {
+        "area_sqm": 63.084,
+        "bedrooms": 2,
+        "age_years": 6,
+        "price": 129.206
+      },
+      {
+        "area_sqm": 102.413,
+        "bedrooms": 2,
+        "age_years": 31,
+        "price": 179.81
+      },
+      {
+        "area_sqm": 202.397,
+        "bedrooms": 4,
+        "age_years": 26,
+        "price": 351.617
+      },
+      {
+        "area_sqm": 123.616,
+        "bedrooms": 1,
+        "age_years": 3,
+        "price": 238.401
+      },
+      {
+        "area_sqm": 87.924,
+        "bedrooms": 2,
+        "age_years": 13,
+        "price": 161.149
+      },
+      {
+        "area_sqm": 120.774,
+        "bedrooms": 1,
+        "age_years": 13,
+        "price": 226.05
+      },
+      {
+        "area_sqm": 115.616,
+        "bedrooms": 1,
+        "age_years": 11,
+        "price": 180.056
+      },
+      {
+        "area_sqm": 100.761,
+        "bedrooms": 1,
+        "age_years": 41,
+        "price": 156.055
+      },
+      {
+        "area_sqm": 162.463,
+        "bedrooms": 2,
+        "age_years": 13,
+        "price": 272.236
+      },
+      {
+        "area_sqm": 127.608,
+        "bedrooms": 2,
+        "age_years": 36,
+        "price": 185.762
+      },
+      {
+        "area_sqm": 89.721,
+        "bedrooms": 3,
+        "age_years": 14,
+        "price": 210.527
+      },
+      {
+        "area_sqm": 151.185,
+        "bedrooms": 3,
+        "age_years": 18,
+        "price": 265.562
+      },
+      {
+        "area_sqm": 56.757,
+        "bedrooms": 2,
+        "age_years": 4,
+        "price": 131.127
+      },
+      {
+        "area_sqm": 54.344,
+        "bedrooms": 1,
+        "age_years": 41,
+        "price": 109.667
+      },
+      {
+        "area_sqm": 147.375,
+        "bedrooms": 4,
+        "age_years": 43,
+        "price": 269.923
+      },
+      {
+        "area_sqm": 146.95,
+        "bedrooms": 3,
+        "age_years": 28,
+        "price": 244.686
+      },
+      {
+        "area_sqm": 189.4,
+        "bedrooms": 2,
+        "age_years": 23,
+        "price": 330.583
+      },
+      {
+        "area_sqm": 63.081,
+        "bedrooms": 3,
+        "age_years": 6,
+        "price": 175.376
+      },
+      {
+        "area_sqm": 174.486,
+        "bedrooms": 3,
+        "age_years": 36,
+        "price": 315.077
+      },
+      {
+        "area_sqm": 174.21,
+        "bedrooms": 2,
+        "age_years": 0,
+        "price": 311.46
+      },
+      {
+        "area_sqm": 152.043,
+        "bedrooms": 2,
+        "age_years": 3,
+        "price": 265.336
+      },
+      {
+        "area_sqm": 199.367,
+        "bedrooms": 3,
+        "age_years": 15,
+        "price": 360.349
+      },
+      {
+        "area_sqm": 185.774,
+        "bedrooms": 2,
+        "age_years": 33,
+        "price": 293.959
+      },
+      {
+        "area_sqm": 129.185,
+        "bedrooms": 3,
+        "age_years": 38,
+        "price": 234.185
+      },
+      {
+        "area_sqm": 53.557,
+        "bedrooms": 1,
+        "age_years": 36,
+        "price": 117.837
+      },
+      {
+        "area_sqm": 182.617,
+        "bedrooms": 4,
+        "age_years": 3,
+        "price": 330.017
+      },
+      {
+        "area_sqm": 191.682,
+        "bedrooms": 4,
+        "age_years": 17,
+        "price": 358.101
+      },
+      {
+        "area_sqm": 124.946,
+        "bedrooms": 1,
+        "age_years": 8,
+        "price": 212.695
+      },
+      {
+        "area_sqm": 146.754,
+        "bedrooms": 2,
+        "age_years": 24,
+        "price": 252.418
+      },
+      {
+        "area_sqm": 62.369,
+        "bedrooms": 2,
+        "age_years": 12,
+        "price": 158.995
+      },
+      {
+        "area_sqm": 131.748,
+        "bedrooms": 3,
+        "age_years": 32,
+        "price": 236.636
+      },
+      {
+        "area_sqm": 105.902,
+        "bedrooms": 2,
+        "age_years": 30,
+        "price": 178.729
+      },
+      {
+        "area_sqm": 115.211,
+        "bedrooms": 2,
+        "age_years": 26,
+        "price": 191.502
+      },
+      {
+        "area_sqm": 71.815,
+        "bedrooms": 1,
+        "age_years": 16,
+        "price": 141.74
+      },
+      {
+        "area_sqm": 104.103,
+        "bedrooms": 3,
+        "age_years": 33,
+        "price": 211.366
+      },
+      {
+        "area_sqm": 91.569,
+        "bedrooms": 1,
+        "age_years": 33,
+        "price": 150.029
+      },
+      {
+        "area_sqm": 65.19,
+        "bedrooms": 1,
+        "age_years": 10,
+        "price": 123.022
+      },
+      {
+        "area_sqm": 174.54,
+        "bedrooms": 2,
+        "age_years": 18,
+        "price": 280.671
+      },
+      {
+        "area_sqm": 154.034,
+        "bedrooms": 4,
+        "age_years": 29,
+        "price": 294.144
+      },
+      {
+        "area_sqm": 105.723,
+        "bedrooms": 2,
+        "age_years": 7,
+        "price": 194.022
+      },
+      {
+        "area_sqm": 177.095,
+        "bedrooms": 2,
+        "age_years": 20,
+        "price": 293.76
+      },
+      {
+        "area_sqm": 79.622,
+        "bedrooms": 2,
+        "age_years": 16,
+        "price": 153.669
+      },
+      {
+        "area_sqm": 202.3,
+        "bedrooms": 3,
+        "age_years": 18,
+        "price": 338.676
+      },
+      {
+        "area_sqm": 173.37,
+        "bedrooms": 4,
+        "age_years": 12,
+        "price": 317.31
+      },
+      {
+        "area_sqm": 162.436,
+        "bedrooms": 2,
+        "age_years": 27,
+        "price": 290.196
+      },
+      {
+        "area_sqm": 128.308,
+        "bedrooms": 3,
+        "age_years": 26,
+        "price": 230.106
+      },
+      {
+        "area_sqm": 126.321,
+        "bedrooms": 2,
+        "age_years": 27,
+        "price": 232.441
+      },
+      {
+        "area_sqm": 184.667,
+        "bedrooms": 4,
+        "age_years": 11,
+        "price": 339.332
+      },
+      {
+        "area_sqm": 130.247,
+        "bedrooms": 3,
+        "age_years": 5,
+        "price": 265.5
+      },
+      {
+        "area_sqm": 163.804,
+        "bedrooms": 4,
+        "age_years": 39,
+        "price": 267.576
+      },
+      {
+        "area_sqm": 96.971,
+        "bedrooms": 1,
+        "age_years": 0,
+        "price": 185.766
+      },
+      {
+        "area_sqm": 170.364,
+        "bedrooms": 3,
+        "age_years": 18,
+        "price": 317.26
+      },
+      {
+        "area_sqm": 89.811,
+        "bedrooms": 2,
+        "age_years": 34,
+        "price": 161.7
+      },
+      {
+        "area_sqm": 132.749,
+        "bedrooms": 3,
+        "age_years": 21,
+        "price": 233.836
+      },
+      {
+        "area_sqm": 70.495,
+        "bedrooms": 1,
+        "age_years": 39,
+        "price": 109.604
+      },
+      {
+        "area_sqm": 92.299,
+        "bedrooms": 3,
+        "age_years": 21,
+        "price": 202.53
+      },
+      {
+        "area_sqm": 155.083,
+        "bedrooms": 3,
+        "age_years": 1,
+        "price": 294.334
+      },
+      {
+        "area_sqm": 86.977,
+        "bedrooms": 1,
+        "age_years": 35,
+        "price": 135.09
+      },
+      {
+        "area_sqm": 158.176,
+        "bedrooms": 2,
+        "age_years": 18,
+        "price": 272.514
+      },
+      {
+        "area_sqm": 142.116,
+        "bedrooms": 4,
+        "age_years": 14,
+        "price": 281.646
+      },
+      {
+        "area_sqm": 72.441,
+        "bedrooms": 1,
+        "age_years": 14,
+        "price": 141.985
+      },
+      {
+        "area_sqm": 107.297,
+        "bedrooms": 2,
+        "age_years": 25,
+        "price": 191.802
+      },
+      {
+        "area_sqm": 74.638,
+        "bedrooms": 1,
+        "age_years": 6,
+        "price": 157.96
+      },
+      {
+        "area_sqm": 134.082,
+        "bedrooms": 2,
+        "age_years": 15,
+        "price": 226.479
+      },
+      {
+        "area_sqm": 128.928,
+        "bedrooms": 1,
+        "age_years": 5,
+        "price": 202.327
+      },
+      {
+        "area_sqm": 91.713,
+        "bedrooms": 3,
+        "age_years": 42,
+        "price": 175.76
+      },
+      {
+        "area_sqm": 139.957,
+        "bedrooms": 2,
+        "age_years": 17,
+        "price": 231.198
+      },
+      {
+        "area_sqm": 63.356,
+        "bedrooms": 3,
+        "age_years": 13,
+        "price": 151.514
+      },
+      {
+        "area_sqm": 131.955,
+        "bedrooms": 1,
+        "age_years": 18,
+        "price": 239.898
+      },
+      {
+        "area_sqm": 111.04,
+        "bedrooms": 3,
+        "age_years": 26,
+        "price": 218.368
+      },
+      {
+        "area_sqm": 192.532,
+        "bedrooms": 5,
+        "age_years": 9,
+        "price": 382.081
+      },
+      {
+        "area_sqm": 63.818,
+        "bedrooms": 1,
+        "age_years": 39,
+        "price": 115.336
+      },
+      {
+        "area_sqm": 117.927,
+        "bedrooms": 3,
+        "age_years": 2,
+        "price": 234.385
+      },
+      {
+        "area_sqm": 76.922,
+        "bedrooms": 2,
+        "age_years": 34,
+        "price": 156.551
+      },
+      {
+        "area_sqm": 161.684,
+        "bedrooms": 3,
+        "age_years": 17,
+        "price": 283.059
+      },
+      {
+        "area_sqm": 117.525,
+        "bedrooms": 3,
+        "age_years": 13,
+        "price": 204.083
+      },
+      {
+        "area_sqm": 109.349,
+        "bedrooms": 3,
+        "age_years": 12,
+        "price": 209.453
+      },
+      {
+        "area_sqm": 129.934,
+        "bedrooms": 1,
+        "age_years": 7,
+        "price": 236.476
+      },
+      {
+        "area_sqm": 120.958,
+        "bedrooms": 1,
+        "age_years": 7,
+        "price": 218.911
+      },
+      {
+        "area_sqm": 143.157,
+        "bedrooms": 2,
+        "age_years": 13,
+        "price": 260.008
+      },
+      {
+        "area_sqm": 185.485,
+        "bedrooms": 3,
+        "age_years": 25,
+        "price": 332.3
+      },
+      {
+        "area_sqm": 146.02,
+        "bedrooms": 2,
+        "age_years": 27,
+        "price": 261.458
+      },
+      {
+        "area_sqm": 174.159,
+        "bedrooms": 4,
+        "age_years": 30,
+        "price": 320.54
+      },
+      {
+        "area_sqm": 155.085,
+        "bedrooms": 3,
+        "age_years": 15,
+        "price": 287.43
+      },
+      {
+        "area_sqm": 209.04,
+        "bedrooms": 3,
+        "age_years": 2,
+        "price": 355.32
+      },
+      {
+        "area_sqm": 66.044,
+        "bedrooms": 3,
+        "age_years": 19,
+        "price": 151.135
+      },
+      {
+        "area_sqm": 108.129,
+        "bedrooms": 3,
+        "age_years": 26,
+        "price": 216.202
+      },
+      {
+        "area_sqm": 167.921,
+        "bedrooms": 4,
+        "age_years": 38,
+        "price": 309.823
+      },
+      {
+        "area_sqm": 206.106,
+        "bedrooms": 4,
+        "age_years": 16,
+        "price": 378.176
+      },
+      {
+        "area_sqm": 128.022,
+        "bedrooms": 3,
+        "age_years": 33,
+        "price": 213.442
+      },
+      {
+        "area_sqm": 90.883,
+        "bedrooms": 1,
+        "age_years": 17,
+        "price": 157.022
+      },
+      {
+        "area_sqm": 200.342,
+        "bedrooms": 3,
+        "age_years": 10,
+        "price": 371.328
+      },
+      {
+        "area_sqm": 198.201,
+        "bedrooms": 5,
+        "age_years": 10,
+        "price": 374.61
+      },
+      {
+        "area_sqm": 54.112,
+        "bedrooms": 2,
+        "age_years": 1,
+        "price": 135.082
+      },
+      {
+        "area_sqm": 128.551,
+        "bedrooms": 1,
+        "age_years": 19,
+        "price": 228.465
+      },
+      {
+        "area_sqm": 173.204,
+        "bedrooms": 3,
+        "age_years": 27,
+        "price": 305.987
+      },
+      {
+        "area_sqm": 104.414,
+        "bedrooms": 3,
+        "age_years": 43,
+        "price": 178.066
+      },
+      {
+        "area_sqm": 110.879,
+        "bedrooms": 3,
+        "age_years": 30,
+        "price": 187.721
+      },
+      {
+        "area_sqm": 74.657,
+        "bedrooms": 2,
+        "age_years": 15,
+        "price": 156.693
+      },
+      {
+        "area_sqm": 158.126,
+        "bedrooms": 3,
+        "age_years": 24,
+        "price": 278.452
+      },
+      {
+        "area_sqm": 116.266,
+        "bedrooms": 2,
+        "age_years": 22,
+        "price": 202.053
+      },
+      {
+        "area_sqm": 133.993,
+        "bedrooms": 3,
+        "age_years": 30,
+        "price": 231.484
+      },
+      {
+        "area_sqm": 84.486,
+        "bedrooms": 3,
+        "age_years": 21,
+        "price": 166.615
+      },
+      {
+        "area_sqm": 53.478,
+        "bedrooms": 1,
+        "age_years": 14,
+        "price": 105.686
+      },
+      {
+        "area_sqm": 197.339,
+        "bedrooms": 4,
+        "age_years": 7,
+        "price": 355.93
+      },
+      {
+        "area_sqm": 139.625,
+        "bedrooms": 3,
+        "age_years": 27,
+        "price": 239.161
+      },
+      {
+        "area_sqm": 101.198,
+        "bedrooms": 2,
+        "age_years": 4,
+        "price": 207.845
+      },
+      {
+        "area_sqm": 172.483,
+        "bedrooms": 3,
+        "age_years": 24,
+        "price": 310.758
+      },
+      {
+        "area_sqm": 122.666,
+        "bedrooms": 3,
+        "age_years": 37,
+        "price": 236.893
+      },
+      {
+        "area_sqm": 119.463,
+        "bedrooms": 2,
+        "age_years": 36,
+        "price": 190.285
+      },
+      {
+        "area_sqm": 147.438,
+        "bedrooms": 3,
+        "age_years": 15,
+        "price": 280.386
+      },
+      {
+        "area_sqm": 89.764,
+        "bedrooms": 2,
+        "age_years": 32,
+        "price": 159.611
+      },
+      {
+        "area_sqm": 129.262,
+        "bedrooms": 3,
+        "age_years": 27,
+        "price": 231.592
+      },
+      {
+        "area_sqm": 112.518,
+        "bedrooms": 2,
+        "age_years": 2,
+        "price": 200.043
+      },
+      {
+        "area_sqm": 198.337,
+        "bedrooms": 5,
+        "age_years": 37,
+        "price": 365.671
+      },
+      {
+        "area_sqm": 185.005,
+        "bedrooms": 3,
+        "age_years": 10,
+        "price": 335.58
+      },
+      {
+        "area_sqm": 89.155,
+        "bedrooms": 2,
+        "age_years": 27,
+        "price": 160.274
+      },
+      {
+        "area_sqm": 85.953,
+        "bedrooms": 2,
+        "age_years": 44,
+        "price": 159.189
+      }
+    ],
+    "columns": [
+      {
+        "name": "area_sqm",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "bedrooms",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "age_years",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "price",
+        "type": "number",
+        "missing": 0
+      }
+    ],
+    "featureColumns": [
+      "area_sqm",
+      "bedrooms",
+      "age_years"
+    ],
+    "targetColumn": "price",
+    "trainRatio": 0.8
+  },
+  "trainedModel": null
+}
