@@ -33,3 +33,14 @@
 - 用符合业务语义的数学模型重写示例数据：垃圾邮件数据集的 `word_count`（50-259）与 `link_count`（0-7）改为非负整数，且两类样本在词数与链接数上真实可分；能源负荷数据集的湿度改为 35-90%、温度 -5~32.5°C，负荷按“制冷/制热 U 型曲线”建模，不再出现负数或越界值。
 - 示例生成器新增数据合理性断言（数值列必须有限），并输出可运行示例的指标（准确率 / R²）作为验收证据。
 - 验收：`npm run check`、`npm run build`、`git diff --check` 全部通过；spam 示例准确率 1.0、房价回归 R² 0.998。
+
+## 2026-08-06 — 教学示例与数据匹配度改造
+
+- 示例体系分为 Concept / Applied / Architecture Sketch 三种角色，画廊显示角色徽标，架构示意示例明确标注“仅展示架构与代码导出”。
+- 新增确定性教学数据模块 `src/core/teachingDatasets.js`（seeded PRNG、特征先生成后采样标签、数据集 ID 唯一）；示例专用数据不再写在生成脚本中。
+- 新增/重做示例：Linear Trend（概念）、KNN Neighborhood 双月数据（概念）、XOR MLP（概念，线性边界无法解决）、Spam（10 特征交互、单特征不可解）、Energy（非线性 U 型曲线 + Tanh MLP，线性基线差距 ≥0.12）、Peak Demand Custom Loss（导出）、Diabetes（350+ 行、先特征后标签）、Iris（versicolor/virginica 重叠）；CNN 更名“28×28 灰度形状分类”、Movie 更名“用户与物品嵌入架构”、LSTM 末端改为 Sigmoid 并全部标注限制。
+- 新增 `src/core/exampleQuality.js` 纯函数质量检查（类别分布、单特征泄漏、二维线性分隔、R²、输入形状、标签后置变更禁令、Dense 间非线性）。
+- 生成器支持 `--check` 模式（内存生成、质量检查、与仓库 JSON 比对、不写文件）；固定 `savedAt` 保证确定性；失败输出 示例/字段/实际值/期望值。
+- `package.json` 新增 `generate:examples` 与 `check:examples`，`check` 同时执行核心检查与示例检查。
+- 新增 `docs/teaching-examples.md`，重写 `examples/README.md`，更新 `overview.md` 与本地化。
+- 验收：`npm run generate:examples`、`npm run check`、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；再次生成无新 diff；浏览器画廊实测 4/4 通过。

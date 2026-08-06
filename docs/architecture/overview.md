@@ -28,6 +28,8 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
 | Framework-neutral compiler | `src/core/compiler.js` | VOLK IR, graph selection, compatibility report, PyTorch and TensorFlow generation |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
+| Teaching datasets | `src/core/teachingDatasets.js` | Deterministic seeded datasets for example projects and playgrounds |
+| Example quality | `src/core/exampleQuality.js` | Pure teaching-contract checks (class balance, leakage, nonlinearity, R²) |
 | Hosted-service boundary | `src/platform/services.js` | Versioned account, project, collaboration, and compute provider contract with local defaults |
 | Localization runtime | `src/i18n.js` | Message resolution, localized errors, parallel-language rendering |
 | UI messages | `src/locales/ui.js` | Active English and Chinese UI copy |
@@ -110,6 +112,11 @@ Do not make an unavailable backend appear runnable. Update availability only whe
 | Change project JSON | This document and relevant subsystem document | `PROJECT_VERSION`, importer, exporter, compatibility behavior |
 | Change visible UI | `AGENTS.md` localization section | JSX and `src/locales/ui.js` |
 | Change a component lesson | `component-manifest.md` | Tutorial catalog, tutorial coverage tests, and dialog only when presentation changes |
+
+## Teaching examples
+
+- Every bundled example has a teaching role (Concept / Applied / Architecture Sketch), a deterministic seeded dataset, and a machine-verifiable teaching contract checked at generation time and in `npm run check`.
+- Data is generated before labels, so no example leaks the answer into its inputs. See [`docs/teaching-examples.md`](../teaching-examples.md).
 
 ## Validation baseline
 
