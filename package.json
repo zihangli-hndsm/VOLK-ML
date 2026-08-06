@@ -5,8 +5,10 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "check": "node scripts/check-core.mjs",
+    "check": "node scripts/check-core.mjs && node scripts/generate-examples.mjs --check",
     "check:compiler": "node scripts/check-compiler-syntax.mjs",
+    "generate:examples": "node scripts/generate-examples.mjs",
+    "check:examples": "node scripts/generate-examples.mjs --check",
     "build": "vite build",
     "preview": "vite preview"
   },

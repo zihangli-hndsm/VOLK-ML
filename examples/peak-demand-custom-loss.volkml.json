@@ -1,7 +1,7 @@
 {
   "format": "VOLK-ML",
   "version": 8,
-  "name": "example.energyMlp.title",
+  "name": "example.peakDemand.title",
   "savedAt": "2026-08-06T00:00:00.000Z",
   "language": {
     "primary": "en",
@@ -16,7 +16,7 @@
   "graph": {
     "nodes": [
       {
-        "id": "en-data",
+        "id": "peak-data",
         "type": "pipelineNode",
         "position": {
           "x": 40,
@@ -64,7 +64,7 @@
         }
       },
       {
-        "id": "en-split",
+        "id": "peak-split",
         "type": "pipelineNode",
         "position": {
           "x": 560,
@@ -132,7 +132,7 @@
         }
       },
       {
-        "id": "en-input",
+        "id": "peak-input",
         "type": "pipelineNode",
         "position": {
           "x": 40,
@@ -207,7 +207,7 @@
         }
       },
       {
-        "id": "en-hidden1",
+        "id": "peak-hidden1",
         "type": "pipelineNode",
         "position": {
           "x": 560,
@@ -298,7 +298,7 @@
         }
       },
       {
-        "id": "en-tanh1",
+        "id": "peak-tanh1",
         "type": "pipelineNode",
         "position": {
           "x": 1080,
@@ -351,7 +351,7 @@
         }
       },
       {
-        "id": "en-hidden2",
+        "id": "peak-hidden2",
         "type": "pipelineNode",
         "position": {
           "x": 1600,
@@ -442,7 +442,7 @@
         }
       },
       {
-        "id": "en-tanh2",
+        "id": "peak-tanh2",
         "type": "pipelineNode",
         "position": {
           "x": 2120,
@@ -495,7 +495,7 @@
         }
       },
       {
-        "id": "en-head",
+        "id": "peak-head",
         "type": "pipelineNode",
         "position": {
           "x": 2640,
@@ -586,7 +586,7 @@
         }
       },
       {
-        "id": "en-output",
+        "id": "peak-output",
         "type": "pipelineNode",
         "position": {
           "x": 3160,
@@ -639,7 +639,7 @@
         }
       },
       {
-        "id": "en-loss",
+        "id": "peak-loss",
         "type": "pipelineNode",
         "position": {
           "x": 2640,
@@ -647,21 +647,21 @@
         },
         "data": {
           "label": {
-            "en": "Mean Squared Error",
-            "zh": "均方误差"
+            "en": "Custom Loss",
+            "zh": "自定义损失函数"
           },
           "manifest": {
             "schemaVersion": 2,
-            "id": "mse_loss_node",
-            "op": "mse_loss",
+            "id": "custom_loss_node",
+            "op": "custom_loss",
             "kind": "loss",
             "name": {
-              "en": "Mean Squared Error",
-              "zh": "均方误差"
+              "en": "Custom Loss",
+              "zh": "自定义损失函数"
             },
             "description": {
-              "en": "Configures mean squared error loss.",
-              "zh": "配置均方误差损失。"
+              "en": "Defines a safe framework-neutral loss expression using prediction and target.",
+              "zh": "使用 prediction 和 target 定义安全、框架无关的损失表达式。"
             },
             "category": "Losses",
             "inputs": [],
@@ -671,10 +671,20 @@
                 "type": "LossSpec"
               }
             ],
-            "properties": [],
+            "properties": [
+              {
+                "key": "expression",
+                "label": {
+                  "en": "Expression (prediction, target)",
+                  "zh": "表达式（prediction、target）"
+                },
+                "type": "code",
+                "default": "mean(square(prediction - target))"
+              }
+            ],
             "runtime": {
-              "minimumTier": "L0",
-              "browserBackend": "cpu"
+              "minimumTier": "L2",
+              "browserBackend": "none"
             },
             "compatibility": {
               "pytorch": "exact",
@@ -682,12 +692,14 @@
             },
             "composition": null
           },
-          "parameters": {},
+          "parameters": {
+            "expression": "mean(square(prediction - target) * (1 + exp(clip(target - prediction, 0, 8))))"
+          },
           "status": "idle"
         }
       },
       {
-        "id": "en-optimizer",
+        "id": "peak-optimizer",
         "type": "pipelineNode",
         "position": {
           "x": 3160,
@@ -763,7 +775,7 @@
         }
       },
       {
-        "id": "en-trainer",
+        "id": "peak-trainer",
         "type": "pipelineNode",
         "position": {
           "x": 3160,
@@ -866,7 +878,7 @@
         }
       },
       {
-        "id": "en-evaluate",
+        "id": "peak-evaluate",
         "type": "pipelineNode",
         "position": {
           "x": 3680,
@@ -921,98 +933,98 @@
     ],
     "edges": [
       {
-        "id": "en-data-split",
-        "source": "en-data",
+        "id": "peak-data-split",
+        "source": "peak-data",
         "sourceHandle": "dataset",
-        "target": "en-split",
+        "target": "peak-split",
         "targetHandle": "dataset",
         "type": "deletable"
       },
       {
-        "id": "en-input-h1",
-        "source": "en-input",
+        "id": "peak-input-h1",
+        "source": "peak-input",
         "sourceHandle": "tensor",
-        "target": "en-hidden1",
+        "target": "peak-hidden1",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "en-h1-t1",
-        "source": "en-hidden1",
+        "id": "peak-h1-t1",
+        "source": "peak-hidden1",
         "sourceHandle": "output",
-        "target": "en-tanh1",
+        "target": "peak-tanh1",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "en-t1-h2",
-        "source": "en-tanh1",
+        "id": "peak-t1-h2",
+        "source": "peak-tanh1",
         "sourceHandle": "output",
-        "target": "en-hidden2",
+        "target": "peak-hidden2",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "en-h2-t2",
-        "source": "en-hidden2",
+        "id": "peak-h2-t2",
+        "source": "peak-hidden2",
         "sourceHandle": "output",
-        "target": "en-tanh2",
+        "target": "peak-tanh2",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "en-t2-head",
-        "source": "en-tanh2",
+        "id": "peak-t2-head",
+        "source": "peak-tanh2",
         "sourceHandle": "output",
-        "target": "en-head",
+        "target": "peak-head",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "en-head-output",
-        "source": "en-head",
+        "id": "peak-head-output",
+        "source": "peak-head",
         "sourceHandle": "output",
-        "target": "en-output",
+        "target": "peak-output",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "en-split-trainer",
-        "source": "en-split",
+        "id": "peak-split-trainer",
+        "source": "peak-split",
         "sourceHandle": "split",
-        "target": "en-trainer",
+        "target": "peak-trainer",
         "targetHandle": "dataset",
         "type": "deletable"
       },
       {
-        "id": "en-output-trainer",
-        "source": "en-output",
+        "id": "peak-output-trainer",
+        "source": "peak-output",
         "sourceHandle": "model",
-        "target": "en-trainer",
+        "target": "peak-trainer",
         "targetHandle": "model",
         "type": "deletable"
       },
       {
-        "id": "en-loss-trainer",
-        "source": "en-loss",
+        "id": "peak-loss-trainer",
+        "source": "peak-loss",
         "sourceHandle": "loss",
-        "target": "en-trainer",
+        "target": "peak-trainer",
         "targetHandle": "loss",
         "type": "deletable"
       },
       {
-        "id": "en-optimizer-trainer",
-        "source": "en-optimizer",
+        "id": "peak-optimizer-trainer",
+        "source": "peak-optimizer",
         "sourceHandle": "optimizer",
-        "target": "en-trainer",
+        "target": "peak-trainer",
         "targetHandle": "optimizer",
         "type": "deletable"
       },
       {
-        "id": "en-trainer-evaluate",
-        "source": "en-trainer",
+        "id": "peak-trainer-evaluate",
+        "source": "peak-trainer",
         "sourceHandle": "trained_model",
-        "target": "en-evaluate",
+        "target": "peak-evaluate",
         "targetHandle": "trained_model",
         "type": "deletable"
       }

@@ -1,8 +1,8 @@
 {
   "format": "VOLK-ML",
   "version": 8,
-  "name": "House Price Prediction",
-  "savedAt": "2026-08-05T07:57:14.456Z",
+  "name": "example.linearTrend.title",
+  "savedAt": "2026-08-06T00:00:00.000Z",
   "language": {
     "primary": "en",
     "secondary": "zh"
@@ -16,7 +16,7 @@
   "graph": {
     "nodes": [
       {
-        "id": "hp-data",
+        "id": "trend-data",
         "type": "pipelineNode",
         "position": {
           "x": 40,
@@ -64,7 +64,7 @@
         }
       },
       {
-        "id": "hp-split",
+        "id": "trend-split",
         "type": "pipelineNode",
         "position": {
           "x": 560,
@@ -132,7 +132,7 @@
         }
       },
       {
-        "id": "hp-linear",
+        "id": "trend-linear",
         "type": "pipelineNode",
         "position": {
           "x": 1080,
@@ -200,7 +200,7 @@
         }
       },
       {
-        "id": "hp-train",
+        "id": "trend-train",
         "type": "pipelineNode",
         "position": {
           "x": 1600,
@@ -262,13 +262,13 @@
             "composition": null
           },
           "parameters": {
-            "epochs": 250
+            "epochs": 300
           },
           "status": "idle"
         }
       },
       {
-        "id": "hp-evaluate",
+        "id": "trend-evaluate",
         "type": "pipelineNode",
         "position": {
           "x": 2120,
@@ -321,7 +321,7 @@
         }
       },
       {
-        "id": "hp-predict",
+        "id": "trend-predict",
         "type": "pipelineNode",
         "position": {
           "x": 2120,
@@ -376,42 +376,42 @@
     ],
     "edges": [
       {
-        "id": "hp-data-split",
-        "source": "hp-data",
+        "id": "trend-data-split",
+        "source": "trend-data",
         "sourceHandle": "dataset",
-        "target": "hp-split",
+        "target": "trend-split",
         "targetHandle": "dataset",
         "type": "deletable"
       },
       {
-        "id": "hp-split-linear",
-        "source": "hp-split",
+        "id": "trend-split-linear",
+        "source": "trend-split",
         "sourceHandle": "split",
-        "target": "hp-linear",
+        "target": "trend-linear",
         "targetHandle": "split",
         "type": "deletable"
       },
       {
-        "id": "hp-linear-train",
-        "source": "hp-linear",
+        "id": "trend-linear-train",
+        "source": "trend-linear",
         "sourceHandle": "model",
-        "target": "hp-train",
+        "target": "trend-train",
         "targetHandle": "model",
         "type": "deletable"
       },
       {
-        "id": "hp-train-evaluate",
-        "source": "hp-train",
+        "id": "trend-train-evaluate",
+        "source": "trend-train",
         "sourceHandle": "trained_model",
-        "target": "hp-evaluate",
+        "target": "trend-evaluate",
         "targetHandle": "trained_model",
         "type": "deletable"
       },
       {
-        "id": "hp-train-predict",
-        "source": "hp-train",
+        "id": "trend-train-predict",
+        "source": "trend-train",
         "sourceHandle": "trained_model",
-        "target": "hp-predict",
+        "target": "trend-predict",
         "targetHandle": "trained_model",
         "type": "deletable"
       }
@@ -419,578 +419,506 @@
   },
   "customComponents": [],
   "data": {
-    "name": "House Prices",
+    "name": "Linear Trend",
     "task": "regression",
     "rows": [
       {
-        "area_sqm": 45,
-        "bedrooms": 1,
-        "age_years": 0,
-        "price": 114
+        "x": -0.357,
+        "y": -0.77
       },
       {
-        "area_sqm": 51,
-        "bedrooms": 2,
-        "age_years": 1,
-        "price": 138.55
+        "x": 0.948,
+        "y": 3.103
       },
       {
-        "area_sqm": 57,
-        "bedrooms": 3,
-        "age_years": 2,
-        "price": 152.71
+        "x": -2.782,
+        "y": -5
       },
       {
-        "area_sqm": 63,
-        "bedrooms": 4,
-        "age_years": 3,
-        "price": 177.37
+        "x": 2.411,
+        "y": 5.495
       },
       {
-        "area_sqm": 69,
-        "bedrooms": 1,
-        "age_years": 4,
-        "price": 153.82
+        "x": -1.652,
+        "y": -1.266
       },
       {
-        "area_sqm": 75,
-        "bedrooms": 2,
-        "age_years": 5,
-        "price": 167.98
+        "x": -3.084,
+        "y": -5.788
       },
       {
-        "area_sqm": 81,
-        "bedrooms": 3,
-        "age_years": 6,
-        "price": 192.73
+        "x": -2.564,
+        "y": -5.026
       },
       {
-        "area_sqm": 87,
-        "bedrooms": 4,
-        "age_years": 7,
-        "price": 217.08
+        "x": 3.367,
+        "y": 6.147
       },
       {
-        "area_sqm": 93,
-        "bedrooms": 1,
-        "age_years": 8,
-        "price": 183.25
+        "x": 0.52,
+        "y": 1.163
       },
       {
-        "area_sqm": 99,
-        "bedrooms": 2,
-        "age_years": 9,
-        "price": 208.1
+        "x": 3.627,
+        "y": 7.816
       },
       {
-        "area_sqm": 105,
-        "bedrooms": 3,
-        "age_years": 10,
-        "price": 232.35
+        "x": 3.538,
+        "y": 7.675
       },
       {
-        "area_sqm": 111,
-        "bedrooms": 4,
-        "age_years": 11,
-        "price": 246.52
+        "x": -1.807,
+        "y": -3.059
       },
       {
-        "area_sqm": 117,
-        "bedrooms": 1,
-        "age_years": 12,
-        "price": 223.47
+        "x": -0.688,
+        "y": -1.35
       },
       {
-        "area_sqm": 123,
-        "bedrooms": 2,
-        "age_years": 13,
-        "price": 247.61
+        "x": 2.74,
+        "y": 6.255
       },
       {
-        "area_sqm": 129,
-        "bedrooms": 3,
-        "age_years": 14,
-        "price": 261.79
+        "x": -1.591,
+        "y": -2.356
       },
       {
-        "area_sqm": 135,
-        "bedrooms": 4,
-        "age_years": 15,
-        "price": 286.84
+        "x": 2.187,
+        "y": 4.568
       },
       {
-        "area_sqm": 141,
-        "bedrooms": 1,
-        "age_years": 16,
-        "price": 262.87
+        "x": 1.936,
+        "y": 4.126
       },
       {
-        "area_sqm": 147,
-        "bedrooms": 2,
-        "age_years": 17,
-        "price": 277.06
+        "x": 1.412,
+        "y": 3.504
       },
       {
-        "area_sqm": 153,
-        "bedrooms": 3,
-        "age_years": 18,
-        "price": 302.2
+        "x": 1.033,
+        "y": 2.503
       },
       {
-        "area_sqm": 159,
-        "bedrooms": 4,
-        "age_years": 19,
-        "price": 326.13
+        "x": 3.944,
+        "y": 7.604
       },
       {
-        "area_sqm": 165,
-        "bedrooms": 1,
-        "age_years": 20,
-        "price": 292.33
+        "x": -2.541,
+        "y": -5.032
       },
       {
-        "area_sqm": 171,
-        "bedrooms": 2,
-        "age_years": 21,
-        "price": 317.57
+        "x": -2.581,
+        "y": -3.983
       },
       {
-        "area_sqm": 177,
-        "bedrooms": 3,
-        "age_years": 22,
-        "price": 341.39
+        "x": 3.81,
+        "y": 7.734
       },
       {
-        "area_sqm": 183,
-        "bedrooms": 4,
-        "age_years": 23,
-        "price": 355.61
+        "x": 2.142,
+        "y": 5.203
       },
       {
-        "area_sqm": 189,
-        "bedrooms": 1,
-        "age_years": 24,
-        "price": 332.94
+        "x": 0.794,
+        "y": 0.048
       },
       {
-        "area_sqm": 195,
-        "bedrooms": 2,
-        "age_years": 0,
-        "price": 369.15
+        "x": 2.315,
+        "y": 4.97
       },
       {
-        "area_sqm": 201,
-        "bedrooms": 3,
-        "age_years": 1,
-        "price": 383.38
+        "x": 2.142,
+        "y": 5.072
       },
       {
-        "area_sqm": 207,
-        "bedrooms": 4,
-        "age_years": 2,
-        "price": 408.8
+        "x": 3.745,
+        "y": 8.614
       },
       {
-        "area_sqm": 213,
-        "bedrooms": 1,
-        "age_years": 3,
-        "price": 384.41
+        "x": -1.013,
+        "y": -1.961
       },
       {
-        "area_sqm": 219,
-        "bedrooms": 2,
-        "age_years": 4,
-        "price": 398.66
+        "x": 0.71,
+        "y": 1.94
       },
       {
-        "area_sqm": 45,
-        "bedrooms": 3,
-        "age_years": 5,
-        "price": 136.17
+        "x": -1.694,
+        "y": -2.17
       },
       {
-        "area_sqm": 51,
-        "bedrooms": 4,
-        "age_years": 6,
-        "price": 159.67
+        "x": -2.128,
+        "y": -2.554
       },
       {
-        "area_sqm": 57,
-        "bedrooms": 1,
-        "age_years": 7,
-        "price": 125.93
+        "x": 0.785,
+        "y": 2.139
       },
       {
-        "area_sqm": 63,
-        "bedrooms": 2,
-        "age_years": 8,
-        "price": 151.54
+        "x": 3.288,
+        "y": 6.38
       },
       {
-        "area_sqm": 69,
-        "bedrooms": 3,
-        "age_years": 9,
-        "price": 174.92
+        "x": 2.926,
+        "y": 6.445
       },
       {
-        "area_sqm": 75,
-        "bedrooms": 4,
-        "age_years": 10,
-        "price": 189.21
+        "x": -0.31,
+        "y": 0.115
       },
       {
-        "area_sqm": 81,
-        "bedrooms": 1,
-        "age_years": 11,
-        "price": 166.9
+        "x": -3.992,
+        "y": -6.827
       },
       {
-        "area_sqm": 87,
-        "bedrooms": 2,
-        "age_years": 12,
-        "price": 190.18
+        "x": 3.323,
+        "y": 7.117
       },
       {
-        "area_sqm": 93,
-        "bedrooms": 3,
-        "age_years": 13,
-        "price": 204.49
+        "x": 0.455,
+        "y": 1.518
       },
       {
-        "area_sqm": 99,
-        "bedrooms": 4,
-        "age_years": 14,
-        "price": 230.27
+        "x": 2.737,
+        "y": 5.781
       },
       {
-        "area_sqm": 105,
-        "bedrooms": 1,
-        "age_years": 15,
-        "price": 205.43
+        "x": -2.203,
+        "y": -3.911
       },
       {
-        "area_sqm": 111,
-        "bedrooms": 2,
-        "age_years": 16,
-        "price": 219.77
+        "x": 2.847,
+        "y": 6.59
       },
       {
-        "area_sqm": 117,
-        "bedrooms": 3,
-        "age_years": 17,
-        "price": 245.63
+        "x": -2.445,
+        "y": -3.604
       },
       {
-        "area_sqm": 123,
-        "bedrooms": 4,
-        "age_years": 18,
-        "price": 268.69
+        "x": -3.608,
+        "y": -5.378
       },
       {
-        "area_sqm": 129,
-        "bedrooms": 1,
-        "age_years": 19,
-        "price": 235.05
+        "x": 0.415,
+        "y": 0.836
       },
       {
-        "area_sqm": 135,
-        "bedrooms": 2,
-        "age_years": 20,
-        "price": 261
+        "x": 0.841,
+        "y": 2.425
       },
       {
-        "area_sqm": 141,
-        "bedrooms": 3,
-        "age_years": 21,
-        "price": 283.94
+        "x": -2.373,
+        "y": -4.281
       },
       {
-        "area_sqm": 147,
-        "bedrooms": 4,
-        "age_years": 22,
-        "price": 298.33
+        "x": -2.697,
+        "y": -4.623
       },
       {
-        "area_sqm": 153,
-        "bedrooms": 1,
-        "age_years": 23,
-        "price": 276.36
+        "x": 3.207,
+        "y": 6.366
       },
       {
-        "area_sqm": 159,
-        "bedrooms": 2,
-        "age_years": 24,
-        "price": 299.19
+        "x": -0.806,
+        "y": -1.102
       },
       {
-        "area_sqm": 165,
-        "bedrooms": 3,
-        "age_years": 0,
-        "price": 326.12
+        "x": -1.085,
+        "y": -0.777
       },
       {
-        "area_sqm": 171,
-        "bedrooms": 4,
-        "age_years": 1,
-        "price": 352.23
+        "x": -1.09,
+        "y": -0.414
       },
       {
-        "area_sqm": 177,
-        "bedrooms": 1,
-        "age_years": 2,
-        "price": 326.94
+        "x": -2.007,
+        "y": -3.005
       },
       {
-        "area_sqm": 183,
-        "bedrooms": 2,
-        "age_years": 3,
-        "price": 341.4
+        "x": -3.559,
+        "y": -6.715
       },
       {
-        "area_sqm": 189,
-        "bedrooms": 3,
-        "age_years": 4,
-        "price": 367.59
+        "x": -3.172,
+        "y": -5.632
       },
       {
-        "area_sqm": 195,
-        "bedrooms": 4,
-        "age_years": 5,
-        "price": 390.19
+        "x": 3.242,
+        "y": 6.174
       },
       {
-        "area_sqm": 201,
-        "bedrooms": 1,
-        "age_years": 6,
-        "price": 356.69
+        "x": -3.296,
+        "y": -4.057
       },
       {
-        "area_sqm": 207,
-        "bedrooms": 2,
-        "age_years": 7,
-        "price": 382.96
+        "x": 3.939,
+        "y": 8.808
       },
       {
-        "area_sqm": 213,
-        "bedrooms": 3,
-        "age_years": 8,
-        "price": 405.44
+        "x": -1.096,
+        "y": -0.978
       },
       {
-        "area_sqm": 219,
-        "bedrooms": 4,
-        "age_years": 9,
-        "price": 419.97
+        "x": 1.346,
+        "y": 4.845
       },
       {
-        "area_sqm": 45,
-        "bedrooms": 1,
-        "age_years": 10,
-        "price": 110.32
+        "x": 3.003,
+        "y": 6.239
       },
       {
-        "area_sqm": 51,
-        "bedrooms": 2,
-        "age_years": 11,
-        "price": 132.69
+        "x": 1.243,
+        "y": 1.269
       },
       {
-        "area_sqm": 57,
-        "bedrooms": 3,
-        "age_years": 12,
-        "price": 147.26
+        "x": 1.975,
+        "y": 3.698
       },
       {
-        "area_sqm": 63,
-        "bedrooms": 4,
-        "age_years": 13,
-        "price": 173.68
+        "x": -0.616,
+        "y": -0.658
       },
       {
-        "area_sqm": 69,
-        "bedrooms": 1,
-        "age_years": 14,
-        "price": 147.94
+        "x": -0.602,
+        "y": -0.516
       },
       {
-        "area_sqm": 75,
-        "bedrooms": 2,
-        "age_years": 15,
-        "price": 162.55
+        "x": -0.413,
+        "y": -0.412
       },
       {
-        "area_sqm": 81,
-        "bedrooms": 3,
-        "age_years": 16,
-        "price": 189.05
+        "x": -0.318,
+        "y": -0.247
       },
       {
-        "area_sqm": 87,
-        "bedrooms": 4,
-        "age_years": 17,
-        "price": 211.19
+        "x": -1.89,
+        "y": -3.023
       },
       {
-        "area_sqm": 93,
-        "bedrooms": 1,
-        "age_years": 18,
-        "price": 177.84
+        "x": 1.43,
+        "y": 4.015
       },
       {
-        "area_sqm": 99,
-        "bedrooms": 2,
-        "age_years": 19,
-        "price": 204.41
+        "x": -3.138,
+        "y": -5.663
       },
       {
-        "area_sqm": 105,
-        "bedrooms": 3,
-        "age_years": 20,
-        "price": 226.44
+        "x": -2.254,
+        "y": -2.946
       },
       {
-        "area_sqm": 111,
-        "bedrooms": 4,
-        "age_years": 21,
-        "price": 241.13
+        "x": -2.644,
+        "y": -3.837
       },
       {
-        "area_sqm": 117,
-        "bedrooms": 1,
-        "age_years": 22,
-        "price": 219.77
+        "x": -1.686,
+        "y": -1.956
       },
       {
-        "area_sqm": 123,
-        "bedrooms": 2,
-        "age_years": 23,
-        "price": 241.68
+        "x": 3.696,
+        "y": 6.167
       },
       {
-        "area_sqm": 129,
-        "bedrooms": 3,
-        "age_years": 24,
-        "price": 256.42
+        "x": -0.075,
+        "y": -1.172
       },
       {
-        "area_sqm": 135,
-        "bedrooms": 4,
-        "age_years": 0,
-        "price": 295.63
+        "x": 2.293,
+        "y": 5.336
       },
       {
-        "area_sqm": 141,
-        "bedrooms": 1,
-        "age_years": 1,
-        "price": 269.43
+        "x": 2.066,
+        "y": 4.217
       },
       {
-        "area_sqm": 147,
-        "bedrooms": 2,
-        "age_years": 2,
-        "price": 284.22
+        "x": -2.959,
+        "y": -5.126
       },
       {
-        "area_sqm": 153,
-        "bedrooms": 3,
-        "age_years": 3,
-        "price": 310.99
+        "x": -3.897,
+        "y": -5.153
       },
       {
-        "area_sqm": 159,
-        "bedrooms": 4,
-        "age_years": 4,
-        "price": 332.67
+        "x": -3.528,
+        "y": -6.16
       },
       {
-        "area_sqm": 165,
-        "bedrooms": 1,
-        "age_years": 5,
-        "price": 299.51
+        "x": 0.716,
+        "y": 1.608
       },
       {
-        "area_sqm": 171,
-        "bedrooms": 2,
-        "age_years": 6,
-        "price": 326.35
+        "x": -3.349,
+        "y": -5.433
       },
       {
-        "area_sqm": 177,
-        "bedrooms": 3,
-        "age_years": 7,
-        "price": 347.92
+        "x": -0.731,
+        "y": -1.99
       },
       {
-        "area_sqm": 183,
-        "bedrooms": 4,
-        "age_years": 8,
-        "price": 362.81
+        "x": 0.377,
+        "y": 1.31
       },
       {
-        "area_sqm": 189,
-        "bedrooms": 1,
-        "age_years": 9,
-        "price": 341.71
+        "x": 0.425,
+        "y": 2.15
       },
       {
-        "area_sqm": 195,
-        "bedrooms": 2,
-        "age_years": 10,
-        "price": 363.16
+        "x": -0.47,
+        "y": -0.351
       },
       {
-        "area_sqm": 201,
-        "bedrooms": 3,
-        "age_years": 11,
-        "price": 378.1
+        "x": -2.918,
+        "y": -4.129
       },
       {
-        "area_sqm": 207,
-        "bedrooms": 4,
-        "age_years": 12,
-        "price": 405.07
+        "x": 2.475,
+        "y": 5.663
       },
       {
-        "area_sqm": 213,
-        "bedrooms": 1,
-        "age_years": 13,
-        "price": 378.4
+        "x": 1.11,
+        "y": 2.136
       },
       {
-        "area_sqm": 219,
-        "bedrooms": 2,
-        "age_years": 14,
-        "price": 393.4
+        "x": 1.889,
+        "y": 4.828
+      },
+      {
+        "x": -2.973,
+        "y": -3.941
+      },
+      {
+        "x": 0.031,
+        "y": 1.421
+      },
+      {
+        "x": -3.001,
+        "y": -4.478
+      },
+      {
+        "x": 0.063,
+        "y": 0.817
+      },
+      {
+        "x": 0.177,
+        "y": 1.461
+      },
+      {
+        "x": 3.599,
+        "y": 8.235
+      },
+      {
+        "x": -0.863,
+        "y": -1.292
+      },
+      {
+        "x": 3.066,
+        "y": 7.142
+      },
+      {
+        "x": -3.881,
+        "y": -6.88
+      },
+      {
+        "x": 3.463,
+        "y": 6.597
+      },
+      {
+        "x": 0.649,
+        "y": 1.035
+      },
+      {
+        "x": 1.546,
+        "y": 2.962
+      },
+      {
+        "x": -2.931,
+        "y": -5.339
+      },
+      {
+        "x": -0.613,
+        "y": 0.462
+      },
+      {
+        "x": 2.737,
+        "y": 5.278
+      },
+      {
+        "x": 1.449,
+        "y": 2.649
+      },
+      {
+        "x": 2.906,
+        "y": 6.414
+      },
+      {
+        "x": 0.13,
+        "y": 0.459
+      },
+      {
+        "x": -3.729,
+        "y": -6.011
+      },
+      {
+        "x": 2.494,
+        "y": 4.471
+      },
+      {
+        "x": 0.316,
+        "y": 2.767
+      },
+      {
+        "x": 3.615,
+        "y": 7.296
+      },
+      {
+        "x": -1.171,
+        "y": -1.462
+      },
+      {
+        "x": 3.484,
+        "y": 7.275
+      },
+      {
+        "x": 3.149,
+        "y": 6.379
+      },
+      {
+        "x": 3.819,
+        "y": 8.308
+      },
+      {
+        "x": 3.547,
+        "y": 7.289
+      },
+      {
+        "x": -3.117,
+        "y": -5.864
+      },
+      {
+        "x": -0.515,
+        "y": -0.89
+      },
+      {
+        "x": -3.118,
+        "y": -4.822
       }
     ],
     "columns": [
       {
-        "name": "area_sqm",
+        "name": "x",
         "type": "number",
         "missing": 0
       },
       {
-        "name": "bedrooms",
-        "type": "number",
-        "missing": 0
-      },
-      {
-        "name": "age_years",
-        "type": "number",
-        "missing": 0
-      },
-      {
-        "name": "price",
+        "name": "y",
         "type": "number",
         "missing": 0
       }
     ],
     "featureColumns": [
-      "area_sqm",
-      "bedrooms",
-      "age_years"
+      "x"
     ],
-    "targetColumn": "price",
+    "targetColumn": "y",
     "trainRatio": 0.8
   },
   "trainedModel": null

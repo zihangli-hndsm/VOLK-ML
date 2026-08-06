@@ -1,0 +1,1374 @@
+{
+  "format": "VOLK-ML",
+  "version": 8,
+  "name": "example.iris.title",
+  "savedAt": "2026-08-06T00:00:00.000Z",
+  "language": {
+    "primary": "en",
+    "secondary": "zh"
+  },
+  "workspace": {
+    "libraryMode": "detailed",
+    "leftWidth": 300,
+    "rightWidth": 384,
+    "viewMode": "canvas"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "iris-data",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Tabular Data",
+            "zh": "表格数据"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tabular_data_node",
+            "op": "tabular_data",
+            "kind": "data",
+            "name": {
+              "en": "Tabular Data",
+              "zh": "表格数据"
+            },
+            "description": {
+              "en": "Provides the CSV or JSON dataset configured in the Data workspace.",
+              "zh": "提供在数据工作区配置的 CSV 或 JSON 数据集。"
+            },
+            "category": "Data",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "iris-knn",
+        "type": "pipelineNode",
+        "position": {
+          "x": 560,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "K-Nearest Neighbors",
+            "zh": "K-近邻算法"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "knn_node",
+            "op": "knn_classifier",
+            "kind": "model",
+            "name": {
+              "en": "K-Nearest Neighbors",
+              "zh": "K-近邻算法"
+            },
+            "description": {
+              "en": "Classifies samples by voting among nearby examples.",
+              "zh": "通过附近样本投票对数据进行分类。"
+            },
+            "category": "Classification",
+            "inputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "properties": [
+              {
+                "key": "k_value",
+                "label": {
+                  "en": "Number of Neighbors (K)",
+                  "zh": "邻居数量 (K)"
+                },
+                "type": "number",
+                "default": 3,
+                "min": 1,
+                "max": 99,
+                "step": 2
+              },
+              {
+                "key": "train_ratio",
+                "label": {
+                  "en": "Training Ratio",
+                  "zh": "训练集比例"
+                },
+                "type": "slider",
+                "default": 0.8,
+                "min": 0.5,
+                "max": 0.9,
+                "step": 0.05
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "unsupported",
+              "tensorflow": "unsupported"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "k_value": 5,
+            "train_ratio": 0.8
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "iris-evaluate",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1600,
+          "y": 120
+        },
+        "data": {
+          "label": {
+            "en": "Evaluate Classification",
+            "zh": "分类评估"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "evaluate_classification_node",
+            "op": "evaluate_classification",
+            "kind": "evaluation",
+            "name": {
+              "en": "Evaluate Classification",
+              "zh": "分类评估"
+            },
+            "description": {
+              "en": "Computes accuracy and macro F1 on a connected classifier test set.",
+              "zh": "在连接的分类器测试集上计算准确率和宏平均 F1。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "metrics",
+                "type": "Metrics"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "iris-predict",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1600,
+          "y": 700
+        },
+        "data": {
+          "label": {
+            "en": "Interactive Predictor",
+            "zh": "交互预测器"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "predictor_node",
+            "op": "interactive_predictor",
+            "kind": "inference",
+            "name": {
+              "en": "Interactive Predictor",
+              "zh": "交互预测器"
+            },
+            "description": {
+              "en": "Creates an input form for trying the connected trained model.",
+              "zh": "为连接的已训练模型创建交互输入表单。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "prediction",
+                "type": "Prediction"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "iris-data-knn",
+        "source": "iris-data",
+        "sourceHandle": "dataset",
+        "target": "iris-knn",
+        "targetHandle": "dataset",
+        "type": "deletable"
+      },
+      {
+        "id": "iris-knn-evaluate",
+        "source": "iris-knn",
+        "sourceHandle": "trained_model",
+        "target": "iris-evaluate",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      },
+      {
+        "id": "iris-knn-predict",
+        "source": "iris-knn",
+        "sourceHandle": "trained_model",
+        "target": "iris-predict",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      }
+    ]
+  },
+  "customComponents": [],
+  "data": {
+    "name": "Iris Flowers",
+    "task": "classification",
+    "rows": [
+      {
+        "sepal_length": 5.022,
+        "sepal_width": 3.979,
+        "petal_length": 1.045,
+        "petal_width": 0.296,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.326,
+        "sepal_width": 3.813,
+        "petal_length": 1.031,
+        "petal_width": 0.499,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.014,
+        "sepal_width": 3.306,
+        "petal_length": 1.726,
+        "petal_width": 0.416,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.399,
+        "sepal_width": 3.097,
+        "petal_length": 1.723,
+        "petal_width": 0.43,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.209,
+        "sepal_width": 3.326,
+        "petal_length": 1.245,
+        "petal_width": 0.412,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.988,
+        "sepal_width": 3.047,
+        "petal_length": 1.691,
+        "petal_width": 0.179,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.696,
+        "sepal_width": 3.94,
+        "petal_length": 1.822,
+        "petal_width": 0.389,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.935,
+        "sepal_width": 3.301,
+        "petal_length": 1.547,
+        "petal_width": 0.391,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.075,
+        "sepal_width": 3.148,
+        "petal_length": 1.824,
+        "petal_width": 0.366,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.462,
+        "sepal_width": 3.668,
+        "petal_length": 1.747,
+        "petal_width": 0.45,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.536,
+        "sepal_width": 3.968,
+        "petal_length": 1.238,
+        "petal_width": 0.45,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.17,
+        "sepal_width": 3.671,
+        "petal_length": 1.513,
+        "petal_width": 0.313,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.734,
+        "sepal_width": 3.811,
+        "petal_length": 1.836,
+        "petal_width": 0.138,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.412,
+        "sepal_width": 3.932,
+        "petal_length": 1.015,
+        "petal_width": 0.215,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.25,
+        "sepal_width": 3.105,
+        "petal_length": 1.415,
+        "petal_width": 0.348,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.088,
+        "sepal_width": 3.517,
+        "petal_length": 1.478,
+        "petal_width": 0.232,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.669,
+        "sepal_width": 3.669,
+        "petal_length": 1.495,
+        "petal_width": 0.219,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.933,
+        "sepal_width": 3.114,
+        "petal_length": 1.36,
+        "petal_width": 0.216,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.505,
+        "sepal_width": 3.487,
+        "petal_length": 1.151,
+        "petal_width": 0.343,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.786,
+        "sepal_width": 3.45,
+        "petal_length": 1.061,
+        "petal_width": 0.386,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.376,
+        "sepal_width": 3.445,
+        "petal_length": 1.32,
+        "petal_width": 0.144,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.963,
+        "sepal_width": 3.387,
+        "petal_length": 1.141,
+        "petal_width": 0.161,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.62,
+        "sepal_width": 3.184,
+        "petal_length": 1.546,
+        "petal_width": 0.285,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.402,
+        "sepal_width": 3.662,
+        "petal_length": 1.644,
+        "petal_width": 0.21,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.012,
+        "sepal_width": 3.567,
+        "petal_length": 1.403,
+        "petal_width": 0.431,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.495,
+        "sepal_width": 3.576,
+        "petal_length": 1.773,
+        "petal_width": 0.238,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.729,
+        "sepal_width": 3.758,
+        "petal_length": 1.304,
+        "petal_width": 0.249,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.998,
+        "sepal_width": 3.668,
+        "petal_length": 1.296,
+        "petal_width": 0.19,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.651,
+        "sepal_width": 3.879,
+        "petal_length": 1.843,
+        "petal_width": 0.48,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.665,
+        "sepal_width": 3.546,
+        "petal_length": 1.201,
+        "petal_width": 0.471,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.276,
+        "sepal_width": 3.016,
+        "petal_length": 1.676,
+        "petal_width": 0.215,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.764,
+        "sepal_width": 3.997,
+        "petal_length": 1.607,
+        "petal_width": 0.23,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.517,
+        "sepal_width": 3.892,
+        "petal_length": 1.629,
+        "petal_width": 0.398,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.688,
+        "sepal_width": 3.954,
+        "petal_length": 1.466,
+        "petal_width": 0.103,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.689,
+        "sepal_width": 3.794,
+        "petal_length": 1.047,
+        "petal_width": 0.39,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.667,
+        "sepal_width": 3.482,
+        "petal_length": 1.701,
+        "petal_width": 0.309,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.328,
+        "sepal_width": 3.693,
+        "petal_length": 1.505,
+        "petal_width": 0.46,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.669,
+        "sepal_width": 3.383,
+        "petal_length": 1.217,
+        "petal_width": 0.116,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.478,
+        "sepal_width": 3.74,
+        "petal_length": 1.44,
+        "petal_width": 0.316,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.929,
+        "sepal_width": 3.167,
+        "petal_length": 1.405,
+        "petal_width": 0.117,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.203,
+        "sepal_width": 3.208,
+        "petal_length": 1.783,
+        "petal_width": 0.431,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.391,
+        "sepal_width": 3.864,
+        "petal_length": 1.244,
+        "petal_width": 0.289,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.771,
+        "sepal_width": 3.271,
+        "petal_length": 1.694,
+        "petal_width": 0.454,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.64,
+        "sepal_width": 3.266,
+        "petal_length": 1.584,
+        "petal_width": 0.306,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.737,
+        "sepal_width": 3.55,
+        "petal_length": 1.378,
+        "petal_width": 0.203,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.551,
+        "sepal_width": 3.373,
+        "petal_length": 1.468,
+        "petal_width": 0.464,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.2,
+        "sepal_width": 3.736,
+        "petal_length": 1.757,
+        "petal_width": 0.36,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.606,
+        "sepal_width": 3.084,
+        "petal_length": 1.566,
+        "petal_width": 0.381,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.063,
+        "sepal_width": 3.671,
+        "petal_length": 1.001,
+        "petal_width": 0.17,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 4.917,
+        "sepal_width": 3.395,
+        "petal_length": 1.452,
+        "petal_width": 0.253,
+        "species": "setosa"
+      },
+      {
+        "sepal_length": 5.16,
+        "sepal_width": 2.738,
+        "petal_length": 4.636,
+        "petal_width": 1.192,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.574,
+        "sepal_width": 2.533,
+        "petal_length": 4.458,
+        "petal_width": 1.684,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.973,
+        "sepal_width": 2.309,
+        "petal_length": 4.193,
+        "petal_width": 1.734,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.383,
+        "sepal_width": 2.834,
+        "petal_length": 4.768,
+        "petal_width": 1.704,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.284,
+        "sepal_width": 2.925,
+        "petal_length": 4.397,
+        "petal_width": 1.274,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.304,
+        "sepal_width": 2.258,
+        "petal_length": 3.494,
+        "petal_width": 1.112,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.634,
+        "sepal_width": 3.158,
+        "petal_length": 3.916,
+        "petal_width": 1.501,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.161,
+        "sepal_width": 2.513,
+        "petal_length": 4.862,
+        "petal_width": 1.318,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.112,
+        "sepal_width": 2.305,
+        "petal_length": 3.292,
+        "petal_width": 1.255,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.393,
+        "sepal_width": 3.185,
+        "petal_length": 3.008,
+        "petal_width": 1.406,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.725,
+        "sepal_width": 3.173,
+        "petal_length": 3.595,
+        "petal_width": 1.341,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.452,
+        "sepal_width": 2.543,
+        "petal_length": 3.508,
+        "petal_width": 1.131,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.072,
+        "sepal_width": 2.452,
+        "petal_length": 4.432,
+        "petal_width": 1.57,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.685,
+        "sepal_width": 2.744,
+        "petal_length": 3.308,
+        "petal_width": 1.09,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.491,
+        "sepal_width": 3.093,
+        "petal_length": 3.963,
+        "petal_width": 1.158,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.498,
+        "sepal_width": 2.703,
+        "petal_length": 4.63,
+        "petal_width": 1.48,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.202,
+        "sepal_width": 2.952,
+        "petal_length": 3.7,
+        "petal_width": 1.67,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.57,
+        "sepal_width": 2.396,
+        "petal_length": 3.635,
+        "petal_width": 1.349,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.342,
+        "sepal_width": 3.088,
+        "petal_length": 3.057,
+        "petal_width": 1.404,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.01,
+        "sepal_width": 3.132,
+        "petal_length": 4.012,
+        "petal_width": 1.176,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.145,
+        "sepal_width": 2.94,
+        "petal_length": 4.772,
+        "petal_width": 1.409,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.882,
+        "sepal_width": 3.185,
+        "petal_length": 3.349,
+        "petal_width": 1.736,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.002,
+        "sepal_width": 2.747,
+        "petal_length": 4.6,
+        "petal_width": 1.207,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.382,
+        "sepal_width": 2.355,
+        "petal_length": 5,
+        "petal_width": 1.174,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.285,
+        "sepal_width": 2.242,
+        "petal_length": 3.081,
+        "petal_width": 1.408,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.375,
+        "sepal_width": 2.393,
+        "petal_length": 4.062,
+        "petal_width": 1.485,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.227,
+        "sepal_width": 2.828,
+        "petal_length": 3.922,
+        "petal_width": 1.261,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.38,
+        "sepal_width": 2.723,
+        "petal_length": 4.69,
+        "petal_width": 1.203,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.105,
+        "sepal_width": 2.715,
+        "petal_length": 4.503,
+        "petal_width": 1.716,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.228,
+        "sepal_width": 2.644,
+        "petal_length": 3.771,
+        "petal_width": 1.577,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.48,
+        "sepal_width": 3.028,
+        "petal_length": 4.28,
+        "petal_width": 1.731,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.77,
+        "sepal_width": 2.531,
+        "petal_length": 4.287,
+        "petal_width": 1.256,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.42,
+        "sepal_width": 2.334,
+        "petal_length": 3.274,
+        "petal_width": 1.577,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.073,
+        "sepal_width": 2.921,
+        "petal_length": 3.875,
+        "petal_width": 1.49,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.044,
+        "sepal_width": 3.007,
+        "petal_length": 3.197,
+        "petal_width": 1.272,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.745,
+        "sepal_width": 2.813,
+        "petal_length": 3.994,
+        "petal_width": 1.593,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.463,
+        "sepal_width": 2.914,
+        "petal_length": 4.175,
+        "petal_width": 1.59,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.811,
+        "sepal_width": 2.478,
+        "petal_length": 3.577,
+        "petal_width": 1.07,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.053,
+        "sepal_width": 3.181,
+        "petal_length": 4.872,
+        "petal_width": 1.311,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.95,
+        "sepal_width": 2.796,
+        "petal_length": 4.812,
+        "petal_width": 1.187,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.614,
+        "sepal_width": 2.28,
+        "petal_length": 5.151,
+        "petal_width": 1.099,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.552,
+        "sepal_width": 2.67,
+        "petal_length": 4.384,
+        "petal_width": 1.758,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.5,
+        "sepal_width": 2.532,
+        "petal_length": 4.494,
+        "petal_width": 1.196,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.659,
+        "sepal_width": 2.414,
+        "petal_length": 4.015,
+        "petal_width": 1.314,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.83,
+        "sepal_width": 3.2,
+        "petal_length": 3.637,
+        "petal_width": 1.663,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.465,
+        "sepal_width": 2.27,
+        "petal_length": 3.81,
+        "petal_width": 1.224,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.897,
+        "sepal_width": 2.959,
+        "petal_length": 3.554,
+        "petal_width": 1.374,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.911,
+        "sepal_width": 2.348,
+        "petal_length": 3.034,
+        "petal_width": 1.069,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 6.372,
+        "sepal_width": 2.321,
+        "petal_length": 4.488,
+        "petal_width": 1.458,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 5.626,
+        "sepal_width": 2.749,
+        "petal_length": 4.73,
+        "petal_width": 1.07,
+        "species": "versicolor"
+      },
+      {
+        "sepal_length": 7.34,
+        "sepal_width": 3.297,
+        "petal_length": 6.076,
+        "petal_width": 2.29,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.167,
+        "sepal_width": 2.433,
+        "petal_length": 5.077,
+        "petal_width": 1.912,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.194,
+        "sepal_width": 2.852,
+        "petal_length": 5.251,
+        "petal_width": 1.901,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.495,
+        "sepal_width": 3.325,
+        "petal_length": 6.27,
+        "petal_width": 1.666,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.955,
+        "sepal_width": 3.347,
+        "petal_length": 5.666,
+        "petal_width": 2.187,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 5.906,
+        "sepal_width": 2.609,
+        "petal_length": 5.673,
+        "petal_width": 1.565,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.534,
+        "sepal_width": 3.011,
+        "petal_length": 5.133,
+        "petal_width": 1.494,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.366,
+        "sepal_width": 2.806,
+        "petal_length": 5.572,
+        "petal_width": 2.188,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.457,
+        "sepal_width": 3.098,
+        "petal_length": 4.814,
+        "petal_width": 1.543,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.204,
+        "sepal_width": 2.979,
+        "petal_length": 6.32,
+        "petal_width": 1.455,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.202,
+        "sepal_width": 2.792,
+        "petal_length": 5.18,
+        "petal_width": 2.255,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.171,
+        "sepal_width": 3.268,
+        "petal_length": 5.01,
+        "petal_width": 1.852,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.05,
+        "sepal_width": 2.552,
+        "petal_length": 6.215,
+        "petal_width": 2.373,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.005,
+        "sepal_width": 2.572,
+        "petal_length": 4.845,
+        "petal_width": 2.039,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.278,
+        "sepal_width": 2.426,
+        "petal_length": 6.138,
+        "petal_width": 1.902,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.12,
+        "sepal_width": 2.974,
+        "petal_length": 5.032,
+        "petal_width": 1.44,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.532,
+        "sepal_width": 3.081,
+        "petal_length": 5.474,
+        "petal_width": 1.987,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.694,
+        "sepal_width": 2.909,
+        "petal_length": 5.682,
+        "petal_width": 1.411,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.167,
+        "sepal_width": 2.516,
+        "petal_length": 5.654,
+        "petal_width": 1.839,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.094,
+        "sepal_width": 2.817,
+        "petal_length": 5.902,
+        "petal_width": 1.808,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.655,
+        "sepal_width": 2.668,
+        "petal_length": 5.416,
+        "petal_width": 1.508,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.039,
+        "sepal_width": 2.727,
+        "petal_length": 5.75,
+        "petal_width": 1.97,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.202,
+        "sepal_width": 3.189,
+        "petal_length": 5.129,
+        "petal_width": 1.698,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.709,
+        "sepal_width": 2.882,
+        "petal_length": 6.298,
+        "petal_width": 1.686,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 5.838,
+        "sepal_width": 2.654,
+        "petal_length": 4.615,
+        "petal_width": 2.135,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.465,
+        "sepal_width": 2.71,
+        "petal_length": 6.39,
+        "petal_width": 2.373,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.897,
+        "sepal_width": 2.641,
+        "petal_length": 5.908,
+        "petal_width": 1.801,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.701,
+        "sepal_width": 3.341,
+        "petal_length": 4.677,
+        "petal_width": 1.41,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 5.849,
+        "sepal_width": 3.101,
+        "petal_length": 4.854,
+        "petal_width": 1.495,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 5.998,
+        "sepal_width": 3.17,
+        "petal_length": 6.14,
+        "petal_width": 2.262,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.862,
+        "sepal_width": 2.57,
+        "petal_length": 4.985,
+        "petal_width": 1.606,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 5.992,
+        "sepal_width": 2.573,
+        "petal_length": 5.611,
+        "petal_width": 2.143,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.458,
+        "sepal_width": 3.161,
+        "petal_length": 4.734,
+        "petal_width": 2.229,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.42,
+        "sepal_width": 2.43,
+        "petal_length": 5.464,
+        "petal_width": 1.683,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.671,
+        "sepal_width": 3.266,
+        "petal_length": 5.991,
+        "petal_width": 1.966,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.161,
+        "sepal_width": 2.599,
+        "petal_length": 5.772,
+        "petal_width": 1.746,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.444,
+        "sepal_width": 3.096,
+        "petal_length": 6.114,
+        "petal_width": 1.957,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.888,
+        "sepal_width": 2.413,
+        "petal_length": 6.166,
+        "petal_width": 1.412,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.076,
+        "sepal_width": 3.317,
+        "petal_length": 5.974,
+        "petal_width": 1.678,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.134,
+        "sepal_width": 2.412,
+        "petal_length": 5.334,
+        "petal_width": 1.432,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.471,
+        "sepal_width": 3.179,
+        "petal_length": 4.834,
+        "petal_width": 1.544,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.04,
+        "sepal_width": 3.179,
+        "petal_length": 6.12,
+        "petal_width": 1.482,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.692,
+        "sepal_width": 3.176,
+        "petal_length": 5.355,
+        "petal_width": 2.289,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.939,
+        "sepal_width": 2.523,
+        "petal_length": 5.05,
+        "petal_width": 2.025,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.507,
+        "sepal_width": 2.52,
+        "petal_length": 6.322,
+        "petal_width": 1.618,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.312,
+        "sepal_width": 2.514,
+        "petal_length": 5.081,
+        "petal_width": 1.884,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 7.427,
+        "sepal_width": 3.018,
+        "petal_length": 5.8,
+        "petal_width": 2.156,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.253,
+        "sepal_width": 3.121,
+        "petal_length": 4.959,
+        "petal_width": 1.504,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.804,
+        "sepal_width": 3.296,
+        "petal_length": 4.864,
+        "petal_width": 1.51,
+        "species": "virginica"
+      },
+      {
+        "sepal_length": 6.115,
+        "sepal_width": 3.03,
+        "petal_length": 5.963,
+        "petal_width": 2.149,
+        "species": "virginica"
+      }
+    ],
+    "columns": [
+      {
+        "name": "sepal_length",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "sepal_width",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "petal_length",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "petal_width",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "species",
+        "type": "text",
+        "missing": 0
+      }
+    ],
+    "featureColumns": [
+      "sepal_length",
+      "sepal_width",
+      "petal_length",
+      "petal_width"
+    ],
+    "targetColumn": "species",
+    "trainRatio": 0.8
+  },
+  "trainedModel": null
+}

@@ -1,0 +1,6437 @@
+{
+  "format": "VOLK-ML",
+  "version": 8,
+  "name": "example.spamMlp.title",
+  "savedAt": "2026-08-06T00:00:00.000Z",
+  "language": {
+    "primary": "en",
+    "secondary": "zh"
+  },
+  "workspace": {
+    "libraryMode": "detailed",
+    "leftWidth": 300,
+    "rightWidth": 384,
+    "viewMode": "canvas"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "spam-data",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Tabular Data",
+            "zh": "表格数据"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tabular_data_node",
+            "op": "tabular_data",
+            "kind": "data",
+            "name": {
+              "en": "Tabular Data",
+              "zh": "表格数据"
+            },
+            "description": {
+              "en": "Provides the CSV or JSON dataset configured in the Data workspace.",
+              "zh": "提供在数据工作区配置的 CSV 或 JSON 数据集。"
+            },
+            "category": "Data",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-split",
+        "type": "pipelineNode",
+        "position": {
+          "x": 560,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Train/Test Split",
+            "zh": "训练/测试集划分"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "train_test_split_node",
+            "op": "train_test_split",
+            "kind": "data",
+            "name": {
+              "en": "Train/Test Split",
+              "zh": "训练/测试集划分"
+            },
+            "description": {
+              "en": "Cleans numeric rows and creates a deterministic train/test split.",
+              "zh": "清理数值行并确定性划分训练集与测试集。"
+            },
+            "category": "Data",
+            "inputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "split",
+                "type": "DatasetSplit"
+              }
+            ],
+            "properties": [
+              {
+                "key": "train_ratio",
+                "label": {
+                  "en": "Training Ratio",
+                  "zh": "训练集比例"
+                },
+                "type": "slider",
+                "default": 0.8,
+                "min": 0.5,
+                "max": 0.9,
+                "step": 0.05
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "train_ratio": 0.8
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-input",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 80
+        },
+        "data": {
+          "label": {
+            "en": "Tensor Input",
+            "zh": "张量输入"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tensor_input_node",
+            "op": "tensor_input",
+            "kind": "source",
+            "name": {
+              "en": "Tensor Input",
+              "zh": "张量输入"
+            },
+            "description": {
+              "en": "Declares a model input shape and dtype.",
+              "zh": "声明模型的输入形状和数据类型。"
+            },
+            "category": "Core",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "tensor",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "shape",
+                "label": {
+                  "en": "Shape",
+                  "zh": "形状"
+                },
+                "type": "text",
+                "default": "32"
+              },
+              {
+                "key": "dtype",
+                "label": {
+                  "en": "Data Type",
+                  "zh": "数据类型"
+                },
+                "type": "select",
+                "default": "float32",
+                "options": [
+                  "float32",
+                  "float16",
+                  "int32"
+                ]
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "shape": "10",
+            "dtype": "float32"
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-hidden1",
+        "type": "pipelineNode",
+        "position": {
+          "x": 560,
+          "y": 80
+        },
+        "data": {
+          "label": {
+            "en": "Dense / Linear",
+            "zh": "全连接 / 线性层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "dense_node",
+            "op": "dense",
+            "kind": "layer",
+            "name": {
+              "en": "Dense / Linear",
+              "zh": "全连接 / 线性层"
+            },
+            "description": {
+              "en": "Applies a learned affine transformation.",
+              "zh": "应用可学习的仿射变换。"
+            },
+            "category": "Layers",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_features",
+                "label": {
+                  "en": "Input Features",
+                  "zh": "输入特征数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "units",
+                "label": {
+                  "en": "Output Units",
+                  "zh": "输出单元数"
+                },
+                "type": "number",
+                "default": 64,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "use_bias",
+                "label": {
+                  "en": "Use Bias",
+                  "zh": "使用偏置"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "input_features": 10,
+            "units": 24,
+            "use_bias": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-relu1",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1080,
+          "y": 80
+        },
+        "data": {
+          "label": {
+            "en": "ReLU",
+            "zh": "ReLU"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "relu_node",
+            "op": "relu",
+            "kind": "layer",
+            "name": {
+              "en": "ReLU",
+              "zh": "ReLU"
+            },
+            "description": {
+              "en": "Applies rectified linear activation.",
+              "zh": "应用修正线性激活。"
+            },
+            "category": "Activations",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-hidden2",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1600,
+          "y": 80
+        },
+        "data": {
+          "label": {
+            "en": "Dense / Linear",
+            "zh": "全连接 / 线性层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "dense_node",
+            "op": "dense",
+            "kind": "layer",
+            "name": {
+              "en": "Dense / Linear",
+              "zh": "全连接 / 线性层"
+            },
+            "description": {
+              "en": "Applies a learned affine transformation.",
+              "zh": "应用可学习的仿射变换。"
+            },
+            "category": "Layers",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_features",
+                "label": {
+                  "en": "Input Features",
+                  "zh": "输入特征数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "units",
+                "label": {
+                  "en": "Output Units",
+                  "zh": "输出单元数"
+                },
+                "type": "number",
+                "default": 64,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "use_bias",
+                "label": {
+                  "en": "Use Bias",
+                  "zh": "使用偏置"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "input_features": 24,
+            "units": 12,
+            "use_bias": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-relu2",
+        "type": "pipelineNode",
+        "position": {
+          "x": 2120,
+          "y": 80
+        },
+        "data": {
+          "label": {
+            "en": "ReLU",
+            "zh": "ReLU"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "relu_node",
+            "op": "relu",
+            "kind": "layer",
+            "name": {
+              "en": "ReLU",
+              "zh": "ReLU"
+            },
+            "description": {
+              "en": "Applies rectified linear activation.",
+              "zh": "应用修正线性激活。"
+            },
+            "category": "Activations",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-head",
+        "type": "pipelineNode",
+        "position": {
+          "x": 2640,
+          "y": 80
+        },
+        "data": {
+          "label": {
+            "en": "Dense / Linear",
+            "zh": "全连接 / 线性层"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "dense_node",
+            "op": "dense",
+            "kind": "layer",
+            "name": {
+              "en": "Dense / Linear",
+              "zh": "全连接 / 线性层"
+            },
+            "description": {
+              "en": "Applies a learned affine transformation.",
+              "zh": "应用可学习的仿射变换。"
+            },
+            "category": "Layers",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "input_features",
+                "label": {
+                  "en": "Input Features",
+                  "zh": "输入特征数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "units",
+                "label": {
+                  "en": "Output Units",
+                  "zh": "输出单元数"
+                },
+                "type": "number",
+                "default": 64,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "use_bias",
+                "label": {
+                  "en": "Use Bias",
+                  "zh": "使用偏置"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "input_features": 12,
+            "units": 2,
+            "use_bias": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-softmax",
+        "type": "pipelineNode",
+        "position": {
+          "x": 3160,
+          "y": 80
+        },
+        "data": {
+          "label": {
+            "en": "Softmax",
+            "zh": "Softmax"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "softmax_node",
+            "op": "softmax",
+            "kind": "layer",
+            "name": {
+              "en": "Softmax",
+              "zh": "Softmax"
+            },
+            "description": {
+              "en": "Normalizes logits into probabilities.",
+              "zh": "将 logits 归一化为概率。"
+            },
+            "category": "Activations",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [
+              {
+                "key": "axis",
+                "label": {
+                  "en": "Axis",
+                  "zh": "轴"
+                },
+                "type": "number",
+                "default": -1,
+                "min": -8,
+                "max": 8,
+                "step": 1
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "axis": -1
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-output",
+        "type": "pipelineNode",
+        "position": {
+          "x": 3680,
+          "y": 80
+        },
+        "data": {
+          "label": {
+            "en": "Model Output",
+            "zh": "模型输出"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "model_output_node",
+            "op": "model_output",
+            "kind": "sink",
+            "name": {
+              "en": "Model Output",
+              "zh": "模型输出"
+            },
+            "description": {
+              "en": "Marks a tensor as a model output.",
+              "zh": "将张量标记为模型输出。"
+            },
+            "category": "Core",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "model",
+                "type": "ModelSpec"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-loss",
+        "type": "pipelineNode",
+        "position": {
+          "x": 3160,
+          "y": 1240
+        },
+        "data": {
+          "label": {
+            "en": "Cross Entropy Loss",
+            "zh": "交叉熵损失"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "cross_entropy_loss_node",
+            "op": "cross_entropy_loss",
+            "kind": "loss",
+            "name": {
+              "en": "Cross Entropy Loss",
+              "zh": "交叉熵损失"
+            },
+            "description": {
+              "en": "Configures multiclass cross entropy loss.",
+              "zh": "配置多类别交叉熵损失。"
+            },
+            "category": "Losses",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "loss",
+                "type": "LossSpec"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-optimizer",
+        "type": "pipelineNode",
+        "position": {
+          "x": 3680,
+          "y": 1240
+        },
+        "data": {
+          "label": {
+            "en": "SGD Optimizer",
+            "zh": "SGD 优化器"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "sgd_optimizer_node",
+            "op": "sgd_optimizer",
+            "kind": "optimizer",
+            "name": {
+              "en": "SGD Optimizer",
+              "zh": "SGD 优化器"
+            },
+            "description": {
+              "en": "Configures stochastic gradient descent.",
+              "zh": "配置随机梯度下降。"
+            },
+            "category": "Optimizers",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "optimizer",
+                "type": "OptimizerSpec"
+              }
+            ],
+            "properties": [
+              {
+                "key": "learning_rate",
+                "label": {
+                  "en": "Learning Rate",
+                  "zh": "学习率"
+                },
+                "type": "slider",
+                "default": 0.01,
+                "min": 0.0001,
+                "max": 0.5,
+                "step": 0.0001
+              },
+              {
+                "key": "momentum",
+                "label": {
+                  "en": "Momentum",
+                  "zh": "动量"
+                },
+                "type": "slider",
+                "default": 0,
+                "min": 0,
+                "max": 0.99,
+                "step": 0.01
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "learning_rate": 0.05,
+            "momentum": 0.6
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-trainer",
+        "type": "pipelineNode",
+        "position": {
+          "x": 3680,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Supervised Trainer",
+            "zh": "监督训练器"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "supervised_trainer_node",
+            "op": "supervised_trainer",
+            "kind": "training",
+            "name": {
+              "en": "Supervised Trainer",
+              "zh": "监督训练器"
+            },
+            "description": {
+              "en": "Binds split data, a model, a loss, and an optimizer into an exportable training loop.",
+              "zh": "把划分后的数据、模型、损失函数和优化器组合成可导出的训练循环。"
+            },
+            "category": "Training",
+            "inputs": [
+              {
+                "name": "dataset",
+                "type": "DatasetSplit"
+              },
+              {
+                "name": "model",
+                "type": "ModelSpec"
+              },
+              {
+                "name": "loss",
+                "type": "LossSpec"
+              },
+              {
+                "name": "optimizer",
+                "type": "OptimizerSpec"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "properties": [
+              {
+                "key": "epochs",
+                "label": {
+                  "en": "Epochs",
+                  "zh": "训练轮数"
+                },
+                "type": "number",
+                "default": 20,
+                "min": 1,
+                "max": 10000,
+                "step": 1
+              },
+              {
+                "key": "batch_size",
+                "label": {
+                  "en": "Batch Size",
+                  "zh": "批次大小"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 8192,
+                "step": 1
+              },
+              {
+                "key": "shuffle",
+                "label": {
+                  "en": "Shuffle Training Data",
+                  "zh": "打乱训练数据"
+                },
+                "type": "boolean",
+                "default": true
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "epochs": 400,
+            "batch_size": 32,
+            "shuffle": true
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-evaluate",
+        "type": "pipelineNode",
+        "position": {
+          "x": 4720,
+          "y": 120
+        },
+        "data": {
+          "label": {
+            "en": "Evaluate Classification",
+            "zh": "分类评估"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "evaluate_classification_node",
+            "op": "evaluate_classification",
+            "kind": "evaluation",
+            "name": {
+              "en": "Evaluate Classification",
+              "zh": "分类评估"
+            },
+            "description": {
+              "en": "Computes accuracy and macro F1 on a connected classifier test set.",
+              "zh": "在连接的分类器测试集上计算准确率和宏平均 F1。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "metrics",
+                "type": "Metrics"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "spam-predict",
+        "type": "pipelineNode",
+        "position": {
+          "x": 4720,
+          "y": 700
+        },
+        "data": {
+          "label": {
+            "en": "Interactive Predictor",
+            "zh": "交互预测器"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "predictor_node",
+            "op": "interactive_predictor",
+            "kind": "inference",
+            "name": {
+              "en": "Interactive Predictor",
+              "zh": "交互预测器"
+            },
+            "description": {
+              "en": "Creates an input form for trying the connected trained model.",
+              "zh": "为连接的已训练模型创建交互输入表单。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "prediction",
+                "type": "Prediction"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "spam-data-split",
+        "source": "spam-data",
+        "sourceHandle": "dataset",
+        "target": "spam-split",
+        "targetHandle": "dataset",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-input-h1",
+        "source": "spam-input",
+        "sourceHandle": "tensor",
+        "target": "spam-hidden1",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-h1-r1",
+        "source": "spam-hidden1",
+        "sourceHandle": "output",
+        "target": "spam-relu1",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-r1-h2",
+        "source": "spam-relu1",
+        "sourceHandle": "output",
+        "target": "spam-hidden2",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-h2-r2",
+        "source": "spam-hidden2",
+        "sourceHandle": "output",
+        "target": "spam-relu2",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-r2-head",
+        "source": "spam-relu2",
+        "sourceHandle": "output",
+        "target": "spam-head",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-head-softmax",
+        "source": "spam-head",
+        "sourceHandle": "output",
+        "target": "spam-softmax",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-softmax-output",
+        "source": "spam-softmax",
+        "sourceHandle": "output",
+        "target": "spam-output",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-split-trainer",
+        "source": "spam-split",
+        "sourceHandle": "split",
+        "target": "spam-trainer",
+        "targetHandle": "dataset",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-output-trainer",
+        "source": "spam-output",
+        "sourceHandle": "model",
+        "target": "spam-trainer",
+        "targetHandle": "model",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-loss-trainer",
+        "source": "spam-loss",
+        "sourceHandle": "loss",
+        "target": "spam-trainer",
+        "targetHandle": "loss",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-optimizer-trainer",
+        "source": "spam-optimizer",
+        "sourceHandle": "optimizer",
+        "target": "spam-trainer",
+        "targetHandle": "optimizer",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-trainer-evaluate",
+        "source": "spam-trainer",
+        "sourceHandle": "trained_model",
+        "target": "spam-evaluate",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      },
+      {
+        "id": "spam-trainer-predict",
+        "source": "spam-trainer",
+        "sourceHandle": "trained_model",
+        "target": "spam-predict",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      }
+    ]
+  },
+  "customComponents": [],
+  "data": {
+    "name": "Email Spam",
+    "task": "classification",
+    "rows": [
+      {
+        "word_count": 47,
+        "link_count": 5,
+        "uppercase_ratio": 0.204,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.571,
+        "attachment_count": 1,
+        "personalization_score": 0.947,
+        "reply_chain_depth": 7,
+        "send_hour": 17,
+        "subject_length": 52,
+        "label": "spam"
+      },
+      {
+        "word_count": 187,
+        "link_count": 3,
+        "uppercase_ratio": 0.3,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.647,
+        "attachment_count": 0,
+        "personalization_score": 0.494,
+        "reply_chain_depth": 1,
+        "send_hour": 19,
+        "subject_length": 33,
+        "label": "ham"
+      },
+      {
+        "word_count": 224,
+        "link_count": 12,
+        "uppercase_ratio": 0.531,
+        "suspicious_word_count": 9,
+        "sender_reputation": 0.494,
+        "attachment_count": 1,
+        "personalization_score": 0.717,
+        "reply_chain_depth": 2,
+        "send_hour": 3,
+        "subject_length": 30,
+        "label": "ham"
+      },
+      {
+        "word_count": 115,
+        "link_count": 0,
+        "uppercase_ratio": 0.605,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.934,
+        "attachment_count": 3,
+        "personalization_score": 0.747,
+        "reply_chain_depth": 4,
+        "send_hour": 18,
+        "subject_length": 59,
+        "label": "ham"
+      },
+      {
+        "word_count": 230,
+        "link_count": 5,
+        "uppercase_ratio": 0.182,
+        "suspicious_word_count": 6,
+        "sender_reputation": -0.802,
+        "attachment_count": 2,
+        "personalization_score": 0.183,
+        "reply_chain_depth": 1,
+        "send_hour": 23,
+        "subject_length": 77,
+        "label": "spam"
+      },
+      {
+        "word_count": 133,
+        "link_count": 14,
+        "uppercase_ratio": 0.962,
+        "suspicious_word_count": 4,
+        "sender_reputation": -0.804,
+        "attachment_count": 0,
+        "personalization_score": 0.179,
+        "reply_chain_depth": 7,
+        "send_hour": 21,
+        "subject_length": 26,
+        "label": "spam"
+      },
+      {
+        "word_count": 100,
+        "link_count": 14,
+        "uppercase_ratio": 0.852,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.957,
+        "attachment_count": 1,
+        "personalization_score": 0.708,
+        "reply_chain_depth": 7,
+        "send_hour": 22,
+        "subject_length": 26,
+        "label": "spam"
+      },
+      {
+        "word_count": 39,
+        "link_count": 4,
+        "uppercase_ratio": 0.269,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.451,
+        "attachment_count": 1,
+        "personalization_score": 0.877,
+        "reply_chain_depth": 2,
+        "send_hour": 19,
+        "subject_length": 47,
+        "label": "ham"
+      },
+      {
+        "word_count": 43,
+        "link_count": 6,
+        "uppercase_ratio": 0.494,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.303,
+        "attachment_count": 3,
+        "personalization_score": 0.834,
+        "reply_chain_depth": 6,
+        "send_hour": 17,
+        "subject_length": 22,
+        "label": "spam"
+      },
+      {
+        "word_count": 77,
+        "link_count": 15,
+        "uppercase_ratio": 0.995,
+        "suspicious_word_count": 9,
+        "sender_reputation": 1.747,
+        "attachment_count": 1,
+        "personalization_score": 0.744,
+        "reply_chain_depth": 7,
+        "send_hour": 6,
+        "subject_length": 35,
+        "label": "ham"
+      },
+      {
+        "word_count": 272,
+        "link_count": 2,
+        "uppercase_ratio": 0.51,
+        "suspicious_word_count": 0,
+        "sender_reputation": 1.889,
+        "attachment_count": 2,
+        "personalization_score": 0.079,
+        "reply_chain_depth": 0,
+        "send_hour": 9,
+        "subject_length": 46,
+        "label": "ham"
+      },
+      {
+        "word_count": 181,
+        "link_count": 1,
+        "uppercase_ratio": 0.171,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.592,
+        "attachment_count": 3,
+        "personalization_score": 0.475,
+        "reply_chain_depth": 1,
+        "send_hour": 23,
+        "subject_length": 69,
+        "label": "ham"
+      },
+      {
+        "word_count": 40,
+        "link_count": 11,
+        "uppercase_ratio": 0.138,
+        "suspicious_word_count": 0,
+        "sender_reputation": -0.487,
+        "attachment_count": 3,
+        "personalization_score": 0.557,
+        "reply_chain_depth": 1,
+        "send_hour": 21,
+        "subject_length": 42,
+        "label": "spam"
+      },
+      {
+        "word_count": 68,
+        "link_count": 15,
+        "uppercase_ratio": 0.621,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.995,
+        "attachment_count": 0,
+        "personalization_score": 0.083,
+        "reply_chain_depth": 4,
+        "send_hour": 21,
+        "subject_length": 55,
+        "label": "spam"
+      },
+      {
+        "word_count": 160,
+        "link_count": 12,
+        "uppercase_ratio": 0.18,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.398,
+        "attachment_count": 3,
+        "personalization_score": 0.89,
+        "reply_chain_depth": 2,
+        "send_hour": 2,
+        "subject_length": 79,
+        "label": "spam"
+      },
+      {
+        "word_count": 279,
+        "link_count": 8,
+        "uppercase_ratio": 0.436,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.844,
+        "attachment_count": 2,
+        "personalization_score": 0.009,
+        "reply_chain_depth": 3,
+        "send_hour": 18,
+        "subject_length": 22,
+        "label": "spam"
+      },
+      {
+        "word_count": 66,
+        "link_count": 2,
+        "uppercase_ratio": 0.439,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.373,
+        "attachment_count": 0,
+        "personalization_score": 0.218,
+        "reply_chain_depth": 2,
+        "send_hour": 14,
+        "subject_length": 77,
+        "label": "ham"
+      },
+      {
+        "word_count": 134,
+        "link_count": 11,
+        "uppercase_ratio": 1,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.29,
+        "attachment_count": 1,
+        "personalization_score": 0.566,
+        "reply_chain_depth": 2,
+        "send_hour": 12,
+        "subject_length": 61,
+        "label": "spam"
+      },
+      {
+        "word_count": 104,
+        "link_count": 14,
+        "uppercase_ratio": 0.279,
+        "suspicious_word_count": 10,
+        "sender_reputation": 1.511,
+        "attachment_count": 3,
+        "personalization_score": 0.121,
+        "reply_chain_depth": 6,
+        "send_hour": 4,
+        "subject_length": 22,
+        "label": "ham"
+      },
+      {
+        "word_count": 169,
+        "link_count": 1,
+        "uppercase_ratio": 0.171,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.674,
+        "attachment_count": 2,
+        "personalization_score": 0.499,
+        "reply_chain_depth": 7,
+        "send_hour": 14,
+        "subject_length": 58,
+        "label": "ham"
+      },
+      {
+        "word_count": 184,
+        "link_count": 14,
+        "uppercase_ratio": 0.2,
+        "suspicious_word_count": 7,
+        "sender_reputation": -0.573,
+        "attachment_count": 3,
+        "personalization_score": 0.36,
+        "reply_chain_depth": 5,
+        "send_hour": 23,
+        "subject_length": 26,
+        "label": "spam"
+      },
+      {
+        "word_count": 159,
+        "link_count": 9,
+        "uppercase_ratio": 0.978,
+        "suspicious_word_count": 11,
+        "sender_reputation": 1.094,
+        "attachment_count": 3,
+        "personalization_score": 0.059,
+        "reply_chain_depth": 7,
+        "send_hour": 17,
+        "subject_length": 41,
+        "label": "ham"
+      },
+      {
+        "word_count": 229,
+        "link_count": 4,
+        "uppercase_ratio": 0.89,
+        "suspicious_word_count": 9,
+        "sender_reputation": -0.043,
+        "attachment_count": 2,
+        "personalization_score": 0.475,
+        "reply_chain_depth": 1,
+        "send_hour": 5,
+        "subject_length": 56,
+        "label": "spam"
+      },
+      {
+        "word_count": 145,
+        "link_count": 15,
+        "uppercase_ratio": 0.559,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.42,
+        "attachment_count": 2,
+        "personalization_score": 0.174,
+        "reply_chain_depth": 3,
+        "send_hour": 2,
+        "subject_length": 45,
+        "label": "spam"
+      },
+      {
+        "word_count": 192,
+        "link_count": 12,
+        "uppercase_ratio": 0.465,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.632,
+        "attachment_count": 1,
+        "personalization_score": 0.121,
+        "reply_chain_depth": 5,
+        "send_hour": 4,
+        "subject_length": 51,
+        "label": "ham"
+      },
+      {
+        "word_count": 75,
+        "link_count": 5,
+        "uppercase_ratio": 0.231,
+        "suspicious_word_count": 3,
+        "sender_reputation": 0.103,
+        "attachment_count": 0,
+        "personalization_score": 0.708,
+        "reply_chain_depth": 0,
+        "send_hour": 11,
+        "subject_length": 22,
+        "label": "ham"
+      },
+      {
+        "word_count": 157,
+        "link_count": 6,
+        "uppercase_ratio": 0.04,
+        "suspicious_word_count": 11,
+        "sender_reputation": -1.748,
+        "attachment_count": 2,
+        "personalization_score": 0.974,
+        "reply_chain_depth": 4,
+        "send_hour": 5,
+        "subject_length": 16,
+        "label": "spam"
+      },
+      {
+        "word_count": 88,
+        "link_count": 8,
+        "uppercase_ratio": 0.95,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.324,
+        "attachment_count": 0,
+        "personalization_score": 0.731,
+        "reply_chain_depth": 5,
+        "send_hour": 6,
+        "subject_length": 19,
+        "label": "ham"
+      },
+      {
+        "word_count": 189,
+        "link_count": 5,
+        "uppercase_ratio": 0.348,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.447,
+        "attachment_count": 1,
+        "personalization_score": 0.451,
+        "reply_chain_depth": 6,
+        "send_hour": 23,
+        "subject_length": 46,
+        "label": "spam"
+      },
+      {
+        "word_count": 106,
+        "link_count": 9,
+        "uppercase_ratio": 0.197,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.122,
+        "attachment_count": 3,
+        "personalization_score": 0.591,
+        "reply_chain_depth": 7,
+        "send_hour": 4,
+        "subject_length": 27,
+        "label": "ham"
+      },
+      {
+        "word_count": 80,
+        "link_count": 14,
+        "uppercase_ratio": 0.428,
+        "suspicious_word_count": 6,
+        "sender_reputation": 0.77,
+        "attachment_count": 0,
+        "personalization_score": 0.902,
+        "reply_chain_depth": 6,
+        "send_hour": 5,
+        "subject_length": 69,
+        "label": "ham"
+      },
+      {
+        "word_count": 126,
+        "link_count": 10,
+        "uppercase_ratio": 0.764,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.523,
+        "attachment_count": 3,
+        "personalization_score": 0.232,
+        "reply_chain_depth": 3,
+        "send_hour": 23,
+        "subject_length": 49,
+        "label": "ham"
+      },
+      {
+        "word_count": 233,
+        "link_count": 15,
+        "uppercase_ratio": 0.194,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.744,
+        "attachment_count": 2,
+        "personalization_score": 0.988,
+        "reply_chain_depth": 2,
+        "send_hour": 5,
+        "subject_length": 17,
+        "label": "spam"
+      },
+      {
+        "word_count": 77,
+        "link_count": 0,
+        "uppercase_ratio": 0.036,
+        "suspicious_word_count": 1,
+        "sender_reputation": 1.607,
+        "attachment_count": 1,
+        "personalization_score": 0.363,
+        "reply_chain_depth": 6,
+        "send_hour": 12,
+        "subject_length": 55,
+        "label": "ham"
+      },
+      {
+        "word_count": 100,
+        "link_count": 8,
+        "uppercase_ratio": 0.117,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.995,
+        "attachment_count": 2,
+        "personalization_score": 0.18,
+        "reply_chain_depth": 6,
+        "send_hour": 20,
+        "subject_length": 33,
+        "label": "spam"
+      },
+      {
+        "word_count": 236,
+        "link_count": 11,
+        "uppercase_ratio": 0.202,
+        "suspicious_word_count": 6,
+        "sender_reputation": -0.92,
+        "attachment_count": 1,
+        "personalization_score": 0.31,
+        "reply_chain_depth": 5,
+        "send_hour": 4,
+        "subject_length": 67,
+        "label": "spam"
+      },
+      {
+        "word_count": 25,
+        "link_count": 13,
+        "uppercase_ratio": 0.429,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.413,
+        "attachment_count": 0,
+        "personalization_score": 0.45,
+        "reply_chain_depth": 5,
+        "send_hour": 1,
+        "subject_length": 48,
+        "label": "ham"
+      },
+      {
+        "word_count": 177,
+        "link_count": 14,
+        "uppercase_ratio": 0.02,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.886,
+        "attachment_count": 3,
+        "personalization_score": 0.222,
+        "reply_chain_depth": 1,
+        "send_hour": 17,
+        "subject_length": 61,
+        "label": "spam"
+      },
+      {
+        "word_count": 267,
+        "link_count": 3,
+        "uppercase_ratio": 0.829,
+        "suspicious_word_count": 0,
+        "sender_reputation": 0.087,
+        "attachment_count": 2,
+        "personalization_score": 0.664,
+        "reply_chain_depth": 0,
+        "send_hour": 5,
+        "subject_length": 51,
+        "label": "ham"
+      },
+      {
+        "word_count": 234,
+        "link_count": 1,
+        "uppercase_ratio": 0.204,
+        "suspicious_word_count": 6,
+        "sender_reputation": 0.912,
+        "attachment_count": 1,
+        "personalization_score": 0.957,
+        "reply_chain_depth": 5,
+        "send_hour": 17,
+        "subject_length": 57,
+        "label": "spam"
+      },
+      {
+        "word_count": 99,
+        "link_count": 3,
+        "uppercase_ratio": 0.121,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.64,
+        "attachment_count": 1,
+        "personalization_score": 0.83,
+        "reply_chain_depth": 0,
+        "send_hour": 5,
+        "subject_length": 23,
+        "label": "ham"
+      },
+      {
+        "word_count": 269,
+        "link_count": 1,
+        "uppercase_ratio": 0.978,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.231,
+        "attachment_count": 0,
+        "personalization_score": 0.583,
+        "reply_chain_depth": 7,
+        "send_hour": 15,
+        "subject_length": 15,
+        "label": "ham"
+      },
+      {
+        "word_count": 217,
+        "link_count": 0,
+        "uppercase_ratio": 0.989,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.154,
+        "attachment_count": 2,
+        "personalization_score": 0.877,
+        "reply_chain_depth": 0,
+        "send_hour": 15,
+        "subject_length": 15,
+        "label": "ham"
+      },
+      {
+        "word_count": 59,
+        "link_count": 6,
+        "uppercase_ratio": 0.579,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.794,
+        "attachment_count": 3,
+        "personalization_score": 0.059,
+        "reply_chain_depth": 2,
+        "send_hour": 18,
+        "subject_length": 66,
+        "label": "spam"
+      },
+      {
+        "word_count": 163,
+        "link_count": 10,
+        "uppercase_ratio": 0.181,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.145,
+        "attachment_count": 2,
+        "personalization_score": 0.462,
+        "reply_chain_depth": 2,
+        "send_hour": 12,
+        "subject_length": 65,
+        "label": "ham"
+      },
+      {
+        "word_count": 228,
+        "link_count": 13,
+        "uppercase_ratio": 0.378,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.992,
+        "attachment_count": 3,
+        "personalization_score": 0.658,
+        "reply_chain_depth": 6,
+        "send_hour": 12,
+        "subject_length": 23,
+        "label": "spam"
+      },
+      {
+        "word_count": 155,
+        "link_count": 13,
+        "uppercase_ratio": 0.07,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.265,
+        "attachment_count": 2,
+        "personalization_score": 0.078,
+        "reply_chain_depth": 6,
+        "send_hour": 7,
+        "subject_length": 36,
+        "label": "spam"
+      },
+      {
+        "word_count": 251,
+        "link_count": 2,
+        "uppercase_ratio": 0.656,
+        "suspicious_word_count": 1,
+        "sender_reputation": 0.158,
+        "attachment_count": 2,
+        "personalization_score": 0.822,
+        "reply_chain_depth": 1,
+        "send_hour": 9,
+        "subject_length": 48,
+        "label": "ham"
+      },
+      {
+        "word_count": 45,
+        "link_count": 11,
+        "uppercase_ratio": 0.788,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.509,
+        "attachment_count": 3,
+        "personalization_score": 0.867,
+        "reply_chain_depth": 4,
+        "send_hour": 4,
+        "subject_length": 60,
+        "label": "spam"
+      },
+      {
+        "word_count": 202,
+        "link_count": 7,
+        "uppercase_ratio": 0.277,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.875,
+        "attachment_count": 0,
+        "personalization_score": 0.459,
+        "reply_chain_depth": 5,
+        "send_hour": 11,
+        "subject_length": 11,
+        "label": "ham"
+      },
+      {
+        "word_count": 123,
+        "link_count": 5,
+        "uppercase_ratio": 0.45,
+        "suspicious_word_count": 1,
+        "sender_reputation": 1.949,
+        "attachment_count": 1,
+        "personalization_score": 0.405,
+        "reply_chain_depth": 5,
+        "send_hour": 14,
+        "subject_length": 22,
+        "label": "ham"
+      },
+      {
+        "word_count": 35,
+        "link_count": 7,
+        "uppercase_ratio": 0.725,
+        "suspicious_word_count": 1,
+        "sender_reputation": 0.791,
+        "attachment_count": 0,
+        "personalization_score": 0.81,
+        "reply_chain_depth": 4,
+        "send_hour": 9,
+        "subject_length": 72,
+        "label": "ham"
+      },
+      {
+        "word_count": 264,
+        "link_count": 9,
+        "uppercase_ratio": 0.992,
+        "suspicious_word_count": 1,
+        "sender_reputation": 1.693,
+        "attachment_count": 0,
+        "personalization_score": 0.674,
+        "reply_chain_depth": 4,
+        "send_hour": 20,
+        "subject_length": 62,
+        "label": "ham"
+      },
+      {
+        "word_count": 276,
+        "link_count": 3,
+        "uppercase_ratio": 0.701,
+        "suspicious_word_count": 7,
+        "sender_reputation": 1.84,
+        "attachment_count": 3,
+        "personalization_score": 0.582,
+        "reply_chain_depth": 6,
+        "send_hour": 0,
+        "subject_length": 61,
+        "label": "ham"
+      },
+      {
+        "word_count": 192,
+        "link_count": 4,
+        "uppercase_ratio": 0.791,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.022,
+        "attachment_count": 1,
+        "personalization_score": 0.485,
+        "reply_chain_depth": 6,
+        "send_hour": 17,
+        "subject_length": 57,
+        "label": "ham"
+      },
+      {
+        "word_count": 43,
+        "link_count": 11,
+        "uppercase_ratio": 0.808,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.903,
+        "attachment_count": 2,
+        "personalization_score": 0.164,
+        "reply_chain_depth": 1,
+        "send_hour": 18,
+        "subject_length": 72,
+        "label": "ham"
+      },
+      {
+        "word_count": 265,
+        "link_count": 2,
+        "uppercase_ratio": 0.118,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.474,
+        "attachment_count": 3,
+        "personalization_score": 0.521,
+        "reply_chain_depth": 2,
+        "send_hour": 18,
+        "subject_length": 47,
+        "label": "ham"
+      },
+      {
+        "word_count": 265,
+        "link_count": 4,
+        "uppercase_ratio": 0.014,
+        "suspicious_word_count": 9,
+        "sender_reputation": -0.729,
+        "attachment_count": 3,
+        "personalization_score": 0.794,
+        "reply_chain_depth": 4,
+        "send_hour": 15,
+        "subject_length": 23,
+        "label": "spam"
+      },
+      {
+        "word_count": 148,
+        "link_count": 13,
+        "uppercase_ratio": 0.059,
+        "suspicious_word_count": 5,
+        "sender_reputation": -0.463,
+        "attachment_count": 2,
+        "personalization_score": 0.745,
+        "reply_chain_depth": 6,
+        "send_hour": 23,
+        "subject_length": 41,
+        "label": "spam"
+      },
+      {
+        "word_count": 61,
+        "link_count": 14,
+        "uppercase_ratio": 0.389,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.606,
+        "attachment_count": 0,
+        "personalization_score": 0.277,
+        "reply_chain_depth": 1,
+        "send_hour": 17,
+        "subject_length": 19,
+        "label": "ham"
+      },
+      {
+        "word_count": 100,
+        "link_count": 14,
+        "uppercase_ratio": 0.243,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.051,
+        "attachment_count": 1,
+        "personalization_score": 0.862,
+        "reply_chain_depth": 6,
+        "send_hour": 7,
+        "subject_length": 41,
+        "label": "spam"
+      },
+      {
+        "word_count": 107,
+        "link_count": 10,
+        "uppercase_ratio": 0.389,
+        "suspicious_word_count": 5,
+        "sender_reputation": -0.429,
+        "attachment_count": 3,
+        "personalization_score": 0.196,
+        "reply_chain_depth": 0,
+        "send_hour": 6,
+        "subject_length": 19,
+        "label": "spam"
+      },
+      {
+        "word_count": 250,
+        "link_count": 13,
+        "uppercase_ratio": 0.608,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.096,
+        "attachment_count": 1,
+        "personalization_score": 0.411,
+        "reply_chain_depth": 7,
+        "send_hour": 12,
+        "subject_length": 71,
+        "label": "spam"
+      },
+      {
+        "word_count": 156,
+        "link_count": 9,
+        "uppercase_ratio": 0.869,
+        "suspicious_word_count": 11,
+        "sender_reputation": -1.419,
+        "attachment_count": 3,
+        "personalization_score": 0.416,
+        "reply_chain_depth": 7,
+        "send_hour": 15,
+        "subject_length": 45,
+        "label": "spam"
+      },
+      {
+        "word_count": 126,
+        "link_count": 0,
+        "uppercase_ratio": 0.756,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.908,
+        "attachment_count": 1,
+        "personalization_score": 0.256,
+        "reply_chain_depth": 3,
+        "send_hour": 14,
+        "subject_length": 72,
+        "label": "ham"
+      },
+      {
+        "word_count": 125,
+        "link_count": 11,
+        "uppercase_ratio": 0.598,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.519,
+        "attachment_count": 2,
+        "personalization_score": 0.832,
+        "reply_chain_depth": 5,
+        "send_hour": 3,
+        "subject_length": 16,
+        "label": "spam"
+      },
+      {
+        "word_count": 269,
+        "link_count": 0,
+        "uppercase_ratio": 0.856,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.232,
+        "attachment_count": 1,
+        "personalization_score": 0.15,
+        "reply_chain_depth": 1,
+        "send_hour": 12,
+        "subject_length": 67,
+        "label": "ham"
+      },
+      {
+        "word_count": 22,
+        "link_count": 7,
+        "uppercase_ratio": 0.011,
+        "suspicious_word_count": 1,
+        "sender_reputation": 1.39,
+        "attachment_count": 0,
+        "personalization_score": 0.616,
+        "reply_chain_depth": 3,
+        "send_hour": 0,
+        "subject_length": 57,
+        "label": "ham"
+      },
+      {
+        "word_count": 179,
+        "link_count": 0,
+        "uppercase_ratio": 0.251,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.775,
+        "attachment_count": 2,
+        "personalization_score": 0.989,
+        "reply_chain_depth": 5,
+        "send_hour": 11,
+        "subject_length": 61,
+        "label": "ham"
+      },
+      {
+        "word_count": 200,
+        "link_count": 10,
+        "uppercase_ratio": 0.116,
+        "suspicious_word_count": 1,
+        "sender_reputation": 0.359,
+        "attachment_count": 0,
+        "personalization_score": 0.21,
+        "reply_chain_depth": 4,
+        "send_hour": 13,
+        "subject_length": 71,
+        "label": "ham"
+      },
+      {
+        "word_count": 120,
+        "link_count": 15,
+        "uppercase_ratio": 0.523,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.952,
+        "attachment_count": 0,
+        "personalization_score": 0.713,
+        "reply_chain_depth": 0,
+        "send_hour": 11,
+        "subject_length": 69,
+        "label": "ham"
+      },
+      {
+        "word_count": 232,
+        "link_count": 11,
+        "uppercase_ratio": 0.584,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.84,
+        "attachment_count": 3,
+        "personalization_score": 0.367,
+        "reply_chain_depth": 5,
+        "send_hour": 1,
+        "subject_length": 78,
+        "label": "ham"
+      },
+      {
+        "word_count": 22,
+        "link_count": 2,
+        "uppercase_ratio": 0.226,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.19,
+        "attachment_count": 3,
+        "personalization_score": 0.786,
+        "reply_chain_depth": 2,
+        "send_hour": 22,
+        "subject_length": 53,
+        "label": "ham"
+      },
+      {
+        "word_count": 40,
+        "link_count": 8,
+        "uppercase_ratio": 0.074,
+        "suspicious_word_count": 1,
+        "sender_reputation": -1.408,
+        "attachment_count": 3,
+        "personalization_score": 0.204,
+        "reply_chain_depth": 0,
+        "send_hour": 5,
+        "subject_length": 50,
+        "label": "spam"
+      },
+      {
+        "word_count": 243,
+        "link_count": 1,
+        "uppercase_ratio": 0.012,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.003,
+        "attachment_count": 0,
+        "personalization_score": 0.34,
+        "reply_chain_depth": 0,
+        "send_hour": 1,
+        "subject_length": 57,
+        "label": "ham"
+      },
+      {
+        "word_count": 31,
+        "link_count": 4,
+        "uppercase_ratio": 0.703,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.104,
+        "attachment_count": 2,
+        "personalization_score": 0.624,
+        "reply_chain_depth": 7,
+        "send_hour": 8,
+        "subject_length": 18,
+        "label": "ham"
+      },
+      {
+        "word_count": 223,
+        "link_count": 4,
+        "uppercase_ratio": 0.196,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.224,
+        "attachment_count": 2,
+        "personalization_score": 0.899,
+        "reply_chain_depth": 3,
+        "send_hour": 15,
+        "subject_length": 44,
+        "label": "ham"
+      },
+      {
+        "word_count": 86,
+        "link_count": 12,
+        "uppercase_ratio": 0.107,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.977,
+        "attachment_count": 0,
+        "personalization_score": 0.884,
+        "reply_chain_depth": 4,
+        "send_hour": 6,
+        "subject_length": 43,
+        "label": "spam"
+      },
+      {
+        "word_count": 57,
+        "link_count": 5,
+        "uppercase_ratio": 0.19,
+        "suspicious_word_count": 4,
+        "sender_reputation": -1.974,
+        "attachment_count": 0,
+        "personalization_score": 0.258,
+        "reply_chain_depth": 7,
+        "send_hour": 2,
+        "subject_length": 44,
+        "label": "ham"
+      },
+      {
+        "word_count": 179,
+        "link_count": 3,
+        "uppercase_ratio": 0.424,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.805,
+        "attachment_count": 0,
+        "personalization_score": 0.462,
+        "reply_chain_depth": 3,
+        "send_hour": 8,
+        "subject_length": 28,
+        "label": "ham"
+      },
+      {
+        "word_count": 148,
+        "link_count": 13,
+        "uppercase_ratio": 0.841,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.069,
+        "attachment_count": 2,
+        "personalization_score": 0.529,
+        "reply_chain_depth": 1,
+        "send_hour": 14,
+        "subject_length": 28,
+        "label": "spam"
+      },
+      {
+        "word_count": 238,
+        "link_count": 14,
+        "uppercase_ratio": 0.083,
+        "suspicious_word_count": 1,
+        "sender_reputation": -1.597,
+        "attachment_count": 1,
+        "personalization_score": 0.609,
+        "reply_chain_depth": 3,
+        "send_hour": 5,
+        "subject_length": 41,
+        "label": "spam"
+      },
+      {
+        "word_count": 88,
+        "link_count": 3,
+        "uppercase_ratio": 0.894,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.45,
+        "attachment_count": 1,
+        "personalization_score": 0.554,
+        "reply_chain_depth": 0,
+        "send_hour": 4,
+        "subject_length": 28,
+        "label": "spam"
+      },
+      {
+        "word_count": 220,
+        "link_count": 12,
+        "uppercase_ratio": 0.315,
+        "suspicious_word_count": 2,
+        "sender_reputation": 1.964,
+        "attachment_count": 1,
+        "personalization_score": 0.458,
+        "reply_chain_depth": 1,
+        "send_hour": 4,
+        "subject_length": 54,
+        "label": "ham"
+      },
+      {
+        "word_count": 272,
+        "link_count": 15,
+        "uppercase_ratio": 0.058,
+        "suspicious_word_count": 7,
+        "sender_reputation": -0.264,
+        "attachment_count": 2,
+        "personalization_score": 0.896,
+        "reply_chain_depth": 3,
+        "send_hour": 3,
+        "subject_length": 44,
+        "label": "spam"
+      },
+      {
+        "word_count": 175,
+        "link_count": 12,
+        "uppercase_ratio": 0.111,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.947,
+        "attachment_count": 2,
+        "personalization_score": 0.068,
+        "reply_chain_depth": 7,
+        "send_hour": 15,
+        "subject_length": 56,
+        "label": "spam"
+      },
+      {
+        "word_count": 263,
+        "link_count": 8,
+        "uppercase_ratio": 0.223,
+        "suspicious_word_count": 7,
+        "sender_reputation": -0.244,
+        "attachment_count": 0,
+        "personalization_score": 0.937,
+        "reply_chain_depth": 7,
+        "send_hour": 22,
+        "subject_length": 25,
+        "label": "spam"
+      },
+      {
+        "word_count": 265,
+        "link_count": 5,
+        "uppercase_ratio": 0.703,
+        "suspicious_word_count": 4,
+        "sender_reputation": -0.215,
+        "attachment_count": 1,
+        "personalization_score": 0.734,
+        "reply_chain_depth": 2,
+        "send_hour": 10,
+        "subject_length": 42,
+        "label": "ham"
+      },
+      {
+        "word_count": 133,
+        "link_count": 5,
+        "uppercase_ratio": 0.463,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.85,
+        "attachment_count": 0,
+        "personalization_score": 0.166,
+        "reply_chain_depth": 4,
+        "send_hour": 6,
+        "subject_length": 50,
+        "label": "ham"
+      },
+      {
+        "word_count": 232,
+        "link_count": 2,
+        "uppercase_ratio": 0.927,
+        "suspicious_word_count": 10,
+        "sender_reputation": 1.513,
+        "attachment_count": 2,
+        "personalization_score": 0.711,
+        "reply_chain_depth": 4,
+        "send_hour": 5,
+        "subject_length": 14,
+        "label": "ham"
+      },
+      {
+        "word_count": 248,
+        "link_count": 3,
+        "uppercase_ratio": 0.382,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.941,
+        "attachment_count": 3,
+        "personalization_score": 0.619,
+        "reply_chain_depth": 7,
+        "send_hour": 23,
+        "subject_length": 18,
+        "label": "ham"
+      },
+      {
+        "word_count": 43,
+        "link_count": 10,
+        "uppercase_ratio": 0.702,
+        "suspicious_word_count": 11,
+        "sender_reputation": -0.008,
+        "attachment_count": 3,
+        "personalization_score": 0.775,
+        "reply_chain_depth": 7,
+        "send_hour": 1,
+        "subject_length": 44,
+        "label": "spam"
+      },
+      {
+        "word_count": 169,
+        "link_count": 6,
+        "uppercase_ratio": 0.047,
+        "suspicious_word_count": 11,
+        "sender_reputation": -0.069,
+        "attachment_count": 3,
+        "personalization_score": 0.648,
+        "reply_chain_depth": 0,
+        "send_hour": 19,
+        "subject_length": 58,
+        "label": "spam"
+      },
+      {
+        "word_count": 69,
+        "link_count": 1,
+        "uppercase_ratio": 0.976,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.275,
+        "attachment_count": 2,
+        "personalization_score": 0.662,
+        "reply_chain_depth": 4,
+        "send_hour": 9,
+        "subject_length": 40,
+        "label": "ham"
+      },
+      {
+        "word_count": 260,
+        "link_count": 0,
+        "uppercase_ratio": 0.097,
+        "suspicious_word_count": 4,
+        "sender_reputation": -1.25,
+        "attachment_count": 2,
+        "personalization_score": 0.99,
+        "reply_chain_depth": 7,
+        "send_hour": 20,
+        "subject_length": 59,
+        "label": "ham"
+      },
+      {
+        "word_count": 64,
+        "link_count": 2,
+        "uppercase_ratio": 0.15,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.18,
+        "attachment_count": 3,
+        "personalization_score": 0.745,
+        "reply_chain_depth": 7,
+        "send_hour": 4,
+        "subject_length": 47,
+        "label": "ham"
+      },
+      {
+        "word_count": 120,
+        "link_count": 9,
+        "uppercase_ratio": 0.928,
+        "suspicious_word_count": 9,
+        "sender_reputation": 0.972,
+        "attachment_count": 1,
+        "personalization_score": 0.358,
+        "reply_chain_depth": 4,
+        "send_hour": 13,
+        "subject_length": 51,
+        "label": "ham"
+      },
+      {
+        "word_count": 43,
+        "link_count": 4,
+        "uppercase_ratio": 0.184,
+        "suspicious_word_count": 6,
+        "sender_reputation": -0.717,
+        "attachment_count": 3,
+        "personalization_score": 0.763,
+        "reply_chain_depth": 1,
+        "send_hour": 0,
+        "subject_length": 23,
+        "label": "spam"
+      },
+      {
+        "word_count": 123,
+        "link_count": 1,
+        "uppercase_ratio": 0.819,
+        "suspicious_word_count": 9,
+        "sender_reputation": -0.192,
+        "attachment_count": 3,
+        "personalization_score": 0.271,
+        "reply_chain_depth": 7,
+        "send_hour": 18,
+        "subject_length": 29,
+        "label": "ham"
+      },
+      {
+        "word_count": 164,
+        "link_count": 11,
+        "uppercase_ratio": 0.203,
+        "suspicious_word_count": 6,
+        "sender_reputation": 0.346,
+        "attachment_count": 2,
+        "personalization_score": 0.524,
+        "reply_chain_depth": 5,
+        "send_hour": 7,
+        "subject_length": 29,
+        "label": "ham"
+      },
+      {
+        "word_count": 50,
+        "link_count": 2,
+        "uppercase_ratio": 0.955,
+        "suspicious_word_count": 11,
+        "sender_reputation": 0.893,
+        "attachment_count": 0,
+        "personalization_score": 0.413,
+        "reply_chain_depth": 7,
+        "send_hour": 13,
+        "subject_length": 36,
+        "label": "ham"
+      },
+      {
+        "word_count": 31,
+        "link_count": 9,
+        "uppercase_ratio": 0.055,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.92,
+        "attachment_count": 1,
+        "personalization_score": 0.625,
+        "reply_chain_depth": 6,
+        "send_hour": 5,
+        "subject_length": 15,
+        "label": "spam"
+      },
+      {
+        "word_count": 135,
+        "link_count": 0,
+        "uppercase_ratio": 0.683,
+        "suspicious_word_count": 1,
+        "sender_reputation": 1.891,
+        "attachment_count": 1,
+        "personalization_score": 0.103,
+        "reply_chain_depth": 7,
+        "send_hour": 7,
+        "subject_length": 55,
+        "label": "spam"
+      },
+      {
+        "word_count": 42,
+        "link_count": 0,
+        "uppercase_ratio": 0.807,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.01,
+        "attachment_count": 3,
+        "personalization_score": 0.649,
+        "reply_chain_depth": 4,
+        "send_hour": 2,
+        "subject_length": 30,
+        "label": "spam"
+      },
+      {
+        "word_count": 267,
+        "link_count": 3,
+        "uppercase_ratio": 0.806,
+        "suspicious_word_count": 4,
+        "sender_reputation": 0.12,
+        "attachment_count": 2,
+        "personalization_score": 0.779,
+        "reply_chain_depth": 4,
+        "send_hour": 22,
+        "subject_length": 16,
+        "label": "ham"
+      },
+      {
+        "word_count": 193,
+        "link_count": 1,
+        "uppercase_ratio": 0.499,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.79,
+        "attachment_count": 3,
+        "personalization_score": 0.242,
+        "reply_chain_depth": 1,
+        "send_hour": 21,
+        "subject_length": 13,
+        "label": "ham"
+      },
+      {
+        "word_count": 274,
+        "link_count": 13,
+        "uppercase_ratio": 0.635,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.468,
+        "attachment_count": 3,
+        "personalization_score": 0.611,
+        "reply_chain_depth": 7,
+        "send_hour": 8,
+        "subject_length": 59,
+        "label": "spam"
+      },
+      {
+        "word_count": 194,
+        "link_count": 12,
+        "uppercase_ratio": 0.131,
+        "suspicious_word_count": 11,
+        "sender_reputation": 1.242,
+        "attachment_count": 0,
+        "personalization_score": 0.874,
+        "reply_chain_depth": 6,
+        "send_hour": 3,
+        "subject_length": 24,
+        "label": "ham"
+      },
+      {
+        "word_count": 223,
+        "link_count": 6,
+        "uppercase_ratio": 0.838,
+        "suspicious_word_count": 4,
+        "sender_reputation": -1.264,
+        "attachment_count": 3,
+        "personalization_score": 0.357,
+        "reply_chain_depth": 2,
+        "send_hour": 9,
+        "subject_length": 67,
+        "label": "spam"
+      },
+      {
+        "word_count": 215,
+        "link_count": 9,
+        "uppercase_ratio": 0.715,
+        "suspicious_word_count": 0,
+        "sender_reputation": -1.933,
+        "attachment_count": 3,
+        "personalization_score": 0.34,
+        "reply_chain_depth": 2,
+        "send_hour": 7,
+        "subject_length": 28,
+        "label": "spam"
+      },
+      {
+        "word_count": 149,
+        "link_count": 10,
+        "uppercase_ratio": 0.571,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.501,
+        "attachment_count": 1,
+        "personalization_score": 0.203,
+        "reply_chain_depth": 5,
+        "send_hour": 16,
+        "subject_length": 24,
+        "label": "ham"
+      },
+      {
+        "word_count": 235,
+        "link_count": 10,
+        "uppercase_ratio": 0.977,
+        "suspicious_word_count": 3,
+        "sender_reputation": 0.685,
+        "attachment_count": 1,
+        "personalization_score": 0.955,
+        "reply_chain_depth": 5,
+        "send_hour": 21,
+        "subject_length": 55,
+        "label": "spam"
+      },
+      {
+        "word_count": 192,
+        "link_count": 3,
+        "uppercase_ratio": 0.155,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.736,
+        "attachment_count": 3,
+        "personalization_score": 0.878,
+        "reply_chain_depth": 7,
+        "send_hour": 12,
+        "subject_length": 57,
+        "label": "ham"
+      },
+      {
+        "word_count": 133,
+        "link_count": 14,
+        "uppercase_ratio": 0.081,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.348,
+        "attachment_count": 2,
+        "personalization_score": 0.192,
+        "reply_chain_depth": 3,
+        "send_hour": 6,
+        "subject_length": 48,
+        "label": "spam"
+      },
+      {
+        "word_count": 86,
+        "link_count": 11,
+        "uppercase_ratio": 0.66,
+        "suspicious_word_count": 0,
+        "sender_reputation": -0.031,
+        "attachment_count": 1,
+        "personalization_score": 0.081,
+        "reply_chain_depth": 0,
+        "send_hour": 12,
+        "subject_length": 28,
+        "label": "spam"
+      },
+      {
+        "word_count": 164,
+        "link_count": 14,
+        "uppercase_ratio": 0.97,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.876,
+        "attachment_count": 3,
+        "personalization_score": 0.956,
+        "reply_chain_depth": 6,
+        "send_hour": 20,
+        "subject_length": 62,
+        "label": "spam"
+      },
+      {
+        "word_count": 141,
+        "link_count": 2,
+        "uppercase_ratio": 0.421,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.946,
+        "attachment_count": 3,
+        "personalization_score": 0.228,
+        "reply_chain_depth": 0,
+        "send_hour": 3,
+        "subject_length": 51,
+        "label": "spam"
+      },
+      {
+        "word_count": 82,
+        "link_count": 14,
+        "uppercase_ratio": 0.258,
+        "suspicious_word_count": 3,
+        "sender_reputation": -0.144,
+        "attachment_count": 2,
+        "personalization_score": 0.635,
+        "reply_chain_depth": 5,
+        "send_hour": 8,
+        "subject_length": 59,
+        "label": "spam"
+      },
+      {
+        "word_count": 258,
+        "link_count": 7,
+        "uppercase_ratio": 0.431,
+        "suspicious_word_count": 2,
+        "sender_reputation": 1.535,
+        "attachment_count": 3,
+        "personalization_score": 0.501,
+        "reply_chain_depth": 5,
+        "send_hour": 19,
+        "subject_length": 27,
+        "label": "ham"
+      },
+      {
+        "word_count": 43,
+        "link_count": 0,
+        "uppercase_ratio": 0.838,
+        "suspicious_word_count": 7,
+        "sender_reputation": 0.938,
+        "attachment_count": 1,
+        "personalization_score": 0.001,
+        "reply_chain_depth": 6,
+        "send_hour": 22,
+        "subject_length": 23,
+        "label": "spam"
+      },
+      {
+        "word_count": 206,
+        "link_count": 12,
+        "uppercase_ratio": 0.079,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.825,
+        "attachment_count": 1,
+        "personalization_score": 0.82,
+        "reply_chain_depth": 0,
+        "send_hour": 23,
+        "subject_length": 39,
+        "label": "spam"
+      },
+      {
+        "word_count": 100,
+        "link_count": 9,
+        "uppercase_ratio": 0.777,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.906,
+        "attachment_count": 1,
+        "personalization_score": 0.763,
+        "reply_chain_depth": 4,
+        "send_hour": 21,
+        "subject_length": 11,
+        "label": "ham"
+      },
+      {
+        "word_count": 250,
+        "link_count": 8,
+        "uppercase_ratio": 0.89,
+        "suspicious_word_count": 9,
+        "sender_reputation": 1.568,
+        "attachment_count": 1,
+        "personalization_score": 0.212,
+        "reply_chain_depth": 3,
+        "send_hour": 15,
+        "subject_length": 47,
+        "label": "ham"
+      },
+      {
+        "word_count": 71,
+        "link_count": 11,
+        "uppercase_ratio": 0.746,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.907,
+        "attachment_count": 2,
+        "personalization_score": 0.721,
+        "reply_chain_depth": 0,
+        "send_hour": 14,
+        "subject_length": 70,
+        "label": "ham"
+      },
+      {
+        "word_count": 278,
+        "link_count": 14,
+        "uppercase_ratio": 0.442,
+        "suspicious_word_count": 1,
+        "sender_reputation": -1.306,
+        "attachment_count": 0,
+        "personalization_score": 0.416,
+        "reply_chain_depth": 0,
+        "send_hour": 12,
+        "subject_length": 76,
+        "label": "spam"
+      },
+      {
+        "word_count": 130,
+        "link_count": 10,
+        "uppercase_ratio": 0.85,
+        "suspicious_word_count": 7,
+        "sender_reputation": 0.996,
+        "attachment_count": 3,
+        "personalization_score": 0.221,
+        "reply_chain_depth": 5,
+        "send_hour": 1,
+        "subject_length": 11,
+        "label": "ham"
+      },
+      {
+        "word_count": 238,
+        "link_count": 15,
+        "uppercase_ratio": 0.96,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.697,
+        "attachment_count": 1,
+        "personalization_score": 0.025,
+        "reply_chain_depth": 3,
+        "send_hour": 4,
+        "subject_length": 19,
+        "label": "spam"
+      },
+      {
+        "word_count": 141,
+        "link_count": 10,
+        "uppercase_ratio": 0.118,
+        "suspicious_word_count": 3,
+        "sender_reputation": 1.234,
+        "attachment_count": 1,
+        "personalization_score": 0.453,
+        "reply_chain_depth": 5,
+        "send_hour": 5,
+        "subject_length": 23,
+        "label": "ham"
+      },
+      {
+        "word_count": 242,
+        "link_count": 10,
+        "uppercase_ratio": 0.185,
+        "suspicious_word_count": 3,
+        "sender_reputation": 0.912,
+        "attachment_count": 1,
+        "personalization_score": 0.269,
+        "reply_chain_depth": 3,
+        "send_hour": 14,
+        "subject_length": 54,
+        "label": "spam"
+      },
+      {
+        "word_count": 137,
+        "link_count": 9,
+        "uppercase_ratio": 0.809,
+        "suspicious_word_count": 4,
+        "sender_reputation": 0.045,
+        "attachment_count": 2,
+        "personalization_score": 0.365,
+        "reply_chain_depth": 5,
+        "send_hour": 2,
+        "subject_length": 31,
+        "label": "spam"
+      },
+      {
+        "word_count": 201,
+        "link_count": 2,
+        "uppercase_ratio": 0.839,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.361,
+        "attachment_count": 0,
+        "personalization_score": 0.045,
+        "reply_chain_depth": 6,
+        "send_hour": 12,
+        "subject_length": 51,
+        "label": "spam"
+      },
+      {
+        "word_count": 90,
+        "link_count": 14,
+        "uppercase_ratio": 0.193,
+        "suspicious_word_count": 11,
+        "sender_reputation": 0.706,
+        "attachment_count": 3,
+        "personalization_score": 0.804,
+        "reply_chain_depth": 7,
+        "send_hour": 5,
+        "subject_length": 67,
+        "label": "ham"
+      },
+      {
+        "word_count": 147,
+        "link_count": 8,
+        "uppercase_ratio": 0.131,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.035,
+        "attachment_count": 0,
+        "personalization_score": 0.46,
+        "reply_chain_depth": 3,
+        "send_hour": 10,
+        "subject_length": 34,
+        "label": "ham"
+      },
+      {
+        "word_count": 269,
+        "link_count": 5,
+        "uppercase_ratio": 0.53,
+        "suspicious_word_count": 7,
+        "sender_reputation": 0.779,
+        "attachment_count": 1,
+        "personalization_score": 0.054,
+        "reply_chain_depth": 6,
+        "send_hour": 3,
+        "subject_length": 19,
+        "label": "spam"
+      },
+      {
+        "word_count": 119,
+        "link_count": 13,
+        "uppercase_ratio": 0.12,
+        "suspicious_word_count": 5,
+        "sender_reputation": -0.319,
+        "attachment_count": 2,
+        "personalization_score": 0.702,
+        "reply_chain_depth": 5,
+        "send_hour": 3,
+        "subject_length": 10,
+        "label": "spam"
+      },
+      {
+        "word_count": 22,
+        "link_count": 6,
+        "uppercase_ratio": 0.787,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.979,
+        "attachment_count": 2,
+        "personalization_score": 0.581,
+        "reply_chain_depth": 5,
+        "send_hour": 14,
+        "subject_length": 13,
+        "label": "spam"
+      },
+      {
+        "word_count": 87,
+        "link_count": 10,
+        "uppercase_ratio": 0.194,
+        "suspicious_word_count": 3,
+        "sender_reputation": -0.122,
+        "attachment_count": 0,
+        "personalization_score": 0.671,
+        "reply_chain_depth": 2,
+        "send_hour": 6,
+        "subject_length": 78,
+        "label": "spam"
+      },
+      {
+        "word_count": 192,
+        "link_count": 0,
+        "uppercase_ratio": 0.552,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.933,
+        "attachment_count": 3,
+        "personalization_score": 0.746,
+        "reply_chain_depth": 6,
+        "send_hour": 0,
+        "subject_length": 29,
+        "label": "spam"
+      },
+      {
+        "word_count": 110,
+        "link_count": 10,
+        "uppercase_ratio": 0.573,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.71,
+        "attachment_count": 3,
+        "personalization_score": 0.881,
+        "reply_chain_depth": 3,
+        "send_hour": 17,
+        "subject_length": 25,
+        "label": "spam"
+      },
+      {
+        "word_count": 224,
+        "link_count": 0,
+        "uppercase_ratio": 0.634,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.61,
+        "attachment_count": 3,
+        "personalization_score": 0.96,
+        "reply_chain_depth": 3,
+        "send_hour": 21,
+        "subject_length": 71,
+        "label": "ham"
+      },
+      {
+        "word_count": 159,
+        "link_count": 5,
+        "uppercase_ratio": 0.432,
+        "suspicious_word_count": 4,
+        "sender_reputation": -1.916,
+        "attachment_count": 0,
+        "personalization_score": 0.244,
+        "reply_chain_depth": 5,
+        "send_hour": 18,
+        "subject_length": 18,
+        "label": "ham"
+      },
+      {
+        "word_count": 187,
+        "link_count": 8,
+        "uppercase_ratio": 0.241,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.069,
+        "attachment_count": 1,
+        "personalization_score": 0.715,
+        "reply_chain_depth": 6,
+        "send_hour": 22,
+        "subject_length": 32,
+        "label": "spam"
+      },
+      {
+        "word_count": 91,
+        "link_count": 15,
+        "uppercase_ratio": 0.005,
+        "suspicious_word_count": 11,
+        "sender_reputation": 1.171,
+        "attachment_count": 2,
+        "personalization_score": 0.865,
+        "reply_chain_depth": 5,
+        "send_hour": 19,
+        "subject_length": 78,
+        "label": "ham"
+      },
+      {
+        "word_count": 204,
+        "link_count": 15,
+        "uppercase_ratio": 0.199,
+        "suspicious_word_count": 4,
+        "sender_reputation": 0.426,
+        "attachment_count": 0,
+        "personalization_score": 0.093,
+        "reply_chain_depth": 6,
+        "send_hour": 0,
+        "subject_length": 17,
+        "label": "ham"
+      },
+      {
+        "word_count": 30,
+        "link_count": 5,
+        "uppercase_ratio": 0.06,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.363,
+        "attachment_count": 3,
+        "personalization_score": 0.673,
+        "reply_chain_depth": 2,
+        "send_hour": 10,
+        "subject_length": 72,
+        "label": "spam"
+      },
+      {
+        "word_count": 197,
+        "link_count": 2,
+        "uppercase_ratio": 0.14,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.571,
+        "attachment_count": 3,
+        "personalization_score": 0.74,
+        "reply_chain_depth": 6,
+        "send_hour": 22,
+        "subject_length": 58,
+        "label": "ham"
+      },
+      {
+        "word_count": 138,
+        "link_count": 0,
+        "uppercase_ratio": 0.046,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.293,
+        "attachment_count": 1,
+        "personalization_score": 0.686,
+        "reply_chain_depth": 0,
+        "send_hour": 0,
+        "subject_length": 74,
+        "label": "ham"
+      },
+      {
+        "word_count": 24,
+        "link_count": 6,
+        "uppercase_ratio": 0.75,
+        "suspicious_word_count": 3,
+        "sender_reputation": -0.12,
+        "attachment_count": 1,
+        "personalization_score": 0.467,
+        "reply_chain_depth": 7,
+        "send_hour": 3,
+        "subject_length": 61,
+        "label": "spam"
+      },
+      {
+        "word_count": 207,
+        "link_count": 1,
+        "uppercase_ratio": 0.037,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.556,
+        "attachment_count": 0,
+        "personalization_score": 0.748,
+        "reply_chain_depth": 5,
+        "send_hour": 19,
+        "subject_length": 14,
+        "label": "ham"
+      },
+      {
+        "word_count": 200,
+        "link_count": 2,
+        "uppercase_ratio": 0.108,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.832,
+        "attachment_count": 1,
+        "personalization_score": 0.991,
+        "reply_chain_depth": 4,
+        "send_hour": 11,
+        "subject_length": 33,
+        "label": "ham"
+      },
+      {
+        "word_count": 186,
+        "link_count": 13,
+        "uppercase_ratio": 0.913,
+        "suspicious_word_count": 1,
+        "sender_reputation": 0.964,
+        "attachment_count": 0,
+        "personalization_score": 0.007,
+        "reply_chain_depth": 4,
+        "send_hour": 9,
+        "subject_length": 75,
+        "label": "ham"
+      },
+      {
+        "word_count": 102,
+        "link_count": 10,
+        "uppercase_ratio": 0.077,
+        "suspicious_word_count": 3,
+        "sender_reputation": 0.683,
+        "attachment_count": 2,
+        "personalization_score": 0.612,
+        "reply_chain_depth": 3,
+        "send_hour": 2,
+        "subject_length": 45,
+        "label": "ham"
+      },
+      {
+        "word_count": 230,
+        "link_count": 7,
+        "uppercase_ratio": 0.028,
+        "suspicious_word_count": 9,
+        "sender_reputation": 0.03,
+        "attachment_count": 2,
+        "personalization_score": 0.544,
+        "reply_chain_depth": 2,
+        "send_hour": 3,
+        "subject_length": 11,
+        "label": "ham"
+      },
+      {
+        "word_count": 235,
+        "link_count": 7,
+        "uppercase_ratio": 0.992,
+        "suspicious_word_count": 11,
+        "sender_reputation": -1.849,
+        "attachment_count": 0,
+        "personalization_score": 0.847,
+        "reply_chain_depth": 2,
+        "send_hour": 19,
+        "subject_length": 15,
+        "label": "spam"
+      },
+      {
+        "word_count": 152,
+        "link_count": 13,
+        "uppercase_ratio": 0.84,
+        "suspicious_word_count": 1,
+        "sender_reputation": -1.286,
+        "attachment_count": 0,
+        "personalization_score": 0.218,
+        "reply_chain_depth": 4,
+        "send_hour": 12,
+        "subject_length": 57,
+        "label": "spam"
+      },
+      {
+        "word_count": 70,
+        "link_count": 5,
+        "uppercase_ratio": 0.983,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.936,
+        "attachment_count": 3,
+        "personalization_score": 0.472,
+        "reply_chain_depth": 2,
+        "send_hour": 8,
+        "subject_length": 58,
+        "label": "spam"
+      },
+      {
+        "word_count": 230,
+        "link_count": 14,
+        "uppercase_ratio": 0.655,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.427,
+        "attachment_count": 2,
+        "personalization_score": 0.744,
+        "reply_chain_depth": 1,
+        "send_hour": 3,
+        "subject_length": 41,
+        "label": "ham"
+      },
+      {
+        "word_count": 131,
+        "link_count": 13,
+        "uppercase_ratio": 0.836,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.16,
+        "attachment_count": 3,
+        "personalization_score": 0.785,
+        "reply_chain_depth": 1,
+        "send_hour": 8,
+        "subject_length": 43,
+        "label": "spam"
+      },
+      {
+        "word_count": 48,
+        "link_count": 6,
+        "uppercase_ratio": 0.122,
+        "suspicious_word_count": 9,
+        "sender_reputation": 1.458,
+        "attachment_count": 0,
+        "personalization_score": 0.719,
+        "reply_chain_depth": 0,
+        "send_hour": 12,
+        "subject_length": 37,
+        "label": "ham"
+      },
+      {
+        "word_count": 251,
+        "link_count": 0,
+        "uppercase_ratio": 0.068,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.187,
+        "attachment_count": 3,
+        "personalization_score": 0.795,
+        "reply_chain_depth": 7,
+        "send_hour": 23,
+        "subject_length": 15,
+        "label": "ham"
+      },
+      {
+        "word_count": 55,
+        "link_count": 13,
+        "uppercase_ratio": 0.58,
+        "suspicious_word_count": 3,
+        "sender_reputation": -0.822,
+        "attachment_count": 3,
+        "personalization_score": 0.372,
+        "reply_chain_depth": 4,
+        "send_hour": 3,
+        "subject_length": 66,
+        "label": "spam"
+      },
+      {
+        "word_count": 52,
+        "link_count": 9,
+        "uppercase_ratio": 0.585,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.585,
+        "attachment_count": 0,
+        "personalization_score": 0.141,
+        "reply_chain_depth": 1,
+        "send_hour": 12,
+        "subject_length": 26,
+        "label": "ham"
+      },
+      {
+        "word_count": 227,
+        "link_count": 15,
+        "uppercase_ratio": 0.26,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.516,
+        "attachment_count": 1,
+        "personalization_score": 0.87,
+        "reply_chain_depth": 0,
+        "send_hour": 8,
+        "subject_length": 79,
+        "label": "ham"
+      },
+      {
+        "word_count": 60,
+        "link_count": 6,
+        "uppercase_ratio": 0.268,
+        "suspicious_word_count": 9,
+        "sender_reputation": 0.337,
+        "attachment_count": 1,
+        "personalization_score": 0.936,
+        "reply_chain_depth": 1,
+        "send_hour": 20,
+        "subject_length": 40,
+        "label": "ham"
+      },
+      {
+        "word_count": 142,
+        "link_count": 9,
+        "uppercase_ratio": 0.925,
+        "suspicious_word_count": 0,
+        "sender_reputation": 0.386,
+        "attachment_count": 1,
+        "personalization_score": 0.037,
+        "reply_chain_depth": 1,
+        "send_hour": 5,
+        "subject_length": 18,
+        "label": "ham"
+      },
+      {
+        "word_count": 181,
+        "link_count": 12,
+        "uppercase_ratio": 0.829,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.069,
+        "attachment_count": 1,
+        "personalization_score": 0.625,
+        "reply_chain_depth": 5,
+        "send_hour": 20,
+        "subject_length": 46,
+        "label": "ham"
+      },
+      {
+        "word_count": 206,
+        "link_count": 4,
+        "uppercase_ratio": 0.463,
+        "suspicious_word_count": 11,
+        "sender_reputation": -0.378,
+        "attachment_count": 2,
+        "personalization_score": 0.773,
+        "reply_chain_depth": 2,
+        "send_hour": 4,
+        "subject_length": 47,
+        "label": "spam"
+      },
+      {
+        "word_count": 130,
+        "link_count": 0,
+        "uppercase_ratio": 0.141,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.05,
+        "attachment_count": 1,
+        "personalization_score": 0.851,
+        "reply_chain_depth": 2,
+        "send_hour": 6,
+        "subject_length": 47,
+        "label": "ham"
+      },
+      {
+        "word_count": 124,
+        "link_count": 5,
+        "uppercase_ratio": 0.438,
+        "suspicious_word_count": 7,
+        "sender_reputation": 1.164,
+        "attachment_count": 3,
+        "personalization_score": 0.379,
+        "reply_chain_depth": 6,
+        "send_hour": 12,
+        "subject_length": 23,
+        "label": "ham"
+      },
+      {
+        "word_count": 273,
+        "link_count": 15,
+        "uppercase_ratio": 0.633,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.871,
+        "attachment_count": 1,
+        "personalization_score": 0.804,
+        "reply_chain_depth": 7,
+        "send_hour": 9,
+        "subject_length": 27,
+        "label": "spam"
+      },
+      {
+        "word_count": 102,
+        "link_count": 14,
+        "uppercase_ratio": 0.585,
+        "suspicious_word_count": 4,
+        "sender_reputation": -0.543,
+        "attachment_count": 1,
+        "personalization_score": 0.411,
+        "reply_chain_depth": 0,
+        "send_hour": 23,
+        "subject_length": 58,
+        "label": "spam"
+      },
+      {
+        "word_count": 165,
+        "link_count": 0,
+        "uppercase_ratio": 0.468,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.433,
+        "attachment_count": 3,
+        "personalization_score": 0.137,
+        "reply_chain_depth": 5,
+        "send_hour": 0,
+        "subject_length": 44,
+        "label": "ham"
+      },
+      {
+        "word_count": 48,
+        "link_count": 14,
+        "uppercase_ratio": 0.711,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.047,
+        "attachment_count": 1,
+        "personalization_score": 0.555,
+        "reply_chain_depth": 5,
+        "send_hour": 17,
+        "subject_length": 54,
+        "label": "spam"
+      },
+      {
+        "word_count": 175,
+        "link_count": 11,
+        "uppercase_ratio": 0.308,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.438,
+        "attachment_count": 0,
+        "personalization_score": 0.648,
+        "reply_chain_depth": 3,
+        "send_hour": 19,
+        "subject_length": 26,
+        "label": "ham"
+      },
+      {
+        "word_count": 80,
+        "link_count": 10,
+        "uppercase_ratio": 0.684,
+        "suspicious_word_count": 1,
+        "sender_reputation": -1.662,
+        "attachment_count": 2,
+        "personalization_score": 0.608,
+        "reply_chain_depth": 7,
+        "send_hour": 19,
+        "subject_length": 31,
+        "label": "spam"
+      },
+      {
+        "word_count": 23,
+        "link_count": 14,
+        "uppercase_ratio": 0.187,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.874,
+        "attachment_count": 1,
+        "personalization_score": 0.811,
+        "reply_chain_depth": 7,
+        "send_hour": 17,
+        "subject_length": 56,
+        "label": "ham"
+      },
+      {
+        "word_count": 170,
+        "link_count": 9,
+        "uppercase_ratio": 0.364,
+        "suspicious_word_count": 4,
+        "sender_reputation": -0.252,
+        "attachment_count": 3,
+        "personalization_score": 0.171,
+        "reply_chain_depth": 2,
+        "send_hour": 22,
+        "subject_length": 29,
+        "label": "spam"
+      },
+      {
+        "word_count": 223,
+        "link_count": 7,
+        "uppercase_ratio": 0.524,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.376,
+        "attachment_count": 0,
+        "personalization_score": 0.722,
+        "reply_chain_depth": 6,
+        "send_hour": 22,
+        "subject_length": 32,
+        "label": "ham"
+      },
+      {
+        "word_count": 85,
+        "link_count": 12,
+        "uppercase_ratio": 0.08,
+        "suspicious_word_count": 3,
+        "sender_reputation": 0.52,
+        "attachment_count": 2,
+        "personalization_score": 0.028,
+        "reply_chain_depth": 5,
+        "send_hour": 17,
+        "subject_length": 79,
+        "label": "ham"
+      },
+      {
+        "word_count": 43,
+        "link_count": 14,
+        "uppercase_ratio": 0.441,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.027,
+        "attachment_count": 1,
+        "personalization_score": 0.92,
+        "reply_chain_depth": 6,
+        "send_hour": 17,
+        "subject_length": 45,
+        "label": "spam"
+      },
+      {
+        "word_count": 21,
+        "link_count": 7,
+        "uppercase_ratio": 0.12,
+        "suspicious_word_count": 11,
+        "sender_reputation": 0.031,
+        "attachment_count": 0,
+        "personalization_score": 0.033,
+        "reply_chain_depth": 3,
+        "send_hour": 16,
+        "subject_length": 21,
+        "label": "ham"
+      },
+      {
+        "word_count": 25,
+        "link_count": 1,
+        "uppercase_ratio": 0.984,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.828,
+        "attachment_count": 3,
+        "personalization_score": 0.453,
+        "reply_chain_depth": 7,
+        "send_hour": 11,
+        "subject_length": 17,
+        "label": "ham"
+      },
+      {
+        "word_count": 158,
+        "link_count": 7,
+        "uppercase_ratio": 0.529,
+        "suspicious_word_count": 3,
+        "sender_reputation": 0.57,
+        "attachment_count": 1,
+        "personalization_score": 0.499,
+        "reply_chain_depth": 2,
+        "send_hour": 3,
+        "subject_length": 65,
+        "label": "spam"
+      },
+      {
+        "word_count": 156,
+        "link_count": 5,
+        "uppercase_ratio": 0.699,
+        "suspicious_word_count": 4,
+        "sender_reputation": -1.887,
+        "attachment_count": 2,
+        "personalization_score": 0.174,
+        "reply_chain_depth": 7,
+        "send_hour": 11,
+        "subject_length": 11,
+        "label": "spam"
+      },
+      {
+        "word_count": 252,
+        "link_count": 10,
+        "uppercase_ratio": 0.28,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.293,
+        "attachment_count": 1,
+        "personalization_score": 0.343,
+        "reply_chain_depth": 2,
+        "send_hour": 16,
+        "subject_length": 40,
+        "label": "spam"
+      },
+      {
+        "word_count": 72,
+        "link_count": 2,
+        "uppercase_ratio": 0.763,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.362,
+        "attachment_count": 0,
+        "personalization_score": 0.012,
+        "reply_chain_depth": 4,
+        "send_hour": 17,
+        "subject_length": 21,
+        "label": "ham"
+      },
+      {
+        "word_count": 61,
+        "link_count": 2,
+        "uppercase_ratio": 0.233,
+        "suspicious_word_count": 1,
+        "sender_reputation": 0.688,
+        "attachment_count": 1,
+        "personalization_score": 0.44,
+        "reply_chain_depth": 3,
+        "send_hour": 5,
+        "subject_length": 71,
+        "label": "ham"
+      },
+      {
+        "word_count": 279,
+        "link_count": 11,
+        "uppercase_ratio": 0.18,
+        "suspicious_word_count": 3,
+        "sender_reputation": 1.423,
+        "attachment_count": 2,
+        "personalization_score": 0.519,
+        "reply_chain_depth": 7,
+        "send_hour": 1,
+        "subject_length": 69,
+        "label": "ham"
+      },
+      {
+        "word_count": 93,
+        "link_count": 14,
+        "uppercase_ratio": 0.609,
+        "suspicious_word_count": 0,
+        "sender_reputation": 0.546,
+        "attachment_count": 1,
+        "personalization_score": 0.399,
+        "reply_chain_depth": 1,
+        "send_hour": 14,
+        "subject_length": 29,
+        "label": "ham"
+      },
+      {
+        "word_count": 47,
+        "link_count": 11,
+        "uppercase_ratio": 0.733,
+        "suspicious_word_count": 11,
+        "sender_reputation": 0.02,
+        "attachment_count": 1,
+        "personalization_score": 0.743,
+        "reply_chain_depth": 4,
+        "send_hour": 11,
+        "subject_length": 20,
+        "label": "ham"
+      },
+      {
+        "word_count": 279,
+        "link_count": 3,
+        "uppercase_ratio": 0.465,
+        "suspicious_word_count": 3,
+        "sender_reputation": 0.252,
+        "attachment_count": 3,
+        "personalization_score": 0.037,
+        "reply_chain_depth": 6,
+        "send_hour": 16,
+        "subject_length": 38,
+        "label": "spam"
+      },
+      {
+        "word_count": 94,
+        "link_count": 11,
+        "uppercase_ratio": 0.877,
+        "suspicious_word_count": 2,
+        "sender_reputation": 1.576,
+        "attachment_count": 2,
+        "personalization_score": 0.889,
+        "reply_chain_depth": 0,
+        "send_hour": 14,
+        "subject_length": 49,
+        "label": "spam"
+      },
+      {
+        "word_count": 170,
+        "link_count": 4,
+        "uppercase_ratio": 0.399,
+        "suspicious_word_count": 0,
+        "sender_reputation": -1.253,
+        "attachment_count": 0,
+        "personalization_score": 0.553,
+        "reply_chain_depth": 5,
+        "send_hour": 8,
+        "subject_length": 34,
+        "label": "spam"
+      },
+      {
+        "word_count": 49,
+        "link_count": 2,
+        "uppercase_ratio": 0.803,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.921,
+        "attachment_count": 1,
+        "personalization_score": 0.828,
+        "reply_chain_depth": 6,
+        "send_hour": 20,
+        "subject_length": 78,
+        "label": "ham"
+      },
+      {
+        "word_count": 120,
+        "link_count": 6,
+        "uppercase_ratio": 0.937,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.239,
+        "attachment_count": 1,
+        "personalization_score": 0.791,
+        "reply_chain_depth": 4,
+        "send_hour": 13,
+        "subject_length": 36,
+        "label": "spam"
+      },
+      {
+        "word_count": 22,
+        "link_count": 5,
+        "uppercase_ratio": 0.657,
+        "suspicious_word_count": 0,
+        "sender_reputation": -0.351,
+        "attachment_count": 1,
+        "personalization_score": 0.577,
+        "reply_chain_depth": 3,
+        "send_hour": 10,
+        "subject_length": 32,
+        "label": "spam"
+      },
+      {
+        "word_count": 37,
+        "link_count": 13,
+        "uppercase_ratio": 0.076,
+        "suspicious_word_count": 9,
+        "sender_reputation": -0.169,
+        "attachment_count": 0,
+        "personalization_score": 0.989,
+        "reply_chain_depth": 1,
+        "send_hour": 7,
+        "subject_length": 60,
+        "label": "spam"
+      },
+      {
+        "word_count": 185,
+        "link_count": 7,
+        "uppercase_ratio": 0.758,
+        "suspicious_word_count": 11,
+        "sender_reputation": -0.705,
+        "attachment_count": 3,
+        "personalization_score": 0.386,
+        "reply_chain_depth": 0,
+        "send_hour": 11,
+        "subject_length": 76,
+        "label": "spam"
+      },
+      {
+        "word_count": 213,
+        "link_count": 13,
+        "uppercase_ratio": 0.754,
+        "suspicious_word_count": 5,
+        "sender_reputation": 1.712,
+        "attachment_count": 3,
+        "personalization_score": 0.72,
+        "reply_chain_depth": 1,
+        "send_hour": 1,
+        "subject_length": 69,
+        "label": "ham"
+      },
+      {
+        "word_count": 101,
+        "link_count": 8,
+        "uppercase_ratio": 0.185,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.062,
+        "attachment_count": 2,
+        "personalization_score": 0.121,
+        "reply_chain_depth": 2,
+        "send_hour": 2,
+        "subject_length": 33,
+        "label": "spam"
+      },
+      {
+        "word_count": 145,
+        "link_count": 9,
+        "uppercase_ratio": 0.199,
+        "suspicious_word_count": 7,
+        "sender_reputation": -1.916,
+        "attachment_count": 3,
+        "personalization_score": 0.985,
+        "reply_chain_depth": 6,
+        "send_hour": 15,
+        "subject_length": 75,
+        "label": "spam"
+      },
+      {
+        "word_count": 42,
+        "link_count": 8,
+        "uppercase_ratio": 0.086,
+        "suspicious_word_count": 4,
+        "sender_reputation": 0.69,
+        "attachment_count": 2,
+        "personalization_score": 0.132,
+        "reply_chain_depth": 5,
+        "send_hour": 19,
+        "subject_length": 46,
+        "label": "ham"
+      },
+      {
+        "word_count": 267,
+        "link_count": 9,
+        "uppercase_ratio": 0.792,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.749,
+        "attachment_count": 0,
+        "personalization_score": 0.827,
+        "reply_chain_depth": 1,
+        "send_hour": 22,
+        "subject_length": 79,
+        "label": "spam"
+      },
+      {
+        "word_count": 57,
+        "link_count": 9,
+        "uppercase_ratio": 0.1,
+        "suspicious_word_count": 11,
+        "sender_reputation": -1.139,
+        "attachment_count": 2,
+        "personalization_score": 0.308,
+        "reply_chain_depth": 2,
+        "send_hour": 19,
+        "subject_length": 16,
+        "label": "spam"
+      },
+      {
+        "word_count": 271,
+        "link_count": 1,
+        "uppercase_ratio": 0.912,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.214,
+        "attachment_count": 1,
+        "personalization_score": 0.754,
+        "reply_chain_depth": 2,
+        "send_hour": 16,
+        "subject_length": 17,
+        "label": "spam"
+      },
+      {
+        "word_count": 82,
+        "link_count": 12,
+        "uppercase_ratio": 0.348,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.866,
+        "attachment_count": 1,
+        "personalization_score": 0.022,
+        "reply_chain_depth": 6,
+        "send_hour": 1,
+        "subject_length": 11,
+        "label": "ham"
+      },
+      {
+        "word_count": 138,
+        "link_count": 12,
+        "uppercase_ratio": 0.379,
+        "suspicious_word_count": 0,
+        "sender_reputation": -0.243,
+        "attachment_count": 1,
+        "personalization_score": 0.909,
+        "reply_chain_depth": 7,
+        "send_hour": 3,
+        "subject_length": 49,
+        "label": "spam"
+      },
+      {
+        "word_count": 40,
+        "link_count": 14,
+        "uppercase_ratio": 0.543,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.071,
+        "attachment_count": 2,
+        "personalization_score": 0.715,
+        "reply_chain_depth": 5,
+        "send_hour": 7,
+        "subject_length": 37,
+        "label": "spam"
+      },
+      {
+        "word_count": 56,
+        "link_count": 11,
+        "uppercase_ratio": 0.317,
+        "suspicious_word_count": 3,
+        "sender_reputation": -0.947,
+        "attachment_count": 2,
+        "personalization_score": 0.549,
+        "reply_chain_depth": 0,
+        "send_hour": 4,
+        "subject_length": 68,
+        "label": "spam"
+      },
+      {
+        "word_count": 82,
+        "link_count": 5,
+        "uppercase_ratio": 0.482,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.39,
+        "attachment_count": 3,
+        "personalization_score": 0.214,
+        "reply_chain_depth": 5,
+        "send_hour": 22,
+        "subject_length": 39,
+        "label": "spam"
+      },
+      {
+        "word_count": 248,
+        "link_count": 3,
+        "uppercase_ratio": 0.295,
+        "suspicious_word_count": 9,
+        "sender_reputation": 0.419,
+        "attachment_count": 2,
+        "personalization_score": 0.423,
+        "reply_chain_depth": 7,
+        "send_hour": 20,
+        "subject_length": 49,
+        "label": "ham"
+      },
+      {
+        "word_count": 160,
+        "link_count": 1,
+        "uppercase_ratio": 0.903,
+        "suspicious_word_count": 4,
+        "sender_reputation": 0.838,
+        "attachment_count": 3,
+        "personalization_score": 0.956,
+        "reply_chain_depth": 7,
+        "send_hour": 15,
+        "subject_length": 76,
+        "label": "ham"
+      },
+      {
+        "word_count": 104,
+        "link_count": 5,
+        "uppercase_ratio": 0.29,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.34,
+        "attachment_count": 1,
+        "personalization_score": 0.762,
+        "reply_chain_depth": 5,
+        "send_hour": 6,
+        "subject_length": 20,
+        "label": "ham"
+      },
+      {
+        "word_count": 173,
+        "link_count": 4,
+        "uppercase_ratio": 0.987,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.295,
+        "attachment_count": 2,
+        "personalization_score": 0.114,
+        "reply_chain_depth": 6,
+        "send_hour": 3,
+        "subject_length": 65,
+        "label": "spam"
+      },
+      {
+        "word_count": 82,
+        "link_count": 10,
+        "uppercase_ratio": 0.788,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.649,
+        "attachment_count": 2,
+        "personalization_score": 0.979,
+        "reply_chain_depth": 0,
+        "send_hour": 4,
+        "subject_length": 60,
+        "label": "ham"
+      },
+      {
+        "word_count": 275,
+        "link_count": 13,
+        "uppercase_ratio": 0.219,
+        "suspicious_word_count": 6,
+        "sender_reputation": 0.472,
+        "attachment_count": 2,
+        "personalization_score": 0.119,
+        "reply_chain_depth": 7,
+        "send_hour": 16,
+        "subject_length": 22,
+        "label": "spam"
+      },
+      {
+        "word_count": 25,
+        "link_count": 0,
+        "uppercase_ratio": 0.255,
+        "suspicious_word_count": 7,
+        "sender_reputation": 1.506,
+        "attachment_count": 3,
+        "personalization_score": 0.956,
+        "reply_chain_depth": 3,
+        "send_hour": 17,
+        "subject_length": 75,
+        "label": "ham"
+      },
+      {
+        "word_count": 90,
+        "link_count": 3,
+        "uppercase_ratio": 0.773,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.148,
+        "attachment_count": 1,
+        "personalization_score": 0.871,
+        "reply_chain_depth": 4,
+        "send_hour": 8,
+        "subject_length": 63,
+        "label": "ham"
+      },
+      {
+        "word_count": 107,
+        "link_count": 11,
+        "uppercase_ratio": 0.907,
+        "suspicious_word_count": 4,
+        "sender_reputation": -1.55,
+        "attachment_count": 3,
+        "personalization_score": 0.105,
+        "reply_chain_depth": 6,
+        "send_hour": 0,
+        "subject_length": 30,
+        "label": "spam"
+      },
+      {
+        "word_count": 160,
+        "link_count": 2,
+        "uppercase_ratio": 0.67,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.074,
+        "attachment_count": 0,
+        "personalization_score": 0.228,
+        "reply_chain_depth": 7,
+        "send_hour": 13,
+        "subject_length": 13,
+        "label": "ham"
+      },
+      {
+        "word_count": 275,
+        "link_count": 12,
+        "uppercase_ratio": 0.897,
+        "suspicious_word_count": 7,
+        "sender_reputation": -0.969,
+        "attachment_count": 1,
+        "personalization_score": 0.907,
+        "reply_chain_depth": 4,
+        "send_hour": 5,
+        "subject_length": 52,
+        "label": "spam"
+      },
+      {
+        "word_count": 269,
+        "link_count": 9,
+        "uppercase_ratio": 0.527,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.181,
+        "attachment_count": 2,
+        "personalization_score": 0.532,
+        "reply_chain_depth": 0,
+        "send_hour": 21,
+        "subject_length": 47,
+        "label": "ham"
+      },
+      {
+        "word_count": 246,
+        "link_count": 9,
+        "uppercase_ratio": 0.896,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.159,
+        "attachment_count": 0,
+        "personalization_score": 0.17,
+        "reply_chain_depth": 6,
+        "send_hour": 21,
+        "subject_length": 25,
+        "label": "spam"
+      },
+      {
+        "word_count": 209,
+        "link_count": 14,
+        "uppercase_ratio": 0.223,
+        "suspicious_word_count": 11,
+        "sender_reputation": -0.083,
+        "attachment_count": 1,
+        "personalization_score": 0.361,
+        "reply_chain_depth": 4,
+        "send_hour": 9,
+        "subject_length": 52,
+        "label": "spam"
+      },
+      {
+        "word_count": 158,
+        "link_count": 5,
+        "uppercase_ratio": 0.319,
+        "suspicious_word_count": 7,
+        "sender_reputation": -1.997,
+        "attachment_count": 0,
+        "personalization_score": 0.51,
+        "reply_chain_depth": 0,
+        "send_hour": 10,
+        "subject_length": 19,
+        "label": "spam"
+      },
+      {
+        "word_count": 173,
+        "link_count": 13,
+        "uppercase_ratio": 0.613,
+        "suspicious_word_count": 7,
+        "sender_reputation": 1.959,
+        "attachment_count": 1,
+        "personalization_score": 0.043,
+        "reply_chain_depth": 3,
+        "send_hour": 16,
+        "subject_length": 50,
+        "label": "ham"
+      },
+      {
+        "word_count": 33,
+        "link_count": 11,
+        "uppercase_ratio": 0.559,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.142,
+        "attachment_count": 2,
+        "personalization_score": 0.618,
+        "reply_chain_depth": 3,
+        "send_hour": 18,
+        "subject_length": 16,
+        "label": "spam"
+      },
+      {
+        "word_count": 25,
+        "link_count": 4,
+        "uppercase_ratio": 0.552,
+        "suspicious_word_count": 0,
+        "sender_reputation": 1.396,
+        "attachment_count": 3,
+        "personalization_score": 0.534,
+        "reply_chain_depth": 4,
+        "send_hour": 16,
+        "subject_length": 65,
+        "label": "ham"
+      },
+      {
+        "word_count": 57,
+        "link_count": 12,
+        "uppercase_ratio": 0.563,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.724,
+        "attachment_count": 2,
+        "personalization_score": 0.518,
+        "reply_chain_depth": 5,
+        "send_hour": 11,
+        "subject_length": 56,
+        "label": "spam"
+      },
+      {
+        "word_count": 44,
+        "link_count": 4,
+        "uppercase_ratio": 0.026,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.554,
+        "attachment_count": 3,
+        "personalization_score": 0.117,
+        "reply_chain_depth": 5,
+        "send_hour": 9,
+        "subject_length": 63,
+        "label": "spam"
+      },
+      {
+        "word_count": 196,
+        "link_count": 13,
+        "uppercase_ratio": 0.374,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.238,
+        "attachment_count": 0,
+        "personalization_score": 0.228,
+        "reply_chain_depth": 6,
+        "send_hour": 23,
+        "subject_length": 24,
+        "label": "spam"
+      },
+      {
+        "word_count": 238,
+        "link_count": 1,
+        "uppercase_ratio": 0.142,
+        "suspicious_word_count": 4,
+        "sender_reputation": 0.811,
+        "attachment_count": 1,
+        "personalization_score": 0.665,
+        "reply_chain_depth": 2,
+        "send_hour": 11,
+        "subject_length": 60,
+        "label": "ham"
+      },
+      {
+        "word_count": 244,
+        "link_count": 13,
+        "uppercase_ratio": 0.768,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.582,
+        "attachment_count": 1,
+        "personalization_score": 0.263,
+        "reply_chain_depth": 6,
+        "send_hour": 13,
+        "subject_length": 79,
+        "label": "ham"
+      },
+      {
+        "word_count": 183,
+        "link_count": 0,
+        "uppercase_ratio": 0.518,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.201,
+        "attachment_count": 3,
+        "personalization_score": 0.197,
+        "reply_chain_depth": 1,
+        "send_hour": 5,
+        "subject_length": 27,
+        "label": "ham"
+      },
+      {
+        "word_count": 35,
+        "link_count": 7,
+        "uppercase_ratio": 0.965,
+        "suspicious_word_count": 11,
+        "sender_reputation": 1.463,
+        "attachment_count": 0,
+        "personalization_score": 0.461,
+        "reply_chain_depth": 3,
+        "send_hour": 13,
+        "subject_length": 75,
+        "label": "ham"
+      },
+      {
+        "word_count": 187,
+        "link_count": 8,
+        "uppercase_ratio": 0.459,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.476,
+        "attachment_count": 1,
+        "personalization_score": 0.026,
+        "reply_chain_depth": 6,
+        "send_hour": 19,
+        "subject_length": 35,
+        "label": "ham"
+      },
+      {
+        "word_count": 76,
+        "link_count": 3,
+        "uppercase_ratio": 0.565,
+        "suspicious_word_count": 2,
+        "sender_reputation": 1.628,
+        "attachment_count": 3,
+        "personalization_score": 0.284,
+        "reply_chain_depth": 6,
+        "send_hour": 18,
+        "subject_length": 33,
+        "label": "ham"
+      },
+      {
+        "word_count": 107,
+        "link_count": 9,
+        "uppercase_ratio": 0.715,
+        "suspicious_word_count": 2,
+        "sender_reputation": 1.124,
+        "attachment_count": 3,
+        "personalization_score": 0.648,
+        "reply_chain_depth": 6,
+        "send_hour": 7,
+        "subject_length": 58,
+        "label": "spam"
+      },
+      {
+        "word_count": 50,
+        "link_count": 10,
+        "uppercase_ratio": 0.386,
+        "suspicious_word_count": 11,
+        "sender_reputation": -1.932,
+        "attachment_count": 2,
+        "personalization_score": 0.401,
+        "reply_chain_depth": 0,
+        "send_hour": 7,
+        "subject_length": 46,
+        "label": "spam"
+      },
+      {
+        "word_count": 118,
+        "link_count": 5,
+        "uppercase_ratio": 0.172,
+        "suspicious_word_count": 9,
+        "sender_reputation": 1.101,
+        "attachment_count": 1,
+        "personalization_score": 0.806,
+        "reply_chain_depth": 3,
+        "send_hour": 20,
+        "subject_length": 79,
+        "label": "ham"
+      },
+      {
+        "word_count": 186,
+        "link_count": 3,
+        "uppercase_ratio": 0.098,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.994,
+        "attachment_count": 3,
+        "personalization_score": 0.426,
+        "reply_chain_depth": 4,
+        "send_hour": 18,
+        "subject_length": 46,
+        "label": "spam"
+      },
+      {
+        "word_count": 151,
+        "link_count": 13,
+        "uppercase_ratio": 0.194,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.519,
+        "attachment_count": 0,
+        "personalization_score": 0.457,
+        "reply_chain_depth": 4,
+        "send_hour": 5,
+        "subject_length": 73,
+        "label": "spam"
+      },
+      {
+        "word_count": 200,
+        "link_count": 9,
+        "uppercase_ratio": 0.093,
+        "suspicious_word_count": 9,
+        "sender_reputation": 1.299,
+        "attachment_count": 1,
+        "personalization_score": 0.518,
+        "reply_chain_depth": 4,
+        "send_hour": 16,
+        "subject_length": 67,
+        "label": "ham"
+      },
+      {
+        "word_count": 78,
+        "link_count": 1,
+        "uppercase_ratio": 0.505,
+        "suspicious_word_count": 9,
+        "sender_reputation": 0.765,
+        "attachment_count": 0,
+        "personalization_score": 0.856,
+        "reply_chain_depth": 3,
+        "send_hour": 11,
+        "subject_length": 57,
+        "label": "ham"
+      },
+      {
+        "word_count": 209,
+        "link_count": 10,
+        "uppercase_ratio": 0.032,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.836,
+        "attachment_count": 3,
+        "personalization_score": 0.035,
+        "reply_chain_depth": 4,
+        "send_hour": 10,
+        "subject_length": 70,
+        "label": "spam"
+      },
+      {
+        "word_count": 241,
+        "link_count": 0,
+        "uppercase_ratio": 0.89,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.755,
+        "attachment_count": 2,
+        "personalization_score": 0.83,
+        "reply_chain_depth": 6,
+        "send_hour": 16,
+        "subject_length": 46,
+        "label": "ham"
+      },
+      {
+        "word_count": 93,
+        "link_count": 0,
+        "uppercase_ratio": 0.827,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.498,
+        "attachment_count": 2,
+        "personalization_score": 0.267,
+        "reply_chain_depth": 1,
+        "send_hour": 2,
+        "subject_length": 72,
+        "label": "spam"
+      },
+      {
+        "word_count": 193,
+        "link_count": 5,
+        "uppercase_ratio": 0.687,
+        "suspicious_word_count": 5,
+        "sender_reputation": -0.427,
+        "attachment_count": 3,
+        "personalization_score": 0.185,
+        "reply_chain_depth": 7,
+        "send_hour": 1,
+        "subject_length": 25,
+        "label": "spam"
+      },
+      {
+        "word_count": 95,
+        "link_count": 3,
+        "uppercase_ratio": 0.147,
+        "suspicious_word_count": 0,
+        "sender_reputation": 0.625,
+        "attachment_count": 0,
+        "personalization_score": 0.379,
+        "reply_chain_depth": 2,
+        "send_hour": 18,
+        "subject_length": 64,
+        "label": "ham"
+      },
+      {
+        "word_count": 154,
+        "link_count": 6,
+        "uppercase_ratio": 0.57,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.168,
+        "attachment_count": 3,
+        "personalization_score": 0.064,
+        "reply_chain_depth": 0,
+        "send_hour": 16,
+        "subject_length": 76,
+        "label": "ham"
+      },
+      {
+        "word_count": 118,
+        "link_count": 5,
+        "uppercase_ratio": 0.239,
+        "suspicious_word_count": 4,
+        "sender_reputation": -0.01,
+        "attachment_count": 2,
+        "personalization_score": 0.29,
+        "reply_chain_depth": 2,
+        "send_hour": 19,
+        "subject_length": 24,
+        "label": "spam"
+      },
+      {
+        "word_count": 216,
+        "link_count": 5,
+        "uppercase_ratio": 0.345,
+        "suspicious_word_count": 5,
+        "sender_reputation": 1.463,
+        "attachment_count": 3,
+        "personalization_score": 0.216,
+        "reply_chain_depth": 7,
+        "send_hour": 7,
+        "subject_length": 11,
+        "label": "spam"
+      },
+      {
+        "word_count": 90,
+        "link_count": 8,
+        "uppercase_ratio": 0.544,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.96,
+        "attachment_count": 0,
+        "personalization_score": 0.184,
+        "reply_chain_depth": 4,
+        "send_hour": 0,
+        "subject_length": 36,
+        "label": "spam"
+      },
+      {
+        "word_count": 52,
+        "link_count": 7,
+        "uppercase_ratio": 0.996,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.987,
+        "attachment_count": 1,
+        "personalization_score": 0.92,
+        "reply_chain_depth": 0,
+        "send_hour": 2,
+        "subject_length": 48,
+        "label": "spam"
+      },
+      {
+        "word_count": 275,
+        "link_count": 2,
+        "uppercase_ratio": 0.484,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.02,
+        "attachment_count": 0,
+        "personalization_score": 0.249,
+        "reply_chain_depth": 4,
+        "send_hour": 7,
+        "subject_length": 27,
+        "label": "ham"
+      },
+      {
+        "word_count": 34,
+        "link_count": 11,
+        "uppercase_ratio": 0.825,
+        "suspicious_word_count": 6,
+        "sender_reputation": -0.605,
+        "attachment_count": 0,
+        "personalization_score": 0.707,
+        "reply_chain_depth": 3,
+        "send_hour": 2,
+        "subject_length": 36,
+        "label": "spam"
+      },
+      {
+        "word_count": 59,
+        "link_count": 9,
+        "uppercase_ratio": 0.041,
+        "suspicious_word_count": 0,
+        "sender_reputation": 0.71,
+        "attachment_count": 0,
+        "personalization_score": 0.9,
+        "reply_chain_depth": 5,
+        "send_hour": 8,
+        "subject_length": 79,
+        "label": "ham"
+      },
+      {
+        "word_count": 129,
+        "link_count": 12,
+        "uppercase_ratio": 0.703,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.218,
+        "attachment_count": 1,
+        "personalization_score": 0.238,
+        "reply_chain_depth": 0,
+        "send_hour": 16,
+        "subject_length": 37,
+        "label": "spam"
+      },
+      {
+        "word_count": 136,
+        "link_count": 9,
+        "uppercase_ratio": 0.275,
+        "suspicious_word_count": 0,
+        "sender_reputation": 0.598,
+        "attachment_count": 2,
+        "personalization_score": 0.758,
+        "reply_chain_depth": 6,
+        "send_hour": 5,
+        "subject_length": 42,
+        "label": "ham"
+      },
+      {
+        "word_count": 72,
+        "link_count": 14,
+        "uppercase_ratio": 0.465,
+        "suspicious_word_count": 11,
+        "sender_reputation": -1.919,
+        "attachment_count": 0,
+        "personalization_score": 0.3,
+        "reply_chain_depth": 1,
+        "send_hour": 2,
+        "subject_length": 72,
+        "label": "spam"
+      },
+      {
+        "word_count": 209,
+        "link_count": 11,
+        "uppercase_ratio": 0.95,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.591,
+        "attachment_count": 2,
+        "personalization_score": 0.908,
+        "reply_chain_depth": 3,
+        "send_hour": 12,
+        "subject_length": 56,
+        "label": "ham"
+      },
+      {
+        "word_count": 75,
+        "link_count": 1,
+        "uppercase_ratio": 0.435,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.423,
+        "attachment_count": 1,
+        "personalization_score": 0.463,
+        "reply_chain_depth": 1,
+        "send_hour": 19,
+        "subject_length": 16,
+        "label": "ham"
+      },
+      {
+        "word_count": 213,
+        "link_count": 12,
+        "uppercase_ratio": 0.638,
+        "suspicious_word_count": 7,
+        "sender_reputation": 1.847,
+        "attachment_count": 2,
+        "personalization_score": 0.772,
+        "reply_chain_depth": 0,
+        "send_hour": 10,
+        "subject_length": 31,
+        "label": "ham"
+      },
+      {
+        "word_count": 228,
+        "link_count": 9,
+        "uppercase_ratio": 0.016,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.687,
+        "attachment_count": 3,
+        "personalization_score": 0.347,
+        "reply_chain_depth": 6,
+        "send_hour": 19,
+        "subject_length": 71,
+        "label": "ham"
+      },
+      {
+        "word_count": 192,
+        "link_count": 11,
+        "uppercase_ratio": 0.895,
+        "suspicious_word_count": 11,
+        "sender_reputation": 1.257,
+        "attachment_count": 2,
+        "personalization_score": 0.358,
+        "reply_chain_depth": 5,
+        "send_hour": 3,
+        "subject_length": 60,
+        "label": "ham"
+      },
+      {
+        "word_count": 84,
+        "link_count": 15,
+        "uppercase_ratio": 0.842,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.639,
+        "attachment_count": 2,
+        "personalization_score": 0.019,
+        "reply_chain_depth": 6,
+        "send_hour": 7,
+        "subject_length": 79,
+        "label": "spam"
+      },
+      {
+        "word_count": 72,
+        "link_count": 12,
+        "uppercase_ratio": 0.305,
+        "suspicious_word_count": 1,
+        "sender_reputation": -1.367,
+        "attachment_count": 1,
+        "personalization_score": 0.279,
+        "reply_chain_depth": 6,
+        "send_hour": 14,
+        "subject_length": 21,
+        "label": "spam"
+      },
+      {
+        "word_count": 139,
+        "link_count": 13,
+        "uppercase_ratio": 0.676,
+        "suspicious_word_count": 3,
+        "sender_reputation": 1.511,
+        "attachment_count": 3,
+        "personalization_score": 0.075,
+        "reply_chain_depth": 1,
+        "send_hour": 20,
+        "subject_length": 21,
+        "label": "spam"
+      },
+      {
+        "word_count": 28,
+        "link_count": 0,
+        "uppercase_ratio": 0.656,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.533,
+        "attachment_count": 0,
+        "personalization_score": 0.964,
+        "reply_chain_depth": 3,
+        "send_hour": 8,
+        "subject_length": 29,
+        "label": "ham"
+      },
+      {
+        "word_count": 68,
+        "link_count": 1,
+        "uppercase_ratio": 0.047,
+        "suspicious_word_count": 3,
+        "sender_reputation": -0.089,
+        "attachment_count": 0,
+        "personalization_score": 0.665,
+        "reply_chain_depth": 2,
+        "send_hour": 10,
+        "subject_length": 24,
+        "label": "ham"
+      },
+      {
+        "word_count": 165,
+        "link_count": 6,
+        "uppercase_ratio": 0.345,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.492,
+        "attachment_count": 1,
+        "personalization_score": 0.554,
+        "reply_chain_depth": 6,
+        "send_hour": 2,
+        "subject_length": 64,
+        "label": "spam"
+      },
+      {
+        "word_count": 120,
+        "link_count": 13,
+        "uppercase_ratio": 0.25,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.147,
+        "attachment_count": 0,
+        "personalization_score": 0.469,
+        "reply_chain_depth": 3,
+        "send_hour": 1,
+        "subject_length": 12,
+        "label": "ham"
+      },
+      {
+        "word_count": 44,
+        "link_count": 13,
+        "uppercase_ratio": 0.148,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.004,
+        "attachment_count": 3,
+        "personalization_score": 0.385,
+        "reply_chain_depth": 2,
+        "send_hour": 17,
+        "subject_length": 63,
+        "label": "spam"
+      },
+      {
+        "word_count": 199,
+        "link_count": 13,
+        "uppercase_ratio": 0.076,
+        "suspicious_word_count": 3,
+        "sender_reputation": 0.93,
+        "attachment_count": 3,
+        "personalization_score": 0.288,
+        "reply_chain_depth": 2,
+        "send_hour": 19,
+        "subject_length": 69,
+        "label": "ham"
+      },
+      {
+        "word_count": 158,
+        "link_count": 4,
+        "uppercase_ratio": 0.519,
+        "suspicious_word_count": 9,
+        "sender_reputation": 1.418,
+        "attachment_count": 2,
+        "personalization_score": 0.251,
+        "reply_chain_depth": 2,
+        "send_hour": 0,
+        "subject_length": 14,
+        "label": "ham"
+      },
+      {
+        "word_count": 57,
+        "link_count": 0,
+        "uppercase_ratio": 0.686,
+        "suspicious_word_count": 6,
+        "sender_reputation": -0.984,
+        "attachment_count": 3,
+        "personalization_score": 0.338,
+        "reply_chain_depth": 4,
+        "send_hour": 22,
+        "subject_length": 25,
+        "label": "ham"
+      },
+      {
+        "word_count": 272,
+        "link_count": 0,
+        "uppercase_ratio": 0.295,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.704,
+        "attachment_count": 3,
+        "personalization_score": 0.769,
+        "reply_chain_depth": 3,
+        "send_hour": 16,
+        "subject_length": 15,
+        "label": "ham"
+      },
+      {
+        "word_count": 78,
+        "link_count": 1,
+        "uppercase_ratio": 0.69,
+        "suspicious_word_count": 3,
+        "sender_reputation": 1.317,
+        "attachment_count": 0,
+        "personalization_score": 0.176,
+        "reply_chain_depth": 2,
+        "send_hour": 11,
+        "subject_length": 46,
+        "label": "ham"
+      },
+      {
+        "word_count": 64,
+        "link_count": 3,
+        "uppercase_ratio": 0.863,
+        "suspicious_word_count": 3,
+        "sender_reputation": -0.975,
+        "attachment_count": 3,
+        "personalization_score": 0.373,
+        "reply_chain_depth": 4,
+        "send_hour": 5,
+        "subject_length": 50,
+        "label": "ham"
+      },
+      {
+        "word_count": 245,
+        "link_count": 3,
+        "uppercase_ratio": 0.378,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.061,
+        "attachment_count": 2,
+        "personalization_score": 0.469,
+        "reply_chain_depth": 6,
+        "send_hour": 17,
+        "subject_length": 16,
+        "label": "ham"
+      },
+      {
+        "word_count": 260,
+        "link_count": 0,
+        "uppercase_ratio": 0.812,
+        "suspicious_word_count": 3,
+        "sender_reputation": 0.132,
+        "attachment_count": 3,
+        "personalization_score": 0.836,
+        "reply_chain_depth": 5,
+        "send_hour": 4,
+        "subject_length": 47,
+        "label": "ham"
+      },
+      {
+        "word_count": 217,
+        "link_count": 1,
+        "uppercase_ratio": 0.17,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.738,
+        "attachment_count": 0,
+        "personalization_score": 0.663,
+        "reply_chain_depth": 2,
+        "send_hour": 11,
+        "subject_length": 29,
+        "label": "ham"
+      },
+      {
+        "word_count": 207,
+        "link_count": 2,
+        "uppercase_ratio": 0.127,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.597,
+        "attachment_count": 0,
+        "personalization_score": 0.552,
+        "reply_chain_depth": 2,
+        "send_hour": 16,
+        "subject_length": 78,
+        "label": "spam"
+      },
+      {
+        "word_count": 54,
+        "link_count": 15,
+        "uppercase_ratio": 0.3,
+        "suspicious_word_count": 4,
+        "sender_reputation": -1.65,
+        "attachment_count": 1,
+        "personalization_score": 0.198,
+        "reply_chain_depth": 5,
+        "send_hour": 3,
+        "subject_length": 47,
+        "label": "spam"
+      },
+      {
+        "word_count": 141,
+        "link_count": 12,
+        "uppercase_ratio": 0.125,
+        "suspicious_word_count": 11,
+        "sender_reputation": 1.657,
+        "attachment_count": 1,
+        "personalization_score": 0.334,
+        "reply_chain_depth": 0,
+        "send_hour": 6,
+        "subject_length": 54,
+        "label": "ham"
+      },
+      {
+        "word_count": 53,
+        "link_count": 8,
+        "uppercase_ratio": 0.709,
+        "suspicious_word_count": 9,
+        "sender_reputation": -0.761,
+        "attachment_count": 1,
+        "personalization_score": 0.874,
+        "reply_chain_depth": 6,
+        "send_hour": 5,
+        "subject_length": 38,
+        "label": "spam"
+      },
+      {
+        "word_count": 79,
+        "link_count": 8,
+        "uppercase_ratio": 0.207,
+        "suspicious_word_count": 1,
+        "sender_reputation": 0.766,
+        "attachment_count": 1,
+        "personalization_score": 0.474,
+        "reply_chain_depth": 0,
+        "send_hour": 18,
+        "subject_length": 24,
+        "label": "ham"
+      },
+      {
+        "word_count": 78,
+        "link_count": 3,
+        "uppercase_ratio": 0.761,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.331,
+        "attachment_count": 2,
+        "personalization_score": 0.335,
+        "reply_chain_depth": 2,
+        "send_hour": 20,
+        "subject_length": 12,
+        "label": "spam"
+      },
+      {
+        "word_count": 153,
+        "link_count": 11,
+        "uppercase_ratio": 0.193,
+        "suspicious_word_count": 7,
+        "sender_reputation": -0.544,
+        "attachment_count": 0,
+        "personalization_score": 0.068,
+        "reply_chain_depth": 3,
+        "send_hour": 11,
+        "subject_length": 52,
+        "label": "spam"
+      },
+      {
+        "word_count": 136,
+        "link_count": 3,
+        "uppercase_ratio": 0.277,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.605,
+        "attachment_count": 0,
+        "personalization_score": 0.291,
+        "reply_chain_depth": 7,
+        "send_hour": 2,
+        "subject_length": 22,
+        "label": "ham"
+      },
+      {
+        "word_count": 55,
+        "link_count": 12,
+        "uppercase_ratio": 0.33,
+        "suspicious_word_count": 4,
+        "sender_reputation": -0.957,
+        "attachment_count": 1,
+        "personalization_score": 0.832,
+        "reply_chain_depth": 2,
+        "send_hour": 10,
+        "subject_length": 14,
+        "label": "spam"
+      },
+      {
+        "word_count": 268,
+        "link_count": 6,
+        "uppercase_ratio": 0.43,
+        "suspicious_word_count": 11,
+        "sender_reputation": -1.877,
+        "attachment_count": 1,
+        "personalization_score": 0.752,
+        "reply_chain_depth": 3,
+        "send_hour": 22,
+        "subject_length": 62,
+        "label": "spam"
+      },
+      {
+        "word_count": 39,
+        "link_count": 1,
+        "uppercase_ratio": 0.083,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.619,
+        "attachment_count": 3,
+        "personalization_score": 0.078,
+        "reply_chain_depth": 3,
+        "send_hour": 6,
+        "subject_length": 79,
+        "label": "spam"
+      },
+      {
+        "word_count": 158,
+        "link_count": 3,
+        "uppercase_ratio": 0.502,
+        "suspicious_word_count": 4,
+        "sender_reputation": -1.195,
+        "attachment_count": 1,
+        "personalization_score": 0.123,
+        "reply_chain_depth": 5,
+        "send_hour": 9,
+        "subject_length": 23,
+        "label": "spam"
+      },
+      {
+        "word_count": 64,
+        "link_count": 10,
+        "uppercase_ratio": 0.963,
+        "suspicious_word_count": 7,
+        "sender_reputation": 1.223,
+        "attachment_count": 1,
+        "personalization_score": 0.789,
+        "reply_chain_depth": 0,
+        "send_hour": 1,
+        "subject_length": 32,
+        "label": "spam"
+      },
+      {
+        "word_count": 150,
+        "link_count": 0,
+        "uppercase_ratio": 0.786,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.603,
+        "attachment_count": 2,
+        "personalization_score": 0.295,
+        "reply_chain_depth": 7,
+        "send_hour": 21,
+        "subject_length": 15,
+        "label": "spam"
+      },
+      {
+        "word_count": 47,
+        "link_count": 0,
+        "uppercase_ratio": 0.645,
+        "suspicious_word_count": 5,
+        "sender_reputation": -0.062,
+        "attachment_count": 1,
+        "personalization_score": 0.032,
+        "reply_chain_depth": 0,
+        "send_hour": 2,
+        "subject_length": 49,
+        "label": "ham"
+      },
+      {
+        "word_count": 223,
+        "link_count": 1,
+        "uppercase_ratio": 0.656,
+        "suspicious_word_count": 7,
+        "sender_reputation": -0.758,
+        "attachment_count": 0,
+        "personalization_score": 0.759,
+        "reply_chain_depth": 0,
+        "send_hour": 1,
+        "subject_length": 30,
+        "label": "ham"
+      },
+      {
+        "word_count": 198,
+        "link_count": 14,
+        "uppercase_ratio": 0.054,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.163,
+        "attachment_count": 1,
+        "personalization_score": 0.139,
+        "reply_chain_depth": 6,
+        "send_hour": 17,
+        "subject_length": 11,
+        "label": "spam"
+      },
+      {
+        "word_count": 243,
+        "link_count": 9,
+        "uppercase_ratio": 0.16,
+        "suspicious_word_count": 11,
+        "sender_reputation": -0.398,
+        "attachment_count": 2,
+        "personalization_score": 0.091,
+        "reply_chain_depth": 7,
+        "send_hour": 21,
+        "subject_length": 11,
+        "label": "spam"
+      },
+      {
+        "word_count": 160,
+        "link_count": 13,
+        "uppercase_ratio": 0.865,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.267,
+        "attachment_count": 3,
+        "personalization_score": 0.52,
+        "reply_chain_depth": 3,
+        "send_hour": 17,
+        "subject_length": 30,
+        "label": "spam"
+      },
+      {
+        "word_count": 115,
+        "link_count": 14,
+        "uppercase_ratio": 0.107,
+        "suspicious_word_count": 0,
+        "sender_reputation": -0.359,
+        "attachment_count": 1,
+        "personalization_score": 0.044,
+        "reply_chain_depth": 5,
+        "send_hour": 8,
+        "subject_length": 31,
+        "label": "spam"
+      },
+      {
+        "word_count": 48,
+        "link_count": 8,
+        "uppercase_ratio": 0.746,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.917,
+        "attachment_count": 2,
+        "personalization_score": 0.576,
+        "reply_chain_depth": 6,
+        "send_hour": 5,
+        "subject_length": 12,
+        "label": "spam"
+      },
+      {
+        "word_count": 33,
+        "link_count": 7,
+        "uppercase_ratio": 0.169,
+        "suspicious_word_count": 10,
+        "sender_reputation": 1.556,
+        "attachment_count": 2,
+        "personalization_score": 0.708,
+        "reply_chain_depth": 5,
+        "send_hour": 4,
+        "subject_length": 51,
+        "label": "ham"
+      },
+      {
+        "word_count": 44,
+        "link_count": 5,
+        "uppercase_ratio": 0.953,
+        "suspicious_word_count": 10,
+        "sender_reputation": 1.063,
+        "attachment_count": 1,
+        "personalization_score": 0.361,
+        "reply_chain_depth": 3,
+        "send_hour": 11,
+        "subject_length": 55,
+        "label": "ham"
+      },
+      {
+        "word_count": 127,
+        "link_count": 14,
+        "uppercase_ratio": 0.067,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.176,
+        "attachment_count": 0,
+        "personalization_score": 0.39,
+        "reply_chain_depth": 5,
+        "send_hour": 9,
+        "subject_length": 32,
+        "label": "ham"
+      },
+      {
+        "word_count": 233,
+        "link_count": 1,
+        "uppercase_ratio": 0.108,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.644,
+        "attachment_count": 1,
+        "personalization_score": 0.035,
+        "reply_chain_depth": 0,
+        "send_hour": 3,
+        "subject_length": 33,
+        "label": "ham"
+      },
+      {
+        "word_count": 225,
+        "link_count": 15,
+        "uppercase_ratio": 0.304,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.86,
+        "attachment_count": 0,
+        "personalization_score": 0.262,
+        "reply_chain_depth": 0,
+        "send_hour": 19,
+        "subject_length": 35,
+        "label": "spam"
+      },
+      {
+        "word_count": 127,
+        "link_count": 11,
+        "uppercase_ratio": 0.343,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.868,
+        "attachment_count": 0,
+        "personalization_score": 0.543,
+        "reply_chain_depth": 3,
+        "send_hour": 9,
+        "subject_length": 49,
+        "label": "spam"
+      },
+      {
+        "word_count": 78,
+        "link_count": 14,
+        "uppercase_ratio": 0.073,
+        "suspicious_word_count": 11,
+        "sender_reputation": 1.022,
+        "attachment_count": 0,
+        "personalization_score": 0.43,
+        "reply_chain_depth": 1,
+        "send_hour": 2,
+        "subject_length": 62,
+        "label": "ham"
+      },
+      {
+        "word_count": 274,
+        "link_count": 12,
+        "uppercase_ratio": 0.809,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.943,
+        "attachment_count": 1,
+        "personalization_score": 0.162,
+        "reply_chain_depth": 4,
+        "send_hour": 23,
+        "subject_length": 38,
+        "label": "spam"
+      },
+      {
+        "word_count": 74,
+        "link_count": 14,
+        "uppercase_ratio": 0.437,
+        "suspicious_word_count": 4,
+        "sender_reputation": 1.271,
+        "attachment_count": 2,
+        "personalization_score": 0.67,
+        "reply_chain_depth": 0,
+        "send_hour": 6,
+        "subject_length": 45,
+        "label": "ham"
+      },
+      {
+        "word_count": 232,
+        "link_count": 10,
+        "uppercase_ratio": 0.408,
+        "suspicious_word_count": 10,
+        "sender_reputation": 1.401,
+        "attachment_count": 0,
+        "personalization_score": 0.517,
+        "reply_chain_depth": 6,
+        "send_hour": 21,
+        "subject_length": 18,
+        "label": "ham"
+      },
+      {
+        "word_count": 219,
+        "link_count": 15,
+        "uppercase_ratio": 0.71,
+        "suspicious_word_count": 0,
+        "sender_reputation": 0.664,
+        "attachment_count": 2,
+        "personalization_score": 0.431,
+        "reply_chain_depth": 6,
+        "send_hour": 1,
+        "subject_length": 49,
+        "label": "ham"
+      },
+      {
+        "word_count": 276,
+        "link_count": 4,
+        "uppercase_ratio": 0.645,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.635,
+        "attachment_count": 1,
+        "personalization_score": 0.362,
+        "reply_chain_depth": 1,
+        "send_hour": 11,
+        "subject_length": 35,
+        "label": "spam"
+      },
+      {
+        "word_count": 117,
+        "link_count": 2,
+        "uppercase_ratio": 0.789,
+        "suspicious_word_count": 7,
+        "sender_reputation": -0.41,
+        "attachment_count": 2,
+        "personalization_score": 0.276,
+        "reply_chain_depth": 4,
+        "send_hour": 4,
+        "subject_length": 66,
+        "label": "ham"
+      },
+      {
+        "word_count": 275,
+        "link_count": 14,
+        "uppercase_ratio": 0.973,
+        "suspicious_word_count": 0,
+        "sender_reputation": -0.141,
+        "attachment_count": 0,
+        "personalization_score": 0.568,
+        "reply_chain_depth": 6,
+        "send_hour": 19,
+        "subject_length": 73,
+        "label": "spam"
+      },
+      {
+        "word_count": 31,
+        "link_count": 7,
+        "uppercase_ratio": 0.28,
+        "suspicious_word_count": 6,
+        "sender_reputation": 0.072,
+        "attachment_count": 1,
+        "personalization_score": 0.969,
+        "reply_chain_depth": 6,
+        "send_hour": 4,
+        "subject_length": 23,
+        "label": "ham"
+      },
+      {
+        "word_count": 202,
+        "link_count": 2,
+        "uppercase_ratio": 0.63,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.478,
+        "attachment_count": 0,
+        "personalization_score": 0.734,
+        "reply_chain_depth": 3,
+        "send_hour": 8,
+        "subject_length": 54,
+        "label": "spam"
+      },
+      {
+        "word_count": 189,
+        "link_count": 4,
+        "uppercase_ratio": 0.465,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.183,
+        "attachment_count": 3,
+        "personalization_score": 0.567,
+        "reply_chain_depth": 4,
+        "send_hour": 2,
+        "subject_length": 42,
+        "label": "ham"
+      },
+      {
+        "word_count": 131,
+        "link_count": 3,
+        "uppercase_ratio": 0.274,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.947,
+        "attachment_count": 1,
+        "personalization_score": 0.1,
+        "reply_chain_depth": 7,
+        "send_hour": 5,
+        "subject_length": 70,
+        "label": "spam"
+      },
+      {
+        "word_count": 212,
+        "link_count": 12,
+        "uppercase_ratio": 0.396,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.34,
+        "attachment_count": 0,
+        "personalization_score": 0.626,
+        "reply_chain_depth": 6,
+        "send_hour": 8,
+        "subject_length": 42,
+        "label": "ham"
+      },
+      {
+        "word_count": 22,
+        "link_count": 4,
+        "uppercase_ratio": 0.94,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.723,
+        "attachment_count": 0,
+        "personalization_score": 0.931,
+        "reply_chain_depth": 3,
+        "send_hour": 15,
+        "subject_length": 74,
+        "label": "ham"
+      },
+      {
+        "word_count": 191,
+        "link_count": 13,
+        "uppercase_ratio": 0.293,
+        "suspicious_word_count": 4,
+        "sender_reputation": -0.532,
+        "attachment_count": 3,
+        "personalization_score": 0.592,
+        "reply_chain_depth": 5,
+        "send_hour": 20,
+        "subject_length": 36,
+        "label": "spam"
+      },
+      {
+        "word_count": 242,
+        "link_count": 7,
+        "uppercase_ratio": 0.223,
+        "suspicious_word_count": 0,
+        "sender_reputation": 1.684,
+        "attachment_count": 3,
+        "personalization_score": 0.884,
+        "reply_chain_depth": 0,
+        "send_hour": 22,
+        "subject_length": 67,
+        "label": "ham"
+      },
+      {
+        "word_count": 274,
+        "link_count": 2,
+        "uppercase_ratio": 0.054,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.889,
+        "attachment_count": 2,
+        "personalization_score": 0.993,
+        "reply_chain_depth": 5,
+        "send_hour": 23,
+        "subject_length": 46,
+        "label": "ham"
+      },
+      {
+        "word_count": 223,
+        "link_count": 9,
+        "uppercase_ratio": 0.824,
+        "suspicious_word_count": 1,
+        "sender_reputation": -1.743,
+        "attachment_count": 3,
+        "personalization_score": 0.811,
+        "reply_chain_depth": 2,
+        "send_hour": 1,
+        "subject_length": 63,
+        "label": "spam"
+      },
+      {
+        "word_count": 252,
+        "link_count": 7,
+        "uppercase_ratio": 0.935,
+        "suspicious_word_count": 1,
+        "sender_reputation": -1.082,
+        "attachment_count": 2,
+        "personalization_score": 0.647,
+        "reply_chain_depth": 5,
+        "send_hour": 18,
+        "subject_length": 41,
+        "label": "spam"
+      },
+      {
+        "word_count": 244,
+        "link_count": 15,
+        "uppercase_ratio": 0.627,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.679,
+        "attachment_count": 1,
+        "personalization_score": 0.094,
+        "reply_chain_depth": 4,
+        "send_hour": 0,
+        "subject_length": 37,
+        "label": "spam"
+      },
+      {
+        "word_count": 27,
+        "link_count": 12,
+        "uppercase_ratio": 0.547,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.203,
+        "attachment_count": 3,
+        "personalization_score": 0.237,
+        "reply_chain_depth": 1,
+        "send_hour": 0,
+        "subject_length": 35,
+        "label": "ham"
+      },
+      {
+        "word_count": 193,
+        "link_count": 13,
+        "uppercase_ratio": 0.448,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.142,
+        "attachment_count": 3,
+        "personalization_score": 0.686,
+        "reply_chain_depth": 0,
+        "send_hour": 4,
+        "subject_length": 69,
+        "label": "spam"
+      },
+      {
+        "word_count": 58,
+        "link_count": 9,
+        "uppercase_ratio": 0.522,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.431,
+        "attachment_count": 3,
+        "personalization_score": 0.083,
+        "reply_chain_depth": 5,
+        "send_hour": 1,
+        "subject_length": 35,
+        "label": "spam"
+      },
+      {
+        "word_count": 234,
+        "link_count": 4,
+        "uppercase_ratio": 0.55,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.828,
+        "attachment_count": 2,
+        "personalization_score": 0.879,
+        "reply_chain_depth": 6,
+        "send_hour": 8,
+        "subject_length": 47,
+        "label": "spam"
+      },
+      {
+        "word_count": 268,
+        "link_count": 14,
+        "uppercase_ratio": 0.315,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.39,
+        "attachment_count": 3,
+        "personalization_score": 0.144,
+        "reply_chain_depth": 6,
+        "send_hour": 12,
+        "subject_length": 45,
+        "label": "spam"
+      },
+      {
+        "word_count": 97,
+        "link_count": 7,
+        "uppercase_ratio": 0.961,
+        "suspicious_word_count": 6,
+        "sender_reputation": 1.771,
+        "attachment_count": 0,
+        "personalization_score": 0.733,
+        "reply_chain_depth": 0,
+        "send_hour": 7,
+        "subject_length": 49,
+        "label": "spam"
+      },
+      {
+        "word_count": 226,
+        "link_count": 7,
+        "uppercase_ratio": 0.302,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.472,
+        "attachment_count": 0,
+        "personalization_score": 0.258,
+        "reply_chain_depth": 1,
+        "send_hour": 10,
+        "subject_length": 74,
+        "label": "spam"
+      },
+      {
+        "word_count": 166,
+        "link_count": 13,
+        "uppercase_ratio": 0.185,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.548,
+        "attachment_count": 0,
+        "personalization_score": 0.3,
+        "reply_chain_depth": 3,
+        "send_hour": 1,
+        "subject_length": 54,
+        "label": "spam"
+      },
+      {
+        "word_count": 120,
+        "link_count": 11,
+        "uppercase_ratio": 0.704,
+        "suspicious_word_count": 1,
+        "sender_reputation": -1.065,
+        "attachment_count": 0,
+        "personalization_score": 0.812,
+        "reply_chain_depth": 0,
+        "send_hour": 1,
+        "subject_length": 37,
+        "label": "spam"
+      },
+      {
+        "word_count": 44,
+        "link_count": 11,
+        "uppercase_ratio": 0.029,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.199,
+        "attachment_count": 3,
+        "personalization_score": 0.328,
+        "reply_chain_depth": 7,
+        "send_hour": 22,
+        "subject_length": 37,
+        "label": "spam"
+      },
+      {
+        "word_count": 86,
+        "link_count": 11,
+        "uppercase_ratio": 0.37,
+        "suspicious_word_count": 0,
+        "sender_reputation": 1.214,
+        "attachment_count": 0,
+        "personalization_score": 0.279,
+        "reply_chain_depth": 7,
+        "send_hour": 6,
+        "subject_length": 28,
+        "label": "ham"
+      },
+      {
+        "word_count": 230,
+        "link_count": 0,
+        "uppercase_ratio": 0.308,
+        "suspicious_word_count": 6,
+        "sender_reputation": -1.384,
+        "attachment_count": 3,
+        "personalization_score": 0.132,
+        "reply_chain_depth": 2,
+        "send_hour": 22,
+        "subject_length": 20,
+        "label": "spam"
+      },
+      {
+        "word_count": 273,
+        "link_count": 9,
+        "uppercase_ratio": 0.065,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.415,
+        "attachment_count": 3,
+        "personalization_score": 0.579,
+        "reply_chain_depth": 4,
+        "send_hour": 0,
+        "subject_length": 45,
+        "label": "spam"
+      },
+      {
+        "word_count": 245,
+        "link_count": 12,
+        "uppercase_ratio": 0.564,
+        "suspicious_word_count": 0,
+        "sender_reputation": -0.723,
+        "attachment_count": 0,
+        "personalization_score": 0.203,
+        "reply_chain_depth": 1,
+        "send_hour": 5,
+        "subject_length": 53,
+        "label": "spam"
+      },
+      {
+        "word_count": 196,
+        "link_count": 0,
+        "uppercase_ratio": 0.033,
+        "suspicious_word_count": 0,
+        "sender_reputation": -0.223,
+        "attachment_count": 0,
+        "personalization_score": 0.863,
+        "reply_chain_depth": 5,
+        "send_hour": 9,
+        "subject_length": 62,
+        "label": "spam"
+      },
+      {
+        "word_count": 107,
+        "link_count": 13,
+        "uppercase_ratio": 0.72,
+        "suspicious_word_count": 5,
+        "sender_reputation": -0.015,
+        "attachment_count": 1,
+        "personalization_score": 0.279,
+        "reply_chain_depth": 2,
+        "send_hour": 20,
+        "subject_length": 11,
+        "label": "spam"
+      },
+      {
+        "word_count": 198,
+        "link_count": 12,
+        "uppercase_ratio": 0.857,
+        "suspicious_word_count": 11,
+        "sender_reputation": -1.316,
+        "attachment_count": 2,
+        "personalization_score": 0.283,
+        "reply_chain_depth": 1,
+        "send_hour": 2,
+        "subject_length": 16,
+        "label": "spam"
+      },
+      {
+        "word_count": 178,
+        "link_count": 7,
+        "uppercase_ratio": 0.427,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.822,
+        "attachment_count": 1,
+        "personalization_score": 0.053,
+        "reply_chain_depth": 4,
+        "send_hour": 4,
+        "subject_length": 11,
+        "label": "ham"
+      },
+      {
+        "word_count": 173,
+        "link_count": 0,
+        "uppercase_ratio": 0.286,
+        "suspicious_word_count": 11,
+        "sender_reputation": -1.966,
+        "attachment_count": 3,
+        "personalization_score": 0.795,
+        "reply_chain_depth": 6,
+        "send_hour": 16,
+        "subject_length": 20,
+        "label": "ham"
+      },
+      {
+        "word_count": 156,
+        "link_count": 11,
+        "uppercase_ratio": 0.886,
+        "suspicious_word_count": 8,
+        "sender_reputation": -1.346,
+        "attachment_count": 2,
+        "personalization_score": 0.652,
+        "reply_chain_depth": 7,
+        "send_hour": 3,
+        "subject_length": 37,
+        "label": "spam"
+      },
+      {
+        "word_count": 137,
+        "link_count": 10,
+        "uppercase_ratio": 0.88,
+        "suspicious_word_count": 9,
+        "sender_reputation": 0.575,
+        "attachment_count": 3,
+        "personalization_score": 0.967,
+        "reply_chain_depth": 5,
+        "send_hour": 9,
+        "subject_length": 14,
+        "label": "ham"
+      },
+      {
+        "word_count": 204,
+        "link_count": 1,
+        "uppercase_ratio": 0.117,
+        "suspicious_word_count": 2,
+        "sender_reputation": 1.746,
+        "attachment_count": 0,
+        "personalization_score": 0.99,
+        "reply_chain_depth": 5,
+        "send_hour": 11,
+        "subject_length": 45,
+        "label": "ham"
+      },
+      {
+        "word_count": 272,
+        "link_count": 0,
+        "uppercase_ratio": 0.236,
+        "suspicious_word_count": 7,
+        "sender_reputation": 0.01,
+        "attachment_count": 2,
+        "personalization_score": 0.98,
+        "reply_chain_depth": 2,
+        "send_hour": 20,
+        "subject_length": 77,
+        "label": "ham"
+      },
+      {
+        "word_count": 185,
+        "link_count": 15,
+        "uppercase_ratio": 0.173,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.504,
+        "attachment_count": 0,
+        "personalization_score": 0.85,
+        "reply_chain_depth": 0,
+        "send_hour": 0,
+        "subject_length": 35,
+        "label": "ham"
+      },
+      {
+        "word_count": 53,
+        "link_count": 11,
+        "uppercase_ratio": 0.687,
+        "suspicious_word_count": 0,
+        "sender_reputation": 1.626,
+        "attachment_count": 0,
+        "personalization_score": 0.245,
+        "reply_chain_depth": 4,
+        "send_hour": 17,
+        "subject_length": 50,
+        "label": "ham"
+      },
+      {
+        "word_count": 275,
+        "link_count": 3,
+        "uppercase_ratio": 0.952,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.669,
+        "attachment_count": 3,
+        "personalization_score": 0.509,
+        "reply_chain_depth": 4,
+        "send_hour": 20,
+        "subject_length": 79,
+        "label": "spam"
+      },
+      {
+        "word_count": 122,
+        "link_count": 7,
+        "uppercase_ratio": 0.119,
+        "suspicious_word_count": 2,
+        "sender_reputation": 1.183,
+        "attachment_count": 3,
+        "personalization_score": 0.336,
+        "reply_chain_depth": 3,
+        "send_hour": 19,
+        "subject_length": 19,
+        "label": "spam"
+      },
+      {
+        "word_count": 91,
+        "link_count": 7,
+        "uppercase_ratio": 0.145,
+        "suspicious_word_count": 1,
+        "sender_reputation": 0.542,
+        "attachment_count": 2,
+        "personalization_score": 0.389,
+        "reply_chain_depth": 6,
+        "send_hour": 16,
+        "subject_length": 50,
+        "label": "ham"
+      },
+      {
+        "word_count": 217,
+        "link_count": 14,
+        "uppercase_ratio": 0.111,
+        "suspicious_word_count": 10,
+        "sender_reputation": -1.11,
+        "attachment_count": 2,
+        "personalization_score": 0.119,
+        "reply_chain_depth": 2,
+        "send_hour": 8,
+        "subject_length": 11,
+        "label": "spam"
+      },
+      {
+        "word_count": 144,
+        "link_count": 10,
+        "uppercase_ratio": 0.166,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.992,
+        "attachment_count": 1,
+        "personalization_score": 0.762,
+        "reply_chain_depth": 2,
+        "send_hour": 4,
+        "subject_length": 12,
+        "label": "spam"
+      },
+      {
+        "word_count": 244,
+        "link_count": 6,
+        "uppercase_ratio": 0.685,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.645,
+        "attachment_count": 0,
+        "personalization_score": 0.673,
+        "reply_chain_depth": 0,
+        "send_hour": 0,
+        "subject_length": 63,
+        "label": "spam"
+      },
+      {
+        "word_count": 203,
+        "link_count": 9,
+        "uppercase_ratio": 0.553,
+        "suspicious_word_count": 0,
+        "sender_reputation": -1.213,
+        "attachment_count": 0,
+        "personalization_score": 0.719,
+        "reply_chain_depth": 1,
+        "send_hour": 19,
+        "subject_length": 70,
+        "label": "spam"
+      },
+      {
+        "word_count": 207,
+        "link_count": 11,
+        "uppercase_ratio": 0.32,
+        "suspicious_word_count": 1,
+        "sender_reputation": 1.19,
+        "attachment_count": 2,
+        "personalization_score": 0.802,
+        "reply_chain_depth": 7,
+        "send_hour": 21,
+        "subject_length": 11,
+        "label": "ham"
+      },
+      {
+        "word_count": 48,
+        "link_count": 5,
+        "uppercase_ratio": 0.685,
+        "suspicious_word_count": 9,
+        "sender_reputation": -0.45,
+        "attachment_count": 0,
+        "personalization_score": 0.431,
+        "reply_chain_depth": 6,
+        "send_hour": 16,
+        "subject_length": 50,
+        "label": "spam"
+      },
+      {
+        "word_count": 20,
+        "link_count": 15,
+        "uppercase_ratio": 0.162,
+        "suspicious_word_count": 0,
+        "sender_reputation": 0.104,
+        "attachment_count": 1,
+        "personalization_score": 0.854,
+        "reply_chain_depth": 0,
+        "send_hour": 6,
+        "subject_length": 21,
+        "label": "ham"
+      },
+      {
+        "word_count": 236,
+        "link_count": 14,
+        "uppercase_ratio": 0.438,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.479,
+        "attachment_count": 3,
+        "personalization_score": 0.769,
+        "reply_chain_depth": 5,
+        "send_hour": 15,
+        "subject_length": 37,
+        "label": "spam"
+      },
+      {
+        "word_count": 264,
+        "link_count": 12,
+        "uppercase_ratio": 0.892,
+        "suspicious_word_count": 2,
+        "sender_reputation": -0.552,
+        "attachment_count": 1,
+        "personalization_score": 0.271,
+        "reply_chain_depth": 6,
+        "send_hour": 14,
+        "subject_length": 15,
+        "label": "spam"
+      },
+      {
+        "word_count": 191,
+        "link_count": 13,
+        "uppercase_ratio": 0.346,
+        "suspicious_word_count": 4,
+        "sender_reputation": -0.352,
+        "attachment_count": 1,
+        "personalization_score": 0.679,
+        "reply_chain_depth": 3,
+        "send_hour": 4,
+        "subject_length": 38,
+        "label": "spam"
+      },
+      {
+        "word_count": 178,
+        "link_count": 7,
+        "uppercase_ratio": 0.41,
+        "suspicious_word_count": 1,
+        "sender_reputation": 0.884,
+        "attachment_count": 2,
+        "personalization_score": 0.037,
+        "reply_chain_depth": 4,
+        "send_hour": 23,
+        "subject_length": 72,
+        "label": "ham"
+      },
+      {
+        "word_count": 149,
+        "link_count": 2,
+        "uppercase_ratio": 0.739,
+        "suspicious_word_count": 11,
+        "sender_reputation": 1.134,
+        "attachment_count": 3,
+        "personalization_score": 0.79,
+        "reply_chain_depth": 7,
+        "send_hour": 12,
+        "subject_length": 47,
+        "label": "ham"
+      },
+      {
+        "word_count": 25,
+        "link_count": 4,
+        "uppercase_ratio": 0.171,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.762,
+        "attachment_count": 3,
+        "personalization_score": 0.509,
+        "reply_chain_depth": 7,
+        "send_hour": 3,
+        "subject_length": 57,
+        "label": "spam"
+      },
+      {
+        "word_count": 180,
+        "link_count": 2,
+        "uppercase_ratio": 0.962,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.194,
+        "attachment_count": 1,
+        "personalization_score": 0.386,
+        "reply_chain_depth": 5,
+        "send_hour": 13,
+        "subject_length": 71,
+        "label": "ham"
+      },
+      {
+        "word_count": 105,
+        "link_count": 12,
+        "uppercase_ratio": 0.408,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.182,
+        "attachment_count": 0,
+        "personalization_score": 0.561,
+        "reply_chain_depth": 6,
+        "send_hour": 14,
+        "subject_length": 16,
+        "label": "ham"
+      },
+      {
+        "word_count": 249,
+        "link_count": 2,
+        "uppercase_ratio": 0.236,
+        "suspicious_word_count": 8,
+        "sender_reputation": -0.771,
+        "attachment_count": 2,
+        "personalization_score": 0.17,
+        "reply_chain_depth": 1,
+        "send_hour": 0,
+        "subject_length": 79,
+        "label": "ham"
+      },
+      {
+        "word_count": 22,
+        "link_count": 2,
+        "uppercase_ratio": 0.256,
+        "suspicious_word_count": 9,
+        "sender_reputation": 1.972,
+        "attachment_count": 2,
+        "personalization_score": 0.318,
+        "reply_chain_depth": 6,
+        "send_hour": 23,
+        "subject_length": 47,
+        "label": "ham"
+      },
+      {
+        "word_count": 217,
+        "link_count": 15,
+        "uppercase_ratio": 0.143,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.465,
+        "attachment_count": 3,
+        "personalization_score": 0.421,
+        "reply_chain_depth": 3,
+        "send_hour": 3,
+        "subject_length": 67,
+        "label": "spam"
+      },
+      {
+        "word_count": 68,
+        "link_count": 10,
+        "uppercase_ratio": 0.647,
+        "suspicious_word_count": 9,
+        "sender_reputation": 1.439,
+        "attachment_count": 2,
+        "personalization_score": 0.568,
+        "reply_chain_depth": 0,
+        "send_hour": 5,
+        "subject_length": 66,
+        "label": "spam"
+      },
+      {
+        "word_count": 189,
+        "link_count": 3,
+        "uppercase_ratio": 0.337,
+        "suspicious_word_count": 10,
+        "sender_reputation": 0.974,
+        "attachment_count": 3,
+        "personalization_score": 0.009,
+        "reply_chain_depth": 1,
+        "send_hour": 3,
+        "subject_length": 11,
+        "label": "spam"
+      },
+      {
+        "word_count": 201,
+        "link_count": 10,
+        "uppercase_ratio": 0.346,
+        "suspicious_word_count": 0,
+        "sender_reputation": 0.215,
+        "attachment_count": 2,
+        "personalization_score": 0.994,
+        "reply_chain_depth": 7,
+        "send_hour": 3,
+        "subject_length": 45,
+        "label": "ham"
+      },
+      {
+        "word_count": 220,
+        "link_count": 7,
+        "uppercase_ratio": 0.154,
+        "suspicious_word_count": 7,
+        "sender_reputation": -1.899,
+        "attachment_count": 2,
+        "personalization_score": 0.241,
+        "reply_chain_depth": 7,
+        "send_hour": 0,
+        "subject_length": 72,
+        "label": "spam"
+      },
+      {
+        "word_count": 247,
+        "link_count": 12,
+        "uppercase_ratio": 0.021,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.169,
+        "attachment_count": 3,
+        "personalization_score": 0.862,
+        "reply_chain_depth": 7,
+        "send_hour": 4,
+        "subject_length": 38,
+        "label": "spam"
+      },
+      {
+        "word_count": 56,
+        "link_count": 1,
+        "uppercase_ratio": 0.071,
+        "suspicious_word_count": 9,
+        "sender_reputation": -1.463,
+        "attachment_count": 0,
+        "personalization_score": 0.863,
+        "reply_chain_depth": 4,
+        "send_hour": 5,
+        "subject_length": 70,
+        "label": "ham"
+      },
+      {
+        "word_count": 50,
+        "link_count": 10,
+        "uppercase_ratio": 0.015,
+        "suspicious_word_count": 9,
+        "sender_reputation": 1.495,
+        "attachment_count": 3,
+        "personalization_score": 0.432,
+        "reply_chain_depth": 0,
+        "send_hour": 9,
+        "subject_length": 62,
+        "label": "ham"
+      },
+      {
+        "word_count": 177,
+        "link_count": 0,
+        "uppercase_ratio": 0.932,
+        "suspicious_word_count": 5,
+        "sender_reputation": -0.645,
+        "attachment_count": 0,
+        "personalization_score": 0.15,
+        "reply_chain_depth": 5,
+        "send_hour": 11,
+        "subject_length": 36,
+        "label": "ham"
+      },
+      {
+        "word_count": 55,
+        "link_count": 11,
+        "uppercase_ratio": 0.918,
+        "suspicious_word_count": 2,
+        "sender_reputation": -1.267,
+        "attachment_count": 1,
+        "personalization_score": 0.287,
+        "reply_chain_depth": 5,
+        "send_hour": 4,
+        "subject_length": 44,
+        "label": "spam"
+      },
+      {
+        "word_count": 69,
+        "link_count": 12,
+        "uppercase_ratio": 0.715,
+        "suspicious_word_count": 3,
+        "sender_reputation": 1.579,
+        "attachment_count": 0,
+        "personalization_score": 0.37,
+        "reply_chain_depth": 0,
+        "send_hour": 10,
+        "subject_length": 22,
+        "label": "ham"
+      },
+      {
+        "word_count": 37,
+        "link_count": 2,
+        "uppercase_ratio": 0.863,
+        "suspicious_word_count": 3,
+        "sender_reputation": -1.398,
+        "attachment_count": 2,
+        "personalization_score": 0.375,
+        "reply_chain_depth": 7,
+        "send_hour": 8,
+        "subject_length": 66,
+        "label": "spam"
+      },
+      {
+        "word_count": 43,
+        "link_count": 8,
+        "uppercase_ratio": 0.055,
+        "suspicious_word_count": 8,
+        "sender_reputation": 0.274,
+        "attachment_count": 0,
+        "personalization_score": 0.245,
+        "reply_chain_depth": 5,
+        "send_hour": 23,
+        "subject_length": 18,
+        "label": "spam"
+      },
+      {
+        "word_count": 72,
+        "link_count": 4,
+        "uppercase_ratio": 0.214,
+        "suspicious_word_count": 11,
+        "sender_reputation": 1.493,
+        "attachment_count": 2,
+        "personalization_score": 0.068,
+        "reply_chain_depth": 0,
+        "send_hour": 21,
+        "subject_length": 15,
+        "label": "ham"
+      },
+      {
+        "word_count": 72,
+        "link_count": 10,
+        "uppercase_ratio": 0.099,
+        "suspicious_word_count": 3,
+        "sender_reputation": 1.006,
+        "attachment_count": 0,
+        "personalization_score": 0.611,
+        "reply_chain_depth": 3,
+        "send_hour": 22,
+        "subject_length": 75,
+        "label": "ham"
+      },
+      {
+        "word_count": 76,
+        "link_count": 1,
+        "uppercase_ratio": 0.621,
+        "suspicious_word_count": 5,
+        "sender_reputation": -0.909,
+        "attachment_count": 0,
+        "personalization_score": 0.691,
+        "reply_chain_depth": 0,
+        "send_hour": 4,
+        "subject_length": 23,
+        "label": "ham"
+      },
+      {
+        "word_count": 242,
+        "link_count": 1,
+        "uppercase_ratio": 0.753,
+        "suspicious_word_count": 1,
+        "sender_reputation": -0.453,
+        "attachment_count": 0,
+        "personalization_score": 0.984,
+        "reply_chain_depth": 5,
+        "send_hour": 14,
+        "subject_length": 11,
+        "label": "ham"
+      },
+      {
+        "word_count": 83,
+        "link_count": 0,
+        "uppercase_ratio": 0.983,
+        "suspicious_word_count": 11,
+        "sender_reputation": 0.566,
+        "attachment_count": 1,
+        "personalization_score": 0.447,
+        "reply_chain_depth": 5,
+        "send_hour": 11,
+        "subject_length": 20,
+        "label": "ham"
+      },
+      {
+        "word_count": 55,
+        "link_count": 1,
+        "uppercase_ratio": 0.471,
+        "suspicious_word_count": 10,
+        "sender_reputation": -0.348,
+        "attachment_count": 3,
+        "personalization_score": 0.141,
+        "reply_chain_depth": 0,
+        "send_hour": 14,
+        "subject_length": 14,
+        "label": "spam"
+      },
+      {
+        "word_count": 89,
+        "link_count": 11,
+        "uppercase_ratio": 0.155,
+        "suspicious_word_count": 5,
+        "sender_reputation": 0.667,
+        "attachment_count": 3,
+        "personalization_score": 0.796,
+        "reply_chain_depth": 2,
+        "send_hour": 16,
+        "subject_length": 70,
+        "label": "ham"
+      },
+      {
+        "word_count": 189,
+        "link_count": 12,
+        "uppercase_ratio": 0.789,
+        "suspicious_word_count": 7,
+        "sender_reputation": 0.194,
+        "attachment_count": 3,
+        "personalization_score": 0.264,
+        "reply_chain_depth": 7,
+        "send_hour": 15,
+        "subject_length": 10,
+        "label": "ham"
+      },
+      {
+        "word_count": 31,
+        "link_count": 11,
+        "uppercase_ratio": 0.486,
+        "suspicious_word_count": 7,
+        "sender_reputation": -0.695,
+        "attachment_count": 2,
+        "personalization_score": 0.054,
+        "reply_chain_depth": 0,
+        "send_hour": 19,
+        "subject_length": 41,
+        "label": "spam"
+      },
+      {
+        "word_count": 279,
+        "link_count": 4,
+        "uppercase_ratio": 0.739,
+        "suspicious_word_count": 5,
+        "sender_reputation": -1.923,
+        "attachment_count": 0,
+        "personalization_score": 0.57,
+        "reply_chain_depth": 1,
+        "send_hour": 13,
+        "subject_length": 72,
+        "label": "spam"
+      },
+      {
+        "word_count": 54,
+        "link_count": 4,
+        "uppercase_ratio": 0.562,
+        "suspicious_word_count": 3,
+        "sender_reputation": 1.443,
+        "attachment_count": 1,
+        "personalization_score": 0.144,
+        "reply_chain_depth": 1,
+        "send_hour": 20,
+        "subject_length": 31,
+        "label": "ham"
+      },
+      {
+        "word_count": 265,
+        "link_count": 3,
+        "uppercase_ratio": 0.498,
+        "suspicious_word_count": 2,
+        "sender_reputation": 0.032,
+        "attachment_count": 3,
+        "personalization_score": 0.675,
+        "reply_chain_depth": 0,
+        "send_hour": 13,
+        "subject_length": 35,
+        "label": "spam"
+      },
+      {
+        "word_count": 161,
+        "link_count": 0,
+        "uppercase_ratio": 0.138,
+        "suspicious_word_count": 8,
+        "sender_reputation": 1.165,
+        "attachment_count": 1,
+        "personalization_score": 0.481,
+        "reply_chain_depth": 7,
+        "send_hour": 15,
+        "subject_length": 78,
+        "label": "ham"
+      }
+    ],
+    "columns": [
+      {
+        "name": "word_count",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "link_count",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "uppercase_ratio",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "suspicious_word_count",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "sender_reputation",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "attachment_count",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "personalization_score",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "reply_chain_depth",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "send_hour",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "subject_length",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "label",
+        "type": "text",
+        "missing": 0
+      }
+    ],
+    "featureColumns": [
+      "word_count",
+      "link_count",
+      "uppercase_ratio",
+      "suspicious_word_count",
+      "sender_reputation",
+      "attachment_count",
+      "personalization_score",
+      "reply_chain_depth",
+      "send_hour",
+      "subject_length"
+    ],
+    "targetColumn": "label",
+    "trainRatio": 0.8
+  },
+  "trainedModel": null
+}
