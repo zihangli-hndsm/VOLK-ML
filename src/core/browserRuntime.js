@@ -1,22 +1,24 @@
 import { localizedError } from '../i18n.js';
-import { fitFeatureNormalization, normalizeFeatures, predictKnn } from './knnMath.js';
+import {
+  deterministicShuffle,
+  fitFeatureNormalization,
+  fitKnn,
+  normalizeFeatures,
+  predictKnn,
+  stratifiedSplit,
+} from './knnMath.js';
+import {
+  fitLinearNormalization,
+  linearGradientStep,
+  normalizeLinearPoint,
+  normalizeLinearTarget,
+} from './linearRegressionMath.js';
 import { flattenCustomComposites } from './customComposites.js';
 import { analyzeBrowserExecutionGraph, profileBrowserDataset } from './browserExecutionContract.js';
 
 function resolvePort(manifest, direction, handleId) {
   const ports = direction === 'output' ? manifest.outputs : manifest.inputs;
   return ports.find((port) => port.name === handleId) ?? (ports.length === 1 ? ports[0] : null);
-}
-
-function deterministicShuffle(samples, seed = 2026) {
-  const shuffled = [...samples];
-  let state = seed >>> 0;
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    state = (state * 1664525 + 1013904223) % 4294967296;
-    const target = state % (index + 1);
-    [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
-  }
-  return shuffled;
 }
 
 function valuesAreFinite(value) {
@@ -39,34 +41,6 @@ function splitSamples(samples, trainRatio) {
   return {
     train: shuffled.slice(0, splitIndex),
     test: shuffled.slice(splitIndex),
-  };
-}
-
-function stratifiedSplit(samples, trainRatio) {
-  const groups = new Map();
-  samples.forEach((sample) => {
-    const group = groups.get(sample.y) ?? [];
-    group.push(sample);
-    groups.set(sample.y, group);
-  });
-  const train = [];
-  const test = [];
-  groups.forEach((group) => {
-    const shuffled = deterministicShuffle(group);
-    if (shuffled.length === 1) {
-      train.push(shuffled[0]);
-      return;
-    }
-    const splitIndex = Math.max(1, Math.min(
-      shuffled.length - 1,
-      Math.floor(shuffled.length * trainRatio),
-    ));
-    train.push(...shuffled.slice(0, splitIndex));
-    test.push(...shuffled.slice(splitIndex));
-  });
-  return {
-    train: deterministicShuffle(train),
-    test: deterministicShuffle(test),
   };
 }
 
@@ -490,48 +464,21 @@ export async function executeBrowserGraph({
     } else if (manifestId === 'gradient_descent_node') {
       const spec = inputValue(node, 'model');
       const { dataset: sourceDataset, train, test } = spec.split;
-      const xMeans = sourceDataset.featureColumns.map(
-        (_, feature) => train.reduce((sum, sample) => sum + sample.x[feature], 0) / train.length,
-      );
-      const xStds = sourceDataset.featureColumns.map((_, feature) => (
-        Math.sqrt(train.reduce(
-          (sum, sample) => sum + (sample.x[feature] - xMeans[feature]) ** 2,
-          0,
-        ) / train.length) || 1
-      ));
-      const yMean = train.reduce((sum, sample) => sum + sample.y, 0) / train.length;
-      const yStd = Math.sqrt(train.reduce(
-        (sum, sample) => sum + (sample.y - yMean) ** 2,
-        0,
-      ) / train.length) || 1;
+      const normalization = fitLinearNormalization(train, sourceDataset.featureColumns.length);
       const normalized = train.map((sample) => ({
-        x: sample.x.map((value, feature) => (value - xMeans[feature]) / xStds[feature]),
-        y: (sample.y - yMean) / yStd,
+        x: normalizeLinearPoint(sample.x, normalization),
+        y: normalizeLinearTarget(sample.y, normalization),
       }));
       let weights = sourceDataset.featureColumns.map(() => 0);
       let bias = 0;
       const history = [];
       const epochs = node.data.parameters.epochs;
       for (let epoch = 0; epoch < epochs; epoch += 1) {
-        let loss = 0;
-        const dw = weights.map(() => 0);
-        let db = 0;
-        normalized.forEach(({ x, y }) => {
-          const error = weights.reduce(
-            (sum, weight, feature) => sum + weight * x[feature],
-            bias,
-          ) - y;
-          loss += error * error;
-          dw.forEach((_, feature) => { dw[feature] += 2 * error * x[feature]; });
-          db += 2 * error;
-        });
-        loss /= normalized.length;
-        weights = weights.map(
-          (weight, feature) => weight - spec.learningRate * (dw[feature] / normalized.length),
-        );
-        bias -= spec.learningRate * (db / normalized.length);
+        const step = linearGradientStep(normalized, weights, bias, spec.learningRate);
+        weights = step.weights;
+        bias = step.bias;
 
-        history.push(loss);
+        history.push(step.loss);
         if (epoch % Math.max(1, Math.floor(epochs / 50)) === 0 || epoch === epochs - 1) {
           onLoss([...history]);
           await onYield();
@@ -545,12 +492,7 @@ export async function executeBrowserGraph({
         targetColumn: sourceDataset.targetColumn,
         weights,
         bias,
-        normalization: {
-          xMeans,
-          xStds,
-          yMean,
-          yStd,
-        },
+        normalization,
         test,
         trainRows: train.length,
         testRows: test.length,
@@ -572,27 +514,26 @@ export async function executeBrowserGraph({
       if (new Set(valid.map((sample) => sample.y)).size < 2) {
         throw localizedError('error.classificationNeedsClasses');
       }
-      const { train, test } = stratifiedSplit(valid, node.data.parameters.train_ratio);
-      if (test.length === 0) throw localizedError('error.classificationTestRequired');
-      if (new Set(train.map((sample) => sample.y)).size < 2) {
+      const fitted = fitKnn({
+        samples: valid,
+        k: node.data.parameters.k_value,
+        trainRatio: node.data.parameters.train_ratio,
+      });
+      if (fitted.test.length === 0) throw localizedError('error.classificationTestRequired');
+      if (new Set(fitted.train.map((sample) => sample.y)).size < 2) {
         throw localizedError('error.classificationNeedsClasses');
       }
-      const normalization = fitFeatureNormalization(train, sourceDataset.featureColumns.length);
-      const normalizedTrain = train.map((sample) => ({
-        ...sample,
-        x: normalizeFeatures(sample.x, normalization),
-      }));
       output = {
         type: 'knn_classifier',
         sourceNodeId: node.id,
         featureColumns: sourceDataset.featureColumns,
         targetColumn: sourceDataset.targetColumn,
-        train: normalizedTrain,
-        test,
-        normalization,
-        k: Math.min(node.data.parameters.k_value, normalizedTrain.length),
-        trainRows: train.length,
-        testRows: test.length,
+        train: fitted.train,
+        test: fitted.test,
+        normalization: fitted.normalization,
+        k: fitted.k,
+        trainRows: fitted.trainRows,
+        testRows: fitted.testRows,
         metrics: null,
         lossHistory: [],
         trainedAt: new Date().toISOString(),

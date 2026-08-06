@@ -6,6 +6,8 @@ import {
   playgroundError,
 } from './playgrounds/session.js';
 import { fallbackRegressionPoints, regressionPointsFromDataset } from './linearRegressionPlayground.js';
+import { teachingDatasetById } from './teachingDatasets.js';
+import { profileBrowserDataset } from './browserExecutionContract.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
 
@@ -36,11 +38,15 @@ function resolveSource(playground, dataset) {
     return {
       kind: 'example',
       name: 'Example data',
-      fingerprint: 'example-linear-regression-v1',
-      points: fallbackRegressionPoints.map((point, index) => ({ id: `e${index}`, x: point.x, y: point.y })),
+      fingerprint: 'example-linear-trend-v1',
+      points: (teachingDatasetById('linear-trend')?.dataset.rows ?? fallbackRegressionPoints).map((point, index) => ({
+        id: `e${index}`,
+        x: point.x ?? point[0],
+        y: point.y ?? point[1],
+      })),
       feature: 'x',
       target: 'y',
-      total: fallbackRegressionPoints.length,
+      total: (teachingDatasetById('linear-trend')?.dataset.rows ?? fallbackRegressionPoints).length,
       usingDataset: false,
     };
   }
@@ -53,47 +59,36 @@ function resolveSource(playground, dataset) {
         ? numeric.slice(0, 2)
         : (dataset.featureColumns ?? []).filter((name) => numeric.includes(name));
       if (features.length >= 2) {
-        const rows = dataset.rows.filter((row) => (
-          features.every((name) => Number.isFinite(Number(row?.[name])))
-          && typeof row?.[dataset.targetColumn] === 'string'
-          && row[dataset.targetColumn]
-        ));
-        if (rows.length >= 2) {
+        const profile = profileBrowserDataset(dataset);
+        const samples = profile.samples.filter((sample) => sample.y);
+        if (samples.length >= 3 && new Set(samples.map((sample) => sample.y)).size >= 2) {
           return {
             kind: 'workspace-dataset',
             name: dataset.name,
-            fingerprint: fingerprintOf([dataset.name, dataset.task, features, dataset.targetColumn, rows.length]),
-            points: rows.map((row, index) => ({
-              id: `d${index}`,
-              features: Object.fromEntries(features.map((name) => [name, Number(row[name])])),
-              label: row[dataset.targetColumn],
-            })),
-            featureColumns: features,
-            total: rows.length,
+            fingerprint: fingerprintOf([dataset.name, dataset.task, features, dataset.targetColumn, samples.length]),
+            samples,
+            featureColumns: dataset.featureColumns,
+            trainRatio: dataset.trainRatio ?? 0.8,
+            total: samples.length,
             usingDataset: true,
           };
         }
       }
     }
-    const points = Array.from({ length: 80 }, (_, index) => {
-      const group = index % 2;
-      const offset = Math.floor(index / 2);
-      return {
-        id: `e${index}`,
-        features: {
-          feature_a: Number(((group === 0 ? -2 : 2) + Math.sin(offset * 1.3) * 0.8 + (offset % 3) * 0.12).toFixed(3)),
-          feature_b: Number(((group === 0 ? -2 : 2) + Math.cos(offset * 0.9) * 0.8 - (offset % 2) * 0.1).toFixed(3)),
-        },
-        label: group === 0 ? 'A' : 'B',
-      };
-    });
+    const teaching = teachingDatasetById('knn-neighborhood')?.dataset;
+    const samples = (teaching?.rows ?? []).map((row, index) => ({
+      index,
+      x: teaching.featureColumns.map((column) => Number(row[column])),
+      y: String(row[teaching.targetColumn]),
+    }));
     return {
       kind: 'example',
       name: 'Example data',
-      fingerprint: 'example-knn-v1',
-      points,
-      featureColumns: ['feature_a', 'feature_b'],
-      total: points.length,
+      fingerprint: 'example-knn-neighborhood-v1',
+      samples,
+      featureColumns: teaching?.featureColumns ?? ['x1', 'x2'],
+      trainRatio: teaching?.trainRatio ?? 0.8,
+      total: samples.length,
       usingDataset: false,
     };
   }

@@ -1,5 +1,5 @@
 import {
-  buildRegressionTrainingHistory,
+  buildNormalizedRegressionHistory,
   leastSquaresFit,
   meanSquaredError,
   playgroundRanges,
@@ -125,6 +125,7 @@ export const linearRegressionPlayground = {
         weight: 0,
         bias: initialBias,
         gradient: null,
+        pointCounter: points.length,
         training: { currentStep: 0, history: [], totalSteps: 0 },
       },
       totalSteps: 0,
@@ -153,8 +154,14 @@ export const linearRegressionPlayground = {
       const x = finiteOrNull(action.x);
       const y = finiteOrNull(action.y);
       if (x === null || y === null) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type });
-      const points = [...modelState.points, { id: `p-${modelState.points.length}-${Date.now()}`, x, y }];
-      return nextSession(session, { modelState: { ...clearTraining({ ...modelState, points }), ...recomputeDerived(points) } });
+      const id = `p-${modelState.pointCounter}`;
+      const points = [...modelState.points, { id, x, y }];
+      return nextSession(session, {
+        modelState: {
+          ...clearTraining({ ...modelState, points, pointCounter: modelState.pointCounter + 1 }),
+          ...recomputeDerived(points),
+        },
+      });
     }
     if (action.type === 'MOVE_POINT') {
       const x = finiteOrNull(action.x);
@@ -175,22 +182,25 @@ export const linearRegressionPlayground = {
       });
     }
     if (action.type === 'START_TRAINING') {
-      const history = buildRegressionTrainingHistory(modelState.points, {
-        weight: modelState.weight,
-        bias: modelState.bias,
+      const { history, normalization } = buildNormalizedRegressionHistory(modelState.points, {
         learningRate: controls.learningRate,
         steps: Math.round(controls.trainingSteps),
       });
       return nextSession(session, {
-        modelState: { ...modelState, training: { currentStep: 0, history, totalSteps: history.length } },
+        modelState: {
+          ...modelState,
+          training: { currentStep: 0, history, totalSteps: history.length, normalization },
+        },
         timeline: { step: 0, totalSteps: history.length, speed: session.timeline.speed },
       });
     }
     if (action.type === 'STEP' || action.type === 'SEEK') {
       const { training } = modelState;
       if (!training.history.length) return session;
-      const target = action.type === 'SEEK' ? Math.round(action.step ?? 0) : training.currentStep + 1;
-      const currentStep = Math.max(0, Math.min(target, training.totalSteps));
+      const problematicIndex = training.history.findIndex((entry) => !entry.finite || entry.learningRateTooHigh);
+      const maxStep = problematicIndex === -1 ? training.totalSteps : problematicIndex + 1;
+      const target = action.type === 'SEEK' ? Math.round(action.step ?? 0) : Math.min(training.currentStep + 1, maxStep);
+      const currentStep = Math.max(0, Math.min(target, maxStep));
       const entry = training.history[Math.max(0, currentStep - 1)];
       const nextModel = entry
         ? { ...modelState, weight: entry.weight, bias: entry.bias, gradient: entry.gradient, training: { ...training, currentStep } }
@@ -238,12 +248,25 @@ export const linearRegressionPlayground = {
       bodyKey: 'playground.lr.observation.introBody',
       params: {},
     };
-    if (training.currentStep > 0 && training.currentStep < training.totalSteps) {
+    const problematicEntry = training.currentStep > 0 ? training.history[training.currentStep - 1] : null;
+    if (problematicEntry?.learningRateTooHigh) {
+      observation = {
+        titleKey: 'playground.lr.observation.learningRateTooHigh',
+        bodyKey: 'playground.lr.observation.learningRateTooHighBody',
+        params: { learningRate: controls.learningRate, step: training.currentStep, loss: problematicEntry.loss.toExponential(2) },
+      };
+    } else if (problematicEntry && !problematicEntry.finite) {
+      observation = {
+        titleKey: 'playground.lr.observation.diverged',
+        bodyKey: 'playground.lr.observation.divergedBody',
+        params: { step: training.currentStep },
+      };
+    } else if (training.currentStep > 0 && training.currentStep < training.totalSteps) {
       const entry = training.history[training.currentStep - 1];
       observation = {
         titleKey: 'playground.lr.observation.trainingStep',
         bodyKey: 'playground.lr.observation.trainingStepBody',
-        params: { step: training.currentStep, loss: entry.loss.toFixed(4), magnitude: entry.gradient.magnitude.toFixed(4) },
+        params: { step: training.currentStep, loss: entry.loss.toFixed(4), magnitude: gradient.magnitude.toFixed(4) },
       };
     } else if (controls.showResiduals) {
       observation = {
