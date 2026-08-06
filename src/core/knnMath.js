@@ -16,6 +16,68 @@ export function fitFeatureNormalization(samples, featureCount) {
   return { means, stds };
 }
 
+export function deterministicShuffle(samples, seed = 2026) {
+  const shuffled = [...samples];
+  let state = seed >>> 0;
+  for (let index = shuffled.length - 1; index > 0; index -= 1) {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    const target = state % (index + 1);
+    [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
+  }
+  return shuffled;
+}
+
+export function stratifiedSplit(samples, trainRatio) {
+  const groups = new Map();
+  samples.forEach((sample) => {
+    const group = groups.get(sample.y) ?? [];
+    group.push(sample);
+    groups.set(sample.y, group);
+  });
+  const train = [];
+  const test = [];
+  groups.forEach((group) => {
+    const shuffled = deterministicShuffle(group);
+    if (shuffled.length === 1) {
+      train.push(shuffled[0]);
+      return;
+    }
+    const splitIndex = Math.max(1, Math.min(
+      shuffled.length - 1,
+      Math.floor(shuffled.length * trainRatio),
+    ));
+    train.push(...shuffled.slice(0, splitIndex));
+    test.push(...shuffled.slice(splitIndex));
+  });
+  return {
+    train: deterministicShuffle(train),
+    test: deterministicShuffle(test),
+  };
+}
+
+// Fits a KNN classifier exactly like the browser runtime: stratified
+// train/test split, normalization computed from the training set only, and k
+// clamped to the training size.
+export function fitKnn({ samples, k, trainRatio }) {
+  const { train, test } = stratifiedSplit(samples, trainRatio);
+  const featureCount = train[0]?.x?.length ?? 0;
+  const normalization = fitFeatureNormalization(train, featureCount);
+  const normalizedTrain = train.map((sample) => ({
+    ...sample,
+    x: normalizeFeatures(sample.x, normalization),
+  }));
+  return {
+    type: 'knn_classifier',
+    rawTrain: train,
+    train: normalizedTrain,
+    test,
+    normalization,
+    k: Math.min(k, normalizedTrain.length),
+    trainRows: train.length,
+    testRows: test.length,
+  };
+}
+
 export function normalizeFeatures(values, normalization) {
   return values.map((value, feature) => (
     (value - normalization.means[feature]) / normalization.stds[feature]

@@ -1,6 +1,7 @@
 import {
-  fitFeatureNormalization,
+  fitKnn,
   normalizeFeatures,
+  predictKnn,
   rankNeighbors,
   voteNeighbors,
 } from '../knnMath.js';
@@ -25,41 +26,67 @@ function projectedRanges(points, xFeature, yFeature) {
   };
 }
 
-function projectedTraining(points, xFeature, yFeature, normalize) {
-  const raw = points.map((point) => ({ id: point.id, y: point.label, x: [point.features[xFeature], point.features[yFeature]] }));
-  if (!normalize) return { training: raw, normalization: null };
-  const normalization = fitFeatureNormalization(raw, 2);
-  return {
-    training: raw.map((sample) => ({ ...sample, x: normalizeFeatures(sample.x, normalization) })),
-    normalization,
-  };
+function featureIndex(featureColumns, name) {
+  return Math.max(0, featureColumns.indexOf(name));
 }
 
-function computeDecisionRegions(points, xFeature, yFeature, k, normalize) {
-  const { training } = projectedTraining(points, xFeature, yFeature, normalize);
-  const sampled = training.length <= DECISION_SAMPLE_LIMIT
-    ? training
+function rawTrainPoints(fit, featureColumns) {
+  return (fit.rawTrain ?? []).map((sample) => ({
+    id: sample.index,
+    label: sample.y,
+    features: Object.fromEntries(featureColumns.map((column, index) => [column, sample.x[index]])),
+  }));
+}
+
+function computeDecisionRegions(fit, points, featureColumns, xFeature, yFeature, k, normalize) {
+  const xIndex = featureIndex(featureColumns, xFeature);
+  const yIndex = featureIndex(featureColumns, yFeature);
+  const sampled = points.length <= DECISION_SAMPLE_LIMIT
+    ? points
     : Array.from({ length: DECISION_SAMPLE_LIMIT }, (_, index) => (
-      training[Math.round(index * (training.length - 1) / (DECISION_SAMPLE_LIMIT - 1))]
+      points[Math.round(index * (points.length - 1) / (DECISION_SAMPLE_LIMIT - 1))]
     ));
-  const xs = sampled.map((sample) => sample.x[0]);
-  const ys = sampled.map((sample) => sample.x[1]);
+  const xs = sampled.map((point) => point.features[xFeature]);
+  const ys = sampled.map((point) => point.features[yFeature]);
   const xMin = Math.min(...xs);
   const xMax = Math.max(...xs);
   const yMin = Math.min(...ys);
   const yMax = Math.max(...ys);
   const xPad = Math.max(0.01, (xMax - xMin) * 0.1);
   const yPad = Math.max(0.01, (yMax - yMin) * 0.1);
+  const neighborsFor = (raw) => {
+    const query = normalize
+      ? normalizeFeatures(raw, fit.normalization)
+      : raw;
+    const training = normalize ? fit.train : (fit.rawTrain ?? []);
+    return rankNeighbors(training, query, Math.min(k, training.length));
+  };
   const cells = [];
   for (let row = 0; row < DECISION_RESOLUTION; row += 1) {
     for (let column = 0; column < DECISION_RESOLUTION; column += 1) {
       const x = xMin - xPad + ((xMax - xMin + xPad * 2) * (column + 0.5)) / DECISION_RESOLUTION;
       const y = yMin - yPad + ((yMax - yMin + yPad * 2) * (row + 0.5)) / DECISION_RESOLUTION;
-      const neighbors = rankNeighbors(sampled, [x, y], Math.min(k, sampled.length));
-      cells.push({ x, y, label: voteNeighbors(neighbors).predictedLabel });
+      const features = { [xFeature]: x, [yFeature]: y };
+      const vector = featureColumns.map((column) => features[column] ?? 0);
+      cells.push({ x, y, label: voteNeighbors(neighborsFor(vector)).predictedLabel });
     }
   }
   return cells;
+}
+
+function computeTestAccuracy(fit) {
+  if (!fit.test?.length) return null;
+  const correct = fit.test.filter((sample) => predictKnn(fit, sample.x) === sample.y).length;
+  return correct / fit.test.length;
+}
+
+function rebuildNormalizedTrain(modelState) {
+  const fit = modelState.fit;
+  const train = modelState.rawTrain.map((point) => {
+    const vector = modelState.featureColumns.map((column) => point.features[column]);
+    return { index: point.id, x: normalizeFeatures(vector, fit.normalization), y: point.label };
+  });
+  return { ...fit, train, k: Math.min(fit.k, train.length) };
 }
 
 function nextSession(session, patch) {
@@ -71,12 +98,33 @@ function nextSession(session, patch) {
   };
 }
 
-function refreshProjection(modelState, controls) {
-  const ranges = projectedRanges(modelState.points, modelState.xFeature, modelState.yFeature);
-  const decisionRegions = controls.showDecisionRegions
-    ? computeDecisionRegions(modelState.points, modelState.xFeature, modelState.yFeature, controls.k, controls.normalize)
-    : null;
-  return { ...modelState, ranges, decisionRegions };
+function refitModel(modelState, source) {
+  const fit = fitKnn({
+    samples: modelState.samples,
+    k: modelState.k,
+    trainRatio: source.trainRatio ?? 0.8,
+  });
+  return {
+    ...modelState,
+    fit,
+    k: fit.k,
+    rawTrain: rawTrainPoints(fit, modelState.featureColumns),
+    testAccuracy: computeTestAccuracy(fit),
+  };
+}
+
+function refreshDecisionRegions(modelState) {
+  if (!modelState.controls.showDecisionRegions) return { ...modelState, decisionRegions: null };
+  const regions = computeDecisionRegions(
+    modelState.fit,
+    modelState.rawTrain,
+    modelState.featureColumns,
+    modelState.xFeature,
+    modelState.yFeature,
+    modelState.k,
+    modelState.controls.normalize,
+  );
+  return { ...modelState, decisionRegions: regions };
 }
 
 export const knnPlayground = {
@@ -120,10 +168,12 @@ export const knnPlayground = {
       id: 'intro',
       titleKey: 'playground.scenario.intro',
       steps: [
+        { action: { type: 'SET_CONTROL', key: 'showNeighborOrder', value: true }, durationMs: 500, narrationKey: 'playground.knn.scenario.introOrder' },
         { action: { type: 'SET_CONTROL', key: 'k', value: 1 }, durationMs: 500, narrationKey: 'playground.knn.scenario.introK1' },
         { action: { type: 'START_NEIGHBOR_REVEAL' }, durationMs: 400, narrationKey: 'playground.knn.scenario.introReveal' },
         { action: { type: 'STEP' }, durationMs: 700, narrationKey: 'playground.knn.scenario.introNeighbor1' },
         { action: { type: 'SET_CONTROL', key: 'k', value: 5 }, durationMs: 600, narrationKey: 'playground.knn.scenario.introK5' },
+        { action: { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true }, durationMs: 600, narrationKey: 'playground.knn.scenario.introRegions' },
         { action: { type: 'STEP' }, durationMs: 600, narrationKey: 'playground.knn.scenario.introNeighbor2' },
         { action: { type: 'STEP' }, durationMs: 600, narrationKey: 'playground.knn.scenario.introNeighbor3' },
         { action: { type: 'STEP' }, durationMs: 600, narrationKey: 'playground.knn.scenario.introNeighbor4' },
@@ -140,100 +190,103 @@ export const knnPlayground = {
       ? source.featureColumns
       : null;
     if (!featureColumns) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least two numeric features' });
-    const points = Array.isArray(source.points)
-      ? source.points.map((point, index) => ({
-        id: point.id ?? index,
-        features: Object.fromEntries(featureColumns.map((column) => [
-          column,
-          finiteOrNull(point.features?.[column] ?? point[column]),
-        ])),
-        label: point.label,
-      })).filter((point) => featureColumns.every((column) => point.features[column] !== null) && typeof point.label === 'string' && point.label)
+    const samples = Array.isArray(source.samples)
+      ? source.samples.map((sample, index) => ({
+        index: sample.index ?? index,
+        x: featureColumns.map((column, feature) => {
+          const value = finiteOrNull(sample.x?.[feature] ?? sample[column]);
+          return value;
+        }),
+        y: String(sample.y ?? sample.label ?? ''),
+      })).filter((sample) => sample.x.every(Number.isFinite) && sample.y)
       : [];
-    if (points.length < 2) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least two labeled points' });
+    if (samples.length < 3) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least three labeled samples' });
+    if (new Set(samples.map((sample) => sample.y)).size < 2) {
+      throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least two classes' });
+    }
     return {
       kind: source.kind,
       name: source.name ?? 'Example data',
-      fingerprint: source.fingerprint ?? `${points.length}:${featureColumns.join(',')}`,
-      points,
+      fingerprint: source.fingerprint ?? `${samples.length}:${featureColumns.join(',')}`,
+      samples,
       featureColumns,
-      total: source.total ?? points.length,
+      trainRatio: source.trainRatio ?? 0.8,
+      total: source.total ?? samples.length,
       usingDataset: source.usingDataset ?? false,
     };
   },
 
   createInitialState({ source, controls }) {
-    const points = source.points.map((point) => ({
-      id: point.id,
-      features: { ...point.features },
-      label: point.label,
-    }));
     const xFeature = source.featureColumns[0];
     const yFeature = source.featureColumns[1];
-    const ranges = projectedRanges(points, xFeature, yFeature);
-    const merged = {
+    const k = Math.max(1, Math.min(Math.round(controls.k ?? 5), MAX_K));
+    const fit = fitKnn({ samples: source.samples, k, trainRatio: source.trainRatio });
+    const rawTrain = rawTrainPoints(fit, source.featureColumns);
+    const ranges = projectedRanges(rawTrain, xFeature, yFeature);
+    const query = {
+      x: finiteOrNull(controls.queryX) ?? (ranges.xMin + ranges.xMax) / 2,
+      y: finiteOrNull(controls.queryY) ?? (ranges.yMin + ranges.yMax) / 2,
+    };
+    const modelState = {
+      samples: source.samples,
+      fit,
+      rawTrain,
       xFeature,
       yFeature,
-      k: 5,
-      queryX: (ranges.xMin + ranges.xMax) / 2,
-      queryY: (ranges.yMin + ranges.yMax) / 2,
-      showNeighborOrder: false,
-      showDecisionRegions: false,
-      normalize: true,
-      distanceMetric: 'euclidean',
-      ...controls,
-    };
-    const k = Math.max(1, Math.min(Math.round(merged.k), Math.min(MAX_K, points.length)));
-    const state = {
-      points,
-      xFeature: merged.xFeature,
-      yFeature: merged.yFeature,
+      featureColumns: source.featureColumns,
       ranges,
-      query: { x: finiteOrNull(merged.queryX) ?? (ranges.xMin + ranges.xMax) / 2, y: finiteOrNull(merged.queryY) ?? (ranges.yMin + ranges.yMax) / 2 },
+      query,
+      k: fit.k,
       revealed: 0,
+      pointCounter: rawTrain.length,
       decisionRegions: null,
+      testAccuracy: computeTestAccuracy(fit),
+      controls: {
+        normalize: controls.normalize !== false,
+        showDecisionRegions: Boolean(controls.showDecisionRegions),
+      },
     };
     return {
       controls: {
-        xFeature: merged.xFeature,
-        yFeature: merged.yFeature,
-        k,
-        queryX: state.query.x,
-        queryY: state.query.y,
-        showNeighborOrder: Boolean(merged.showNeighborOrder),
-        showDecisionRegions: Boolean(merged.showDecisionRegions),
-        normalize: merged.normalize !== false,
-        distanceMetric: merged.distanceMetric === 'euclidean' ? 'euclidean' : 'euclidean',
+        xFeature,
+        yFeature,
+        k: fit.k,
+        queryX: query.x,
+        queryY: query.y,
+        showNeighborOrder: Boolean(controls.showNeighborOrder),
+        showDecisionRegions: Boolean(controls.showDecisionRegions),
+        normalize: controls.normalize !== false,
+        distanceMetric: 'euclidean',
       },
-      modelState: refreshProjection(state, { ...merged, k, showDecisionRegions: Boolean(merged.showDecisionRegions), normalize: merged.normalize !== false }),
-      totalSteps: k,
+      modelState,
+      totalSteps: fit.k,
     };
   },
 
   reduce(session, action) {
     const { modelState, controls } = session;
+    const source = session.sourceData ?? { featureColumns: modelState.featureColumns, trainRatio: 0.8 };
     if (action.type === 'SET_CONTROL') {
       if (action.key === 'xFeature' || action.key === 'yFeature') {
-        const nextFeature = action.value;
-        if (nextFeature === modelState.xFeature || nextFeature === modelState.yFeature) return session;
-        const next = { ...modelState, [action.key]: nextFeature };
+        const next = { ...modelState, [action.key]: action.value };
         if (next.xFeature === next.yFeature) {
-          next.yFeature = nextFeature === next.xFeature
-            ? modelState.featureColumns?.find((column) => column !== nextFeature) ?? nextFeature
-            : next.yFeature;
+          next.yFeature = modelState.featureColumns.find((column) => column !== next.xFeature) ?? next.yFeature;
         }
-        const ranges = projectedRanges(next.points, next.xFeature, next.yFeature);
+        const ranges = projectedRanges(next.rawTrain, next.xFeature, next.yFeature);
         const query = { x: (ranges.xMin + ranges.xMax) / 2, y: (ranges.yMin + ranges.yMax) / 2 };
+        const merged = refreshDecisionRegions({ ...next, ranges, query, revealed: 0 });
         return nextSession(session, {
           controls: { xFeature: next.xFeature, yFeature: next.yFeature, queryX: query.x, queryY: query.y },
-          modelState: refreshProjection({ ...next, query, revealed: 0, ranges }, controls),
+          modelState: merged,
         });
       }
       if (action.key === 'k') {
-        const k = Math.max(1, Math.min(Math.round(finiteOrNull(action.value) ?? controls.k), Math.min(MAX_K, modelState.points.length)));
+        const k = Math.max(1, Math.min(Math.round(finiteOrNull(action.value) ?? controls.k), Math.min(MAX_K, modelState.rawTrain.length)));
+        const fit = { ...modelState.fit, k };
+        const merged = refreshDecisionRegions({ ...modelState, fit, k, revealed: Math.min(modelState.revealed, k) });
         return nextSession(session, {
           controls: { k },
-          modelState: refreshProjection({ ...modelState, revealed: Math.min(modelState.revealed, k) }, { ...controls, k }),
+          modelState: merged,
           timeline: { ...session.timeline, step: Math.min(session.timeline.step, k), totalSteps: k },
         });
       }
@@ -245,10 +298,8 @@ export const knnPlayground = {
       }
       if (action.key === 'showNeighborOrder' || action.key === 'showDecisionRegions' || action.key === 'normalize') {
         const value = Boolean(action.value);
-        return nextSession(session, {
-          controls: { [action.key]: value },
-          modelState: refreshProjection(modelState, { ...controls, [action.key]: value }),
-        });
+        const merged = refreshDecisionRegions({ ...modelState, controls: { ...modelState.controls, [action.key]: value } });
+        return nextSession(session, { controls: { [action.key]: value }, modelState: merged });
       }
       if (action.key === 'distanceMetric') {
         if (action.value !== 'euclidean') throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key, value: action.value });
@@ -269,25 +320,48 @@ export const knnPlayground = {
       if (x === null || y === null || typeof action.label !== 'string' || !action.label) {
         throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type });
       }
-      const points = [...modelState.points, { id: `p-${modelState.points.length}-${Date.now()}`, features: { ...modelState.points[0]?.features, [modelState.xFeature]: x, [modelState.yFeature]: y }, label: action.label }];
-      const ranges = projectedRanges(points, modelState.xFeature, modelState.yFeature);
-      return nextSession(session, { modelState: refreshProjection({ ...modelState, points, ranges }, controls) });
+      const index = modelState.pointCounter;
+      const rawTrain = [...modelState.rawTrain, {
+        id: index,
+        features: { ...modelState.rawTrain[0].features, [modelState.xFeature]: x, [modelState.yFeature]: y },
+        label: action.label,
+      }];
+      const fit = rebuildNormalizedTrain({ ...modelState, rawTrain });
+      const ranges = projectedRanges(rawTrain, modelState.xFeature, modelState.yFeature);
+      const merged = refreshDecisionRegions({
+        ...modelState,
+        fit,
+        rawTrain,
+        ranges,
+        k: fit.k,
+        pointCounter: index + 1,
+      });
+      return nextSession(session, { modelState: merged, timeline: { ...session.timeline, totalSteps: fit.k } });
     }
     if (action.type === 'MOVE_TRAINING_POINT' || action.type === 'REMOVE_TRAINING_POINT') {
-      let points;
+      let rawTrain;
       if (action.type === 'REMOVE_TRAINING_POINT') {
-        points = modelState.points.filter((point) => point.id !== action.pointId);
-        if (points.length < 2) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, reason: 'minimum two points' });
+        rawTrain = modelState.rawTrain.filter((point) => point.id !== action.pointId);
+        if (rawTrain.length < 3) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, reason: 'minimum three samples' });
       } else {
         const x = finiteOrNull(action.x);
         const y = finiteOrNull(action.y);
         if (x === null || y === null) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type });
-        points = modelState.points.map((point) => (point.id === action.pointId
-          ? { ...point, features: { ...point.features, [modelState.xFeature]: x, [modelState.yFeature]: y } }
-          : point));
+        rawTrain = modelState.rawTrain.map((point) => {
+          if (point.id !== action.pointId) return point;
+          return { ...point, features: { ...point.features, [modelState.xFeature]: x, [modelState.yFeature]: y } };
+        });
       }
-      const ranges = projectedRanges(points, modelState.xFeature, modelState.yFeature);
-      return nextSession(session, { modelState: refreshProjection({ ...modelState, points, ranges }, controls) });
+      const fit = rebuildNormalizedTrain({ ...modelState, rawTrain });
+      const ranges = projectedRanges(rawTrain, modelState.xFeature, modelState.yFeature);
+      const merged = refreshDecisionRegions({
+        ...modelState,
+        fit,
+        rawTrain,
+        ranges,
+        k: fit.k,
+      });
+      return nextSession(session, { modelState: merged, timeline: { ...session.timeline, totalSteps: fit.k } });
     }
     if (action.type === 'START_NEIGHBOR_REVEAL') {
       return nextSession(session, {
@@ -307,11 +381,18 @@ export const knnPlayground = {
   },
 
   deriveScene(session) {
-    const { modelState, controls, timeline } = session;
-    const { training, normalization } = projectedTraining(modelState.points, modelState.xFeature, modelState.yFeature, controls.normalize);
+    const { modelState, controls } = session;
+    const fit = modelState.fit;
+    const xIndex = featureIndex(modelState.featureColumns, modelState.xFeature);
+    const yIndex = featureIndex(modelState.featureColumns, modelState.yFeature);
+    const normalize = controls.normalize;
     const queryRaw = [modelState.query.x, modelState.query.y];
-    const query = controls.normalize ? normalizeFeatures(queryRaw, normalization) : [...queryRaw];
-    const neighbors = rankNeighbors(training, query, controls.k);
+    const queryVector = modelState.featureColumns.map((column, index) => (
+      index === xIndex ? modelState.query.x : index === yIndex ? modelState.query.y : 0
+    ));
+    const query = normalize ? normalizeFeatures(queryVector, fit.normalization) : queryVector;
+    const training = normalize ? fit.train : (fit.rawTrain ?? []);
+    const neighbors = rankNeighbors(training, query, Math.min(controls.k, training.length));
     const activeNeighbors = neighbors.slice(0, modelState.revealed);
     const voting = modelState.revealed > 0 ? voteNeighbors(activeNeighbors) : {
       counts: {},
@@ -321,23 +402,26 @@ export const knnPlayground = {
       tieBreakReason: null,
     };
     const scene = {
-      points: modelState.points.map((point) => {
+      points: modelState.rawTrain.map((point) => {
         const raw = [point.features[modelState.xFeature], point.features[modelState.yFeature]];
-        const normalized = controls.normalize ? normalizeFeatures(raw, normalization) : raw;
+        const vector = modelState.featureColumns.map((column, index) => (
+          index === xIndex ? raw[0] : index === yIndex ? raw[1] : 0
+        ));
+        const normalized = normalizeFeatures(vector, fit.normalization);
         return {
           id: point.id,
           x: raw[0],
           y: raw[1],
           label: point.label,
-          normalizedX: normalized[0],
-          normalizedY: normalized[1],
+          normalizedX: normalized[xIndex],
+          normalizedY: normalized[yIndex],
         };
       }),
       query: {
         x: modelState.query.x,
         y: modelState.query.y,
-        normalizedX: query[0],
-        normalizedY: query[1],
+        normalizedX: query[xIndex],
+        normalizedY: query[yIndex],
       },
       neighbors: neighbors.map((neighbor, index) => ({
         pointId: neighbor.pointId,
@@ -353,15 +437,31 @@ export const knnPlayground = {
         cells: modelState.decisionRegions ?? [],
       },
       ranges: modelState.ranges,
-      featureOptions: modelState.points.length ? Object.keys(modelState.points[0].features) : [],
+      featureOptions: modelState.featureColumns,
       normalize: Boolean(controls.normalize),
+      normalization: {
+        xMean: fit.normalization.means[xIndex],
+        xStd: fit.normalization.stds[xIndex],
+        yMean: fit.normalization.means[yIndex],
+        yStd: fit.normalization.stds[yIndex],
+      },
+      split: {
+        trainRows: fit.trainRows,
+        testRows: fit.testRows,
+      },
     };
     let observation = {
       titleKey: 'playground.knn.observation.intro',
       bodyKey: 'playground.knn.observation.introBody',
-      params: {},
+      params: { trainRows: fit.trainRows, testRows: fit.testRows },
     };
-    if (modelState.revealed > 0 && modelState.revealed < controls.k) {
+    if (!normalize) {
+      observation = {
+        titleKey: 'playground.knn.observation.noNormalize',
+        bodyKey: 'playground.knn.observation.noNormalizeBody',
+        params: {},
+      };
+    } else if (modelState.revealed > 0 && modelState.revealed < controls.k) {
       const neighbor = neighbors[modelState.revealed - 1];
       observation = {
         titleKey: 'playground.knn.observation.neighbor',
@@ -381,7 +481,8 @@ export const knnPlayground = {
         revealed: modelState.revealed,
         k: controls.k,
         predictedLabel: voting.predictedLabel,
-        trainingPoints: modelState.points.length,
+        trainingPoints: modelState.rawTrain.length,
+        testAccuracy: modelState.testAccuracy ?? null,
       },
       observation,
       formula: {
