@@ -103,3 +103,52 @@ export function playgroundRanges(points) {
     biasStep: ySpan / 200,
   };
 }
+
+// Gradient of the mean squared error with respect to weight and bias.
+export function regressionGradient(points, weight, bias) {
+  const count = points.length || 1;
+  let weightGradient = 0;
+  let biasGradient = 0;
+  for (const point of points) {
+    const error = point.y - (weight * point.x + bias);
+    weightGradient += -2 * point.x * error;
+    biasGradient += -2 * error;
+  }
+  const normalizedWeight = weightGradient / count;
+  const normalizedBias = biasGradient / count;
+  return {
+    weight: normalizedWeight,
+    bias: normalizedBias,
+    magnitude: Math.hypot(normalizedWeight, normalizedBias),
+  };
+}
+
+export function gradientDescentStep(points, weight, bias, learningRate) {
+  const gradient = regressionGradient(points, weight, bias);
+  return {
+    weight: weight - learningRate * gradient.weight,
+    bias: bias - learningRate * gradient.bias,
+    gradient,
+  };
+}
+
+// Deterministic training history for a fixed parameter schedule.
+export function buildRegressionTrainingHistory(points, { weight, bias, learningRate, steps }) {
+  const history = [];
+  let current = { weight, bias };
+  for (let step = 1; step <= steps; step += 1) {
+    const gradient = regressionGradient(points, current.weight, current.bias);
+    current = {
+      weight: current.weight - learningRate * gradient.weight,
+      bias: current.bias - learningRate * gradient.bias,
+    };
+    history.push({
+      step,
+      weight: current.weight,
+      bias: current.bias,
+      gradient,
+      loss: meanSquaredError(points, current.weight, current.bias),
+    });
+  }
+  return history;
+}
