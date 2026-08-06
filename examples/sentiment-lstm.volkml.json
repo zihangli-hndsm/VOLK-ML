@@ -1,8 +1,8 @@
 {
   "format": "VOLK-ML",
   "version": 8,
-  "name": "Sentiment Analysis (LSTM)",
-  "savedAt": "2026-08-05T07:57:15.457Z",
+  "name": "example.sentimentLstm.title",
+  "savedAt": "2026-08-06T00:00:00.000Z",
   "language": {
     "primary": "en",
     "secondary": "zh"
@@ -435,7 +435,7 @@
         }
       },
       {
-        "id": "senti-tanh",
+        "id": "senti-sigmoid",
         "type": "pipelineNode",
         "position": {
           "x": 2640,
@@ -443,21 +443,21 @@
         },
         "data": {
           "label": {
-            "en": "Tanh",
-            "zh": "Tanh"
+            "en": "Sigmoid",
+            "zh": "Sigmoid"
           },
           "manifest": {
             "schemaVersion": 2,
-            "id": "tanh_node",
-            "op": "tanh",
+            "id": "sigmoid_node",
+            "op": "sigmoid",
             "kind": "layer",
             "name": {
-              "en": "Tanh",
-              "zh": "Tanh"
+              "en": "Sigmoid",
+              "zh": "Sigmoid"
             },
             "description": {
-              "en": "Applies hyperbolic tangent activation.",
-              "zh": "应用双曲正切激活。"
+              "en": "Maps values to the range from zero to one.",
+              "zh": "将数值映射到零到一。"
             },
             "category": "Activations",
             "inputs": [
@@ -575,16 +575,16 @@
         "type": "deletable"
       },
       {
-        "id": "senti-head-tanh",
+        "id": "senti-head-sigmoid",
         "source": "senti-head",
         "sourceHandle": "output",
-        "target": "senti-tanh",
+        "target": "senti-sigmoid",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "senti-tanh-output",
-        "source": "senti-tanh",
+        "id": "senti-sigmoid-output",
+        "source": "senti-sigmoid",
         "sourceHandle": "output",
         "target": "senti-output",
         "targetHandle": "input",

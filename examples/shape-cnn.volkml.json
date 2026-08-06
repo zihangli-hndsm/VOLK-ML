@@ -1,8 +1,8 @@
 {
   "format": "VOLK-ML",
   "version": 8,
-  "name": "Movie Recommendation (Embedding)",
-  "savedAt": "2026-08-05T07:57:15.316Z",
+  "name": "example.shapeCnn.title",
+  "savedAt": "2026-08-06T00:00:00.000Z",
   "language": {
     "primary": "en",
     "secondary": "zh"
@@ -16,11 +16,11 @@
   "graph": {
     "nodes": [
       {
-        "id": "mov-user",
+        "id": "cnn-input",
         "type": "pipelineNode",
         "position": {
           "x": 40,
-          "y": 80
+          "y": 660
         },
         "data": {
           "label": {
@@ -84,42 +84,47 @@
             "composition": null
           },
           "parameters": {
-            "shape": "1",
-            "dtype": "int32"
+            "shape": "784",
+            "dtype": "float32"
           },
           "status": "idle"
         }
       },
       {
-        "id": "mov-movie",
+        "id": "cnn-reshape",
         "type": "pipelineNode",
         "position": {
-          "x": 40,
-          "y": 480
+          "x": 560,
+          "y": 660
         },
         "data": {
           "label": {
-            "en": "Tensor Input",
-            "zh": "张量输入"
+            "en": "Reshape",
+            "zh": "重塑形状"
           },
           "manifest": {
             "schemaVersion": 2,
-            "id": "tensor_input_node",
-            "op": "tensor_input",
-            "kind": "source",
+            "id": "reshape_node",
+            "op": "reshape",
+            "kind": "layer",
             "name": {
-              "en": "Tensor Input",
-              "zh": "张量输入"
+              "en": "Reshape",
+              "zh": "重塑形状"
             },
             "description": {
-              "en": "Declares a model input shape and dtype.",
-              "zh": "声明模型的输入形状和数据类型。"
+              "en": "Changes tensor shape without changing values.",
+              "zh": "在不改变数值的情况下修改张量形状。"
             },
-            "category": "Core",
-            "inputs": [],
+            "category": "Shape",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
             "outputs": [
               {
-                "name": "tensor",
+                "name": "output",
                 "type": "Tensor"
               }
             ],
@@ -127,106 +132,11 @@
               {
                 "key": "shape",
                 "label": {
-                  "en": "Shape",
-                  "zh": "形状"
+                  "en": "Target Shape",
+                  "zh": "目标形状"
                 },
                 "type": "text",
                 "default": "32"
-              },
-              {
-                "key": "dtype",
-                "label": {
-                  "en": "Data Type",
-                  "zh": "数据类型"
-                },
-                "type": "select",
-                "default": "float32",
-                "options": [
-                  "float32",
-                  "float16",
-                  "int32"
-                ]
-              }
-            ],
-            "runtime": {
-              "minimumTier": "L0",
-              "browserBackend": "cpu"
-            },
-            "compatibility": {
-              "pytorch": "exact",
-              "tensorflow": "exact"
-            },
-            "composition": null
-          },
-          "parameters": {
-            "shape": "1",
-            "dtype": "int32"
-          },
-          "status": "idle"
-        }
-      },
-      {
-        "id": "mov-user-embed",
-        "type": "pipelineNode",
-        "position": {
-          "x": 560,
-          "y": 80
-        },
-        "data": {
-          "label": {
-            "en": "Embedding",
-            "zh": "嵌入层"
-          },
-          "manifest": {
-            "schemaVersion": 2,
-            "id": "embedding_node",
-            "op": "embedding",
-            "kind": "layer",
-            "name": {
-              "en": "Embedding",
-              "zh": "嵌入层"
-            },
-            "description": {
-              "en": "Maps integer token IDs to dense vectors.",
-              "zh": "将整数 token ID 映射为稠密向量。"
-            },
-            "category": "Sequence",
-            "inputs": [
-              {
-                "name": "input",
-                "type": "Tensor"
-              }
-            ],
-            "outputs": [
-              {
-                "name": "output",
-                "type": "Tensor"
-              }
-            ],
-            "properties": [
-              {
-                "key": "vocab_size",
-                "label": {
-                  "en": "Vocabulary Size",
-                  "zh": "词表大小"
-                },
-                "type": "number",
-                "default": 10000,
-                "min": 2,
-                "max": 1000000,
-                "step": 1
-              },
-              {
-                "key": "embedding_dim",
-                "label": {
-                  "en": "Embedding Dimension",
-                  "zh": "嵌入维度"
-                },
-                "type": "number",
-                "default": 128,
-                "min": 1,
-                "max": 4096,
-                "step": 1
               }
             ],
             "runtime": {
@@ -240,126 +150,40 @@
             "composition": null
           },
           "parameters": {
-            "vocab_size": 1000,
-            "embedding_dim": 32
+            "shape": "1,28,28"
           },
           "status": "idle"
         }
       },
       {
-        "id": "mov-movie-embed",
-        "type": "pipelineNode",
-        "position": {
-          "x": 560,
-          "y": 480
-        },
-        "data": {
-          "label": {
-            "en": "Embedding",
-            "zh": "嵌入层"
-          },
-          "manifest": {
-            "schemaVersion": 2,
-            "id": "embedding_node",
-            "op": "embedding",
-            "kind": "layer",
-            "name": {
-              "en": "Embedding",
-              "zh": "嵌入层"
-            },
-            "description": {
-              "en": "Maps integer token IDs to dense vectors.",
-              "zh": "将整数 token ID 映射为稠密向量。"
-            },
-            "category": "Sequence",
-            "inputs": [
-              {
-                "name": "input",
-                "type": "Tensor"
-              }
-            ],
-            "outputs": [
-              {
-                "name": "output",
-                "type": "Tensor"
-              }
-            ],
-            "properties": [
-              {
-                "key": "vocab_size",
-                "label": {
-                  "en": "Vocabulary Size",
-                  "zh": "词表大小"
-                },
-                "type": "number",
-                "default": 10000,
-                "min": 2,
-                "max": 1000000,
-                "step": 1
-              },
-              {
-                "key": "embedding_dim",
-                "label": {
-                  "en": "Embedding Dimension",
-                  "zh": "嵌入维度"
-                },
-                "type": "number",
-                "default": 128,
-                "min": 1,
-                "max": 4096,
-                "step": 1
-              }
-            ],
-            "runtime": {
-              "minimumTier": "L1",
-              "browserBackend": "none"
-            },
-            "compatibility": {
-              "pytorch": "exact",
-              "tensorflow": "exact"
-            },
-            "composition": null
-          },
-          "parameters": {
-            "vocab_size": 2000,
-            "embedding_dim": 32
-          },
-          "status": "idle"
-        }
-      },
-      {
-        "id": "mov-concat",
+        "id": "cnn-block",
         "type": "pipelineNode",
         "position": {
           "x": 1080,
-          "y": 300
+          "y": 660
         },
         "data": {
           "label": {
-            "en": "Concatenate",
-            "zh": "拼接"
+            "en": "Conv Block",
+            "zh": "卷积模块"
           },
           "manifest": {
             "schemaVersion": 2,
-            "id": "concatenate_node",
-            "op": "concatenate",
-            "kind": "merge",
+            "id": "conv_block_node",
+            "op": "conv_block",
+            "kind": "composite",
             "name": {
-              "en": "Concatenate",
-              "zh": "拼接"
+              "en": "Conv Block",
+              "zh": "卷积模块"
             },
             "description": {
-              "en": "Concatenates two tensors along an axis.",
-              "zh": "沿指定轴拼接两个张量。"
+              "en": "Conv2D, BatchNorm, ReLU, and pooling as an expandable subgraph.",
+              "zh": "由二维卷积、批归一化、ReLU 和池化组成的可展开子图。"
             },
-            "category": "Merge",
+            "category": "Composite",
             "inputs": [
               {
-                "name": "a",
-                "type": "Tensor"
-              },
-              {
-                "name": "b",
+                "name": "input",
                 "type": "Tensor"
               }
             ],
@@ -371,18 +195,162 @@
             ],
             "properties": [
               {
-                "key": "axis",
+                "key": "input_channels",
                 "label": {
-                  "en": "Axis",
-                  "zh": "轴"
+                  "en": "Input Channels",
+                  "zh": "输入通道数"
                 },
                 "type": "number",
-                "default": -1,
-                "min": -8,
-                "max": 8,
+                "default": 3,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "filters",
+                "label": {
+                  "en": "Output Channels",
+                  "zh": "输出通道数"
+                },
+                "type": "number",
+                "default": 32,
+                "min": 1,
+                "max": 4096,
+                "step": 1
+              },
+              {
+                "key": "kernel_size",
+                "label": {
+                  "en": "Kernel Size",
+                  "zh": "卷积核大小"
+                },
+                "type": "number",
+                "default": 3,
+                "min": 1,
+                "max": 15,
                 "step": 1
               }
             ],
+            "runtime": {
+              "minimumTier": "L1",
+              "browserBackend": "none"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "adapted"
+            },
+            "composition": {
+              "nodes": [
+                {
+                  "key": "conv",
+                  "componentId": "conv2d_node",
+                  "parameters": {
+                    "input_channels": "$input_channels",
+                    "filters": "$filters",
+                    "kernel_size": "$kernel_size"
+                  }
+                },
+                {
+                  "key": "norm",
+                  "componentId": "batch_norm2d_node",
+                  "parameters": {
+                    "channels": "$filters"
+                  }
+                },
+                {
+                  "key": "activation",
+                  "componentId": "relu_node",
+                  "parameters": {}
+                },
+                {
+                  "key": "pool",
+                  "componentId": "max_pool2d_node",
+                  "parameters": {}
+                }
+              ],
+              "edges": [
+                {
+                  "source": "conv",
+                  "sourceHandle": "output",
+                  "target": "norm",
+                  "targetHandle": "input"
+                },
+                {
+                  "source": "norm",
+                  "sourceHandle": "output",
+                  "target": "activation",
+                  "targetHandle": "input"
+                },
+                {
+                  "source": "activation",
+                  "sourceHandle": "output",
+                  "target": "pool",
+                  "targetHandle": "input"
+                }
+              ],
+              "inputs": {
+                "input": [
+                  {
+                    "node": "conv",
+                    "port": "input"
+                  }
+                ]
+              },
+              "outputs": {
+                "output": {
+                  "node": "pool",
+                  "port": "output"
+                }
+              }
+            }
+          },
+          "parameters": {
+            "input_channels": 1,
+            "filters": 8,
+            "kernel_size": 3
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "cnn-flatten",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1600,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Flatten",
+            "zh": "展平"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "flatten_node",
+            "op": "flatten",
+            "kind": "layer",
+            "name": {
+              "en": "Flatten",
+              "zh": "展平"
+            },
+            "description": {
+              "en": "Flattens all non-batch dimensions.",
+              "zh": "展平批次维以外的所有维度。"
+            },
+            "category": "Shape",
+            "inputs": [
+              {
+                "name": "input",
+                "type": "Tensor"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "output",
+                "type": "Tensor"
+              }
+            ],
+            "properties": [],
             "runtime": {
               "minimumTier": "L1",
               "browserBackend": "none"
@@ -393,18 +361,16 @@
             },
             "composition": null
           },
-          "parameters": {
-            "axis": -1
-          },
+          "parameters": {},
           "status": "idle"
         }
       },
       {
-        "id": "mov-head",
+        "id": "cnn-head",
         "type": "pipelineNode",
         "position": {
-          "x": 1600,
-          "y": 300
+          "x": 2120,
+          "y": 660
         },
         "data": {
           "label": {
@@ -483,19 +449,19 @@
             "composition": null
           },
           "parameters": {
-            "input_features": 64,
-            "units": 1,
+            "input_features": 128,
+            "units": 2,
             "use_bias": true
           },
           "status": "idle"
         }
       },
       {
-        "id": "mov-output",
+        "id": "cnn-output",
         "type": "pipelineNode",
         "position": {
-          "x": 2120,
-          "y": 300
+          "x": 2640,
+          "y": 660
         },
         "data": {
           "label": {
@@ -546,50 +512,42 @@
     ],
     "edges": [
       {
-        "id": "mov-user-embed",
-        "source": "mov-user",
+        "id": "cnn-input-reshape",
+        "source": "cnn-input",
         "sourceHandle": "tensor",
-        "target": "mov-user-embed",
+        "target": "cnn-reshape",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "mov-movie-embed",
-        "source": "mov-movie",
-        "sourceHandle": "tensor",
-        "target": "mov-movie-embed",
+        "id": "cnn-reshape-block",
+        "source": "cnn-reshape",
+        "sourceHandle": "output",
+        "target": "cnn-block",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "mov-embed-a",
-        "source": "mov-user-embed",
+        "id": "cnn-block-flatten",
+        "source": "cnn-block",
         "sourceHandle": "output",
-        "target": "mov-concat",
-        "targetHandle": "a",
-        "type": "deletable"
-      },
-      {
-        "id": "mov-embed-b",
-        "source": "mov-movie-embed",
-        "sourceHandle": "output",
-        "target": "mov-concat",
-        "targetHandle": "b",
-        "type": "deletable"
-      },
-      {
-        "id": "mov-concat-head",
-        "source": "mov-concat",
-        "sourceHandle": "output",
-        "target": "mov-head",
+        "target": "cnn-flatten",
         "targetHandle": "input",
         "type": "deletable"
       },
       {
-        "id": "mov-head-output",
-        "source": "mov-head",
+        "id": "cnn-flatten-head",
+        "source": "cnn-flatten",
         "sourceHandle": "output",
-        "target": "mov-output",
+        "target": "cnn-head",
+        "targetHandle": "input",
+        "type": "deletable"
+      },
+      {
+        "id": "cnn-head-output",
+        "source": "cnn-head",
+        "sourceHandle": "output",
+        "target": "cnn-output",
         "targetHandle": "input",
         "type": "deletable"
       }

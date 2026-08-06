@@ -1,0 +1,1312 @@
+{
+  "format": "VOLK-ML",
+  "version": 8,
+  "name": "example.knnNeighborhood.title",
+  "savedAt": "2026-08-06T00:00:00.000Z",
+  "language": {
+    "primary": "en",
+    "secondary": "zh"
+  },
+  "workspace": {
+    "libraryMode": "detailed",
+    "leftWidth": 300,
+    "rightWidth": 384,
+    "viewMode": "canvas"
+  },
+  "graph": {
+    "nodes": [
+      {
+        "id": "moons-data",
+        "type": "pipelineNode",
+        "position": {
+          "x": 40,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "Tabular Data",
+            "zh": "表格数据"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "tabular_data_node",
+            "op": "tabular_data",
+            "kind": "data",
+            "name": {
+              "en": "Tabular Data",
+              "zh": "表格数据"
+            },
+            "description": {
+              "en": "Provides the CSV or JSON dataset configured in the Data workspace.",
+              "zh": "提供在数据工作区配置的 CSV 或 JSON 数据集。"
+            },
+            "category": "Data",
+            "inputs": [],
+            "outputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "moons-knn",
+        "type": "pipelineNode",
+        "position": {
+          "x": 560,
+          "y": 660
+        },
+        "data": {
+          "label": {
+            "en": "K-Nearest Neighbors",
+            "zh": "K-近邻算法"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "knn_node",
+            "op": "knn_classifier",
+            "kind": "model",
+            "name": {
+              "en": "K-Nearest Neighbors",
+              "zh": "K-近邻算法"
+            },
+            "description": {
+              "en": "Classifies samples by voting among nearby examples.",
+              "zh": "通过附近样本投票对数据进行分类。"
+            },
+            "category": "Classification",
+            "inputs": [
+              {
+                "name": "dataset",
+                "type": "Table"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "properties": [
+              {
+                "key": "k_value",
+                "label": {
+                  "en": "Number of Neighbors (K)",
+                  "zh": "邻居数量 (K)"
+                },
+                "type": "number",
+                "default": 3,
+                "min": 1,
+                "max": 99,
+                "step": 2
+              },
+              {
+                "key": "train_ratio",
+                "label": {
+                  "en": "Training Ratio",
+                  "zh": "训练集比例"
+                },
+                "type": "slider",
+                "default": 0.8,
+                "min": 0.5,
+                "max": 0.9,
+                "step": 0.05
+              }
+            ],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "unsupported",
+              "tensorflow": "unsupported"
+            },
+            "composition": null
+          },
+          "parameters": {
+            "k_value": 5,
+            "train_ratio": 0.8
+          },
+          "status": "idle"
+        }
+      },
+      {
+        "id": "moons-evaluate",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1600,
+          "y": 120
+        },
+        "data": {
+          "label": {
+            "en": "Evaluate Classification",
+            "zh": "分类评估"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "evaluate_classification_node",
+            "op": "evaluate_classification",
+            "kind": "evaluation",
+            "name": {
+              "en": "Evaluate Classification",
+              "zh": "分类评估"
+            },
+            "description": {
+              "en": "Computes accuracy and macro F1 on a connected classifier test set.",
+              "zh": "在连接的分类器测试集上计算准确率和宏平均 F1。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "metrics",
+                "type": "Metrics"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      },
+      {
+        "id": "moons-predict",
+        "type": "pipelineNode",
+        "position": {
+          "x": 1600,
+          "y": 700
+        },
+        "data": {
+          "label": {
+            "en": "Interactive Predictor",
+            "zh": "交互预测器"
+          },
+          "manifest": {
+            "schemaVersion": 2,
+            "id": "predictor_node",
+            "op": "interactive_predictor",
+            "kind": "inference",
+            "name": {
+              "en": "Interactive Predictor",
+              "zh": "交互预测器"
+            },
+            "description": {
+              "en": "Creates an input form for trying the connected trained model.",
+              "zh": "为连接的已训练模型创建交互输入表单。"
+            },
+            "category": "Evaluation",
+            "inputs": [
+              {
+                "name": "trained_model",
+                "type": "TrainedModel"
+              }
+            ],
+            "outputs": [
+              {
+                "name": "prediction",
+                "type": "Prediction"
+              }
+            ],
+            "properties": [],
+            "runtime": {
+              "minimumTier": "L0",
+              "browserBackend": "cpu"
+            },
+            "compatibility": {
+              "pytorch": "exact",
+              "tensorflow": "exact"
+            },
+            "composition": null
+          },
+          "parameters": {},
+          "status": "idle"
+        }
+      }
+    ],
+    "edges": [
+      {
+        "id": "moons-data-knn",
+        "source": "moons-data",
+        "sourceHandle": "dataset",
+        "target": "moons-knn",
+        "targetHandle": "dataset",
+        "type": "deletable"
+      },
+      {
+        "id": "moons-knn-evaluate",
+        "source": "moons-knn",
+        "sourceHandle": "trained_model",
+        "target": "moons-evaluate",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      },
+      {
+        "id": "moons-knn-predict",
+        "source": "moons-knn",
+        "sourceHandle": "trained_model",
+        "target": "moons-predict",
+        "targetHandle": "trained_model",
+        "type": "deletable"
+      }
+    ]
+  },
+  "customComponents": [],
+  "data": {
+    "name": "KNN Neighborhood",
+    "task": "classification",
+    "rows": [
+      {
+        "x1": 1.043,
+        "x2": 0.113,
+        "label": "a"
+      },
+      {
+        "x1": 0.486,
+        "x2": -0.286,
+        "label": "b"
+      },
+      {
+        "x1": 0.873,
+        "x2": 0.291,
+        "label": "a"
+      },
+      {
+        "x1": -0.115,
+        "x2": 0.278,
+        "label": "b"
+      },
+      {
+        "x1": 1.125,
+        "x2": 0.147,
+        "label": "a"
+      },
+      {
+        "x1": 2.082,
+        "x2": 0.109,
+        "label": "b"
+      },
+      {
+        "x1": 0.258,
+        "x2": 1.034,
+        "label": "a"
+      },
+      {
+        "x1": 0.005,
+        "x2": 0.265,
+        "label": "b"
+      },
+      {
+        "x1": 0.665,
+        "x2": 0.762,
+        "label": "a"
+      },
+      {
+        "x1": 1.804,
+        "x2": 0.006,
+        "label": "b"
+      },
+      {
+        "x1": -0.52,
+        "x2": 0.811,
+        "label": "a"
+      },
+      {
+        "x1": 1.645,
+        "x2": -0.069,
+        "label": "b"
+      },
+      {
+        "x1": -0.98,
+        "x2": -0.003,
+        "label": "a"
+      },
+      {
+        "x1": 2.03,
+        "x2": 0.353,
+        "label": "b"
+      },
+      {
+        "x1": -0.859,
+        "x2": 0.798,
+        "label": "a"
+      },
+      {
+        "x1": 1.467,
+        "x2": -0.312,
+        "label": "b"
+      },
+      {
+        "x1": -0.544,
+        "x2": 0.606,
+        "label": "a"
+      },
+      {
+        "x1": 1.705,
+        "x2": -0.027,
+        "label": "b"
+      },
+      {
+        "x1": -1.025,
+        "x2": 0.107,
+        "label": "a"
+      },
+      {
+        "x1": 1.716,
+        "x2": -0.044,
+        "label": "b"
+      },
+      {
+        "x1": 0.247,
+        "x2": 1.065,
+        "label": "a"
+      },
+      {
+        "x1": 0.535,
+        "x2": -0.168,
+        "label": "b"
+      },
+      {
+        "x1": 0.374,
+        "x2": 0.826,
+        "label": "a"
+      },
+      {
+        "x1": 1.156,
+        "x2": -0.297,
+        "label": "b"
+      },
+      {
+        "x1": 0.575,
+        "x2": 1.046,
+        "label": "a"
+      },
+      {
+        "x1": 1.295,
+        "x2": -0.494,
+        "label": "b"
+      },
+      {
+        "x1": 0.733,
+        "x2": 0.847,
+        "label": "a"
+      },
+      {
+        "x1": 1.135,
+        "x2": -0.328,
+        "label": "b"
+      },
+      {
+        "x1": -0.448,
+        "x2": 0.853,
+        "label": "a"
+      },
+      {
+        "x1": -0.012,
+        "x2": 0.214,
+        "label": "b"
+      },
+      {
+        "x1": 0.493,
+        "x2": 0.988,
+        "label": "a"
+      },
+      {
+        "x1": 0.719,
+        "x2": -0.327,
+        "label": "b"
+      },
+      {
+        "x1": 0.756,
+        "x2": 0.529,
+        "label": "a"
+      },
+      {
+        "x1": 0.219,
+        "x2": -0.154,
+        "label": "b"
+      },
+      {
+        "x1": 0.972,
+        "x2": 0.663,
+        "label": "a"
+      },
+      {
+        "x1": 0.331,
+        "x2": -0.34,
+        "label": "b"
+      },
+      {
+        "x1": -0.384,
+        "x2": 1.034,
+        "label": "a"
+      },
+      {
+        "x1": -0.135,
+        "x2": 0.28,
+        "label": "b"
+      },
+      {
+        "x1": 0.812,
+        "x2": 0.503,
+        "label": "a"
+      },
+      {
+        "x1": 0.782,
+        "x2": -0.502,
+        "label": "b"
+      },
+      {
+        "x1": 0.58,
+        "x2": 1.172,
+        "label": "a"
+      },
+      {
+        "x1": 1.742,
+        "x2": -0.123,
+        "label": "b"
+      },
+      {
+        "x1": 0.937,
+        "x2": 0.112,
+        "label": "a"
+      },
+      {
+        "x1": -0.074,
+        "x2": 0.083,
+        "label": "b"
+      },
+      {
+        "x1": 0.854,
+        "x2": 0.64,
+        "label": "a"
+      },
+      {
+        "x1": 1.331,
+        "x2": -0.633,
+        "label": "b"
+      },
+      {
+        "x1": -1.064,
+        "x2": 0.037,
+        "label": "a"
+      },
+      {
+        "x1": 0.592,
+        "x2": -0.317,
+        "label": "b"
+      },
+      {
+        "x1": -0.24,
+        "x2": 0.749,
+        "label": "a"
+      },
+      {
+        "x1": 1.585,
+        "x2": 0.25,
+        "label": "b"
+      },
+      {
+        "x1": 0.991,
+        "x2": 0.399,
+        "label": "a"
+      },
+      {
+        "x1": 0.624,
+        "x2": -0.659,
+        "label": "b"
+      },
+      {
+        "x1": 0.878,
+        "x2": 0.442,
+        "label": "a"
+      },
+      {
+        "x1": 1.812,
+        "x2": 0.218,
+        "label": "b"
+      },
+      {
+        "x1": 0.613,
+        "x2": 0.929,
+        "label": "a"
+      },
+      {
+        "x1": -0.195,
+        "x2": 0.255,
+        "label": "b"
+      },
+      {
+        "x1": -0.96,
+        "x2": 0.305,
+        "label": "a"
+      },
+      {
+        "x1": 0.503,
+        "x2": -0.376,
+        "label": "b"
+      },
+      {
+        "x1": -0.685,
+        "x2": 0.758,
+        "label": "a"
+      },
+      {
+        "x1": 0.154,
+        "x2": 0.179,
+        "label": "b"
+      },
+      {
+        "x1": 0.987,
+        "x2": 0.085,
+        "label": "a"
+      },
+      {
+        "x1": 0.009,
+        "x2": 0.269,
+        "label": "b"
+      },
+      {
+        "x1": 0.988,
+        "x2": 0.661,
+        "label": "a"
+      },
+      {
+        "x1": 0.825,
+        "x2": -0.351,
+        "label": "b"
+      },
+      {
+        "x1": -0.004,
+        "x2": 0.936,
+        "label": "a"
+      },
+      {
+        "x1": 0.119,
+        "x2": -0.03,
+        "label": "b"
+      },
+      {
+        "x1": -0.365,
+        "x2": 0.806,
+        "label": "a"
+      },
+      {
+        "x1": 1.194,
+        "x2": -0.658,
+        "label": "b"
+      },
+      {
+        "x1": -0.743,
+        "x2": 0.089,
+        "label": "a"
+      },
+      {
+        "x1": 0.741,
+        "x2": -0.431,
+        "label": "b"
+      },
+      {
+        "x1": -0.695,
+        "x2": 0.544,
+        "label": "a"
+      },
+      {
+        "x1": 1.467,
+        "x2": -0.633,
+        "label": "b"
+      },
+      {
+        "x1": -0.528,
+        "x2": 0.872,
+        "label": "a"
+      },
+      {
+        "x1": 0.449,
+        "x2": -0.217,
+        "label": "b"
+      },
+      {
+        "x1": 0.154,
+        "x2": 0.939,
+        "label": "a"
+      },
+      {
+        "x1": 0.521,
+        "x2": -0.219,
+        "label": "b"
+      },
+      {
+        "x1": 1.197,
+        "x2": 0.598,
+        "label": "a"
+      },
+      {
+        "x1": 1.462,
+        "x2": -0.485,
+        "label": "b"
+      },
+      {
+        "x1": -1.022,
+        "x2": 0.268,
+        "label": "a"
+      },
+      {
+        "x1": 0.068,
+        "x2": 0.344,
+        "label": "b"
+      },
+      {
+        "x1": 0.913,
+        "x2": -0.067,
+        "label": "a"
+      },
+      {
+        "x1": 0.385,
+        "x2": -0.384,
+        "label": "b"
+      },
+      {
+        "x1": -0.457,
+        "x2": 0.873,
+        "label": "a"
+      },
+      {
+        "x1": 1.606,
+        "x2": -0.22,
+        "label": "b"
+      },
+      {
+        "x1": 1.113,
+        "x2": 0.379,
+        "label": "a"
+      },
+      {
+        "x1": 2.01,
+        "x2": 0.019,
+        "label": "b"
+      },
+      {
+        "x1": -0.618,
+        "x2": 0.527,
+        "label": "a"
+      },
+      {
+        "x1": -0.006,
+        "x2": 0.103,
+        "label": "b"
+      },
+      {
+        "x1": -0.894,
+        "x2": 0.423,
+        "label": "a"
+      },
+      {
+        "x1": 1.971,
+        "x2": 0.243,
+        "label": "b"
+      },
+      {
+        "x1": -0.572,
+        "x2": 0.518,
+        "label": "a"
+      },
+      {
+        "x1": 1.462,
+        "x2": -0.336,
+        "label": "b"
+      },
+      {
+        "x1": -1.002,
+        "x2": -0.028,
+        "label": "a"
+      },
+      {
+        "x1": 1.996,
+        "x2": 0.274,
+        "label": "b"
+      },
+      {
+        "x1": -0.575,
+        "x2": 1.01,
+        "label": "a"
+      },
+      {
+        "x1": 1.995,
+        "x2": 0.431,
+        "label": "b"
+      },
+      {
+        "x1": 0.179,
+        "x2": 1.075,
+        "label": "a"
+      },
+      {
+        "x1": 1.928,
+        "x2": 0.294,
+        "label": "b"
+      },
+      {
+        "x1": 0.704,
+        "x2": 0.82,
+        "label": "a"
+      },
+      {
+        "x1": -0.146,
+        "x2": 0.294,
+        "label": "b"
+      },
+      {
+        "x1": -0.325,
+        "x2": 1.001,
+        "label": "a"
+      },
+      {
+        "x1": 0.517,
+        "x2": -0.266,
+        "label": "b"
+      },
+      {
+        "x1": 0.893,
+        "x2": 0.593,
+        "label": "a"
+      },
+      {
+        "x1": 1.957,
+        "x2": 0.113,
+        "label": "b"
+      },
+      {
+        "x1": -0.844,
+        "x2": 0.745,
+        "label": "a"
+      },
+      {
+        "x1": 0.276,
+        "x2": 0.108,
+        "label": "b"
+      },
+      {
+        "x1": 0.831,
+        "x2": 0.15,
+        "label": "a"
+      },
+      {
+        "x1": 1.884,
+        "x2": -0.091,
+        "label": "b"
+      },
+      {
+        "x1": -0.392,
+        "x2": 0.881,
+        "label": "a"
+      },
+      {
+        "x1": 1.671,
+        "x2": -0.03,
+        "label": "b"
+      },
+      {
+        "x1": -0.478,
+        "x2": 0.782,
+        "label": "a"
+      },
+      {
+        "x1": 2.209,
+        "x2": 0.534,
+        "label": "b"
+      },
+      {
+        "x1": -0.864,
+        "x2": 0.495,
+        "label": "a"
+      },
+      {
+        "x1": 0.115,
+        "x2": 0.441,
+        "label": "b"
+      },
+      {
+        "x1": -0.437,
+        "x2": 1.14,
+        "label": "a"
+      },
+      {
+        "x1": 0.038,
+        "x2": 0.03,
+        "label": "b"
+      },
+      {
+        "x1": 0.413,
+        "x2": 0.831,
+        "label": "a"
+      },
+      {
+        "x1": 0.101,
+        "x2": 0.034,
+        "label": "b"
+      },
+      {
+        "x1": 0.833,
+        "x2": 0.04,
+        "label": "a"
+      },
+      {
+        "x1": 1.747,
+        "x2": -0.063,
+        "label": "b"
+      },
+      {
+        "x1": -0.781,
+        "x2": 0.791,
+        "label": "a"
+      },
+      {
+        "x1": 0.57,
+        "x2": -0.229,
+        "label": "b"
+      },
+      {
+        "x1": 0.256,
+        "x2": 0.826,
+        "label": "a"
+      },
+      {
+        "x1": 0.637,
+        "x2": -0.474,
+        "label": "b"
+      },
+      {
+        "x1": 0.14,
+        "x2": 1.039,
+        "label": "a"
+      },
+      {
+        "x1": 0.133,
+        "x2": -0.155,
+        "label": "b"
+      },
+      {
+        "x1": 0.337,
+        "x2": 0.932,
+        "label": "a"
+      },
+      {
+        "x1": 0.033,
+        "x2": 0.2,
+        "label": "b"
+      },
+      {
+        "x1": 0.826,
+        "x2": 0.204,
+        "label": "a"
+      },
+      {
+        "x1": 1.545,
+        "x2": -0.054,
+        "label": "b"
+      },
+      {
+        "x1": 0.583,
+        "x2": 0.922,
+        "label": "a"
+      },
+      {
+        "x1": 0.273,
+        "x2": -0.367,
+        "label": "b"
+      },
+      {
+        "x1": -0.381,
+        "x2": 0.815,
+        "label": "a"
+      },
+      {
+        "x1": 1.798,
+        "x2": -0.062,
+        "label": "b"
+      },
+      {
+        "x1": -0.626,
+        "x2": 0.782,
+        "label": "a"
+      },
+      {
+        "x1": 1.544,
+        "x2": -0.433,
+        "label": "b"
+      },
+      {
+        "x1": -0.868,
+        "x2": -0.038,
+        "label": "a"
+      },
+      {
+        "x1": 1.204,
+        "x2": -0.442,
+        "label": "b"
+      },
+      {
+        "x1": -1.049,
+        "x2": -0.125,
+        "label": "a"
+      },
+      {
+        "x1": 0.639,
+        "x2": -0.263,
+        "label": "b"
+      },
+      {
+        "x1": 0.313,
+        "x2": 0.952,
+        "label": "a"
+      },
+      {
+        "x1": 0.457,
+        "x2": -0.062,
+        "label": "b"
+      },
+      {
+        "x1": 0.996,
+        "x2": 0.338,
+        "label": "a"
+      },
+      {
+        "x1": 0.242,
+        "x2": 0.288,
+        "label": "b"
+      },
+      {
+        "x1": 0.057,
+        "x2": 0.987,
+        "label": "a"
+      },
+      {
+        "x1": 1.849,
+        "x2": 0.187,
+        "label": "b"
+      },
+      {
+        "x1": -0.21,
+        "x2": 1.053,
+        "label": "a"
+      },
+      {
+        "x1": 1.739,
+        "x2": 0.142,
+        "label": "b"
+      },
+      {
+        "x1": 0.974,
+        "x2": 0.09,
+        "label": "a"
+      },
+      {
+        "x1": 1.002,
+        "x2": -0.732,
+        "label": "b"
+      },
+      {
+        "x1": -0.442,
+        "x2": 1.069,
+        "label": "a"
+      },
+      {
+        "x1": 0.445,
+        "x2": -0.389,
+        "label": "b"
+      },
+      {
+        "x1": 0.554,
+        "x2": 1.028,
+        "label": "a"
+      },
+      {
+        "x1": 0.251,
+        "x2": -0.131,
+        "label": "b"
+      },
+      {
+        "x1": 0.877,
+        "x2": -0.031,
+        "label": "a"
+      },
+      {
+        "x1": -0.02,
+        "x2": 0.368,
+        "label": "b"
+      },
+      {
+        "x1": 0.95,
+        "x2": 0.221,
+        "label": "a"
+      },
+      {
+        "x1": 1.543,
+        "x2": -0.155,
+        "label": "b"
+      },
+      {
+        "x1": -0.459,
+        "x2": 0.88,
+        "label": "a"
+      },
+      {
+        "x1": 0.274,
+        "x2": -0.148,
+        "label": "b"
+      },
+      {
+        "x1": -0.596,
+        "x2": 0.931,
+        "label": "a"
+      },
+      {
+        "x1": 1.504,
+        "x2": -0.275,
+        "label": "b"
+      },
+      {
+        "x1": -0.017,
+        "x2": 0.972,
+        "label": "a"
+      },
+      {
+        "x1": 0.232,
+        "x2": -0.045,
+        "label": "b"
+      },
+      {
+        "x1": 0.8,
+        "x2": 0.753,
+        "label": "a"
+      },
+      {
+        "x1": 2.048,
+        "x2": 0.118,
+        "label": "b"
+      },
+      {
+        "x1": 0.897,
+        "x2": 0.409,
+        "label": "a"
+      },
+      {
+        "x1": -0.076,
+        "x2": 0.33,
+        "label": "b"
+      },
+      {
+        "x1": 0.395,
+        "x2": 0.842,
+        "label": "a"
+      },
+      {
+        "x1": 1.716,
+        "x2": -0.265,
+        "label": "b"
+      },
+      {
+        "x1": 0.639,
+        "x2": 0.688,
+        "label": "a"
+      },
+      {
+        "x1": 0.787,
+        "x2": -0.601,
+        "label": "b"
+      },
+      {
+        "x1": -0.588,
+        "x2": 0.654,
+        "label": "a"
+      },
+      {
+        "x1": 0.025,
+        "x2": 0.175,
+        "label": "b"
+      },
+      {
+        "x1": -0.267,
+        "x2": 0.982,
+        "label": "a"
+      },
+      {
+        "x1": 0.777,
+        "x2": -0.453,
+        "label": "b"
+      },
+      {
+        "x1": 0.214,
+        "x2": 1.011,
+        "label": "a"
+      },
+      {
+        "x1": 1.84,
+        "x2": 0.239,
+        "label": "b"
+      },
+      {
+        "x1": 0.68,
+        "x2": 0.467,
+        "label": "a"
+      },
+      {
+        "x1": 1.361,
+        "x2": -0.51,
+        "label": "b"
+      },
+      {
+        "x1": 0.855,
+        "x2": 0.275,
+        "label": "a"
+      },
+      {
+        "x1": 1.906,
+        "x2": 0.244,
+        "label": "b"
+      },
+      {
+        "x1": 0.764,
+        "x2": 0.367,
+        "label": "a"
+      },
+      {
+        "x1": 0.114,
+        "x2": 0.381,
+        "label": "b"
+      },
+      {
+        "x1": -0.282,
+        "x2": 0.777,
+        "label": "a"
+      },
+      {
+        "x1": 1.903,
+        "x2": -0.292,
+        "label": "b"
+      },
+      {
+        "x1": -0.6,
+        "x2": 0.644,
+        "label": "a"
+      },
+      {
+        "x1": 1.876,
+        "x2": 0.408,
+        "label": "b"
+      },
+      {
+        "x1": -0.257,
+        "x2": 1.093,
+        "label": "a"
+      },
+      {
+        "x1": 0.761,
+        "x2": -0.498,
+        "label": "b"
+      },
+      {
+        "x1": 1.127,
+        "x2": -0.121,
+        "label": "a"
+      },
+      {
+        "x1": 1.716,
+        "x2": -0.073,
+        "label": "b"
+      },
+      {
+        "x1": -0.328,
+        "x2": 1.075,
+        "label": "a"
+      },
+      {
+        "x1": 2.14,
+        "x2": -0.02,
+        "label": "b"
+      },
+      {
+        "x1": 1.157,
+        "x2": 0.261,
+        "label": "a"
+      },
+      {
+        "x1": 1.096,
+        "x2": -0.283,
+        "label": "b"
+      },
+      {
+        "x1": 0.88,
+        "x2": 0.55,
+        "label": "a"
+      },
+      {
+        "x1": 0.943,
+        "x2": -0.472,
+        "label": "b"
+      },
+      {
+        "x1": 0.528,
+        "x2": 0.879,
+        "label": "a"
+      },
+      {
+        "x1": 0.532,
+        "x2": -0.31,
+        "label": "b"
+      }
+    ],
+    "columns": [
+      {
+        "name": "x1",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "x2",
+        "type": "number",
+        "missing": 0
+      },
+      {
+        "name": "label",
+        "type": "text",
+        "missing": 0
+      }
+    ],
+    "featureColumns": [
+      "x1",
+      "x2"
+    ],
+    "targetColumn": "label",
+    "trainRatio": 0.8
+  },
+  "trainedModel": null
+}

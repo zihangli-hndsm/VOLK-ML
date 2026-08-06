@@ -68,6 +68,8 @@ import {
 import { migrateProject, PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
+import { exampleMetadata } from '../src/core/exampleProjects.js';
+import { teachingDatasetById } from '../src/core/teachingDatasets.js';
 import {
   activationValue,
   architectureLayout,
@@ -2020,26 +2022,27 @@ assert.throws(
   await assert.rejects(playgroundAgent.step(), (error) => error.code === 'PLAYGROUND_NOT_OPEN');
 }
 
-// Every bundled teaching example must load, run when marked runnable, and export when marked exportable.
+// Every bundled teaching example must exist, load, run when marked runnable,
+// and export when marked exportable.
 {
   const examplesUrl = new URL('../examples/', import.meta.url);
   const exampleFiles = readdirSync(examplesUrl).filter((name) => name.endsWith('.volkml.json')).sort();
-  const runnable = new Set(['house-price-regression', 'iris-knn-classification', 'spam-mlp-classification']);
-  const browserOnly = new Set(['iris-knn-classification']);
-  assert.ok(exampleFiles.length >= 8, `expected at least 8 teaching examples, found ${exampleFiles.length}`);
-  for (const file of exampleFiles) {
-    const slug = file.replace(/\.volkml\.json$/, '');
-    const project = validateProjectForWorkspace(JSON.parse(readFileSync(new URL(file, examplesUrl), 'utf-8')));
+  assert.equal(exampleFiles.length, exampleMetadata.length, 'every metadata entry has a generated file and vice versa');
+  for (const meta of exampleMetadata) {
+    const project = validateProjectForWorkspace(JSON.parse(readFileSync(new URL(meta.file, examplesUrl), 'utf-8')));
     const { nodes, edges } = project.graph;
-    if (!browserOnly.has(slug)) {
-      assertPythonSyntax(compilePipelineToPyTorch(nodes, edges).code, `${slug} PyTorch`);
-      assertPythonSyntax(compilePipelineToTensorFlow(nodes, edges).code, `${slug} TensorFlow`);
+    if (meta.datasetId) {
+      assert.ok(teachingDatasetById(meta.datasetId), `${meta.id} references an existing teaching dataset`);
     }
-    if (runnable.has(slug)) {
+    if (meta.exportable) {
+      assertPythonSyntax(compilePipelineToPyTorch(nodes, edges).code, `${meta.id} PyTorch`);
+      assertPythonSyntax(compilePipelineToTensorFlow(nodes, edges).code, `${meta.id} TensorFlow`);
+    }
+    if (meta.runnable) {
       const model = await executeBrowserGraph({ nodes, edges, dataset: project.data });
-      assert.ok(model, `${slug} should train in the browser`);
+      assert.ok(model, `${meta.id} should train in the browser`);
     }
   }
-  console.log(`Validated ${pluginRegistry.length} usable components and tutorials, every architecture compiler mapping, both browser pipelines, platform services, localization, execution tiers, and ${exampleFiles.length} teaching examples.`);
+  console.log(`Validated ${pluginRegistry.length} usable components and tutorials, every architecture compiler mapping, both browser pipelines, platform services, localization, execution tiers, and ${exampleMetadata.length} teaching examples.`);
 }
 
