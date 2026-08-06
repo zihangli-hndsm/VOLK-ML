@@ -59,6 +59,55 @@ Do not expose the bridge directly to arbitrary cross-origin messages. A remote t
 
 `canvas.subscribe(listener)` calls `listener(snapshot)` after workspace state changes and returns an unsubscribe function. Subscribers must treat every snapshot as immutable.
 
+`canvas.capabilities` is an additive capability map. Version 1 advertises `{ playground: 1 }` when the mounted editor provides the optional playground namespace.
+
+## Playground namespace (optional)
+
+`canvas.playground` is an optional, additive namespace. Its presence does not change any required Canvas command or snapshot field, and the Canvas API version stays 1. The namespace has its own version: `canvas.playground.apiVersion === 1`.
+
+```js
+const playground = canvas.playground;
+playground.list(); // descriptors: id, version, controls, actions, scenarios
+
+await playground.open({ playgroundId: 'knn-classification', source: { kind: 'workspace-dataset' }, controls: { k: 5 } });
+
+const state = playground.getState(); // detached semantic snapshot
+await playground.dispatch({ type: 'MOVE_QUERY_POINT', x: 0.4, y: -0.2 });
+await playground.play();
+await playground.pause();
+await playground.step();
+await playground.seek(10);
+await playground.reset();
+await playground.runScenario('intro');
+await playground.refreshSource();
+await playground.close();
+
+const unsubscribe = playground.subscribe((snapshot) => console.log(snapshot));
+```
+
+Behavior constraints:
+
+- `getState()` returns a detached, serializable snapshot with no React, DOM, SVG, or function references.
+- `dispatch()` accepts only actions declared by the playground descriptor, plus the generic session actions.
+- Playground mutations never change the canvas graph, project dataset, or trained model; agents use the existing `canvas.updateNode()` etc. for explicit graph changes.
+- The source is captured at `open()`; later workspace dataset changes mark `source.stale = true`. Only `refreshSource()` re-reads workspace data.
+- Playgrounds save no API keys and open no network connections.
+
+Errors reject with stable codes in `details`; details are JSON-safe. Codes include:
+
+```text
+PLAYGROUND_NOT_FOUND
+PLAYGROUND_NOT_AVAILABLE
+PLAYGROUND_NOT_OPEN
+PLAYGROUND_ALREADY_OPEN
+INVALID_PLAYGROUND_SOURCE
+INVALID_PLAYGROUND_CONTROL
+INVALID_PLAYGROUND_ACTION
+INVALID_PLAYGROUND_STEP
+PLAYGROUND_SCENARIO_NOT_FOUND
+PLAYGROUND_SOURCE_STALE
+```
+
 ## Commands
 
 All mutations return promises. An accepted mutation is visible through `getState()` before its promise resolves.
