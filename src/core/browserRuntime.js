@@ -1,4 +1,5 @@
 import { localizedError } from '../i18n.js';
+import { fitFeatureNormalization, normalizeFeatures, predictKnn } from './knnMath.js';
 import { flattenCustomComposites } from './customComposites.js';
 import { analyzeBrowserExecutionGraph, profileBrowserDataset } from './browserExecutionContract.js';
 
@@ -67,46 +68,6 @@ function stratifiedSplit(samples, trainRatio) {
     train: deterministicShuffle(train),
     test: deterministicShuffle(test),
   };
-}
-
-function featureNormalization(samples, featureCount) {
-  const means = Array.from({ length: featureCount }, (_, feature) => (
-    samples.reduce((sum, sample) => sum + sample.x[feature], 0) / samples.length
-  ));
-  const stds = Array.from({ length: featureCount }, (_, feature) => (
-    Math.sqrt(samples.reduce(
-      (sum, sample) => sum + (sample.x[feature] - means[feature]) ** 2,
-      0,
-    ) / samples.length) || 1
-  ));
-  return { means, stds };
-}
-
-function normalizeFeatures(values, normalization) {
-  return values.map((value, feature) => (
-    (value - normalization.means[feature]) / normalization.stds[feature]
-  ));
-}
-
-function nearestNeighborLabel(model, rawFeatures) {
-  const normalized = normalizeFeatures(rawFeatures, model.normalization);
-  const neighbors = model.train.map((sample) => ({
-    label: sample.y,
-    distance: sample.x.reduce(
-      (sum, value, feature) => sum + (value - normalized[feature]) ** 2,
-      0,
-    ),
-  })).sort((left, right) => left.distance - right.distance).slice(0, model.k);
-  const votes = new Map();
-  neighbors.forEach(({ label, distance }) => {
-    const current = votes.get(label) ?? { count: 0, distance: 0 };
-    votes.set(label, { count: current.count + 1, distance: current.distance + distance });
-  });
-  return [...votes.entries()].sort((left, right) => (
-    right[1].count - left[1].count
-    || left[1].distance - right[1].distance
-    || left[0].localeCompare(right[0])
-  ))[0]?.[0];
 }
 
 const neuralActivations = new Set(['relu', 'sigmoid', 'tanh', 'softmax']);
@@ -206,7 +167,7 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
     throw localizedError('error.browserMlpClassification');
   }
   if (!isClassification && (outputUnits !== 1 || loss.op !== 'mse_loss')) throw localizedError('error.browserMlpRegression');
-  const normalization = featureNormalization(split.train, inputSize);
+  const normalization = fitFeatureNormalization(split.train, inputSize);
   const normalizedTrain = split.train.map((sample) => ({ ...sample, x: normalizeFeatures(sample.x, normalization) }));
   requireFiniteTrainingState(normalization, normalizedTrain);
   const history = [];
@@ -375,7 +336,7 @@ export function compileExecutionGraph(nodes, edges) {
 function evaluateClassification(model) {
   const predictions = model.test.map((sample) => ({
     actual: sample.y,
-    predicted: nearestNeighborLabel(model, sample.x),
+    predicted: predictKnn(model, sample.x),
   }));
   const classes = [...new Set([
     ...model.train.map((sample) => sample.y),
@@ -406,7 +367,7 @@ function evaluateClassification(model) {
 }
 
 export function predictWithModel(model, rawFeatures) {
-  if (model.type === 'knn_classifier') return nearestNeighborLabel(model, rawFeatures);
+  if (model.type === 'knn_classifier') return predictKnn(model, rawFeatures);
   if (model.type === 'browser_mlp') {
     const values = forwardNeural(model.layers, normalizeFeatures(rawFeatures, model.normalization)).values;
     return model.task === 'classification'
@@ -616,7 +577,7 @@ export async function executeBrowserGraph({
       if (new Set(train.map((sample) => sample.y)).size < 2) {
         throw localizedError('error.classificationNeedsClasses');
       }
-      const normalization = featureNormalization(train, sourceDataset.featureColumns.length);
+      const normalization = fitFeatureNormalization(train, sourceDataset.featureColumns.length);
       const normalizedTrain = train.map((sample) => ({
         ...sample,
         x: normalizeFeatures(sample.x, normalization),

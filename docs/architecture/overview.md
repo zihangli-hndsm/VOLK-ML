@@ -31,6 +31,9 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Hosted-service boundary | `src/platform/services.js` | Versioned account, project, collaboration, and compute provider contract with local defaults |
 | Localization runtime | `src/i18n.js` | Message resolution, localized errors, parallel-language rendering |
 | UI messages | `src/locales/ui.js` | Active English and Chinese UI copy |
+| Playground framework | `src/core/playgrounds/` | Registry, session reducer, deterministic semantic scenes, guided scenarios |
+| Playground views | `src/components/playgrounds/` | Shared shell, timeline, controls, and per-playground SVG renderers |
+| Playground agent | `src/core/playgroundAgent.js`, `src/core/playgroundHost.js` | Optional `canvas.playground` namespace backed by the same session reducer as the UI |
 | Core contract tests | `scripts/check-core.mjs` | Registry, compiler, composite, localization, and tier regression checks |
 | Deployment | `.github/workflows/pages.yml` | Build and deploy `dist` to GitHub Pages after a push to `main` |
 
@@ -75,6 +78,13 @@ flowchart TD
 - Custom Loss expressions use a small framework-neutral tensor DSL and are parsed before export; project JSON never executes user-authored JavaScript or injects raw Python.
 - Custom composites are copy-style definitions. They can contain preset or custom composites, expand for editing, collapse to their original instance, and flatten recursively before execution or source compilation.
 - Project explanation begins with deterministic topology and connection analysis. A user may optionally provide a compatible chat-completion endpoint, model name, and in-memory API key for follow-up questions.
+
+## Playgrounds
+
+- A playground is an interactive, deterministic concept lab for one component or task. It is reached from a component tutorial through the playground registry; the tutorial itself never special-cases a model.
+- UI and the Canvas Agent drive the same pure session reducer with the same JSON actions, so recorded teaching scenarios and agent demos are reproducible.
+- Playground sessions are temporary: they are never written to project JSON and never mutate the canvas graph. Data is captured as a source snapshot; workspace changes mark it stale until `refreshSource()`.
+- Only playgrounds animate. Canvas glyphs stay static. See [`docs/architecture/playgrounds.md`](playgrounds.md).
 
 ## Canvas connection rules
 

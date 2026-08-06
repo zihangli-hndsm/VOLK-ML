@@ -306,6 +306,7 @@ export function createCanvasAgentSnapshot({
   return {
     apiVersion: CANVAS_AGENT_API_VERSION,
     instanceId,
+    capabilities: { playground: 1 },
     project: {
       format: project.format,
       version: project.version,
@@ -390,6 +391,7 @@ export function createCanvasAgentApi(adapter) {
   return Object.freeze({
     apiVersion: CANVAS_AGENT_API_VERSION,
     instanceId: adapter.instanceId,
+    capabilities: { playground: 1 },
     getState: () => invokeAdapter('getState', () => copy(adapter.getState())),
     listComponents: () => invokeAdapter('listComponents', () => copy(adapter.listComponents())),
     addNode: (request) => invokeAdapterAsync('addNode', async () => copy(await adapter.addNode(copy(request)))),
@@ -408,6 +410,7 @@ export function createCanvasAgentApi(adapter) {
     run: () => invokeAdapterAsync('run', async () => copy(await adapter.run())),
     exportCode: (framework, options) => invokeAdapterAsync('exportCode', async () => copy(await adapter.exportCode(framework, copy(options)))),
     downloadProject: () => invokeAdapterAsync('downloadProject', async () => copy(await adapter.downloadProject())),
+    playground: adapter.playground,
     subscribe(listener) {
       if (typeof listener !== 'function') fail('INVALID_LISTENER', 'subscribe() needs a function.');
       return invokeAdapter('subscribe', () => adapter.subscribe((state) => listener(copy(state))));

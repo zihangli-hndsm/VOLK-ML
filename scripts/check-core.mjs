@@ -42,11 +42,29 @@ import {
   parseLossExpression,
 } from '../src/core/lossExpression.js';
 import {
+  buildRegressionTrainingHistory,
+  fallbackRegressionPoints,
+  gradientDescentStep,
   leastSquaresFit,
   meanSquaredError,
+  regressionGradient,
   regressionPointsFromDataset,
   uniformlySamplePoints,
 } from '../src/core/linearRegressionPlayground.js';
+import { getPlayground, listPlaygrounds, playgroundsFor } from '../src/core/playgrounds/registry.js';
+import {
+  createPlaygroundSession,
+  derivePlaygroundSnapshot,
+  dispatchPlaygroundAction,
+} from '../src/core/playgrounds/session.js';
+import { createPlaygroundHost } from '../src/core/playgroundHost.js';
+import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
+import {
+  fitFeatureNormalization,
+  normalizeFeatures,
+  rankNeighbors,
+  voteNeighbors,
+} from '../src/core/knnMath.js';
 import { migrateProject, PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
@@ -273,6 +291,7 @@ const fakeAgentApi = createCanvasAgentApi({
   downloadProject: async () => ({ filename: 'agent-test.volkml.json' }),
   subscribe(listener) { agentListeners.add(listener); return () => agentListeners.delete(listener); },
 });
+assert.equal(fakeAgentApi.capabilities?.playground, 1, 'canvas agent advertises the playground capability');
 const agentTarget = {};
 const uninstallAgentBridge = installCanvasAgentBridge(fakeAgentApi, agentTarget);
 assert.deepEqual(agentTarget[CANVAS_AGENT_GLOBAL].listInstances(), [{ id: 'test-instance' }]);
@@ -308,7 +327,9 @@ const secondAgentApi = createCanvasAgentApi({ ...{
   exportCode: async (framework) => `# ${framework}`,
   downloadProject: async () => ({ filename: 'agent-test.volkml.json' }),
   subscribe: () => () => {},
+  playground: { apiVersion: 1, marker: 'pg' },
 } });
+assert.equal(secondAgentApi.playground?.marker, 'pg', 'canvas agent exposes the optional playground namespace');
 const sharedAgentBridge = agentTarget[CANVAS_AGENT_GLOBAL];
 const uninstallSecondAgentBridge = installCanvasAgentBridge(secondAgentApi, agentTarget);
 assert.equal(agentTarget[CANVAS_AGENT_GLOBAL], sharedAgentBridge, 'Mounted canvases must share one bridge');
@@ -388,7 +409,7 @@ for (const [key, translations] of Object.entries(messages)) {
 assert.equal(resolveMessage(tutorialByOp.model_output.formula, 'zh'), 'model(x) = 选定的输出张量');
 assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'zh'), 'L = −log p(正确类别)');
 assert.equal(resolveMessage(tutorialByOp.cross_entropy_loss.formula, 'en'), 'L = −log p(correct class)');
-assert.equal(resolveMessage('playground.equation', 'zh', { weight: '2.00', operator: '−', bias: '1.00' }), 'ŷ = 2.00x − 1.00');
+assert.equal(resolveMessage('playground.formula.knn', 'zh', { k: '5', nearest: '1.732' }), 'd² = Σ(xᵢ − qᵢ)² · k = 5 · 最近邻距离 = 1.732');
 assert.equal(stageForManifest(componentById.get('tabular_data_node')), 'data');
 assert.equal(stageForManifest(componentById.get('dense_node')), 'model');
 assert.equal(stageForManifest(componentById.get('adam_optimizer_node')), 'training');
@@ -1817,6 +1838,187 @@ assert.throws(
   () => validatePlatformServices({ apiVersion: PLATFORM_API_VERSION }),
   /missing account\.getCurrentUser/,
 );
+
+// ---- Playground framework ----
+{
+  const lrPlayground = getPlayground('linear-regression');
+  const knnPlayground = getPlayground('knn-classification');
+  const lrSource = {
+    kind: 'example',
+    name: 'Example',
+    fingerprint: 'lr-test',
+    points: fallbackRegressionPoints.map((point, index) => ({ id: `e${index}`, x: point.x, y: point.y })),
+    feature: 'x',
+    target: 'y',
+  };
+
+  // Registry
+  const playgroundIds = listPlaygrounds().map((playground) => playground.id);
+  assert.equal(new Set(playgroundIds).size, playgroundIds.length, 'playground IDs are unique');
+  assert.ok(playgroundIds.includes('linear-regression') && playgroundIds.includes('knn-classification'));
+  for (const playground of listPlaygrounds()) {
+    assert.ok(Number.isInteger(playground.version) && playground.version >= 1, `${playground.id} has a version`);
+    assert.ok(playground.titleKey && playground.descriptionKey, `${playground.id} has localized keys`);
+    assert.ok(playground.actions.length > 0, `${playground.id} declares actions`);
+    assert.ok(playground.controls.length > 0, `${playground.id} declares controls`);
+    for (const control of playground.controls) {
+      assert.ok(control.key && ['number', 'boolean', 'select'].includes(control.type), `${playground.id} control schema`);
+    }
+    for (const key of [playground.titleKey, playground.descriptionKey]) {
+      assert.ok(messages[key]?.en && messages[key]?.zh, `${key} is localized in both languages`);
+    }
+  }
+  assert.deepEqual(playgroundsFor({ manifest: { op: 'linear_regression' } }).map((item) => item.id), ['linear-regression']);
+  assert.deepEqual(playgroundsFor({ manifest: { op: 'knn_classifier' } }).map((item) => item.id), ['knn-classification']);
+  assert.equal(playgroundsFor({ manifest: { op: 'dense' } }).length, 0, 'non-matching models expose no playground');
+  assert.equal(
+    playgroundsFor({ manifest: { op: 'knn_classifier' }, dataset: { task: 'regression' } }).length,
+    1,
+    'a dataset task alone does not widen playground availability',
+  );
+
+  // Session basics: cloneable snapshots, immutable inputs, deterministic replay.
+  const baseSession = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 7 });
+  const baseClone = structuredClone(baseSession);
+  dispatchPlaygroundAction(baseSession, { type: 'SET_CONTROL', key: 'bias', value: 3 });
+  assert.deepEqual(baseSession, baseClone, 'dispatch does not mutate its input session');
+  assert.doesNotThrow(() => structuredClone(derivePlaygroundSnapshot(baseSession)), 'playground snapshots are structured-cloneable');
+  assert.throws(
+    () => dispatchPlaygroundAction(baseSession, { type: 'NOT_AN_ACTION' }),
+    (error) => error.code === 'INVALID_PLAYGROUND_ACTION',
+  );
+  assert.throws(
+    () => dispatchPlaygroundAction(baseSession, { type: 'SET_CONTROL', key: 'missing', value: 1 }),
+    (error) => error.code === 'INVALID_PLAYGROUND_CONTROL',
+  );
+  assert.throws(
+    () => dispatchPlaygroundAction(baseSession, { type: 'SET_CONTROL', key: 'weight', value: 'abc' }),
+    (error) => error.code === 'INVALID_PLAYGROUND_CONTROL',
+  );
+  const seededA = dispatchPlaygroundAction(
+    createPlaygroundSession(lrPlayground, { source: lrSource, seed: 3, sessionId: 'deterministic' }),
+    { type: 'START_TRAINING' },
+  );
+  const seededB = dispatchPlaygroundAction(
+    createPlaygroundSession(lrPlayground, { source: lrSource, seed: 3, sessionId: 'deterministic' }),
+    { type: 'START_TRAINING' },
+  );
+  assert.deepEqual(derivePlaygroundSnapshot(seededA), derivePlaygroundSnapshot(seededB), 'same seed and actions replay identically');
+  const trained = dispatchPlaygroundAction(baseSession, { type: 'START_TRAINING' });
+  const stepped = dispatchPlaygroundAction(dispatchPlaygroundAction(trained, { type: 'STEP' }), { type: 'STEP' });
+  assert.equal(stepped.timeline.step, 2, 'STEP advances the timeline');
+  const resetSession = dispatchPlaygroundAction(stepped, { type: 'RESET' });
+  assert.equal(resetSession.modelState.training.totalSteps, 0, 'RESET replays from the initial state');
+
+  // Linear regression math.
+  const lrPoints = fallbackRegressionPoints.map((point) => ({ x: point.x, y: point.y }));
+  const fit = leastSquaresFit(lrPoints);
+  assert.ok(Math.abs(fit.weight - 1.959) < 0.05 && Math.abs(fit.bias - 0.935) < 0.05, 'least-squares fit remains correct');
+  const epsilon = 1e-6;
+  const lossAt = (weight, bias) => meanSquaredError(lrPoints, weight, bias);
+  const analytic = regressionGradient(lrPoints, 0, 0);
+  const numericWeight = (lossAt(epsilon, 0) - lossAt(0, 0)) / epsilon;
+  const numericBias = (lossAt(0, epsilon) - lossAt(0, 0)) / epsilon;
+  assert.ok(Math.sign(analytic.weight) === Math.sign(numericWeight), 'weight gradient direction matches finite differences');
+  assert.ok(Math.sign(analytic.bias) === Math.sign(numericBias), 'bias gradient direction matches finite differences');
+  const descent = gradientDescentStep(lrPoints, 0, 0, 0.01);
+  assert.ok(
+    meanSquaredError(lrPoints, descent.weight, descent.bias) <= lossAt(0, 0),
+    'one small gradient step does not increase the loss',
+  );
+  const history = buildRegressionTrainingHistory(lrPoints, { weight: 0, bias: 0, learningRate: 0.05, steps: 20 });
+  assert.equal(history.length, 20, 'training history length matches the step count');
+  assert.ok(history.at(-1).loss < history[0].loss, 'training history loss decreases');
+  assert.ok(uniformlySamplePoints(lrPoints, 80).length <= 80, 'dataset sampling is bounded');
+
+  // KNN shared math and playground equivalence.
+  const knnPoints = Array.from({ length: 60 }, (_, index) => ({
+    id: `k${index}`,
+    features: { a: (index % 6) - 3 + (index % 2), b: Math.floor(index / 6) - 5 },
+    label: index % 2 === 0 ? 'red' : 'blue',
+  }));
+  const knnSource = { kind: 'example', name: 'Example', fingerprint: 'knn-test', points: knnPoints, featureColumns: ['a', 'b'] };
+  const knnBase = createPlaygroundSession(knnPlayground, { source: knnSource, controls: { k: 5 } });
+  assert.ok(knnBase.controls.k >= 1 && knnBase.controls.k <= 20, 'k respects bounds');
+  const regionsOff = derivePlaygroundSnapshot(knnBase);
+  assert.equal(regionsOff.scene.decisionRegions.cells.length, 0, 'decision regions are off by default');
+  const regionsOn = derivePlaygroundSnapshot(dispatchPlaygroundAction(knnBase, { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true }));
+  assert.ok(regionsOn.scene.decisionRegions.cells.length <= 48 * 48, 'decision region count respects the resolution cap');
+
+  const train = knnPoints.map((point) => ({ x: [point.features.a, point.features.b], y: point.label }));
+  const normalization = fitFeatureNormalization(train, 2);
+  const normalizedTrain = train.map((sample) => ({ ...sample, x: normalizeFeatures(sample.x, normalization) }));
+  const runtimeModel = { type: 'knn_classifier', train: normalizedTrain, normalization, k: 5 };
+  const query = [0.4, -0.2];
+  const runtimePrediction = predictWithModel(runtimeModel, query);
+  let knnReveal = createPlaygroundSession(knnPlayground, { source: knnSource, controls: { k: 5, queryX: 0.4, queryY: -0.2 } });
+  knnReveal = dispatchPlaygroundAction(knnReveal, { type: 'START_NEIGHBOR_REVEAL' });
+  for (let index = 0; index < 5; index += 1) knnReveal = dispatchPlaygroundAction(knnReveal, { type: 'STEP' });
+  const knnScene = derivePlaygroundSnapshot(knnReveal).scene;
+  assert.equal(knnScene.voting.predictedLabel, runtimePrediction, 'playground and runtime produce the same KNN prediction');
+  assert.equal(knnScene.neighbors.length, 5, 'neighbor ranks are stable and bounded by k');
+  const tieTrain = [
+    { id: 0, x: [1, 0], y: 'a' },
+    { id: 1, x: [-1, 0], y: 'b' },
+  ];
+  const tieNeighbors = rankNeighbors(tieTrain, [0, 0], 2);
+  assert.deepEqual(tieNeighbors.map((neighbor) => neighbor.label), ['a', 'b'], 'equal distances keep training order');
+  const tieVote = voteNeighbors(tieNeighbors);
+  assert.equal(tieVote.tie, true, 'equal vote counts register a tie');
+  assert.equal(tieVote.tieBreakReason, 'label', 'stable label order breaks the tie');
+
+  // Playground Agent API.
+  let hostDataset = null;
+  const host = createPlaygroundHost({ getDataset: () => hostDataset });
+  const playgroundAgent = createPlaygroundAgentApi(host);
+  assert.equal(playgroundAgent.apiVersion, 1, 'playground agent API version is 1');
+  assert.ok(playgroundAgent.list().some((item) => item.id === 'linear-regression'), 'agent lists playgrounds');
+  assert.throws(() => playgroundAgent.getState(), (error) => error.code === 'PLAYGROUND_NOT_OPEN');
+  await assert.rejects(
+    playgroundAgent.open({ playgroundId: 'missing' }),
+    (error) => error.code === 'PLAYGROUND_NOT_FOUND',
+  );
+  const opened = await playgroundAgent.open({ playgroundId: 'linear-regression' });
+  assert.equal(opened.playgroundId, 'linear-regression');
+  await assert.rejects(
+    playgroundAgent.open({ playgroundId: 'knn-classification' }),
+    (error) => error.code === 'PLAYGROUND_ALREADY_OPEN',
+  );
+  await playgroundAgent.dispatch({ type: 'SET_CONTROL', key: 'weight', value: 0.5 });
+  assert.equal(playgroundAgent.getState().controls.weight, 0.5, 'agent dispatch updates the shared session');
+  const detached = structuredClone(playgroundAgent.getState());
+  detached.controls.weight = 99;
+  assert.equal(playgroundAgent.getState().controls.weight, 0.5, 'agent snapshots are detached');
+  let subscribed = null;
+  const unsubscribe = playgroundAgent.subscribe((snapshot) => { subscribed = snapshot; });
+  await playgroundAgent.dispatch({ type: 'SET_CONTROL', key: 'bias', value: 2 });
+  assert.equal(subscribed?.controls.bias, 2, 'subscribers receive updates');
+  unsubscribe();
+  await playgroundAgent.runScenario('intro');
+  assert.equal(playgroundAgent.getState().status, 'completed', 'runScenario completes');
+  // Source staleness and refresh.
+  assert.equal(playgroundAgent.getState().source.kind, 'example');
+  hostDataset = {
+    name: 'Regression',
+    task: 'regression',
+    rows: Array.from({ length: 20 }, (_, index) => ({ x: index, y: 2 * index + 1 })),
+    columns: [
+      { name: 'x', type: 'number', missing: 0 },
+      { name: 'y', type: 'number', missing: 0 },
+    ],
+    featureColumns: ['x'],
+    targetColumn: 'y',
+  };
+  host.markSourceStale();
+  assert.equal(playgroundAgent.getState().source.stale, true, 'workspace changes mark the source stale');
+  await playgroundAgent.refreshSource();
+  const refreshed = playgroundAgent.getState();
+  assert.equal(refreshed.source.kind, 'workspace-dataset', 'refreshSource reads the current workspace dataset');
+  assert.equal(refreshed.source.stale, false, 'refreshSource clears the stale flag');
+  await playgroundAgent.close();
+  assert.throws(() => playgroundAgent.getState(), (error) => error.code === 'PLAYGROUND_NOT_OPEN');
+  await assert.rejects(playgroundAgent.step(), (error) => error.code === 'PLAYGROUND_NOT_OPEN');
+}
 
 // Every bundled teaching example must load, run when marked runnable, and export when marked exportable.
 {
