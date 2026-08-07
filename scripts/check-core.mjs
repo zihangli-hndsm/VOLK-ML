@@ -64,6 +64,12 @@ import {
 } from '../src/core/playgrounds/session.js';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
+import { listModelAdapters } from '../src/core/playground/model/modelRegistry.js';
+import { validateTraceEvent } from '../src/core/playground/trace/traceTypes.js';
+import { validatePrimitive } from '../src/core/playground/visualization/primitives.js';
+import { listPresets, getPreset } from '../src/core/playground/visualization/presetRegistry.js';
+import { validateScript } from '../src/core/playground/visualization/scriptValidator.js';
+import { createScriptRuntime } from '../src/core/playground/visualization/scriptRuntime.js';
 import {
   buildProjectionVector,
   computeTestAccuracy,
@@ -2410,6 +2416,120 @@ assert.throws(
     const irisOpened = await irisAgent.open({ playgroundId: 'knn-classification' });
     assert.equal(irisOpened.scene.featureOptions.length, 4, 'workspace classification sources keep every numeric feature for projection');
     await irisAgent.close();
+  }
+
+  // PR B: unified visualization playground.
+  {
+    // 1. One session reducer: descriptors no longer implement model logic.
+    assert.equal(typeof lrPlayground.createInitialState, 'undefined', 'LR descriptor no longer has its own initializer');
+    assert.equal(typeof lrPlayground.reduce, 'undefined', 'LR descriptor no longer has its own reducer');
+    assert.equal(typeof knnPlayground.deriveScene, 'undefined', 'KNN descriptor no longer derives its own scene');
+    const adapterIds = listModelAdapters().map((adapter) => adapter.id);
+    assert.deepEqual(new Set(adapterIds).size, adapterIds.length, 'model adapter ids are unique');
+    assert.ok(adapterIds.includes('linear-regression') && adapterIds.includes('knn'), 'both model adapters are registered');
+    for (const adapter of listModelAdapters()) {
+      assert.ok(adapter.defaultVisualizationPreset, `${adapter.id} declares a default preset`);
+      for (const capability of ['fit', 'predict', 'evaluate']) {
+        assert.ok(adapter.capabilities[capability], `${adapter.id} adapter capability ${capability}`);
+      }
+    }
+
+    // 2. Model adapters must not import React.
+    for (const file of ['linearRegressionAdapter.js', 'knnAdapter.js']) {
+      const source = readFileSync(new URL(`../src/core/playground/model/${file}`, import.meta.url), 'utf-8');
+      assert.ok(!/from\s+['"]react['"]/.test(source) && !/from\s+['"]react-dom['"]/.test(source), `${file} must not import React`);
+    }
+
+    // 2b. UI renderers must not import model mathematics.
+    const uiFiles = [
+      ...readdirSync(new URL('../src/components/playground/', import.meta.url)).filter((name) => name.endsWith('.jsx')).map((name) => name),
+      ...readdirSync(new URL('../src/components/playground/renderers/', import.meta.url)).filter((name) => name.endsWith('.jsx')).map((name) => `renderers/${name}`),
+    ];
+    for (const file of uiFiles) {
+      const source = readFileSync(new URL(`../src/components/playground/${file}`, import.meta.url), 'utf-8');
+      assert.ok(!/from\s+['"]\.\.\/\.\.\/core\/(playground\/|knnMath|linearRegression)/.test(source), `${file} must not import model math`);
+    }
+
+    // 3. Every preset is a valid, JSON-safe declaration; serialize ->
+    // deserialize -> replay produces the identical trace.
+    assert.deepEqual(listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro']);
+    for (const preset of listPresets()) {
+      const declaration = getPreset(preset.id);
+      assert.doesNotThrow(() => validateScript(declaration), `${preset.id} validates`);
+      assert.doesNotThrow(() => structuredClone(declaration), `${preset.id} is JSON-safe`);
+      assert.equal(declaration.version, 1, `${preset.id} schema version`);
+      assert.ok(declaration.primitives.every((primitive) => !('props' in primitive)), `${preset.id} primitives are declarative`);
+    }
+
+    const runPreset = (playground, source, presetId, seed) => {
+      let session = createPlaygroundSession(playground, { source, seed, sessionId: 'prb-replay' });
+      const driver = {
+        dispatch: (action) => { session = dispatchPlaygroundAction(session, action); },
+        getState: () => derivePlaygroundSnapshot(session),
+        getPlaygroundId: () => session.playgroundId,
+      };
+      const runtime = createScriptRuntime(driver).load(structuredClone(getPreset(presetId)));
+      runtime.initialize();
+      const total = getPreset(presetId).steps.length;
+      for (let index = 0; index < total; index += 1) runtime.step();
+      return { runtime, snapshot: derivePlaygroundSnapshot(session) };
+    };
+
+    const lrRunA = runPreset(lrPlayground, lrSource, 'linear-regression.intuition', 7);
+    const lrRunB = runPreset(lrPlayground, lrSource, 'linear-regression.intuition', 7);
+    assert.deepEqual(lrRunA.snapshot.traces, lrRunB.snapshot.traces, 'same preset + seed + data replays to the same trace');
+    assert.equal(lrRunA.runtime.getStatus().status, 'completed', 'LR preset completes');
+    assert.ok(lrRunA.snapshot.traces.every((event) => validateTraceEvent(event)), 'LR trace events are valid');
+    assert.ok(lrRunA.snapshot.primitives.every((primitive) => validatePrimitive(primitive)), 'LR primitives are valid');
+    assert.equal(lrRunA.snapshot.primitives.length, lrRunB.snapshot.primitives.length, 'preset replay produces the same primitive set');
+    assert.ok(
+      lrRunA.snapshot.traces.some((event) => event.type === 'training.completed'),
+      'LR preset emits training.completed',
+    );
+    assert.ok(
+      Math.abs(lrRunA.snapshot.controls.weight - lrRunA.snapshot.scene.bestFitLine.weight) < 1e-9,
+      'LR preset ends at the least-squares optimum',
+    );
+
+    const knnSource2 = {
+      kind: 'example', name: 'Example', fingerprint: 'knn-prb',
+      points: Array.from({ length: 60 }, (_, index) => ({
+        id: `k${index}`,
+        features: { a: (index % 6) - 3 + (index % 2), b: Math.floor(index / 6) - 5 },
+        label: index % 2 === 0 ? 'red' : 'blue',
+      })),
+      featureColumns: ['a', 'b'],
+    };
+    const knnRunA = runPreset(knnPlayground, knnSource2, 'knn.intro', 3);
+    const knnRunB = runPreset(knnPlayground, knnSource2, 'knn.intro', 3);
+    assert.deepEqual(knnRunA.snapshot.traces, knnRunB.snapshot.traces, 'KNN preset replays deterministically');
+    assert.equal(knnRunA.runtime.getStatus().status, 'completed', 'KNN preset completes');
+    assert.ok(knnRunA.snapshot.traces.every((event) => validateTraceEvent(event)), 'KNN trace events are valid');
+    assert.ok(knnRunA.snapshot.traces.some((event) => event.type === 'prediction.emitted'), 'KNN preset emits a prediction');
+    assert.ok(knnRunA.snapshot.primitives.some((primitive) => primitive.type === 'neighbor-links'), 'KNN stage receives neighbor primitives');
+    assert.equal(knnRunA.snapshot.controls.showNeighborOrder, true, 'KNN preset enables neighbor order');
+    assert.equal(knnRunA.snapshot.controls.showDecisionRegions, true, 'KNN preset enables decision regions');
+
+    // 4. Script validator rejects dangerous or unknown declarations.
+    const validPreset = structuredClone(getPreset('linear-regression.intuition'));
+    const expectScriptError = (mutate, code) => {
+      const script = structuredClone(validPreset);
+      mutate(script);
+      assert.throws(() => validateScript(script), (error) => error.code === code, `validator rejects with ${code}`);
+    };
+    expectScriptError((script) => { script.model.adapter = 'missing'; }, 'SCRIPT_UNKNOWN_MODEL');
+    expectScriptError((script) => { script.primitives[0].type = 'alien-chart'; }, 'SCRIPT_UNKNOWN_PRIMITIVE');
+    expectScriptError((script) => { script.steps[1].invoke = { operation: 'evalCode', args: {} }; }, 'SCRIPT_UNSUPPORTED_OPERATION');
+    expectScriptError((script) => { script.steps[2].annotate = { text: '$controls.k * evil()' }; }, 'SCRIPT_INVALID_BINDING');
+    expectScriptError((script) => { script.steps[3].consume = { event: 'knn.exploded', count: 1 }; }, 'SCRIPT_UNKNOWN_TRACE_EVENT');
+    expectScriptError((script) => { script.steps[1].wait = 1; script.steps[1].narrationKey = 'x'.repeat(1); script.steps[1].extra = true; }, 'INVALID_SCRIPT');
+    expectScriptError((script) => { script.steps[0].annotate = { text: 'eval("alert(1)")' }; }, 'INVALID_SCRIPT');
+    expectScriptError((script) => { script.steps = Array.from({ length: 250 }, (_, index) => ({ id: `s${index}`, wait: true })); }, 'SCRIPT_TOO_COMPLEX');
+    expectScriptError((script) => { script.steps[1].id = script.steps[0].id; }, 'INVALID_SCRIPT');
+    expectScriptError((script) => { script.steps[0].invoke = null; }, 'SCRIPT_UNSUPPORTED_OPERATION');
+    const nonJson = structuredClone(validPreset);
+    nonJson.steps[0].annotate = { text: () => 'nope' };
+    assert.throws(() => validateScript(nonJson), (error) => error.code === 'INVALID_SCRIPT', 'validator rejects non-JSON values');
   }
 }
 

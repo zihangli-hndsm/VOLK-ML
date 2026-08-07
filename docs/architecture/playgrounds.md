@@ -2,29 +2,75 @@
 
 VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve three consumers with one code path: the human UI, teaching-video demo scripts, and the in-page Canvas Agent.
 
-## Architecture
+## Unified visualization runtime
+
+Since the PR B refactor, both models run on one **unified playground runtime** instead of two independent session reducers:
 
 ```text
-Component Tutorial
+Model Adapter (linear-regression / knn)
         ↓
-Available Playground (registry lookup)
+Semantic trace events
         ↓
-Playground Dialog
+Visualization Script (JSON preset)
+        ↓
+playgroundRuntime (the single session reducer)
+        ↓
+Semantic scene + JSON primitives
+        ↓
+Unified stage (renderer by primitive type)
 ```
 
-Every playground separates pure mathematics from rendering:
+`src/core/playground/playgroundRuntime.js` owns the session: controls, timeline, status, semantic traces and visual state. The UI, the Canvas Agent (`canvas.playground`) and `src/core/playground/visualization/scriptRuntime.js` all dispatch the same JSON actions through `dispatchRuntimeAction()`. Model-specific behavior lives in the model adapters (`src/core/playground/model/`), which never import React/DOM/SVG and never touch the session reducer.
 
-```text
-Pure mathematical engine
-        ↓
-Serializable semantic scene
-        ↓
-React/SVG renderer
+The old descriptors in `src/core/playgrounds/linearRegression.js` and `src/core/playgrounds/knn.js` are metadata only (id, title, controls, actions, scenarios, source validation); `src/core/playgrounds/session.js` is a thin compatibility wrapper over the unified runtime, so the registry, Agent API and existing contract tests keep working.
+
+## Layers
+
+### Model adapters
+
+Each model implements the adapter contract in `src/core/playground/model/`:
+
+```js
+{
+  id: 'knn',
+  capabilities: { fit, predict, evaluate, traceFit, tracePredict, decisionSurface },
+  defaultVisualizationPreset,
+  initialize({ source, controls, seed, recorder }),
+  applyModelAction(modelState, action, { controls, recorder }),
+  deriveScene(modelState, { controls }),
+  buildPrimitives(modelState, scene, derived, { controls, source }),
+}
 ```
 
-The math layer never touches React, DOM, SVG, browser size, or translation. The renderer never re-implements model math; it only draws the derived scene.
+- Linear Regression reuses `linearRegressionMath.js` / `linearRegressionPlayground.js`.
+- KNN reuses `knnMath.js` (`fitKnn`, `refitKnnFromSplit`, `computeTestAccuracy`, `buildProjectionVector`) and the browser runtime's split/fit semantics (`DEFAULT_KNN_SEED = 2026`).
+- KNN's fit trace is lazy-learning honest: split → normalization statistics → store samples → ready; it never fabricates an optimization.
 
-## Descriptor contract
+### Dataset adapter
+
+`src/core/playground/data/datasetAdapter.js` provides `inspectDataset`, `createSplit`, `project2D`, `buildSlice` (hidden features fixed at the training mean), `featureStats` and `sampleRows`. The 2D projection always goes through `buildSlice({ xFeature, yFeature, fixedFeatureStrategy: 'mean' })`.
+
+### Semantic trace
+
+`src/core/playground/trace/` defines JSON-safe, deterministic trace events (`data.loaded`, `split.created`, `normalization.fitted`, per-model training/query events, `evaluation.completed`). Event ids/steps/timestamps come from a session-local counter, never the wall clock, so the same script + seed + data replays to the identical trace.
+
+### Visualization scripts and presets
+
+Presets (`src/core/playground/presets/`, registered in `visualization/presetRegistry.js`) are JSON-safe declarations:
+
+```js
+{ version: 1, id, model: { adapter }, data: { source },
+  controls: [...], layout: { stage: [...], side: [...] },
+  primitives: [{ id, type }], steps: [...] }
+```
+
+`visualization/scriptValidator.js` rejects unknown models/primitives/operations/trace events, invalid bindings, executable strings and oversized scripts (`SCRIPT_UNKNOWN_MODEL`, `SCRIPT_UNKNOWN_PRIMITIVE`, `SCRIPT_UNSUPPORTED_OPERATION`, `SCRIPT_INVALID_BINDING`, `SCRIPT_UNKNOWN_TRACE_EVENT`, `SCRIPT_TOO_COMPLEX`). `visualization/scriptRuntime.js` translates every step into the same playground actions the UI and Agent use, so seek/replay is deterministic by construction.
+
+### Unified UI
+
+`src/components/playground/` contains the toolbar (Model / Dataset / Preset / Agent), the unified stage, inspector, timeline and primitive renderers. The stage only knows `primitives[]` — it resolves each primitive through `rendererRegistry.jsx` and never imports model math.
+
+## Descriptor contract (compatibility)
 
 Each playground is a descriptor in `src/core/playgrounds/`. The registry (`registry.js`) is the only source of playground metadata.
 
@@ -40,49 +86,20 @@ Each playground is a descriptor in `src/core/playgrounds/`. The registry (`regis
   controls: [{ key: 'weight', type: 'number', min: -100, max: 100, step: 0.01 }],
   actions: ['SET_CONTROL', 'ADD_POINT', 'START_TRAINING', 'STEP', 'SEEK', 'RESET', 'RUN_SCENARIO'],
   scenarios: [{ id: 'intro', titleKey: 'playground.scenario.intro', steps: [...] }],
+  adapterId: 'linear-regression',
   validateSource(source),
-  createInitialState({ source, controls, seed }),
-  reduce(session, action),
-  deriveScene(session),
 }
 ```
 
 `playgroundsFor({ manifest, dataset })` decides availability: a playground is available when the component's `op` is in `supportedOps`. The dataset argument is kept for source validation at open time; it does not widen availability.
 
+`createInitialState`, `reduce` and `deriveScene` are no longer part of the descriptor contract — the unified runtime implements them once.
+
 ## Session lifecycle
 
-`src/core/playgrounds/session.js` owns the generic session:
+`src/core/playgrounds/session.js` exposes `createPlaygroundSession` / `dispatchPlaygroundAction` / `derivePlaygroundSnapshot`, delegating to the unified runtime. Actions are plain JSON objects; `RESET` rebuilds from the captured source snapshot; dispatch never mutates its input session; sessions are temporary UI/agent state (never written to project JSON, never change `PROJECT_VERSION`).
 
-```js
-createPlaygroundSession(playground, { source, controls, seed })
-dispatchPlaygroundAction(session, action)
-derivePlaygroundSnapshot(session)
-```
-
-- Actions are plain JSON objects: verifiable, copyable, free of functions/DOM/React references, and deterministic for the same input.
-- Random data must use an explicit seed.
-- `RESET` rebuilds from the session's captured source snapshot; reducers never mutate their input session.
-- A playground session is temporary UI/agent state. It is not written to project JSON and does not change `PROJECT_VERSION`.
-
-The snapshot is a detached semantic object:
-
-```js
-{
-  apiVersion: 1,
-  sessionId,
-  playgroundId,
-  status, // ready | playing | paused | completed
-  source: { kind, name, fingerprint, stale },
-  controls: {},
-  timeline: { step, totalSteps, speed },
-  scenario: { id, stepIndex } | null,
-  scene: {},       // model-specific semantic structure
-  metrics: {},
-  observation: { titleKey, bodyKey, params },
-  formula: { key, params, highlight },
-  capabilities: { canPlay, canPause, canStep, canSeek, canReset, canEditData },
-}
-```
+The snapshot is a detached semantic object that keeps the historical scene/metrics/observation/formula/capabilities fields and adds `traces`, `script`, `visualState` and `primitives`.
 
 ## Source handling
 
@@ -109,24 +126,26 @@ The UI animates through steps at `durationMs / speed`; the Agent `runScenario()`
 
 ## Renderer boundary
 
-`src/components/playgrounds/` contains the generic shell and per-playground views:
+`src/components/playground/` contains the unified UI:
 
-- `PlaygroundDialog` hosts the session and playback timer.
-- `PlaygroundShell` provides the shared layout (header, stage, controls, observation, metrics, timeline, formula).
-- `PlaygroundStage` renders the active view from `viewRegistry.jsx`.
-- `LinearRegressionView` and `KnnView` draw only the semantic scene.
+- `UnifiedPlaygroundDialog` hosts the session and playback timer.
+- `PlaygroundToolbar` shows Model / Dataset / Preset / Agent status.
+- `PlaygroundStage` renders the `layout.stage` primitives through `rendererRegistry.jsx`; it never knows which model produced them.
+- `PlaygroundInspector` shows controls plus the `layout.side` primitives (vote bars, metrics, observation).
+- `PlaygroundTimeline` and the formula bar drive playback and narration.
+- `renderers/` draw JSON props only; they never import model mathematics.
 
 Animation expresses semantic change (neighbor reveal, gradient steps) rather than decoration, respects `prefers-reduced-motion` via the playback model, and all controls are keyboard-accessible. Canvas nodes stay static; only playgrounds animate.
 
 ## Adding a third playground
 
-1. Create `src/core/playgrounds/<name>.js` with a descriptor (`validateSource`, `createInitialState`, `reduce`, `deriveScene`, controls, actions, scenarios).
-2. Register it in `src/core/playgrounds/registry.js`.
-3. Add its view component and map it in `src/components/playgrounds/viewRegistry.jsx`.
-4. Add localized keys in `src/locales/ui.js` (title, description, controls, observations, scenario narration).
-5. Add focused assertions in `scripts/check-core.mjs` (registry/session/math equivalence) and verify the UI builds.
+1. Create a model adapter in `src/core/playground/model/<name>Adapter.js` (initialize, applyModelAction, deriveScene, buildPrimitives) and register it in `modelRegistry.js`.
+2. Create a metadata descriptor in `src/core/playgrounds/<name>.js` (id, titleKey, controls, actions, scenarios, validateSource, `adapterId`) and register it in `src/core/playgrounds/registry.js`.
+3. Add a JSON preset in `src/core/playground/presets/` and register it in `visualization/presetRegistry.js`.
+4. Add primitive renderers in `src/components/playground/renderers/` and map them in `rendererRegistry.jsx`.
+5. Add localized keys in `src/locales/ui.js` and focused assertions in `scripts/check-core.mjs`.
 
-No changes to `TutorialDialog` are needed: it queries `playgroundsFor()` generically.
+No changes to `TutorialDialog` or the unified stage are needed: the tutorial queries `playgroundsFor()` generically and the stage only consumes primitives.
 
 ## Shared math
 

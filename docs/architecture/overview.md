@@ -33,9 +33,9 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Hosted-service boundary | `src/platform/services.js` | Versioned account, project, collaboration, and compute provider contract with local defaults |
 | Localization runtime | `src/i18n.js` | Message resolution, localized errors, parallel-language rendering |
 | UI messages | `src/locales/ui.js` | Active English and Chinese UI copy |
-| Playground framework | `src/core/playgrounds/` | Registry, session reducer, deterministic semantic scenes, guided scenarios |
-| Playground views | `src/components/playgrounds/` | Shared shell, timeline, controls, and per-playground SVG renderers |
-| Playground agent | `src/core/playgroundAgent.js`, `src/core/playgroundHost.js` | Optional `canvas.playground` namespace backed by the same session reducer as the UI |
+| Playground framework | `src/core/playgrounds/` (compat), `src/core/playground/` (runtime) | Registry, unified session reducer, model adapters, semantic traces, visualization scripts/presets |
+| Playground views | `src/components/playground/` | Unified stage + primitive renderers (never import model math) |
+| Playground agent | `src/core/playgroundAgent.js`, `src/core/playgroundHost.js` | Optional `canvas.playground` namespace backed by the same unified runtime as the UI |
 | Core contract tests | `scripts/check-core.mjs` | Registry, compiler, composite, localization, and tier regression checks |
 | Deployment | `.github/workflows/pages.yml` | Build and deploy `dist` to GitHub Pages after a push to `main` |
 
@@ -84,7 +84,8 @@ flowchart TD
 ## Playgrounds
 
 - A playground is an interactive, deterministic concept lab for one component or task. It is reached from a component tutorial through the playground registry; the tutorial itself never special-cases a model.
-- UI and the Canvas Agent drive the same pure session reducer with the same JSON actions, so recorded teaching scenarios and agent demos are reproducible.
+- Linear Regression and KNN both run on the same unified playground runtime (`src/core/playground/playgroundRuntime.js`); each model contributes a Model Adapter, and teaching flows are JSON Visualization Script presets. UI, Canvas Agent and script runtime dispatch the same JSON actions, so recorded teaching scenarios and agent demos are reproducible (same script + seed + data → same trace).
+- The unified stage only knows JSON primitives; model adapters never import React and renderers never import model mathematics.
 - Playground sessions are temporary: they are never written to project JSON and never mutate the canvas graph. Data is captured as a source snapshot; workspace changes mark it stale until `refreshSource()`.
 - Only playgrounds animate. Canvas glyphs stay static. See [`docs/architecture/playgrounds.md`](playgrounds.md).
 

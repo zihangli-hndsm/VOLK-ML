@@ -1,0 +1,398 @@
+import {
+  leastSquaresFit,
+  meanSquaredError,
+  playgroundRanges,
+  regressionGradient,
+} from '../../linearRegressionPlayground.js';
+import {
+  createLinearRegressionTrainer,
+  fitLinearNormalization,
+  normalizeLinearParameters,
+  stepLinearRegressionTrainer,
+} from '../../linearRegressionMath.js';
+import { playgroundError } from '../../playgrounds/session.js';
+
+const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
+
+function recomputeDerived(points) {
+  return {
+    ranges: playgroundRanges(points.map(({ x, y }) => ({ x, y }))),
+    optimum: leastSquaresFit(points.map(({ x, y }) => ({ x, y }))),
+  };
+}
+
+function clearTraining(modelState) {
+  return {
+    ...modelState,
+    gradient: null,
+    training: { currentStep: 0, history: [], totalSteps: 0 },
+  };
+}
+
+function nextPointId(points, counter) {
+  let id = `p-${counter}`;
+  let next = counter;
+  while (points.some((point) => point.id === id)) {
+    next += 1;
+    id = `p-${next}`;
+  }
+  return { id, counter: next + 1 };
+}
+
+function sceneGradient(gradient) {
+  if (!gradient) return null;
+  return {
+    weight: Array.isArray(gradient.weights) ? gradient.weights[0] : gradient.weight,
+    bias: gradient.bias,
+    magnitude: gradient.magnitude,
+  };
+}
+
+function emitLineUpdate(recorder, modelState) {
+  recorder.emit('prediction.updated', { weight: modelState.weight, bias: modelState.bias });
+  recorder.emit('residuals.computed', {
+    count: modelState.points.length,
+    mse: meanSquaredError(modelState.points, modelState.weight, modelState.bias),
+  });
+}
+
+export const linearRegressionAdapter = {
+  id: 'linear-regression',
+  capabilities: {
+    fit: true,
+    predict: true,
+    evaluate: true,
+    traceFit: true,
+    tracePredict: true,
+    parameterSurface: true,
+  },
+  defaultVisualizationPreset: 'linear-regression.intuition',
+
+  initialize({ source, controls, recorder }) {
+    const points = source.points.map((point) => ({ id: point.id, x: point.x, y: point.y }));
+    const derived = recomputeDerived(points);
+    const initialBias = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+    const merged = {
+      weight: 0,
+      bias: initialBias,
+      learningRate: 0.05,
+      trainingSteps: 20,
+      showResiduals: false,
+      showBestFit: false,
+      ...controls,
+    };
+    const normalization = fitLinearNormalization(points.map((point) => ({ x: [point.x], y: point.y })), 1);
+    recorder.emit('data.loaded', { points: points.length, feature: source.feature, target: source.target });
+    recorder.emit('split.created', { kind: 'all-data', trainRows: points.length, testRows: 0 });
+    recorder.emit('normalization.fitted', {
+      xMean: normalization.xMeans[0],
+      xStd: normalization.xStds[0],
+      yMean: normalization.yMean,
+      yStd: normalization.yStd,
+    });
+    recorder.emit('regression.initialized', { weight: merged.weight, bias: merged.bias });
+    return {
+      controls: {
+        weight: merged.weight,
+        bias: merged.bias,
+        learningRate: merged.learningRate,
+        trainingSteps: merged.trainingSteps,
+        showResiduals: Boolean(merged.showResiduals),
+        showBestFit: Boolean(merged.showBestFit),
+      },
+      modelState: {
+        points,
+        ...derived,
+        weight: merged.weight,
+        bias: merged.bias,
+        gradient: null,
+        training: { currentStep: 0, history: [], totalSteps: 0 },
+        pointCounter: 0,
+      },
+      totalSteps: 0,
+    };
+  },
+
+  applyModelAction(modelState, action, { controls, recorder }) {
+    if (action.type === 'SET_CONTROL' || action.type === 'SET_PARAMETERS') {
+      if (action.key === 'weight' || action.type === 'SET_PARAMETERS') {
+        const weight = action.type === 'SET_PARAMETERS' ? finiteOrNull(action.weight) : finiteOrNull(action.value);
+        if (weight === null) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: 'weight' });
+        const next = clearTraining({ ...modelState, weight });
+        emitLineUpdate(recorder, next);
+        return { controls: { weight }, modelState: next };
+      }
+      if (action.key === 'bias') {
+        const bias = finiteOrNull(action.value);
+        if (bias === null) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: 'bias' });
+        const next = clearTraining({ ...modelState, bias });
+        emitLineUpdate(recorder, next);
+        return { controls: { bias }, modelState: next };
+      }
+      if (action.key === 'learningRate' || action.key === 'trainingSteps' || action.key === 'showResiduals' || action.key === 'showBestFit') {
+        return { controls: { [action.key]: action.value } };
+      }
+      throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
+    }
+    if (action.type === 'ADD_POINT') {
+      const x = finiteOrNull(action.x);
+      const y = finiteOrNull(action.y);
+      if (x === null || y === null) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type });
+      const { id, counter } = nextPointId(modelState.points, modelState.pointCounter);
+      const points = [...modelState.points, { id, x, y }];
+      const next = { ...clearTraining({ ...modelState, points, pointCounter: counter }), ...recomputeDerived(points) };
+      recorder.emit('data.loaded', { points: points.length });
+      emitLineUpdate(recorder, next);
+      return { modelState: next };
+    }
+    if (action.type === 'MOVE_POINT') {
+      const x = finiteOrNull(action.x);
+      const y = finiteOrNull(action.y);
+      if (x === null || y === null) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type });
+      const points = modelState.points.map((point) => (point.id === action.pointId ? { ...point, x, y } : point));
+      const next = { ...clearTraining({ ...modelState, points }), ...recomputeDerived(points) };
+      emitLineUpdate(recorder, next);
+      return { modelState: next };
+    }
+    if (action.type === 'REMOVE_POINT') {
+      const points = modelState.points.filter((point) => point.id !== action.pointId);
+      if (points.length < 2) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, reason: 'minimum two points' });
+      const next = { ...clearTraining({ ...modelState, points }), ...recomputeDerived(points) };
+      emitLineUpdate(recorder, next);
+      return { modelState: next };
+    }
+    if (action.type === 'SET_BEST_FIT') {
+      const next = clearTraining({ ...modelState, weight: modelState.optimum.weight, bias: modelState.optimum.bias });
+      recorder.emit('parameters.updated', { weight: next.weight, bias: next.bias });
+      emitLineUpdate(recorder, next);
+      return { controls: { weight: next.weight, bias: next.bias }, modelState: next };
+    }
+    if (action.type === 'START_TRAINING') {
+      const points = modelState.points.map(({ x, y }) => ({ x, y }));
+      const trainer = createLinearRegressionTrainer(points);
+      const start = normalizeLinearParameters({
+        weights: [modelState.weight],
+        bias: modelState.bias,
+        normalization: trainer.normalization,
+      });
+      const learningRate = Number(controls.learningRate);
+      const steps = Math.max(1, Math.round(controls.trainingSteps));
+      const initialLossNormalized = trainer.normalizedPoints.reduce((sum, sample) => {
+        const prediction = start.weights.reduce(
+          (total, weight, feature) => total + weight * sample.x[feature],
+          start.bias,
+        );
+        return sum + (prediction - sample.y) ** 2;
+      }, 0) / Math.max(1, trainer.normalizedPoints.length);
+      recorder.emit('normalization.fitted', {
+        xMean: trainer.normalization.xMeans[0],
+        xStd: trainer.normalization.xStds[0],
+        yMean: trainer.normalization.yMean,
+        yStd: trainer.normalization.yStd,
+      });
+      recorder.emit('regression.initialized', { weight: modelState.weight, bias: modelState.bias });
+      const history = [];
+      let current = { weights: start.weights, bias: start.bias };
+      let previousLoss = initialLossNormalized;
+      let stopReason = null;
+      for (let step = 1; step <= steps; step += 1) {
+        const next = stepLinearRegressionTrainer(trainer, { ...current, learningRate });
+        const { normalizedParameters, rawParameters } = next;
+        const finite = Number.isFinite(next.lossNormalized)
+          && normalizedParameters.weights.every(Number.isFinite)
+          && Number.isFinite(normalizedParameters.bias)
+          && rawParameters.weights.every(Number.isFinite)
+          && Number.isFinite(rawParameters.bias);
+        if (!finite) {
+          stopReason = 'diverged';
+          break;
+        }
+        const entry = {
+          step,
+          weight: rawParameters.weights[0],
+          bias: rawParameters.bias,
+          normalizedWeight: normalizedParameters.weights[0],
+          normalizedBias: normalizedParameters.bias,
+          gradient: next.gradient,
+          loss: next.nextLossRaw,
+          lossNormalized: next.nextLossNormalized,
+        };
+        const lossGrew = next.nextLossNormalized - previousLoss
+          > 1e-9 * Math.max(1, Math.abs(previousLoss));
+        recorder.emit('loss.measured', { step, loss: entry.loss, lossNormalized: entry.lossNormalized });
+        recorder.emit('gradient.computed', {
+          step,
+          weight: next.gradient.weights[0],
+          bias: next.gradient.bias,
+          magnitude: next.gradient.magnitude,
+        });
+        if (lossGrew) {
+          history.push(entry);
+          stopReason = 'learning-rate-too-high';
+          break;
+        }
+        previousLoss = next.nextLossNormalized;
+        history.push(entry);
+        recorder.emit('parameters.updated', { step, weight: entry.weight, bias: entry.bias });
+        current = { weights: normalizedParameters.weights, bias: normalizedParameters.bias };
+      }
+      if (stopReason) {
+        recorder.emit('training.completed', {
+          steps: history.length,
+          requestedSteps: steps,
+          stoppedReason: stopReason,
+        });
+      } else {
+        recorder.emit('training.completed', { steps: history.length, requestedSteps: steps });
+      }
+      return {
+        modelState: {
+          ...modelState,
+          training: {
+            currentStep: 0,
+            history,
+            totalSteps: history.length,
+            stopReason,
+            normalization: trainer.normalization,
+          },
+        },
+        timeline: { step: 0, totalSteps: history.length, speed: undefined },
+      };
+    }
+    if (action.type === 'STEP' || action.type === 'SEEK') {
+      const { training } = modelState;
+      if (!training.history.length) return {};
+      const target = action.type === 'SEEK' ? Math.round(action.step ?? 0) : training.currentStep + 1;
+      const currentStep = Math.max(0, Math.min(target, training.totalSteps));
+      const entry = training.history[Math.max(0, currentStep - 1)];
+      const nextModel = entry
+        ? { ...modelState, weight: entry.weight, bias: entry.bias, gradient: entry.gradient, training: { ...training, currentStep } }
+        : { ...modelState, training: { ...training, currentStep } };
+      if (entry) {
+        recorder.emit('prediction.updated', { weight: entry.weight, bias: entry.bias });
+        recorder.emit('residuals.computed', {
+          count: modelState.points.length,
+          mse: meanSquaredError(modelState.points, entry.weight, entry.bias),
+        });
+      }
+      return {
+        controls: { weight: nextModel.weight, bias: nextModel.bias },
+        modelState: nextModel,
+        timeline: { step: currentStep },
+      };
+    }
+    return {};
+  },
+
+  deriveScene(modelState, { controls }) {
+    const { points, ranges, optimum, weight, bias } = modelState;
+    const gradient = sceneGradient(modelState.gradient) ?? regressionGradient(points, weight, bias);
+    const prediction = (x) => weight * x + bias;
+    const scene = {
+      points: points.map((point) => ({
+        ...point,
+        prediction: prediction(point.x),
+        residual: point.y - prediction(point.x),
+      })),
+      line: {
+        weight,
+        bias,
+        start: { x: ranges.xMin, y: prediction(ranges.xMin) },
+        end: { x: ranges.xMax, y: prediction(ranges.xMax) },
+      },
+      bestFitLine: optimum,
+      gradient,
+      training: {
+        currentStep: modelState.training.currentStep,
+        totalSteps: modelState.training.totalSteps,
+        lossHistory: modelState.training.history.slice(0, modelState.training.currentStep).map((entry) => entry.loss),
+        parameterHistory: modelState.training.history.slice(0, modelState.training.currentStep).map((entry) => ({ weight: entry.weight, bias: entry.bias })),
+      },
+      ranges,
+    };
+    const mse = meanSquaredError(points, weight, bias);
+    const training = modelState.training;
+    let observation = {
+      titleKey: 'playground.lr.observation.intro',
+      bodyKey: 'playground.lr.observation.introBody',
+      params: {},
+    };
+    if (training.stopReason && training.currentStep > 0 && training.currentStep >= training.totalSteps) {
+      const entry = training.history[training.currentStep - 1];
+      observation = training.stopReason === 'learning-rate-too-high'
+        ? {
+          titleKey: 'playground.lr.observation.lrTooHigh',
+          bodyKey: 'playground.lr.observation.lrTooHighBody',
+          params: { step: entry?.step ?? training.currentStep, loss: Number(entry?.loss ?? 0).toExponential(3) },
+        }
+        : {
+          titleKey: 'playground.lr.observation.diverged',
+          bodyKey: 'playground.lr.observation.divergedBody',
+          params: {},
+        };
+    } else if (training.currentStep > 0 && training.currentStep < training.totalSteps) {
+      const entry = training.history[training.currentStep - 1];
+      observation = {
+        titleKey: 'playground.lr.observation.trainingStep',
+        bodyKey: 'playground.lr.observation.trainingStepBody',
+        params: { step: training.currentStep, loss: entry.loss.toFixed(4), magnitude: entry.gradient.magnitude.toFixed(4) },
+      };
+    } else if (controls.showResiduals) {
+      observation = {
+        titleKey: 'playground.lr.observation.residuals',
+        bodyKey: 'playground.lr.observation.residualsBody',
+        params: { mse: mse.toFixed(4) },
+      };
+    } else if (controls.showBestFit) {
+      observation = {
+        titleKey: 'playground.lr.observation.bestFit',
+        bodyKey: 'playground.lr.observation.bestFitBody',
+        params: { weight: optimum.weight.toFixed(3), bias: optimum.bias.toFixed(3) },
+      };
+    }
+    return {
+      scene,
+      metrics: { mse },
+      observation,
+      formula: {
+        key: 'playground.formula.linear',
+        params: {
+          weight: weight.toFixed(3),
+          bias: Math.abs(bias).toFixed(3),
+          operator: bias < 0 ? '−' : '+',
+        },
+        highlight: training.currentStep > 0
+          ? (Math.abs(gradient.weight) >= Math.abs(gradient.bias) ? 'weight' : 'bias')
+          : null,
+      },
+      capabilities: {
+        canPlay: true,
+        canPause: false,
+        canStep: true,
+        canSeek: training.totalSteps > 0,
+        canReset: true,
+        canEditData: true,
+      },
+    };
+  },
+
+  buildPrimitives(modelState, scene, derived, { controls, source }) {
+    const primitives = [
+      { id: 'scatter', type: 'scatter', source: { model: 'points' }, props: { points: scene.points.map((point) => ({ id: point.id, x: point.x, y: point.y })), axes: { x: source.feature, y: source.target } } },
+      { id: 'regression-line', type: 'regression-line', source: { model: 'line' }, props: { line: scene.line, ranges: scene.ranges } },
+    ];
+    if (controls.showBestFit) {
+      primitives.push({ id: 'reference-line', type: 'reference-line', source: { model: 'bestFitLine' }, props: { line: scene.bestFitLine, ranges: scene.ranges } });
+    }
+    if (controls.showResiduals) {
+      primitives.push({ id: 'residual-lines', type: 'residual-lines', source: { model: 'residuals' }, props: { points: scene.points.map((point) => ({ id: point.id, x: point.x, y: point.y, prediction: point.prediction })) } });
+    }
+    if (scene.training.lossHistory.length > 0) {
+      primitives.push({ id: 'loss-curve', type: 'loss-curve', source: { model: 'training' }, props: { lossHistory: scene.training.lossHistory, currentStep: scene.training.currentStep } });
+    }
+    primitives.push({ id: 'formula', type: 'formula', source: { model: 'formula' }, props: { formula: derived.formula } });
+    primitives.push({ id: 'metric-card', type: 'metric-card', source: { model: 'metrics' }, props: { metrics: derived.metrics } });
+    primitives.push({ id: 'annotation', type: 'annotation', source: { model: 'observation' }, props: { observation: derived.observation } });
+    return primitives;
+  },
+};
