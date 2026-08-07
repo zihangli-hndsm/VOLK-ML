@@ -79,3 +79,14 @@
 - 仓库卫生：新增 `.gitattributes`（JSON 统一 LF，保证 Windows 下示例生成器逐字节校验稳定）并把 `dist/` 加入 `.gitignore`（构建产物不再污染工作区）。
 - 更新 `docs/architecture/playgrounds.md`（共享 LR 训练器、KNN split/refit/投影语义）。
 - 验收：`npm run check`、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；KNN intro 场景完整播放（train 32 / test 8，k=5，runtimeAccuracy=currentViewAccuracy）。已知限制：交互式浏览器实测未在本轮执行（会话内无浏览器自动化工具），可启动本地实例人工复核。
+
+## 2026-08-07 — KNN runtime/playground fit parity（PR A follow-up）
+
+- 关闭 KNN 的最后一个跨层一致性漏洞：browser runtime 与 Playground 之前各自实现 train/test split（runtime 固定 seed 2026、Playground 默认 seed 1），导致 Playground 的 `runtimeAccuracy` 不一定是真实 runtime 的 accuracy。
+- 数据划分统一到 `src/core/knnMath.js` 单一实现：共享 `deterministicShuffle(samples, seed)`、`stratifiedSplit(samples, trainRatio, seed)`、`fitKnn({ samples, k, trainRatio, seed })`，并导出 `DEFAULT_KNN_SEED = 2026`；无显式 seed 时 runtime 与 Playground 都使用 2026（Playground session 提供 seed 时优先使用）。
+- `browserRuntime` 的 `knn_node` 改为调用共享 `fitKnn()`，删除本地 `deterministicShuffle` / `stratifiedSplit`；`train_test_split_node` 与 MLP 打乱也复用共享 shuffle，行为不变。
+- Playground 初始化改为把 source points 转成统一 sample 格式 `{ id, x, y }` 后调用同一个 `fitKnn()`，train/test/normalization/k/accuracy 全部来自该 fit；编辑训练点后的 `refitKnnFromSplit()` 与 `fitKnn()` 共享 `fitKnnTrainingSet()`（归一化、训练样本构造、k 截断、accuracy 计算不再复制算法）。
+- `trainRatio` 语义：`source.trainRatio` 由 `playgroundHost` 保存（workspace 用 `dataset.trainRatio ?? 0.8`，教学数据用 `teaching.trainRatio ?? 0.8`），`validateSource` 校验后 Playground 使用；不再隐藏硬编码 0.8。
+- `computeTestAccuracy()` 同时兼容 `sample.label`/`sample.y` 与 `sample.features`/`sample.x` 两种表示。
+- 新增真实 runtime 构造的跨层验收测试（`scripts/check-core.mjs`）：对同一 80 行/3 特征/2 类数据集，遍历 k ∈ {1, 5, 20} × trainRatio ∈ {0.6, 0.75, 0.8}，执行真实 `executeBrowserGraph`（tabular → knn_node → evaluate_classification）与 Playground 会话，断言 train/test split IDs、normalization（1e-12）、clamped k、accuracy（1e-12）与 3 个查询点预测全部一致。
+- 验收：`npm run check`、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过。parity 证据（k=5、ratio=0.75、seed=2026）：train/test IDs equal=true；normalization means runtime=[0.125767,-0.081867,0.047533] = playground；stds runtime=[2.074934,2.070424,0.610702] = playground；runtime accuracy=1 = playground runtimeAccuracy=1；q1 [0,0]=a/a、q2 [1.8,-1.8]=a/a、q3 [-2,-1.2]=a/a。

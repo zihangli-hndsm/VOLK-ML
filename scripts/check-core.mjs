@@ -67,6 +67,7 @@ import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
 import {
   buildProjectionVector,
   computeTestAccuracy,
+  DEFAULT_KNN_SEED,
   predictKnn,
   rankNeighbors,
   refitKnnFromSplit,
@@ -2084,7 +2085,6 @@ assert.throws(
   assert.ok(knnBase.modelState.fit.trainRows >= 1 && knnBase.modelState.fit.testRows >= 1, 'knn playground has a train/test split');
   assert.equal(knnBase.modelState.fit.trainRows, knnBase.modelState.rawTrain.length, 'fit train rows match the raw train rows');
   const splitScene = derivePlaygroundSnapshot(knnBase).scene;
-  const trainIds = new Set(knnBase.modelState.rawTrain.map((point) => point.id));
   assert.ok(splitScene.points.every((point) => point.subset === 'train' || point.subset === 'test'), 'every displayed point is labeled train or test');
   assert.equal(splitScene.points.filter((point) => point.subset === 'test').length, knnBase.modelState.fit.testRows, 'test points are displayed distinctly');
 
@@ -2103,22 +2103,115 @@ assert.throws(
     );
   }
 
-  // PR A: playground and runtime produce the same prediction on the same fit.
-  const query = [0.4, -0.2];
-  const fitModel = {
-    type: 'knn_classifier',
-    train: knnBase.modelState.fit.normalizedTrain,
-    normalization: knnBase.modelState.fit.normalization,
-    k: knnBase.modelState.fit.k,
-  };
-  const runtimePrediction = predictWithModel(fitModel, query);
-  let knnReveal = createPlaygroundSession(knnPlayground, { source: knnSource, controls: { k: 5, queryX: 0.4, queryY: -0.2 } });
-  knnReveal = dispatchPlaygroundAction(knnReveal, { type: 'START_NEIGHBOR_REVEAL' });
-  for (let index = 0; index < 5; index += 1) knnReveal = dispatchPlaygroundAction(knnReveal, { type: 'STEP' });
-  const knnScene = derivePlaygroundSnapshot(knnReveal).scene;
-  assert.equal(knnScene.voting.predictedLabel, runtimePrediction, 'playground and runtime produce the same KNN prediction');
-  assert.equal(knnScene.neighbors.length, 5, 'neighbor ranks are stable and bounded by k');
-  assert.ok(knnScene.neighbors.every((neighbor) => trainIds.has(neighbor.pointId)), 'neighbors come from the train set only');
+  // PR A follow-up: KNN runtime/playground parity through the real browser
+  // runtime construction (split, normalization, k, prediction, accuracy).
+  {
+    const parityRows = Array.from({ length: 80 }, (_, index) => {
+      const group = index % 2;
+      const offset = Math.floor(index / 2);
+      return {
+        f0: Number(((group === 0 ? -2 : 2) + Math.sin(offset * 0.9) * 0.8 + (offset % 3) * 0.05).toFixed(3)),
+        f1: Number(((group === 0 ? -2 : 2) + Math.cos(offset * 0.7) * 0.8 - (offset % 2) * 0.05).toFixed(3)),
+        f2: Number(((group === 0 ? -0.5 : 0.5) + Math.sin(offset * 1.4) * 0.5).toFixed(3)),
+        label: group === 0 ? 'a' : 'b',
+      };
+    });
+    const parityDataset = {
+      name: 'Parity KNN', task: 'classification',
+      rows: parityRows,
+      columns: [
+        { name: 'f0', type: 'number', missing: 0 },
+        { name: 'f1', type: 'number', missing: 0 },
+        { name: 'f2', type: 'number', missing: 0 },
+        { name: 'label', type: 'string', missing: 0 },
+      ],
+      featureColumns: ['f0', 'f1', 'f2'], targetColumn: 'label',
+    };
+    const runRuntimeKnn = async (k, trainRatio) => {
+      const nodes = [
+        makeNode('par-data', 'tabular_data_node'),
+        makeNode('par-knn', 'knn_node', { k_value: k, train_ratio: trainRatio }),
+        makeNode('par-eval', 'evaluate_classification_node'),
+      ];
+      const edges = [
+        makeEdge('par-data', 'dataset', 'par-knn', 'dataset'),
+        makeEdge('par-knn', 'trained_model', 'par-eval', 'trained_model'),
+      ];
+      return executeBrowserGraph({ nodes, edges, dataset: parityDataset });
+    };
+    const paritySource = (trainRatio) => ({
+      kind: 'example', name: 'Parity', fingerprint: 'knn-parity',
+      points: parityRows.map((row, index) => ({
+        id: index,
+        features: { f0: row.f0, f1: row.f1, f2: row.f2 },
+        label: row.label,
+      })),
+      featureColumns: ['f0', 'f1', 'f2'],
+      trainRatio,
+      total: parityRows.length,
+    });
+    const revealQuery = (session, x, y, steps) => {
+      let probe = dispatchPlaygroundAction(session, { type: 'SET_CONTROL', key: 'queryX', value: x });
+      probe = dispatchPlaygroundAction(probe, { type: 'SET_CONTROL', key: 'queryY', value: y });
+      probe = dispatchPlaygroundAction(probe, { type: 'START_NEIGHBOR_REVEAL' });
+      for (let step = 0; step < steps; step += 1) probe = dispatchPlaygroundAction(probe, { type: 'STEP' });
+      return derivePlaygroundSnapshot(probe);
+    };
+    for (const trainRatio of [0.6, 0.75, 0.8]) {
+      for (const k of [1, 5, 20]) {
+        const runtimeModel = await runRuntimeKnn(k, trainRatio);
+        const playground = createPlaygroundSession(knnPlayground, {
+          source: paritySource(trainRatio),
+          controls: { k },
+          seed: DEFAULT_KNN_SEED,
+        });
+        const playgroundFit = playground.modelState.fit;
+        // A: split parity
+        assert.deepEqual(
+          runtimeModel.train.map((sample) => sample.index),
+          playground.modelState.rawTrain.map((point) => point.id),
+          `train split ids match the runtime at k=${k} ratio=${trainRatio}`,
+        );
+        assert.deepEqual(
+          runtimeModel.test.map((sample) => sample.index),
+          playground.modelState.test.map((point) => point.id),
+          `test split ids match the runtime at k=${k} ratio=${trainRatio}`,
+        );
+        // B: normalization parity
+        assert.ok(
+          runtimeModel.normalization.means.every((value, feature) => (
+            Math.abs(value - playgroundFit.normalization.means[feature]) < 1e-12
+          ))
+          && runtimeModel.normalization.stds.every((value, feature) => (
+            Math.abs(value - playgroundFit.normalization.stds[feature]) < 1e-12
+          )),
+          `normalization parity at k=${k} ratio=${trainRatio}`,
+        );
+        // E: clamped k parity
+        assert.equal(runtimeModel.k, playgroundFit.k, `clamped k parity at k=${k} ratio=${trainRatio}`);
+        // D: accuracy parity from the real runtime evaluation
+        assert.ok(
+          Math.abs(runtimeModel.metrics.accuracy - derivePlaygroundSnapshot(playground).metrics.runtimeAccuracy) < 1e-12,
+          `accuracy parity at k=${k} ratio=${trainRatio}`,
+        );
+        // C: prediction parity at three queries (ordinary, boundary, train point)
+        const queries = [
+          [0, 0],
+          [1.8, -1.8],
+          [parityRows[0].f0, parityRows[0].f1],
+        ];
+        queries.forEach(([x, y], queryIndex) => {
+          const runtimePrediction = predictWithModel(runtimeModel, [x, y, runtimeModel.normalization.means[2]]);
+          const revealed = revealQuery(playground, x, y, playgroundFit.k);
+          assert.equal(
+            revealed.scene.voting.predictedLabel,
+            runtimePrediction,
+            `query ${queryIndex + 1} prediction parity at k=${k} ratio=${trainRatio}`,
+          );
+        });
+      }
+    }
+  }
   const tieTrain = [
     { id: 0, x: [1, 0], y: 'a' },
     { id: 1, x: [-1, 0], y: 'b' },

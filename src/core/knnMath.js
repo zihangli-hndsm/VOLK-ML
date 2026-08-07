@@ -3,6 +3,12 @@
 // existing runtime ranking semantics (monotonic with Euclidean distance, no
 // square root). Do not change it without updating both consumers and tests.
 
+// The single default seed for KNN splits. Both the browser runtime and the
+// playground use it whenever no explicit seed is provided, so a dataset with
+// the same k and trainRatio produces identical train/test/normalization on
+// both sides.
+export const DEFAULT_KNN_SEED = 2026;
+
 export function fitFeatureNormalization(samples, featureCount) {
   const means = Array.from({ length: featureCount }, (_, feature) => (
     samples.reduce((sum, sample) => sum + sample.x[feature], 0) / samples.length
@@ -16,7 +22,7 @@ export function fitFeatureNormalization(samples, featureCount) {
   return { means, stds };
 }
 
-export function deterministicShuffle(samples, seed = 2026) {
+export function deterministicShuffle(samples, seed = DEFAULT_KNN_SEED) {
   const shuffled = [...samples];
   let state = seed >>> 0;
   for (let index = shuffled.length - 1; index > 0; index -= 1) {
@@ -27,7 +33,7 @@ export function deterministicShuffle(samples, seed = 2026) {
   return shuffled;
 }
 
-export function stratifiedSplit(samples, trainRatio) {
+export function stratifiedSplit(samples, trainRatio, seed = DEFAULT_KNN_SEED) {
   const groups = new Map();
   samples.forEach((sample) => {
     const group = groups.get(sample.y) ?? [];
@@ -37,7 +43,7 @@ export function stratifiedSplit(samples, trainRatio) {
   const train = [];
   const test = [];
   groups.forEach((group) => {
-    const shuffled = deterministicShuffle(group);
+    const shuffled = deterministicShuffle(group, seed);
     if (shuffled.length === 1) {
       train.push(shuffled[0]);
       return;
@@ -50,30 +56,47 @@ export function stratifiedSplit(samples, trainRatio) {
     test.push(...shuffled.slice(splitIndex));
   });
   return {
-    train: deterministicShuffle(train),
-    test: deterministicShuffle(test),
+    train: deterministicShuffle(train, seed),
+    test: deterministicShuffle(test, seed),
+  };
+}
+
+// Fits normalization from a raw training set, normalizes the train samples,
+// and clamps k to the training size. Shared by fitKnn() and
+// refitKnnFromSplit() so edits cannot drift from the initial fit semantics.
+export function fitKnnTrainingSet({ rawTrain, k }) {
+  const featureCount = rawTrain[0]?.x?.length ?? 0;
+  const normalization = fitFeatureNormalization(rawTrain, featureCount);
+  const train = rawTrain.map((sample) => ({
+    ...sample,
+    x: normalizeFeatures(sample.x, normalization),
+  }));
+  const clampedK = Math.max(1, Math.min(
+    Math.round(Number(k) || 1),
+    Math.max(1, train.length),
+  ));
+  return {
+    normalization,
+    train,
+    k: clampedK,
+    trainRows: rawTrain.length,
   };
 }
 
 // Fits a KNN classifier exactly like the browser runtime: stratified
-// train/test split, normalization computed from the training set only, and k
-// clamped to the training size.
-export function fitKnn({ samples, k, trainRatio }) {
-  const { train, test } = stratifiedSplit(samples, trainRatio);
-  const featureCount = train[0]?.x?.length ?? 0;
-  const normalization = fitFeatureNormalization(train, featureCount);
-  const normalizedTrain = train.map((sample) => ({
-    ...sample,
-    x: normalizeFeatures(sample.x, normalization),
-  }));
+// train/test split (same seed), normalization computed from the training set
+// only, and k clamped to the training size.
+export function fitKnn({ samples, k, trainRatio, seed = DEFAULT_KNN_SEED }) {
+  const { train, test } = stratifiedSplit(samples, trainRatio, seed);
+  const fitted = fitKnnTrainingSet({ rawTrain: train, k });
   return {
     type: 'knn_classifier',
     rawTrain: train,
-    train: normalizedTrain,
+    train: fitted.train,
     test,
-    normalization,
-    k: Math.min(k, normalizedTrain.length),
-    trainRows: train.length,
+    normalization: fitted.normalization,
+    k: fitted.k,
+    trainRows: fitted.trainRows,
     testRows: test.length,
   };
 }
@@ -151,7 +174,8 @@ export function computeTestAccuracy(fit, test, featureColumns) {
     const raw = featureColumns.map((column, index) => (
       sample.features?.[column] ?? sample.x?.[index]
     ));
-    if (predictKnn(model, raw) === sample.label) correct += 1;
+    const expected = sample.label ?? sample.y;
+    if (predictKnn(model, raw) === expected) correct += 1;
   });
   return correct / test.length;
 }
@@ -166,20 +190,12 @@ export function refitKnnFromSplit({ rawTrain, test, k, featureColumns }) {
     x: featureColumns.map((column) => point.features[column]),
     y: point.label,
   }));
-  const normalization = fitFeatureNormalization(trainSamples, featureColumns.length);
-  const normalizedTrain = trainSamples.map((sample) => ({
-    ...sample,
-    x: normalizeFeatures(sample.x, normalization),
-  }));
-  const boundedK = Math.max(1, Math.min(
-    Math.round(Number(k) || 5),
-    Math.max(1, normalizedTrain.length),
-  ));
+  const fitted = fitKnnTrainingSet({ rawTrain: trainSamples, k });
   const fit = {
-    normalizedTrain,
-    normalization,
-    k: boundedK,
-    trainRows: rawTrain.length,
+    normalizedTrain: fitted.train,
+    normalization: fitted.normalization,
+    k: fitted.k,
+    trainRows: fitted.trainRows,
     testRows: Array.isArray(test) ? test.length : 0,
     testAccuracy: null,
   };

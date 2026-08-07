@@ -74,6 +74,7 @@ function resolveSource(playground, dataset) {
               label: row[dataset.targetColumn],
             })),
             featureColumns: features,
+            trainRatio: dataset.trainRatio ?? 0.8,
             total: rows.length,
             usingDataset: true,
           };
@@ -94,6 +95,7 @@ function resolveSource(playground, dataset) {
       fingerprint: 'example-knn-neighborhood-v1',
       points,
       featureColumns: columns,
+      trainRatio: teaching?.trainRatio ?? 0.8,
       total: points.length,
       usingDataset: false,
     };
@@ -128,7 +130,7 @@ export function createPlaygroundHost({ getDataset }) {
       commit(createPlaygroundSession(playground, {
         source,
         controls: request.controls ?? {},
-        seed: request.seed ?? 1,
+        seed: request.seed,
       }));
       return derivePlaygroundSnapshot(session);
     },

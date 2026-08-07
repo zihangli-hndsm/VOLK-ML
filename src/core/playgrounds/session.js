@@ -52,7 +52,7 @@ function validateControlValue(control, value) {
   return value;
 }
 
-export function createPlaygroundSession(playground, { source, controls = {}, seed = 1, sessionId }) {
+export function createPlaygroundSession(playground, { source, controls = {}, seed, sessionId }) {
   const normalizedSource = playground.validateSource(source);
   const initial = playground.createInitialState({ source: normalizedSource, controls, seed });
   return {
