@@ -1,5 +1,13 @@
 import { localizedError } from '../i18n.js';
-import { fitFeatureNormalization, normalizeFeatures, predictKnn } from './knnMath.js';
+import {
+  DEFAULT_KNN_SEED,
+  deterministicShuffle,
+  fitFeatureNormalization,
+  fitKnn,
+  normalizeFeatures,
+  predictKnn,
+  stratifiedSplit,
+} from './knnMath.js';
 import { flattenCustomComposites } from './customComposites.js';
 import { analyzeBrowserExecutionGraph, profileBrowserDataset } from './browserExecutionContract.js';
 import { createLinearRegressionTrainer, stepLinearRegressionTrainer } from './linearRegressionMath.js';
@@ -7,17 +15,6 @@ import { createLinearRegressionTrainer, stepLinearRegressionTrainer } from './li
 function resolvePort(manifest, direction, handleId) {
   const ports = direction === 'output' ? manifest.outputs : manifest.inputs;
   return ports.find((port) => port.name === handleId) ?? (ports.length === 1 ? ports[0] : null);
-}
-
-function deterministicShuffle(samples, seed = 2026) {
-  const shuffled = [...samples];
-  let state = seed >>> 0;
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    state = (state * 1664525 + 1013904223) % 4294967296;
-    const target = state % (index + 1);
-    [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
-  }
-  return shuffled;
 }
 
 function valuesAreFinite(value) {
@@ -40,34 +37,6 @@ function splitSamples(samples, trainRatio) {
   return {
     train: shuffled.slice(0, splitIndex),
     test: shuffled.slice(splitIndex),
-  };
-}
-
-function stratifiedSplit(samples, trainRatio) {
-  const groups = new Map();
-  samples.forEach((sample) => {
-    const group = groups.get(sample.y) ?? [];
-    group.push(sample);
-    groups.set(sample.y, group);
-  });
-  const train = [];
-  const test = [];
-  groups.forEach((group) => {
-    const shuffled = deterministicShuffle(group);
-    if (shuffled.length === 1) {
-      train.push(shuffled[0]);
-      return;
-    }
-    const splitIndex = Math.max(1, Math.min(
-      shuffled.length - 1,
-      Math.floor(shuffled.length * trainRatio),
-    ));
-    train.push(...shuffled.slice(0, splitIndex));
-    test.push(...shuffled.slice(splitIndex));
-  });
-  return {
-    train: deterministicShuffle(train),
-    test: deterministicShuffle(test),
   };
 }
 
@@ -548,27 +517,27 @@ export async function executeBrowserGraph({
       if (new Set(valid.map((sample) => sample.y)).size < 2) {
         throw localizedError('error.classificationNeedsClasses');
       }
-      const { train, test } = stratifiedSplit(valid, node.data.parameters.train_ratio);
-      if (test.length === 0) throw localizedError('error.classificationTestRequired');
-      if (new Set(train.map((sample) => sample.y)).size < 2) {
+      const fitted = fitKnn({
+        samples: valid,
+        k: node.data.parameters.k_value,
+        trainRatio: node.data.parameters.train_ratio,
+        seed: DEFAULT_KNN_SEED,
+      });
+      if (fitted.test.length === 0) throw localizedError('error.classificationTestRequired');
+      if (new Set(fitted.rawTrain.map((sample) => sample.y)).size < 2) {
         throw localizedError('error.classificationNeedsClasses');
       }
-      const normalization = fitFeatureNormalization(train, sourceDataset.featureColumns.length);
-      const normalizedTrain = train.map((sample) => ({
-        ...sample,
-        x: normalizeFeatures(sample.x, normalization),
-      }));
       output = {
         type: 'knn_classifier',
         sourceNodeId: node.id,
         featureColumns: sourceDataset.featureColumns,
         targetColumn: sourceDataset.targetColumn,
-        train: normalizedTrain,
-        test,
-        normalization,
-        k: Math.min(node.data.parameters.k_value, normalizedTrain.length),
-        trainRows: train.length,
-        testRows: test.length,
+        train: fitted.train,
+        test: fitted.test,
+        normalization: fitted.normalization,
+        k: fitted.k,
+        trainRows: fitted.trainRows,
+        testRows: fitted.testRows,
         metrics: null,
         lossHistory: [],
         trainedAt: new Date().toISOString(),

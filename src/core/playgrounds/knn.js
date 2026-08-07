@@ -1,6 +1,8 @@
 import {
   buildProjectionVector,
   computeTestAccuracy,
+  DEFAULT_KNN_SEED,
+  fitKnn,
   predictKnn,
   rankNeighbors,
   refitKnnFromSplit,
@@ -11,52 +13,8 @@ import { playgroundError } from './session.js';
 const DECISION_RESOLUTION = 48;
 const DECISION_SAMPLE_LIMIT = 200;
 const MAX_K = 20;
-const TRAIN_RATIO = 0.8;
 
 const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
-
-function deterministicShuffle(samples, seed) {
-  const shuffled = [...samples];
-  let state = (seed ?? 1) >>> 0;
-  for (let index = shuffled.length - 1; index > 0; index -= 1) {
-    state = (state * 1664525 + 1013904223) % 4294967296;
-    const target = state % (index + 1);
-    [shuffled[index], shuffled[target]] = [shuffled[target], shuffled[index]];
-  }
-  return shuffled;
-}
-
-// Stratified deterministic split keeps every label represented in the train
-// set while preserving the what-if rule "users edit train rows only".
-function splitPoints(points, seed, trainRatio) {
-  const groups = new Map();
-  points.forEach((point) => {
-    const group = groups.get(point.label) ?? [];
-    group.push(point);
-    groups.set(point.label, group);
-  });
-  const train = [];
-  const test = [];
-  let groupIndex = 0;
-  groups.forEach((group) => {
-    const shuffled = deterministicShuffle(group, seed + groupIndex * 101);
-    if (shuffled.length === 1) {
-      train.push(shuffled[0]);
-    } else {
-      const splitIndex = Math.max(1, Math.min(
-        shuffled.length - 1,
-        Math.floor(shuffled.length * trainRatio),
-      ));
-      train.push(...shuffled.slice(0, splitIndex));
-      test.push(...shuffled.slice(splitIndex));
-    }
-    groupIndex += 1;
-  });
-  return {
-    train: deterministicShuffle(train, seed + 1),
-    test: deterministicShuffle(test, seed + 2),
-  };
-}
 
 function projectedRanges(points, xFeature, yFeature) {
   const xs = points.map((point) => point.features[xFeature]);
@@ -290,12 +248,17 @@ export const knnPlayground = {
       })).filter((point) => featureColumns.every((column) => point.features[column] !== null) && typeof point.label === 'string' && point.label)
       : [];
     if (points.length < 2) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least two labeled points' });
+    const rawTrainRatio = Number(source.trainRatio);
+    const trainRatio = Number.isFinite(rawTrainRatio) && rawTrainRatio > 0 && rawTrainRatio < 1
+      ? rawTrainRatio
+      : 0.8;
     return {
       kind: source.kind,
       name: source.name ?? 'Example data',
       fingerprint: source.fingerprint ?? `${points.length}:${featureColumns.join(',')}`,
       points,
       featureColumns,
+      trainRatio,
       total: source.total ?? points.length,
       usingDataset: source.usingDataset ?? false,
     };
@@ -307,7 +270,6 @@ export const knnPlayground = {
       features: { ...point.features },
       label: point.label,
     }));
-    const { train, test } = splitPoints(points, seed ?? 1, TRAIN_RATIO);
     const xFeature = source.featureColumns[0];
     const yFeature = source.featureColumns[1];
     const ranges = projectedRanges(points, xFeature, yFeature);
@@ -323,12 +285,40 @@ export const knnPlayground = {
       distanceMetric: 'euclidean',
       ...controls,
     };
-    const fit = refitKnnFromSplit({
-      rawTrain: train,
-      test,
+    const samples = points.map((point) => ({
+      id: point.id,
+      x: source.featureColumns.map((column) => point.features[column]),
+      y: point.label,
+    }));
+    const fitted = fitKnn({
+      samples,
       k: merged.k,
-      featureColumns: source.featureColumns,
+      trainRatio: source.trainRatio,
+      seed: seed ?? DEFAULT_KNN_SEED,
     });
+    const toPoints = (trainSamples) => trainSamples.map((sample) => ({
+      id: sample.id,
+      features: Object.fromEntries(source.featureColumns.map((column, index) => [column, sample.x[index]])),
+      label: sample.y,
+    }));
+    const train = toPoints(fitted.rawTrain);
+    const test = toPoints(fitted.test);
+    const fit = {
+      normalizedTrain: fitted.train,
+      normalization: fitted.normalization,
+      k: fitted.k,
+      trainRows: fitted.trainRows,
+      testRows: fitted.testRows,
+      testAccuracy: computeTestAccuracy(
+        {
+          normalizedTrain: fitted.train,
+          normalization: fitted.normalization,
+          k: fitted.k,
+        },
+        fitted.test,
+        source.featureColumns,
+      ),
+    };
     const state = {
       points,
       rawTrain: train,
