@@ -73,3 +73,74 @@ export function predictKnn(model, rawFeatures) {
   const neighbors = rankNeighbors(model.train, normalized, model.k);
   return voteNeighbors(neighbors).predictedLabel;
 }
+
+// Evaluates a fitted model on raw test rows. A fit is the playground/runtime
+// model state: { normalizedTrain, normalization, k }.
+export function computeTestAccuracy(fit, test, featureColumns) {
+  if (!Array.isArray(test) || !test.length) return null;
+  const model = {
+    type: 'knn_classifier',
+    train: fit.normalizedTrain,
+    normalization: fit.normalization,
+    k: fit.k,
+  };
+  let correct = 0;
+  test.forEach((sample) => {
+    const raw = featureColumns.map((column, index) => (
+      sample.features?.[column] ?? sample.x?.[index]
+    ));
+    if (predictKnn(model, raw) === sample.label) correct += 1;
+  });
+  return correct / test.length;
+}
+
+// Full refit used after training-data edits: recomputes normalization from the
+// edited raw train set, re-normalizes the train samples, bounds k, and
+// re-evaluates on the unchanged test set. The test set itself is never edited
+// by the playground, so every edit is a what-if operation on the train set.
+export function refitKnnFromSplit({ rawTrain, test, k, featureColumns }) {
+  const trainSamples = rawTrain.map((point) => ({
+    id: point.id,
+    x: featureColumns.map((column) => point.features[column]),
+    y: point.label,
+  }));
+  const normalization = fitFeatureNormalization(trainSamples, featureColumns.length);
+  const normalizedTrain = trainSamples.map((sample) => ({
+    ...sample,
+    x: normalizeFeatures(sample.x, normalization),
+  }));
+  const boundedK = Math.max(1, Math.min(
+    Math.round(Number(k) || 5),
+    Math.max(1, normalizedTrain.length),
+  ));
+  const fit = {
+    normalizedTrain,
+    normalization,
+    k: boundedK,
+    trainRows: rawTrain.length,
+    testRows: Array.isArray(test) ? test.length : 0,
+    testAccuracy: null,
+  };
+  return { ...fit, testAccuracy: computeTestAccuracy(fit, test, featureColumns) };
+}
+
+// Builds a full feature vector for a 2D slice of a multidimensional dataset.
+// The x/y features come from the query; every hidden feature is fixed at its
+// training mean (raw space), which is z-score 0 after normalization. This is
+// the single source of truth for "other features fixed at training mean".
+export function buildProjectionVector({
+  xFeature,
+  yFeature,
+  x,
+  y,
+  featureColumns,
+  normalization,
+  fixedValues,
+}) {
+  return featureColumns.map((feature, index) => {
+    if (feature === xFeature) return x;
+    if (feature === yFeature) return y;
+    if (fixedValues && fixedValues[feature] !== undefined) return fixedValues[feature];
+    return normalization.means[index];
+  });
+}

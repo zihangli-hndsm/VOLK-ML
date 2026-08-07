@@ -50,7 +50,7 @@ function resolveSource(playground, dataset) {
         .filter((column) => column.type === 'number')
         .map((column) => column.name);
       const features = numeric.length >= 2
-        ? numeric.slice(0, 2)
+        ? numeric
         : (dataset.featureColumns ?? []).filter((name) => numeric.includes(name));
       if (features.length >= 2) {
         const rows = dataset.rows.filter((row) => (
@@ -174,6 +174,7 @@ export function createPlaygroundHost({ getDataset }) {
         source,
         controls: session.controls,
         sessionId: session.sessionId,
+        seed: session.seed,
       }));
       return derivePlaygroundSnapshot(session);
     },

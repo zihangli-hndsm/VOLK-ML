@@ -2,6 +2,7 @@ import { localizedError } from '../i18n.js';
 import { fitFeatureNormalization, normalizeFeatures, predictKnn } from './knnMath.js';
 import { flattenCustomComposites } from './customComposites.js';
 import { analyzeBrowserExecutionGraph, profileBrowserDataset } from './browserExecutionContract.js';
+import { createLinearRegressionTrainer, stepLinearRegressionTrainer } from './linearRegressionMath.js';
 
 function resolvePort(manifest, direction, handleId) {
   const ports = direction === 'output' ? manifest.outputs : manifest.inputs;
@@ -490,48 +491,28 @@ export async function executeBrowserGraph({
     } else if (manifestId === 'gradient_descent_node') {
       const spec = inputValue(node, 'model');
       const { dataset: sourceDataset, train, test } = spec.split;
-      const xMeans = sourceDataset.featureColumns.map(
-        (_, feature) => train.reduce((sum, sample) => sum + sample.x[feature], 0) / train.length,
-      );
-      const xStds = sourceDataset.featureColumns.map((_, feature) => (
-        Math.sqrt(train.reduce(
-          (sum, sample) => sum + (sample.x[feature] - xMeans[feature]) ** 2,
-          0,
-        ) / train.length) || 1
-      ));
-      const yMean = train.reduce((sum, sample) => sum + sample.y, 0) / train.length;
-      const yStd = Math.sqrt(train.reduce(
-        (sum, sample) => sum + (sample.y - yMean) ** 2,
-        0,
-      ) / train.length) || 1;
-      const normalized = train.map((sample) => ({
-        x: sample.x.map((value, feature) => (value - xMeans[feature]) / xStds[feature]),
-        y: (sample.y - yMean) / yStd,
-      }));
+      const trainer = createLinearRegressionTrainer(train.map((sample) => ({ x: sample.x, y: sample.y })));
       let weights = sourceDataset.featureColumns.map(() => 0);
       let bias = 0;
       const history = [];
       const epochs = node.data.parameters.epochs;
+      let previousLoss = null;
       for (let epoch = 0; epoch < epochs; epoch += 1) {
-        let loss = 0;
-        const dw = weights.map(() => 0);
-        let db = 0;
-        normalized.forEach(({ x, y }) => {
-          const error = weights.reduce(
-            (sum, weight, feature) => sum + weight * x[feature],
-            bias,
-          ) - y;
-          loss += error * error;
-          dw.forEach((_, feature) => { dw[feature] += 2 * error * x[feature]; });
-          db += 2 * error;
-        });
-        loss /= normalized.length;
-        weights = weights.map(
-          (weight, feature) => weight - spec.learningRate * (dw[feature] / normalized.length),
-        );
-        bias -= spec.learningRate * (db / normalized.length);
-
-        history.push(loss);
+        const step = stepLinearRegressionTrainer(trainer, { weights, bias, learningRate: spec.learningRate });
+        if (!Number.isFinite(step.lossNormalized)
+          || step.normalizedParameters.weights.some((value) => !Number.isFinite(value))
+          || !Number.isFinite(step.normalizedParameters.bias)
+          || step.rawParameters.weights.some((value) => !Number.isFinite(value))
+          || !Number.isFinite(step.rawParameters.bias)) {
+          throw localizedError('error.browserMlpDiverged');
+        }
+        if (previousLoss !== null
+          && step.nextLossNormalized - previousLoss > 1e-9 * Math.max(1, Math.abs(previousLoss))) {
+          throw localizedError('error.browserMlpDiverged');
+        }
+        previousLoss = step.nextLossNormalized;
+        ({ weights, bias } = step.normalizedParameters);
+        history.push(step.lossNormalized);
         if (epoch % Math.max(1, Math.floor(epochs / 50)) === 0 || epoch === epochs - 1) {
           onLoss([...history]);
           await onYield();
@@ -545,12 +526,7 @@ export async function executeBrowserGraph({
         targetColumn: sourceDataset.targetColumn,
         weights,
         bias,
-        normalization: {
-          xMeans,
-          xStds,
-          yMean,
-          yStd,
-        },
+        normalization: trainer.normalization,
         test,
         trainRows: train.length,
         testRows: test.length,

@@ -51,6 +51,11 @@ import {
   regressionPointsFromDataset,
   uniformlySamplePoints,
 } from '../src/core/linearRegressionPlayground.js';
+import {
+  createLinearRegressionTrainer,
+  normalizeLinearParameters,
+  stepLinearRegressionTrainer,
+} from '../src/core/linearRegressionMath.js';
 import { getPlayground, listPlaygrounds, playgroundsFor } from '../src/core/playgrounds/registry.js';
 import {
   createPlaygroundSession,
@@ -60,9 +65,11 @@ import {
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
 import {
-  fitFeatureNormalization,
-  normalizeFeatures,
+  buildProjectionVector,
+  computeTestAccuracy,
+  predictKnn,
   rankNeighbors,
+  refitKnnFromSplit,
   voteNeighbors,
 } from '../src/core/knnMath.js';
 import { migrateProject, PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from '../src/core/project.js';
@@ -1933,6 +1940,132 @@ assert.throws(
   assert.ok(history.at(-1).loss < history[0].loss, 'training history loss decreases');
   assert.ok(uniformlySamplePoints(lrPoints, 80).length <= 80, 'dataset sampling is bounded');
 
+  // PR A: the playground trace uses the same standardized trainer as the runtime.
+  {
+    const sharedTrainer = createLinearRegressionTrainer(lrPoints.map((point) => ({ x: point.x, y: point.y })));
+    const directRaw = [];
+    let current = { weights: [0], bias: 0 };
+    for (let step = 0; step < 5; step += 1) {
+      const next = stepLinearRegressionTrainer(sharedTrainer, { ...current, learningRate: 0.01 });
+      directRaw.push(next.rawParameters);
+      current = next.normalizedParameters;
+    }
+    const yMean = lrPoints.reduce((sum, point) => sum + point.y, 0) / lrPoints.length;
+    const paritySession = dispatchPlaygroundAction(
+      createPlaygroundSession(lrPlayground, {
+        source: lrSource,
+        controls: { weight: 0, bias: yMean, learningRate: 0.01, trainingSteps: 5 },
+        sessionId: 'lr-parity',
+      }),
+      { type: 'START_TRAINING' },
+    );
+    const parityStepped = dispatchPlaygroundAction(paritySession, { type: 'SEEK', step: 5 });
+    assert.equal(parityStepped.modelState.training.history.length, 5, 'training history length matches the requested steps');
+    assert.ok(
+      Math.abs(parityStepped.modelState.weight - directRaw[4].weights[0]) < 1e-9
+      && Math.abs(parityStepped.modelState.bias - directRaw[4].bias) < 1e-9,
+      'playground trace parameters match the shared runtime trainer step by step',
+    );
+  }
+  // PR A: training starts from the currently displayed raw parameters.
+  {
+    const start = createPlaygroundSession(lrPlayground, {
+      source: lrSource,
+      controls: { weight: 2, bias: 100, learningRate: 0.01, trainingSteps: 5 },
+      sessionId: 'lr-from-current',
+    });
+    const started = dispatchPlaygroundAction(start, { type: 'START_TRAINING' });
+    const first = dispatchPlaygroundAction(started, { type: 'STEP' });
+    const trainer = createLinearRegressionTrainer(lrPoints.map((point) => ({ x: point.x, y: point.y })));
+    const normalizedStart = normalizeLinearParameters({ weights: [2], bias: 100, normalization: trainer.normalization });
+    const directFirst = stepLinearRegressionTrainer(trainer, { weights: normalizedStart.weights, bias: normalizedStart.bias, learningRate: 0.01 });
+    assert.ok(
+      Math.abs(first.modelState.weight - directFirst.rawParameters.weights[0]) < 1e-9
+      && Math.abs(first.modelState.bias - directFirst.rawParameters.bias) < 1e-9,
+      'the first training step is based on the user-set weight/bias, not a fresh (0,0) start',
+    );
+    assert.notEqual(first.modelState.weight, 0, 'training did not restart from a zero weight');
+  }
+  // PR A: large-magnitude data stays finite and converges with a fixed learning rate.
+  {
+    const largePoints = Array.from({ length: 400 }, (_, index) => ({
+      x: 50 + (index % 161),
+      y: 2 * (50 + (index % 161)) + 120 + (index % 5),
+    }));
+    const largeSource = {
+      kind: 'example', name: 'Large', fingerprint: 'lr-large',
+      points: largePoints.map((point, index) => ({ id: `l${index}`, x: point.x, y: point.y })),
+      feature: 'x', target: 'y',
+    };
+    const largeTrained = dispatchPlaygroundAction(
+      createPlaygroundSession(lrPlayground, { source: largeSource, controls: { learningRate: 0.05, trainingSteps: 20 } }),
+      { type: 'START_TRAINING' },
+    );
+    assert.equal(largeTrained.modelState.training.stopReason, null, 'large-scale training does not trigger the stop guard');
+    assert.equal(largeTrained.modelState.training.history.length, 20, 'large-scale training completes every step');
+    assert.ok(largeTrained.modelState.training.history.every((entry) => (
+      Number.isFinite(entry.loss) && Number.isFinite(entry.weight) && Number.isFinite(entry.bias)
+    )), 'large-scale training history stays finite');
+    assert.ok(
+      largeTrained.modelState.training.history.at(-1).loss < largeTrained.modelState.training.history[0].loss,
+      'large-scale data converges in standardized space',
+    );
+  }
+  // PR A: a learning rate that makes the loss grow stops with an explicit reason.
+  {
+    const overshootSource = {
+      kind: 'example', name: 'Overshoot', fingerprint: 'lr-overshoot',
+      points: [{ id: 'o0', x: 0, y: 0 }, { id: 'o1', x: 1, y: 10 }],
+      feature: 'x', target: 'y',
+    };
+    const highLr = dispatchPlaygroundAction(
+      createPlaygroundSession(lrPlayground, { source: overshootSource, controls: { learningRate: 1.5, trainingSteps: 20 } }),
+      { type: 'START_TRAINING' },
+    );
+    assert.equal(highLr.modelState.training.stopReason, 'learning-rate-too-high', 'loss growth stops training with a clear reason');
+    assert.ok(highLr.modelState.training.history.length < 20, 'training stops before the requested step count');
+    const highLrStep = dispatchPlaygroundAction(dispatchPlaygroundAction(highLr, { type: 'STEP' }), { type: 'STEP' });
+    assert.equal(
+      derivePlaygroundSnapshot(highLrStep).observation.titleKey,
+      'playground.lr.observation.lrTooHigh',
+      'the UI shows the learning-rate-too-high observation',
+    );
+    const lowLr = dispatchPlaygroundAction(
+      createPlaygroundSession(lrPlayground, { source: overshootSource, controls: { learningRate: 0.05, trainingSteps: 10 } }),
+      { type: 'START_TRAINING' },
+    );
+    assert.equal(lowLr.modelState.training.history.length, 10, 'a sane learning rate completes all steps');
+    assert.ok(lowLr.modelState.training.history.at(-1).loss < lowLr.modelState.training.history[0].loss, 'a sane learning rate decreases loss');
+  }
+  // PR A: deterministic replay including point edits, and RESET reproduction.
+  {
+    const lrScript = [
+      { type: 'SET_CONTROL', key: 'weight', value: 1.2 },
+      { type: 'ADD_POINT', x: 2.5, y: 4 },
+      { type: 'START_TRAINING' },
+      { type: 'STEP' },
+    ];
+    const replayLr = (seed) => lrScript.reduce(
+      (session, action) => dispatchPlaygroundAction(session, action),
+      createPlaygroundSession(lrPlayground, { source: lrSource, seed, sessionId: 'lr-replay' }),
+    );
+    assert.deepEqual(
+      derivePlaygroundSnapshot(replayLr(5)),
+      derivePlaygroundSnapshot(replayLr(5)),
+      'linear regression actions replay deterministically',
+    );
+    const resetThenReplay = (seed) => {
+      let run = dispatchPlaygroundAction(replayLr(seed), { type: 'RESET' });
+      for (const action of lrScript) run = dispatchPlaygroundAction(run, action);
+      return run;
+    };
+    assert.deepEqual(
+      derivePlaygroundSnapshot(resetThenReplay(5)),
+      derivePlaygroundSnapshot(resetThenReplay(5)),
+      'RESET then replay is deterministic',
+    );
+  }
+
   // KNN shared math and playground equivalence.
   const knnPoints = Array.from({ length: 60 }, (_, index) => ({
     id: `k${index}`,
@@ -1947,18 +2080,45 @@ assert.throws(
   const regionsOn = derivePlaygroundSnapshot(dispatchPlaygroundAction(knnBase, { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true }));
   assert.ok(regionsOn.scene.decisionRegions.cells.length <= 48 * 48, 'decision region count respects the resolution cap');
 
-  const train = knnPoints.map((point) => ({ x: [point.features.a, point.features.b], y: point.label }));
-  const normalization = fitFeatureNormalization(train, 2);
-  const normalizedTrain = train.map((sample) => ({ ...sample, x: normalizeFeatures(sample.x, normalization) }));
-  const runtimeModel = { type: 'knn_classifier', train: normalizedTrain, normalization, k: 5 };
+  // PR A: the playground fit uses the train split only and displays it distinctly.
+  assert.ok(knnBase.modelState.fit.trainRows >= 1 && knnBase.modelState.fit.testRows >= 1, 'knn playground has a train/test split');
+  assert.equal(knnBase.modelState.fit.trainRows, knnBase.modelState.rawTrain.length, 'fit train rows match the raw train rows');
+  const splitScene = derivePlaygroundSnapshot(knnBase).scene;
+  const trainIds = new Set(knnBase.modelState.rawTrain.map((point) => point.id));
+  assert.ok(splitScene.points.every((point) => point.subset === 'train' || point.subset === 'test'), 'every displayed point is labeled train or test');
+  assert.equal(splitScene.points.filter((point) => point.subset === 'test').length, knnBase.modelState.fit.testRows, 'test points are displayed distinctly');
+
+  // PR A: changing k recomputes the test accuracy from the same fit state.
+  for (const k of [1, 5, 20]) {
+    const kSession = dispatchPlaygroundAction(knnBase, { type: 'SET_CONTROL', key: 'k', value: k });
+    const recomputed = computeTestAccuracy(
+      { ...knnBase.modelState.fit, k: kSession.modelState.fit.k },
+      knnBase.modelState.test,
+      knnBase.modelState.featureColumns,
+    );
+    assert.equal(
+      derivePlaygroundSnapshot(kSession).metrics.runtimeAccuracy,
+      recomputed,
+      `test accuracy matches a recomputation at k=${k}`,
+    );
+  }
+
+  // PR A: playground and runtime produce the same prediction on the same fit.
   const query = [0.4, -0.2];
-  const runtimePrediction = predictWithModel(runtimeModel, query);
+  const fitModel = {
+    type: 'knn_classifier',
+    train: knnBase.modelState.fit.normalizedTrain,
+    normalization: knnBase.modelState.fit.normalization,
+    k: knnBase.modelState.fit.k,
+  };
+  const runtimePrediction = predictWithModel(fitModel, query);
   let knnReveal = createPlaygroundSession(knnPlayground, { source: knnSource, controls: { k: 5, queryX: 0.4, queryY: -0.2 } });
   knnReveal = dispatchPlaygroundAction(knnReveal, { type: 'START_NEIGHBOR_REVEAL' });
   for (let index = 0; index < 5; index += 1) knnReveal = dispatchPlaygroundAction(knnReveal, { type: 'STEP' });
   const knnScene = derivePlaygroundSnapshot(knnReveal).scene;
   assert.equal(knnScene.voting.predictedLabel, runtimePrediction, 'playground and runtime produce the same KNN prediction');
   assert.equal(knnScene.neighbors.length, 5, 'neighbor ranks are stable and bounded by k');
+  assert.ok(knnScene.neighbors.every((neighbor) => trainIds.has(neighbor.pointId)), 'neighbors come from the train set only');
   const tieTrain = [
     { id: 0, x: [1, 0], y: 'a' },
     { id: 1, x: [-1, 0], y: 'b' },
@@ -1968,6 +2128,118 @@ assert.throws(
   const tieVote = voteNeighbors(tieNeighbors);
   assert.equal(tieVote.tie, true, 'equal vote counts register a tie');
   assert.equal(tieVote.tieBreakReason, 'label', 'stable label order breaks the tie');
+
+  // PR A: editing a training point refits normalization and both views use it.
+  {
+    const movedId = knnBase.modelState.rawTrain[0].id;
+    const moved = dispatchPlaygroundAction(knnBase, { type: 'MOVE_TRAINING_POINT', pointId: movedId, x: 100, y: 100 });
+    assert.notDeepEqual(
+      moved.modelState.fit.normalization.means,
+      knnBase.modelState.fit.normalization.means,
+      'editing a training point refits the normalization statistics',
+    );
+    const xi = moved.modelState.featureColumns.indexOf(moved.modelState.xFeature);
+    const yi = moved.modelState.featureColumns.indexOf(moved.modelState.yFeature);
+    const movedNormalized = moved.modelState.fit.normalizedTrain.find((sample) => sample.id === movedId);
+    assert.ok(
+      Math.abs(movedNormalized.x[xi] - (100 - moved.modelState.fit.normalization.means[xi]) / moved.modelState.fit.normalization.stds[xi]) < 1e-9
+      && Math.abs(movedNormalized.x[yi] - (100 - moved.modelState.fit.normalization.means[yi]) / moved.modelState.fit.normalization.stds[yi]) < 1e-9,
+      'normalized train reflects the edited point',
+    );
+    for (const normalize of [true, false]) {
+      let probe = dispatchPlaygroundAction(moved, { type: 'SET_CONTROL', key: 'normalize', value: normalize });
+      probe = dispatchPlaygroundAction(probe, { type: 'SET_CONTROL', key: 'queryX', value: 100 });
+      probe = dispatchPlaygroundAction(probe, { type: 'SET_CONTROL', key: 'queryY', value: 100 });
+      probe = dispatchPlaygroundAction(probe, { type: 'START_NEIGHBOR_REVEAL' });
+      probe = dispatchPlaygroundAction(probe, { type: 'STEP' });
+      const probeScene = derivePlaygroundSnapshot(probe).scene;
+      assert.equal(probeScene.neighbors[0]?.pointId, movedId, `both normalized and raw views use the edited point (normalize=${normalize})`);
+    }
+  }
+
+  // PR A: refit bounds k by the train size and evaluates on the unchanged test set.
+  {
+    const refit = refitKnnFromSplit({
+      rawTrain: knnBase.modelState.rawTrain.slice(0, 8),
+      test: knnBase.modelState.test,
+      k: 20,
+      featureColumns: knnBase.modelState.featureColumns,
+    });
+    assert.equal(refit.k, 8, 'refit bounds k by the train size');
+    assert.equal(refit.trainRows, 8, 'refit reports the new train rows');
+    assert.equal(refit.testRows, knnBase.modelState.test.length, 'refit keeps the unchanged test set');
+    assert.equal(typeof refit.testAccuracy, 'number', 'refit computes test accuracy');
+  }
+
+  // PR A: multidimensional data projects hidden features at the training mean.
+  {
+    const multiPoints = Array.from({ length: 40 }, (_, index) => {
+      const group = index % 2;
+      const offset = Math.floor(index / 2);
+      return {
+        id: `m${index}`,
+        features: {
+          a: Number(((group === 0 ? 2 : 5) + Math.sin(offset * 1.1) * 0.4).toFixed(3)),
+          b: Number(((group === 0 ? 2 : 5) + Math.cos(offset * 0.8) * 0.4).toFixed(3)),
+          c: Number(((group === 0 ? 1 : 3) + Math.sin(offset * 1.7) * 0.3).toFixed(3)),
+          d: Number(((group === 0 ? 0.5 : 2) + Math.cos(offset * 1.3) * 0.3).toFixed(3)),
+        },
+        label: group === 0 ? 'setosa' : 'versicolor',
+      };
+    });
+    const multiSource = { kind: 'example', name: 'Multi', fingerprint: 'multi-test', points: multiPoints, featureColumns: ['a', 'b', 'c', 'd'] };
+    const multi = createPlaygroundSession(knnPlayground, { source: multiSource, controls: { xFeature: 'c', yFeature: 'd', k: 5 } });
+    const multiScene = derivePlaygroundSnapshot(multi).scene;
+    assert.equal(multiScene.projection.enabled, true, 'multidimensional data enables the 2D slice projection');
+    assert.equal(multiScene.query.vector[0], 0, 'hidden feature a is fixed at z-score 0');
+    assert.equal(multiScene.query.vector[1], 0, 'hidden feature b is fixed at z-score 0');
+    const explicitVector = buildProjectionVector({
+      xFeature: 'c',
+      yFeature: 'd',
+      x: multiScene.query.normalizedX,
+      y: multiScene.query.normalizedY,
+      featureColumns: multi.modelState.featureColumns,
+      normalization: multi.modelState.fit.normalization,
+      fixedValues: Object.fromEntries(multi.modelState.featureColumns.map((feature) => [feature, 0])),
+    });
+    assert.deepEqual(explicitVector, multiScene.query.vector, 'buildProjectionVector produces the scene query vector');
+    const fit = multi.modelState.fit;
+    const manualNeighbors = rankNeighbors(fit.normalizedTrain, multiScene.query.vector, fit.k);
+    assert.deepEqual(
+      multiScene.neighbors.map((neighbor) => neighbor.pointId),
+      manualNeighbors.map((neighbor) => neighbor.pointId),
+      'the slice query prediction equals ranking on the explicit full vector',
+    );
+    let revealedMulti = dispatchPlaygroundAction(multi, { type: 'START_NEIGHBOR_REVEAL' });
+    for (let index = 0; index < fit.k; index += 1) revealedMulti = dispatchPlaygroundAction(revealedMulti, { type: 'STEP' });
+    const revealedScene = derivePlaygroundSnapshot(revealedMulti).scene;
+    assert.equal(
+      revealedScene.voting.predictedLabel,
+      voteNeighbors(manualNeighbors).predictedLabel,
+      'the slice vote equals the explicit full-vector prediction',
+    );
+  }
+
+  // PR A: deterministic replay for KNN edits.
+  {
+    const knnScript = [
+      { type: 'SET_CONTROL', key: 'k', value: 3 },
+      { type: 'ADD_TRAINING_POINT', x: 1.5, y: -1.2, label: 'red' },
+      { type: 'MOVE_TRAINING_POINT', pointId: knnBase.modelState.rawTrain[0].id, x: 0.7, y: 0.3 },
+      { type: 'START_NEIGHBOR_REVEAL' },
+      { type: 'STEP' },
+      { type: 'STEP' },
+    ];
+    const replayKnn = (seed) => knnScript.reduce(
+      (session, action) => dispatchPlaygroundAction(session, action),
+      createPlaygroundSession(knnPlayground, { source: knnSource, seed, sessionId: 'knn-replay' }),
+    );
+    assert.deepEqual(
+      derivePlaygroundSnapshot(replayKnn(11)),
+      derivePlaygroundSnapshot(replayKnn(11)),
+      'knn actions replay deterministically',
+    );
+  }
 
   // Playground Agent API.
   let hostDataset = null;
@@ -2020,6 +2292,32 @@ assert.throws(
   await playgroundAgent.close();
   assert.throws(() => playgroundAgent.getState(), (error) => error.code === 'PLAYGROUND_NOT_OPEN');
   await assert.rejects(playgroundAgent.step(), (error) => error.code === 'PLAYGROUND_NOT_OPEN');
+
+  // PR A: workspace classification sources keep every numeric feature for the
+  // multidimensional projection, instead of being truncated to two features.
+  {
+    const irisHost = createPlaygroundHost({ getDataset: () => ({
+      name: 'Iris', task: 'classification',
+      rows: Array.from({ length: 20 }, (_, index) => ({
+        sepal_length: 4 + (index % 3), sepal_width: 2 + (index % 2),
+        petal_length: 1 + (index % 5), petal_width: 0.5 + (index % 3),
+        species: index % 2 === 0 ? 'setosa' : 'versicolor',
+      })),
+      columns: [
+        { name: 'sepal_length', type: 'number', missing: 0 },
+        { name: 'sepal_width', type: 'number', missing: 0 },
+        { name: 'petal_length', type: 'number', missing: 0 },
+        { name: 'petal_width', type: 'number', missing: 0 },
+        { name: 'species', type: 'string', missing: 0 },
+      ],
+      featureColumns: ['sepal_length', 'sepal_width', 'petal_length', 'petal_width'],
+      targetColumn: 'species',
+    }) });
+    const irisAgent = createPlaygroundAgentApi(irisHost);
+    const irisOpened = await irisAgent.open({ playgroundId: 'knn-classification' });
+    assert.equal(irisOpened.scene.featureOptions.length, 4, 'workspace classification sources keep every numeric feature for projection');
+    await irisAgent.close();
+  }
 }
 
 // Every bundled teaching example must load, run when marked runnable, and export when marked exportable.
