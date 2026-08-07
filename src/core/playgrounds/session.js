@@ -60,6 +60,7 @@ export function createPlaygroundSession(playground, { source, controls = {}, see
     sessionId: sessionId ?? `playground-${crypto.randomUUID()}`,
     playgroundId: playground.id,
     status: 'ready',
+    seed,
     sourceData: normalizedSource,
     source: {
       kind: normalizedSource.kind,

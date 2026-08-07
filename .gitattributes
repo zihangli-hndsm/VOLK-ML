@@ -1,0 +1,3 @@
+# Keep JSON byte-stable across platforms: the example generator compares
+# generated files byte-for-byte and writes LF, so JSON must stay LF on disk.
+*.json text eol=lf

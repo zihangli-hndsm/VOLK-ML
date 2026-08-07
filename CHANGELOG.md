@@ -64,3 +64,18 @@
 - **P1 数据打通**：Playground 无工作区数据时默认使用 `teachingDatasets.js` 的 Linear Trend 与 KNN Neighborhood（两月形）数据，替代硬编码簇。
 - **P2 确定性**：新增/移动点使用会话内递增计数器生成稳定 ID，移除 `Date.now()`，相同 action 脚本得到相同快照。
 - 验收：`npm run check`（新增标准化不发散、KNN 无泄漏、确定性 ID 断言）、`npm run build`、`git diff --check` 全部通过；浏览器端到端 15/15 通过。
+
+## 2026-08-07 — Playground 状态一致性修复（PR A）
+
+- 线性回归 Playground 改为与真实 runtime 共用同一套标准化训练器（`src/core/linearRegressionMath.js` 的 `createLinearRegressionTrainer` / `stepLinearRegressionTrainer`）：训练在 z-score 标准化空间进行，参数每一步转回原始坐标显示，常见数据量纲（如房价 50–210 面积）下固定学习率不再发散；`gradient_descent_node` runtime 同步改为调用同一 trainer，两端 trace 不再漂移。
+- “Train” 现在从画面上当前显示的 weight/bias 开始，而不是重置为 (0,0)；同时修复了通过 controls 预置参数时 `modelState` 未同步的问题。loss 连续增长或参数非有限时训练自动停止，观察区明确显示“学习率过高/训练发散”。
+- KNN Playground 改为确定性分层 train/test split：fit 只用训练集（归一化、邻居、决策区域、准确率全部来自同一 fit），测试集不再泄漏进邻居；编辑训练点是 what-if 操作，保留原 test split，`refitKnnFromSplit()` 完整重建归一化/训练样本并重算 test accuracy；测试点不可拖动且以空心圆显示。
+- 修改 `k` 后 test accuracy 与决策区域随同一 fit 重算；`k` 自动受训练集大小约束。
+- 多维数据新增二维切片投影：隐藏特征固定为训练集均值（归一化视图为 z-score 0），UI 显示“二维切片 / 其他特征固定为训练集均值”并可展开查看固定特征值；workspace 分类数据集保留全部数值特征供投影（不再截断为两个）。
+- 指标拆分 `runtimeAccuracy`（runtime fit 的测试准确率）与 `currentViewAccuracy`（当前切片/归一化视图的 what-if 准确率）；normalize 控件改名为“运行时归一化视图”，关闭时明确标注“不归一化对比”为假设结果。KNN 视图编辑点时会先把显示坐标逆变换回原始坐标，标准化视图下拖动不再写坏数据。
+- 新增点使用会话内稳定 ID（替代 `Date.now()`），相同 seed 与 action 序列可完全重放；`refreshSource()` 保留原 seed 与 split。
+- 合并 main 时与 PR #34（Playground 验收修复）协调：保留其教学数据默认源（Linear Trend / KNN Neighborhood 双月数据）、KNN 邻居投票条可视化、intro 场景开启邻居顺序与决策区域、intro 观察文案带 train/test 行数；重复的数学实现统一为 PR A 的 `createLinearRegressionTrainer` / `refitKnnFromSplit` 版本。
+- 新增 `scripts/check-core.mjs` 验收断言：大规模回归数据不发散、训练从当前参数开始、runtime 与 Playground 逐参数一致、学习率过高停止与提示、RESET 后重放确定性；KNN 仅用训练集拟合、test accuracy 与 k 一致、编辑后归一化更新、归一化/原始两种视图均使用新点、隐藏特征用训练均值、切片 query 与完整向量预测一致、KNN 编辑重放确定性。
+- 仓库卫生：新增 `.gitattributes`（JSON 统一 LF，保证 Windows 下示例生成器逐字节校验稳定）并把 `dist/` 加入 `.gitignore`（构建产物不再污染工作区）。
+- 更新 `docs/architecture/playgrounds.md`（共享 LR 训练器、KNN split/refit/投影语义）。
+- 验收：`npm run check`、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；KNN intro 场景完整播放（train 32 / test 8，k=5，runtimeAccuracy=currentViewAccuracy）。已知限制：交互式浏览器实测未在本轮执行（会话内无浏览器自动化工具），可启动本地实例人工复核。

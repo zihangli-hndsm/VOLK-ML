@@ -130,5 +130,12 @@ No changes to `TutorialDialog` are needed: it queries `playgroundsFor()` generic
 
 ## Shared math
 
-- Linear regression math lives in `src/core/linearRegressionPlayground.js` (sampling, ranges, MSE, least squares, gradient, training history).
-- KNN math lives in `src/core/knnMath.js` (normalization, distance, neighbor ranking, voting, prediction) and is shared verbatim with the browser runtime. The distance metric is squared Euclidean to preserve runtime ranking semantics; do not change it without updating both consumers and tests.
+- Linear regression math lives in `src/core/linearRegressionPlayground.js` (sampling, ranges, MSE, least squares, gradient) and `src/core/linearRegressionMath.js` (standardized z-score trainer). The browser runtime and the playground both train through `createLinearRegressionTrainer()` / `stepLinearRegressionTrainer()`, so their traces cannot drift apart. Training always happens in standardized feature/target space and parameters are converted back to raw coordinates for display; a fixed learning rate therefore cannot diverge on large-magnitude data.
+- KNN math lives in `src/core/knnMath.js` (normalization, distance, neighbor ranking, voting, prediction, `refitKnnFromSplit`, `computeTestAccuracy`, `buildProjectionVector`) and is shared verbatim with the browser runtime. The distance metric is squared Euclidean to preserve runtime ranking semantics; do not change it without updating both consumers and tests.
+
+## KNN playground semantics
+
+- On open, the KNN playground performs a deterministic stratified train/test split from the session seed. The fit (normalization, normalized train samples, `k`, test accuracy) uses the train set only; the test set is never used as a neighbor source, so the playground cannot leak test samples into predictions.
+- Editing training points is a what-if operation: the raw train set is refitted with `refitKnnFromSplit()`, normalization and normalized train samples are rebuilt, and the unchanged test set is re-evaluated. Test points are not editable.
+- Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
+- The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.

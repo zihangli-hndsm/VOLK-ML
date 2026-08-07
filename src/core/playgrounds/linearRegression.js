@@ -1,10 +1,14 @@
 import {
-  buildNormalizedRegressionHistory,
   leastSquaresFit,
   meanSquaredError,
   playgroundRanges,
   regressionGradient,
 } from '../linearRegressionPlayground.js';
+import {
+  createLinearRegressionTrainer,
+  normalizeLinearParameters,
+  stepLinearRegressionTrainer,
+} from '../linearRegressionMath.js';
 import { playgroundError } from './session.js';
 
 const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
@@ -30,6 +34,27 @@ function clearTraining(modelState) {
     ...modelState,
     gradient: null,
     training: { currentStep: 0, history: [], totalSteps: 0 },
+  };
+}
+
+function nextPointId(points, counter) {
+  let id = `p-${counter}`;
+  let next = counter;
+  while (points.some((point) => point.id === id)) {
+    next += 1;
+    id = `p-${next}`;
+  }
+  return { id, counter: next + 1 };
+}
+
+// Converts the multi-feature trainer gradient into the 1D scene shape used by
+// the linear regression renderer.
+function sceneGradient(gradient) {
+  if (!gradient) return null;
+  return {
+    weight: Array.isArray(gradient.weights) ? gradient.weights[0] : gradient.weight,
+    bias: gradient.bias,
+    magnitude: gradient.magnitude,
   };
 }
 
@@ -109,24 +134,32 @@ export const linearRegressionPlayground = {
     const points = source.points.map((point) => ({ id: point.id, x: point.x, y: point.y }));
     const derived = recomputeDerived(points);
     const initialBias = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+    const merged = {
+      weight: 0,
+      bias: initialBias,
+      learningRate: 0.05,
+      trainingSteps: 20,
+      showResiduals: false,
+      showBestFit: false,
+      ...controls,
+    };
     return {
       controls: {
-        weight: 0,
-        bias: initialBias,
-        learningRate: 0.05,
-        trainingSteps: 20,
-        showResiduals: false,
-        showBestFit: false,
-        ...controls,
+        weight: merged.weight,
+        bias: merged.bias,
+        learningRate: merged.learningRate,
+        trainingSteps: merged.trainingSteps,
+        showResiduals: Boolean(merged.showResiduals),
+        showBestFit: Boolean(merged.showBestFit),
       },
       modelState: {
         points,
         ...derived,
-        weight: 0,
-        bias: initialBias,
+        weight: merged.weight,
+        bias: merged.bias,
         gradient: null,
-        pointCounter: points.length,
         training: { currentStep: 0, history: [], totalSteps: 0 },
+        pointCounter: 0,
       },
       totalSteps: 0,
     };
@@ -154,14 +187,9 @@ export const linearRegressionPlayground = {
       const x = finiteOrNull(action.x);
       const y = finiteOrNull(action.y);
       if (x === null || y === null) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type });
-      const id = `p-${modelState.pointCounter}`;
+      const { id, counter } = nextPointId(modelState.points, modelState.pointCounter);
       const points = [...modelState.points, { id, x, y }];
-      return nextSession(session, {
-        modelState: {
-          ...clearTraining({ ...modelState, points, pointCounter: modelState.pointCounter + 1 }),
-          ...recomputeDerived(points),
-        },
-      });
+      return nextSession(session, { modelState: { ...clearTraining({ ...modelState, points, pointCounter: counter }), ...recomputeDerived(points) } });
     }
     if (action.type === 'MOVE_POINT') {
       const x = finiteOrNull(action.x);
@@ -182,14 +210,69 @@ export const linearRegressionPlayground = {
       });
     }
     if (action.type === 'START_TRAINING') {
-      const { history, normalization } = buildNormalizedRegressionHistory(modelState.points, {
-        learningRate: controls.learningRate,
-        steps: Math.round(controls.trainingSteps),
+      const points = modelState.points.map(({ x, y }) => ({ x, y }));
+      const trainer = createLinearRegressionTrainer(points);
+      const start = normalizeLinearParameters({
+        weights: [modelState.weight],
+        bias: modelState.bias,
+        normalization: trainer.normalization,
       });
+      const learningRate = Number(controls.learningRate);
+      const steps = Math.max(1, Math.round(controls.trainingSteps));
+      const initialLossNormalized = trainer.normalizedPoints.reduce((sum, sample) => {
+        const prediction = start.weights.reduce(
+          (total, weight, feature) => total + weight * sample.x[feature],
+          start.bias,
+        );
+        return sum + (prediction - sample.y) ** 2;
+      }, 0) / Math.max(1, trainer.normalizedPoints.length);
+      const history = [];
+      let current = { weights: start.weights, bias: start.bias };
+      let previousLoss = initialLossNormalized;
+      let stopReason = null;
+      for (let step = 1; step <= steps; step += 1) {
+        const next = stepLinearRegressionTrainer(trainer, { ...current, learningRate });
+        const { normalizedParameters, rawParameters } = next;
+        const finite = Number.isFinite(next.lossNormalized)
+          && normalizedParameters.weights.every(Number.isFinite)
+          && Number.isFinite(normalizedParameters.bias)
+          && rawParameters.weights.every(Number.isFinite)
+          && Number.isFinite(rawParameters.bias);
+        if (!finite) {
+          stopReason = 'diverged';
+          break;
+        }
+        const entry = {
+          step,
+          weight: rawParameters.weights[0],
+          bias: rawParameters.bias,
+          normalizedWeight: normalizedParameters.weights[0],
+          normalizedBias: normalizedParameters.bias,
+          gradient: next.gradient,
+          loss: next.nextLossRaw,
+          lossNormalized: next.nextLossNormalized,
+        };
+        const lossGrew = next.nextLossNormalized - previousLoss
+          > 1e-9 * Math.max(1, Math.abs(previousLoss));
+        if (lossGrew) {
+          history.push(entry);
+          stopReason = 'learning-rate-too-high';
+          break;
+        }
+        previousLoss = next.nextLossNormalized;
+        history.push(entry);
+        current = { weights: normalizedParameters.weights, bias: normalizedParameters.bias };
+      }
       return nextSession(session, {
         modelState: {
           ...modelState,
-          training: { currentStep: 0, history, totalSteps: history.length, normalization },
+          training: {
+            currentStep: 0,
+            history,
+            totalSteps: history.length,
+            stopReason,
+            normalization: trainer.normalization,
+          },
         },
         timeline: { step: 0, totalSteps: history.length, speed: session.timeline.speed },
       });
@@ -197,10 +280,8 @@ export const linearRegressionPlayground = {
     if (action.type === 'STEP' || action.type === 'SEEK') {
       const { training } = modelState;
       if (!training.history.length) return session;
-      const problematicIndex = training.history.findIndex((entry) => !entry.finite || entry.learningRateTooHigh);
-      const maxStep = problematicIndex === -1 ? training.totalSteps : problematicIndex + 1;
-      const target = action.type === 'SEEK' ? Math.round(action.step ?? 0) : Math.min(training.currentStep + 1, maxStep);
-      const currentStep = Math.max(0, Math.min(target, maxStep));
+      const target = action.type === 'SEEK' ? Math.round(action.step ?? 0) : training.currentStep + 1;
+      const currentStep = Math.max(0, Math.min(target, training.totalSteps));
       const entry = training.history[Math.max(0, currentStep - 1)];
       const nextModel = entry
         ? { ...modelState, weight: entry.weight, bias: entry.bias, gradient: entry.gradient, training: { ...training, currentStep } }
@@ -217,7 +298,7 @@ export const linearRegressionPlayground = {
   deriveScene(session) {
     const { modelState, controls, timeline } = session;
     const { points, ranges, optimum, weight, bias } = modelState;
-    const gradient = modelState.gradient ?? regressionGradient(points, weight, bias);
+    const gradient = sceneGradient(modelState.gradient) ?? regressionGradient(points, weight, bias);
     const prediction = (x) => weight * x + bias;
     const scene = {
       points: points.map((point) => ({
@@ -248,25 +329,25 @@ export const linearRegressionPlayground = {
       bodyKey: 'playground.lr.observation.introBody',
       params: {},
     };
-    const problematicEntry = training.currentStep > 0 ? training.history[training.currentStep - 1] : null;
-    if (problematicEntry?.learningRateTooHigh) {
-      observation = {
-        titleKey: 'playground.lr.observation.learningRateTooHigh',
-        bodyKey: 'playground.lr.observation.learningRateTooHighBody',
-        params: { learningRate: controls.learningRate, step: training.currentStep, loss: problematicEntry.loss.toExponential(2) },
-      };
-    } else if (problematicEntry && !problematicEntry.finite) {
-      observation = {
-        titleKey: 'playground.lr.observation.diverged',
-        bodyKey: 'playground.lr.observation.divergedBody',
-        params: { step: training.currentStep },
-      };
+    if (training.stopReason && training.currentStep > 0 && training.currentStep >= training.totalSteps) {
+      const entry = training.history[training.currentStep - 1];
+      observation = training.stopReason === 'learning-rate-too-high'
+        ? {
+          titleKey: 'playground.lr.observation.lrTooHigh',
+          bodyKey: 'playground.lr.observation.lrTooHighBody',
+          params: { step: entry?.step ?? training.currentStep, loss: Number(entry?.loss ?? 0).toExponential(3) },
+        }
+        : {
+          titleKey: 'playground.lr.observation.diverged',
+          bodyKey: 'playground.lr.observation.divergedBody',
+          params: {},
+        };
     } else if (training.currentStep > 0 && training.currentStep < training.totalSteps) {
       const entry = training.history[training.currentStep - 1];
       observation = {
         titleKey: 'playground.lr.observation.trainingStep',
         bodyKey: 'playground.lr.observation.trainingStepBody',
-        params: { step: training.currentStep, loss: entry.loss.toFixed(4), magnitude: gradient.magnitude.toFixed(4) },
+        params: { step: training.currentStep, loss: entry.loss.toFixed(4), magnitude: entry.gradient.magnitude.toFixed(4) },
       };
     } else if (controls.showResiduals) {
       observation = {

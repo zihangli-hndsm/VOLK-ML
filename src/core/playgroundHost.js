@@ -7,7 +7,6 @@ import {
 } from './playgrounds/session.js';
 import { fallbackRegressionPoints, regressionPointsFromDataset } from './linearRegressionPlayground.js';
 import { teachingDatasetById } from './teachingDatasets.js';
-import { profileBrowserDataset } from './browserExecutionContract.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
 
@@ -56,39 +55,46 @@ function resolveSource(playground, dataset) {
         .filter((column) => column.type === 'number')
         .map((column) => column.name);
       const features = numeric.length >= 2
-        ? numeric.slice(0, 2)
+        ? numeric
         : (dataset.featureColumns ?? []).filter((name) => numeric.includes(name));
       if (features.length >= 2) {
-        const profile = profileBrowserDataset(dataset);
-        const samples = profile.samples.filter((sample) => sample.y);
-        if (samples.length >= 3 && new Set(samples.map((sample) => sample.y)).size >= 2) {
+        const rows = dataset.rows.filter((row) => (
+          features.every((name) => Number.isFinite(Number(row?.[name])))
+          && typeof row?.[dataset.targetColumn] === 'string'
+          && row[dataset.targetColumn]
+        ));
+        if (rows.length >= 2) {
           return {
             kind: 'workspace-dataset',
             name: dataset.name,
-            fingerprint: fingerprintOf([dataset.name, dataset.task, features, dataset.targetColumn, samples.length]),
-            samples,
-            featureColumns: dataset.featureColumns,
-            trainRatio: dataset.trainRatio ?? 0.8,
-            total: samples.length,
+            fingerprint: fingerprintOf([dataset.name, dataset.task, features, dataset.targetColumn, rows.length]),
+            points: rows.map((row, index) => ({
+              id: `d${index}`,
+              features: Object.fromEntries(features.map((name) => [name, Number(row[name])])),
+              label: row[dataset.targetColumn],
+            })),
+            featureColumns: features,
+            total: rows.length,
             usingDataset: true,
           };
         }
       }
     }
     const teaching = teachingDatasetById('knn-neighborhood')?.dataset;
-    const samples = (teaching?.rows ?? []).map((row, index) => ({
-      index,
-      x: teaching.featureColumns.map((column) => Number(row[column])),
-      y: String(row[teaching.targetColumn]),
+    const columns = teaching?.featureColumns ?? ['x1', 'x2'];
+    const target = teaching?.targetColumn ?? 'label';
+    const points = (teaching?.rows ?? []).map((row, index) => ({
+      id: `e${index}`,
+      features: Object.fromEntries(columns.map((column) => [column, Number(row[column])])),
+      label: String(row[target]),
     }));
     return {
       kind: 'example',
       name: 'Example data',
       fingerprint: 'example-knn-neighborhood-v1',
-      samples,
-      featureColumns: teaching?.featureColumns ?? ['x1', 'x2'],
-      trainRatio: teaching?.trainRatio ?? 0.8,
-      total: samples.length,
+      points,
+      featureColumns: columns,
+      total: points.length,
       usingDataset: false,
     };
   }
@@ -169,6 +175,7 @@ export function createPlaygroundHost({ getDataset }) {
         source,
         controls: session.controls,
         sessionId: session.sessionId,
+        seed: session.seed,
       }));
       return derivePlaygroundSnapshot(session);
     },
