@@ -5,7 +5,7 @@
 //     id, model: { adapter }, data: { source },
 //     controls: [...], layout: { stage: [...], side: [...] },
 //     primitives: [{ id, type, ... }],
-//     steps: [{ id, setControl?, invoke?, consume?, reveal?, show?, hide?,
+//     steps: [{ id, setControl?, invoke?, reveal?, show?, hide?,
 //               highlight?, annotate?, reset?, wait?, narrationKey?, durationMs }],
 //   }
 //
@@ -19,7 +19,6 @@ export const ALLOWED_STEP_OPERATIONS = [
   'setControl',
   'show',
   'hide',
-  'update',
   'highlight',
   'reveal',
   'reset',
@@ -30,8 +29,6 @@ export const ALLOWED_STEP_OPERATIONS = [
 export const ALLOWED_STEP_FIELDS = new Set([
   'id',
   'invoke',
-  'consume',
-  'update',
   'setControl',
   'show',
   'hide',
@@ -46,7 +43,9 @@ export const ALLOWED_STEP_FIELDS = new Set([
 
 export const BINDING_PREFIXES = ['$controls', '$model', '$data', '$trace', '$metrics'];
 
-export const BINDING_TRANSFORMS = new Set(['mean', 'min', 'max', 'extent', 'formatNumber', 'take', 'filterByEvent']);
+import { BINDING_TRANSFORMS } from './bindings.js';
+
+export const BINDING_TRANSFORM_NAMES = new Set(Object.keys(BINDING_TRANSFORMS));
 
 export const EXECUTABLE_MARKERS = ['eval(', 'Function(', 'new Function', 'document.', 'window.', 'fetch(', 'import(', 'require('];
 
@@ -55,7 +54,7 @@ export function isAllowedBinding(binding) {
   if (!binding.startsWith('$')) return false;
   if (binding.includes('(')) {
     const match = /^([A-Za-z]+)\((\$[A-Za-z0-9_.]+)\)$/.exec(binding);
-    return Boolean(match && BINDING_TRANSFORMS.has(match[1]));
+    return Boolean(match && BINDING_TRANSFORM_NAMES.has(match[1]));
   }
   return BINDING_PREFIXES.some((prefix) => binding === prefix || binding.startsWith(`${prefix}.`));
 }

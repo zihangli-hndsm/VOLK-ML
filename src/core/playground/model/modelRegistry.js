@@ -5,10 +5,12 @@ import { knnAdapter } from './knnAdapter.js';
 //   { id, capabilities, defaultVisualizationPreset,
 //     initialize({source, controls, seed, recorder}),
 //     applyModelAction(modelState, action, {controls, recorder}),
-//     deriveScene(modelState, {controls}),
-//     buildPrimitives(modelState, scene, derived, {controls}) }
+//     deriveScene(modelState, {controls, source}),
+//     scriptOperations }
 // Adapters are pure model logic: they never import React, DOM, SVG or the
-// session reducer. The unified playground runtime owns the session.
+// session reducer. The unified playground runtime owns the session, and the
+// Primitive Materializer owns visualization composition (adapters never
+// produce primitives).
 const adapters = [linearRegressionAdapter, knnAdapter];
 const byId = new Map(adapters.map((adapter) => [adapter.id, adapter]));
 

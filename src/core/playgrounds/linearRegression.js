@@ -41,16 +41,7 @@ export const linearRegressionPlayground = {
     {
       id: 'intro',
       titleKey: 'playground.scenario.intro',
-      steps: [
-        { action: { type: 'SET_CONTROL', key: 'weight', value: 0 }, durationMs: 500, narrationKey: 'playground.lr.scenario.introStart' },
-        { action: { type: 'SET_CONTROL', key: 'bias', value: 0 }, durationMs: 600, narrationKey: 'playground.lr.scenario.introFlat' },
-        { action: { type: 'SET_CONTROL', key: 'showResiduals', value: true }, durationMs: 800, narrationKey: 'playground.lr.scenario.introResiduals' },
-        { action: { type: 'START_TRAINING' }, durationMs: 600, narrationKey: 'playground.lr.scenario.introTrain' },
-        { action: { type: 'STEP' }, durationMs: 700, narrationKey: 'playground.lr.scenario.introStep1' },
-        { action: { type: 'STEP' }, durationMs: 700, narrationKey: 'playground.lr.scenario.introStep2' },
-        { action: { type: 'STEP' }, durationMs: 700, narrationKey: 'playground.lr.scenario.introStep3' },
-        { action: { type: 'SET_BEST_FIT' }, durationMs: 800, narrationKey: 'playground.lr.scenario.introBestFit' },
-      ],
+      presetId: 'linear-regression.intuition',
     },
   ],
 

@@ -7,15 +7,15 @@ VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve thre
 Since the PR B refactor, both models run on one **unified playground runtime** instead of two independent session reducers:
 
 ```text
-Model Adapter (linear-regression / knn)
+Model / Dataset
         ↓
-Semantic trace events
+Semantic state + trace events
         ↓
 Visualization Script (JSON preset)
         ↓
-playgroundRuntime (the single session reducer)
+Primitive Materializer (binds $model/$data/$controls/$trace/$metrics)
         ↓
-Semantic scene + JSON primitives
+JSON primitives[]
         ↓
 Unified stage (renderer by primitive type)
 ```
@@ -23,6 +23,15 @@ Unified stage (renderer by primitive type)
 `src/core/playground/playgroundRuntime.js` owns the session: controls, timeline, status, semantic traces and visual state. The UI, the Canvas Agent (`canvas.playground`) and `src/core/playground/visualization/scriptRuntime.js` all dispatch the same JSON actions through `dispatchRuntimeAction()`. Model-specific behavior lives in the model adapters (`src/core/playground/model/`), which never import React/DOM/SVG and never touch the session reducer.
 
 The old descriptors in `src/core/playgrounds/linearRegression.js` and `src/core/playgrounds/knn.js` are metadata only (id, title, controls, actions, scenarios, source validation); `src/core/playgrounds/session.js` is a thin compatibility wrapper over the unified runtime, so the registry, Agent API and existing contract tests keep working.
+
+Since the PR B follow-up, **Visualization Scripts own visualization composition**:
+
+- Model adapters output a stable semantic state (`deriveScene`) and never produce primitives (`buildPrimitives` was removed from the contract).
+- `script.primitives` is the single source of truth: a primitive exists in the snapshot only if the script declares it, and `visualState[id] !== false` controls visibility.
+- `primitiveMaterializer.js` resolves each declaration's binding props (`$model.points`, `$controls.showNeighborOrder`, `mean($data.values)`, ...) into renderer props; bindings are recursive and JSON-safe.
+- Descriptor `scenarios` are now `{ id, titleKey, presetId }` references; `runScenario()` and UI preset playback both execute the preset through the Script Runtime (same actions, same traces).
+- Script state (`scriptState: { status, step, totalSteps }`) is separate from the model timeline, so a 7-step script is never conflated with 20 training steps.
+- `RESET`/script `reset`/`seek`/replay all return to the session **baseline** (initial controls + source + seed), so `fresh first-N == full-run-then-seek-N == reset-then-N`.
 
 ## Layers
 
@@ -37,18 +46,22 @@ Each model implements the adapter contract in `src/core/playground/model/`:
   defaultVisualizationPreset,
   initialize({ source, controls, seed, recorder }),
   applyModelAction(modelState, action, { controls, recorder }),
-  deriveScene(modelState, { controls }),
-  buildPrimitives(modelState, scene, derived, { controls, source }),
+  deriveScene(modelState, { controls, source }),  // semantic state only
+  scriptOperations,                                // operation name -> JSON action
 }
 ```
 
 - Linear Regression reuses `linearRegressionMath.js` / `linearRegressionPlayground.js`.
 - KNN reuses `knnMath.js` (`fitKnn`, `refitKnnFromSplit`, `computeTestAccuracy`, `buildProjectionVector`) and the browser runtime's split/fit semantics (`DEFAULT_KNN_SEED = 2026`).
 - KNN's fit trace is lazy-learning honest: split → normalization statistics → store samples → ready; it never fabricates an optimization.
+- `deriveScene` returns a stable semantic state (points, line, residuals, training, metrics, formula, observation, ranges for LR; display points/query, neighbors, voting, decision regions, projection, normalization for KNN). It never decides which visual primitives exist.
+- `scriptOperations` translates script `invoke` operation names into the same JSON actions the UI uses (`traceFit` → `START_TRAINING`, `setBestFit` → `SET_BEST_FIT`, `tracePredict` → `START_NEIGHBOR_REVEAL`, `moveQuery` → `MOVE_QUERY_POINT`), so adding a model never requires changing the Script Runtime.
 
 ### Dataset adapter
 
 `src/core/playground/data/datasetAdapter.js` provides `inspectDataset`, `createSplit`, `project2D`, `buildSlice` (hidden features fixed at the training mean), `featureStats` and `sampleRows`. The 2D projection always goes through `buildSlice({ xFeature, yFeature, fixedFeatureStrategy: 'mean' })`.
+
+`createRuntimeSession` runs every source through `inspectDataset()` and stores the normalized context as `dataState: { schema, rows, task, featureColumns, targetColumn, trainRatio }`, so `$data.*` bindings in scripts are real (the workspace dataset is passed from `playgroundHost`).
 
 ### Semantic trace
 
@@ -64,11 +77,13 @@ Presets (`src/core/playground/presets/`, registered in `visualization/presetRegi
   primitives: [{ id, type }], steps: [...] }
 ```
 
-`visualization/scriptValidator.js` rejects unknown models/primitives/operations/trace events, invalid bindings, executable strings and oversized scripts (`SCRIPT_UNKNOWN_MODEL`, `SCRIPT_UNKNOWN_PRIMITIVE`, `SCRIPT_UNSUPPORTED_OPERATION`, `SCRIPT_INVALID_BINDING`, `SCRIPT_UNKNOWN_TRACE_EVENT`, `SCRIPT_TOO_COMPLEX`). `visualization/scriptRuntime.js` translates every step into the same playground actions the UI and Agent use, so seek/replay is deterministic by construction.
+`visualization/scriptValidator.js` rejects unknown models/primitives/operations, invalid bindings (including primitive props), executable strings, oversized scripts, unknown layout primitive references and duplicate layout ids (`SCRIPT_UNKNOWN_MODEL`, `SCRIPT_UNKNOWN_PRIMITIVE`, `SCRIPT_UNSUPPORTED_OPERATION`, `SCRIPT_INVALID_BINDING`, `SCRIPT_UNKNOWN_TRACE_EVENT`, `SCRIPT_TOO_COMPLEX`, `SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE`, `INVALID_SCRIPT`). Every operation the validator accepts has runtime semantics: `invoke`, `setControl`, `show`, `hide`, `highlight`, `reveal`, `reset`, `annotate`, `wait` (`consume`/`update` were removed until PR C needs them).
+
+`visualization/scriptRuntime.js` executes presets through the unified runtime's `SCRIPT_*` actions (`SCRIPT_LOAD/PLAY/PAUSE/STEP/SEEK/RESET`); seek and reset replay from the session baseline, so the same script + seed + data produces byte-identical traces and primitives.
 
 ### Unified UI
 
-`src/components/playground/` contains the toolbar (Model / Dataset / Preset / Agent), the unified stage, inspector, timeline and primitive renderers. The stage only knows `primitives[]` — it resolves each primitive through `rendererRegistry.jsx` and never imports model math.
+`src/components/playground/` contains the toolbar (Model / Dataset / Preset / Agent), the unified stage, inspector, timeline and primitive renderers. The stage only knows `primitives[]` — it resolves each primitive through `rendererRegistry.jsx` and never imports model math. Playback is script-driven: with a loaded preset the timeline drives `SCRIPT_*` actions and never special-cases a model (a static test forbids model names and `START_TRAINING`/`START_NEIGHBOR_REVEAL` in the UI directory).
 
 ## Descriptor contract (compatibility)
 

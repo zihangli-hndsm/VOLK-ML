@@ -1,6 +1,5 @@
 import { getModelAdapter } from '../model/modelRegistry.js';
 import { isKnownPrimitiveType } from './primitives.js';
-import { isKnownTraceEvent } from '../trace/traceTypes.js';
 import {
   ALLOWED_STEP_FIELDS,
   ALLOWED_STEP_OPERATIONS,
@@ -49,6 +48,7 @@ export function validateScript(script) {
   }
 
   const primitiveIds = new Set();
+  const bindings = new Set();
   for (const primitive of script.primitives) {
     if (typeof primitive.id !== 'string' || !primitive.id || primitiveIds.has(primitive.id)) {
       throw scriptError('INVALID_SCRIPT', { reason: 'primitive id must be unique' });
@@ -61,10 +61,23 @@ export function validateScript(script) {
       && primitive.props.decisionRegion.resolution > MAX_DECISION_RESOLUTION) {
       throw scriptError('SCRIPT_TOO_COMPLEX', { reason: 'decision resolution' });
     }
+    collectBindings(primitive.props, bindings);
+  }
+
+  // Layout integrity: every layout bucket must reference declared primitives
+  // and must not repeat an id.
+  for (const bucket of ['stage', 'side']) {
+    const layoutIds = script.layout?.[bucket];
+    if (!Array.isArray(layoutIds)) continue;
+    const seen = new Set();
+    for (const id of layoutIds) {
+      if (!primitiveIds.has(id)) throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE', { bucket, id });
+      if (seen.has(id)) throw scriptError('INVALID_SCRIPT', { reason: `duplicate layout id ${id}` });
+      seen.add(id);
+    }
   }
 
   const stepIds = new Set();
-  const bindings = new Set();
   for (const step of script.steps) {
     if (typeof step.id !== 'string' || !step.id || stepIds.has(step.id)) {
       throw scriptError('INVALID_SCRIPT', { reason: 'step id must be unique' });
@@ -80,22 +93,12 @@ export function validateScript(script) {
     }
     if (step.invoke) {
       const operation = step.invoke.operation;
-      const capability = operation === 'traceFit' ? 'traceFit'
-        : operation === 'tracePredict' ? 'tracePredict'
-          : operation === 'setBestFit' ? 'fit'
-            : operation === 'moveQuery' ? 'predict'
-              : null;
-      if (!capability || !adapter.capabilities[capability]) {
+      if (!adapter.scriptOperations || !adapter.scriptOperations[operation]) {
         throw scriptError('SCRIPT_UNSUPPORTED_OPERATION', { operation });
       }
       collectBindings(step.invoke.args, bindings);
     } else if ('invoke' in step) {
       throw scriptError('SCRIPT_UNSUPPORTED_OPERATION', { operation: null });
-    }
-    if (step.consume) {
-      if (!isKnownTraceEvent(adapterId, step.consume.event)) {
-        throw scriptError('SCRIPT_UNKNOWN_TRACE_EVENT', { event: step.consume.event });
-      }
     }
     collectBindings(step, bindings);
   }

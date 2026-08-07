@@ -250,6 +250,8 @@ export const messages = {
   'playground.knn.observation.tieBody': { en: 'Two labels tied; the winner was chosen by smaller total distance ({reason}).', zh: '两个标签平票；按总距离更小裁决（{reason}）。' },
   'playground.knn.votes': { en: 'Neighbor votes', zh: '邻居投票' },
   'playground.knn.voteTie': { en: 'Tie — see the observation note.', zh: '平票——见观察说明。' },
+  'playground.votes': { en: 'Neighbor votes', zh: '邻居投票' },
+  'playground.voteTie': { en: 'Tie — see the observation note.', zh: '平票——见观察说明。' },
   'playground.formula.knn': { en: 'd² = Σ(xᵢ − qᵢ)²  ·  k = {k}  ·  nearest d = {nearest}', zh: 'd² = Σ(xᵢ − qᵢ)² · k = {k} · 最近邻距离 = {nearest}' },
   'playground.lr.scenario.introStart': { en: 'A horizontal line starts with zero slope.', zh: '从斜率为 0 的水平线开始。' },
   'playground.lr.scenario.introFlat': { en: 'With bias 0 the line sits at the origin, far below the data.', zh: '偏置为 0 时直线位于原点，远低于数据。' },

@@ -101,3 +101,15 @@
 - 新增统一 UI（`src/components/playground/`）：UnifiedPlaygroundDialog、PlaygroundToolbar（Model/Dataset/Preset/Agent）、PlaygroundStage（只认识 primitives）、PlaygroundInspector、PlaygroundTimeline 与 11 个 primitive renderer（scatter/regression-line/reference-line/residual-lines/decision-region/neighbor-links/query-point/vote-bars/loss-curve/formula/annotation/metric-card）；删除旧模型专用视图（KnnView/LinearRegressionView/viewRegistry 等），renderer 不 import 模型数学。
 - 新增数据集适配层 `src/core/playground/data/datasetAdapter.js`（inspectDataset/createSplit/buildSlice/featureStats/sampleRows，二维切片统一走 `buildSlice({ fixedFeatureStrategy: 'mean' })`）。
 - 验收：`npm run check`（新增：单 reducer 断言、适配器不 import React、renderer 不 import 模型数学、preset 校验与 JSON-safe、LR/KNN preset 完整重放且 trace 逐位一致、validator 拒绝 9 类非法脚本）、`npm run check:compiler`、`npm run build`（666 modules）、`git diff --check` 全部通过。已知限制：交互式浏览器实测未在本轮执行（会话内无浏览器自动化工具），可启动本地实例人工复核；Agent API 未新增 `loadPreset/generateScript`（属 PR C）。
+
+## 2026-08-08 — Script-Driven Playground Runtime（PR B follow-up）
+
+- Visualization Script 成为可视化运行时的一等公民：删除 Model Adapter 的 `buildPrimitives()`，新增 Primitive Materializer（`src/core/playground/visualization/primitiveMaterializer.js`），`script.primitives` 成为可视化组成的唯一 source of truth——同一模型状态、不同 script 得到不同 primitives（测试覆盖）。
+- Preset primitive 声明升级为真实 binding props（`$model.*` / `$data.*` / `$controls.*` / `$trace` / `$metrics.*`），支持递归解析与白名单变换（mean/min/max/extent/formatNumber/take/filterByEvent）；修复 `mean($data.values)` 这类 transform 绑定被误当字面量的问题。
+- Script 拥有 layout：validator 校验 layout.stage/side 引用的 primitive 必须存在（`SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE`）且不重复；show/hide/highlight/annotate 作用于 script primitive，未声明的图元即使 SET_VISUAL 也不会凭空出现。
+- 播放统一走 Script Runtime：描述符 `scenarios` 改为 `{ id, titleKey, presetId }` 引用；`runScenario()` 与 UI preset 播放都执行同一 preset（同一 action、同一 trace）；UI 删除 LR→START_TRAINING / KNN→START_NEIGHBOR_REVEAL 等模型特判，静态测试禁止 UI 目录出现模型名与训练 action。
+- Baseline/reset/seek P0 修复：session 保存 `baseline { controls, source, seed }`，普通 RESET 与 script reset/seek/replay 都回到 baseline；新增 replay invariance 测试（fresh first-N == full-run-then-seek-N == full-run-then-reset-then-N，比较 controls/scene/metrics/traces/visualState/primitives/scriptState）。
+- 时间线拆分：新增 `scriptState { status, step, totalSteps }`，script step 与 model training/reveal step 不再混用同一 slider；`$data.*` 绑定真实可用（`playgroundHost` 传入 workspace dataset，runtime 用 `inspectDataset` 生成 `dataState`）。
+- DSL 语义闭环：`consume`/`update` 从 schema/validator/文档移除（PR C 再引入）；`wait` 保留并实现（只推进 script state 与 UI 计时，Node 重放不 sleep）；validator 接受的每个 operation 都有 runtime 语义（parity 测试覆盖 invoke/setControl/show/hide/highlight/reveal/reset/annotate/wait）。
+- KNN `tracePredict` 单独执行即产生 `query.received` 与 `knn.distancesComputed` 并初始化 reveal 状态（不再依赖后续 STEP 补上）；script runtime driver 契约改为 `dispatch/getState/getAdapterId/resetToBaseline/subscribe`，operation 翻译移到 adapter `scriptOperations`（加新模型不改 script runtime）。
+- 验收：`npm run check`（新增 replay invariance、组合控制、binding/transform、layout 完整性、tracePredict、operation parity、runScenario==preset 路径、UI 无模型特判静态扫描）、`npm run check:compiler`、`npm run build`（672 modules）、`git diff --check` 全部通过。已知限制：交互式浏览器实测未在本轮执行；`consume/update` 已删除待 PR C 实现。
