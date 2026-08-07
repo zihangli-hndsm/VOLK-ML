@@ -257,10 +257,12 @@ export const knnPlayground = {
       id: 'intro',
       titleKey: 'playground.scenario.intro',
       steps: [
+        { action: { type: 'SET_CONTROL', key: 'showNeighborOrder', value: true }, durationMs: 500, narrationKey: 'playground.knn.scenario.introOrder' },
         { action: { type: 'SET_CONTROL', key: 'k', value: 1 }, durationMs: 500, narrationKey: 'playground.knn.scenario.introK1' },
         { action: { type: 'START_NEIGHBOR_REVEAL' }, durationMs: 400, narrationKey: 'playground.knn.scenario.introReveal' },
         { action: { type: 'STEP' }, durationMs: 700, narrationKey: 'playground.knn.scenario.introNeighbor1' },
         { action: { type: 'SET_CONTROL', key: 'k', value: 5 }, durationMs: 600, narrationKey: 'playground.knn.scenario.introK5' },
+        { action: { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true }, durationMs: 600, narrationKey: 'playground.knn.scenario.introRegions' },
         { action: { type: 'STEP' }, durationMs: 600, narrationKey: 'playground.knn.scenario.introNeighbor2' },
         { action: { type: 'STEP' }, durationMs: 600, narrationKey: 'playground.knn.scenario.introNeighbor3' },
         { action: { type: 'STEP' }, durationMs: 600, narrationKey: 'playground.knn.scenario.introNeighbor4' },
@@ -589,9 +591,15 @@ export const knnPlayground = {
     let observation = {
       titleKey: 'playground.knn.observation.intro',
       bodyKey: 'playground.knn.observation.introBody',
-      params: {},
+      params: { trainRows: fit.trainRows, testRows: fit.testRows },
     };
-    if (modelState.revealed > 0 && modelState.revealed < fit.k) {
+    if (!useNormalized && modelState.revealed === 0) {
+      observation = {
+        titleKey: 'playground.knn.observation.noNormalize',
+        bodyKey: 'playground.knn.observation.noNormalizeBody',
+        params: {},
+      };
+    } else if (modelState.revealed > 0 && modelState.revealed < fit.k) {
       const neighbor = neighbors[modelState.revealed - 1];
       observation = {
         titleKey: 'playground.knn.observation.neighbor',

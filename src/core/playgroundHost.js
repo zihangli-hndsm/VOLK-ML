@@ -6,6 +6,7 @@ import {
   playgroundError,
 } from './playgrounds/session.js';
 import { fallbackRegressionPoints, regressionPointsFromDataset } from './linearRegressionPlayground.js';
+import { teachingDatasetById } from './teachingDatasets.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
 
@@ -36,11 +37,15 @@ function resolveSource(playground, dataset) {
     return {
       kind: 'example',
       name: 'Example data',
-      fingerprint: 'example-linear-regression-v1',
-      points: fallbackRegressionPoints.map((point, index) => ({ id: `e${index}`, x: point.x, y: point.y })),
+      fingerprint: 'example-linear-trend-v1',
+      points: (teachingDatasetById('linear-trend')?.dataset.rows ?? fallbackRegressionPoints).map((point, index) => ({
+        id: `e${index}`,
+        x: point.x ?? point[0],
+        y: point.y ?? point[1],
+      })),
       feature: 'x',
       target: 'y',
-      total: fallbackRegressionPoints.length,
+      total: (teachingDatasetById('linear-trend')?.dataset.rows ?? fallbackRegressionPoints).length,
       usingDataset: false,
     };
   }
@@ -75,24 +80,20 @@ function resolveSource(playground, dataset) {
         }
       }
     }
-    const points = Array.from({ length: 80 }, (_, index) => {
-      const group = index % 2;
-      const offset = Math.floor(index / 2);
-      return {
-        id: `e${index}`,
-        features: {
-          feature_a: Number(((group === 0 ? -2 : 2) + Math.sin(offset * 1.3) * 0.8 + (offset % 3) * 0.12).toFixed(3)),
-          feature_b: Number(((group === 0 ? -2 : 2) + Math.cos(offset * 0.9) * 0.8 - (offset % 2) * 0.1).toFixed(3)),
-        },
-        label: group === 0 ? 'A' : 'B',
-      };
-    });
+    const teaching = teachingDatasetById('knn-neighborhood')?.dataset;
+    const columns = teaching?.featureColumns ?? ['x1', 'x2'];
+    const target = teaching?.targetColumn ?? 'label';
+    const points = (teaching?.rows ?? []).map((row, index) => ({
+      id: `e${index}`,
+      features: Object.fromEntries(columns.map((column) => [column, Number(row[column])])),
+      label: String(row[target]),
+    }));
     return {
       kind: 'example',
       name: 'Example data',
-      fingerprint: 'example-knn-v1',
+      fingerprint: 'example-knn-neighborhood-v1',
       points,
-      featureColumns: ['feature_a', 'feature_b'],
+      featureColumns: columns,
       total: points.length,
       usingDataset: false,
     };

@@ -55,6 +55,16 @@
 - 新增 `docs/architecture/playgrounds.md`，更新 `overview.md` 与 `agent-canvas-api.md`。
 - 验收：`npm run check`（新增 registry/session/数学/Agent 契约断言）、`npm run build`、`git diff --check` 全部通过；浏览器端到端实测 12/12 通过。
 
+## 2026-08-06 — Playground 验收修复（P0/P1/P2）
+
+- **P0 线性回归**：Playground 训练改为与 runtime 共用标准化实现（`src/core/linearRegressionMath.js`），对 x/y 做 z-score 后在标准化空间做梯度下降、再转回原始坐标；每步检查有限值，损失连续两次上升即暂停并提示“学习率过高”。大规模数据（房价尺度）20 步 loss 从 4467 降至 562，不再发散。
+- **P0 KNN**：抽取共享 `fitKnn()`（分层 train/test 划分、仅训练集计算归一化、k 截断），browser runtime 与 Playground 使用同一实现；Playground 邻居只来自训练集、无测试泄漏，展示训练/测试行数与测试准确率，并讲述“划分→归一化→保存样本→查邻居→评估”过程。
+- **P1 KNN 场景**：intro 场景开启邻居顺序与决策区域；视图新增投票条可视化（每类票数条、预测标签箭头、平票提示），画布随播放逐步变化。
+- **P1 KNN 编辑**：视图始终在原始坐标绘制与编辑（不再切换归一化坐标），消除标准化视图编辑回写错误数据的问题；归一化开关改为“what-if 对照”（运行时始终归一化，关闭时显示未归一化邻居变化）。
+- **P1 数据打通**：Playground 无工作区数据时默认使用 `teachingDatasets.js` 的 Linear Trend 与 KNN Neighborhood（两月形）数据，替代硬编码簇。
+- **P2 确定性**：新增/移动点使用会话内递增计数器生成稳定 ID，移除 `Date.now()`，相同 action 脚本得到相同快照。
+- 验收：`npm run check`（新增标准化不发散、KNN 无泄漏、确定性 ID 断言）、`npm run build`、`git diff --check` 全部通过；浏览器端到端 15/15 通过。
+
 ## 2026-08-07 — Playground 状态一致性修复（PR A）
 
 - 线性回归 Playground 改为与真实 runtime 共用同一套标准化训练器（`src/core/linearRegressionMath.js` 的 `createLinearRegressionTrainer` / `stepLinearRegressionTrainer`）：训练在 z-score 标准化空间进行，参数每一步转回原始坐标显示，常见数据量纲（如房价 50–210 面积）下固定学习率不再发散；`gradient_descent_node` runtime 同步改为调用同一 trainer，两端 trace 不再漂移。
@@ -64,6 +74,7 @@
 - 多维数据新增二维切片投影：隐藏特征固定为训练集均值（归一化视图为 z-score 0），UI 显示“二维切片 / 其他特征固定为训练集均值”并可展开查看固定特征值；workspace 分类数据集保留全部数值特征供投影（不再截断为两个）。
 - 指标拆分 `runtimeAccuracy`（runtime fit 的测试准确率）与 `currentViewAccuracy`（当前切片/归一化视图的 what-if 准确率）；normalize 控件改名为“运行时归一化视图”，关闭时明确标注“不归一化对比”为假设结果。KNN 视图编辑点时会先把显示坐标逆变换回原始坐标，标准化视图下拖动不再写坏数据。
 - 新增点使用会话内稳定 ID（替代 `Date.now()`），相同 seed 与 action 序列可完全重放；`refreshSource()` 保留原 seed 与 split。
+- 合并 main 时与 PR #34（Playground 验收修复）协调：保留其教学数据默认源（Linear Trend / KNN Neighborhood 双月数据）、KNN 邻居投票条可视化、intro 场景开启邻居顺序与决策区域、intro 观察文案带 train/test 行数；重复的数学实现统一为 PR A 的 `createLinearRegressionTrainer` / `refitKnnFromSplit` 版本。
 - 新增 `scripts/check-core.mjs` 验收断言：大规模回归数据不发散、训练从当前参数开始、runtime 与 Playground 逐参数一致、学习率过高停止与提示、RESET 后重放确定性；KNN 仅用训练集拟合、test accuracy 与 k 一致、编辑后归一化更新、归一化/原始两种视图均使用新点、隐藏特征用训练均值、切片 query 与完整向量预测一致、KNN 编辑重放确定性。
 - 仓库卫生：新增 `.gitattributes`（JSON 统一 LF，保证 Windows 下示例生成器逐字节校验稳定）并把 `dist/` 加入 `.gitignore`（构建产物不再污染工作区）。
 - 更新 `docs/architecture/playgrounds.md`（共享 LR 训练器、KNN split/refit/投影语义）。
