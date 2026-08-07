@@ -188,6 +188,8 @@ export const messages = {
   'playground.observationTitle': { en: 'Observation', zh: '观察' },
   'playground.metricsTitle': { en: 'Metrics', zh: '指标' },
   'playground.formulaTitle': { en: 'Formula', zh: '公式' },
+  'playground.lossCurveTitle': { en: 'Loss', zh: '损失' },
+  'playground.agentReady': { en: 'Agent-ready', zh: 'Agent 可用' },
   'playground.source.example': { en: 'Example data', zh: '示例数据' },
   'playground.source.workspace': { en: 'Workspace dataset: {name}', zh: '项目数据集：{name}' },
   'playground.source.stale': { en: 'source changed — refresh to update', zh: '数据已变化——刷新以更新' },

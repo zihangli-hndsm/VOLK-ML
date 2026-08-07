@@ -1,0 +1,21 @@
+export default function VoteBarRenderer({ props, t, colorByLabel }) {
+  const { voting } = props;
+  return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+    <p className="text-xs font-black uppercase tracking-wider text-slate-500">{t('playground.knn.votes')}</p>
+    <div className="mt-2 space-y-1">
+      {Object.entries(voting.counts).map(([label, count]) => {
+        const total = Object.values(voting.counts).reduce((sum, value) => sum + value, 0) || 1;
+        const predicted = voting.predictedLabel === label;
+        return <div key={label} className="flex items-center gap-2 text-sm">
+          <span className="w-16 truncate font-bold" style={{ color: colorByLabel[label] }}>{label}</span>
+          <div className="h-4 flex-1 overflow-hidden rounded-full bg-white">
+            <div className="h-full rounded-full" style={{ width: `${(count / total) * 100}%`, background: colorByLabel[label] ?? '#94a3b8' }} />
+          </div>
+          <span className="w-6 text-right font-mono font-bold text-slate-700">{count}</span>
+          {predicted && <span className="text-xs font-black text-slate-900">←</span>}
+        </div>;
+      })}
+      {voting.tie && <p className="mt-1 text-xs font-bold text-amber-700">{t('playground.knn.voteTie')}</p>}
+    </div>
+  </div>;
+}
