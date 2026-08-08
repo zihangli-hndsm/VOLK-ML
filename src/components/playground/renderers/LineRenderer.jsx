@@ -1,5 +1,6 @@
 export default function LineRenderer({ props, xToSvg, yToSvg, variant }) {
-  const { line } = props;
+  const { line } = props ?? {};
+  if (!line || !line.start || !line.end) return null;
   const dashed = variant === 'reference-line';
   return <line x1={xToSvg(line.start.x)} y1={yToSvg(line.start.y)} x2={xToSvg(line.end.x)} y2={yToSvg(line.end.y)}
     stroke={props.highlighted ? '#f59e0b' : dashed ? '#059669' : '#2563eb'}

@@ -3,7 +3,7 @@ const formatMetric = (value) => (
 );
 
 export default function MetricRenderer({ props, t }) {
-  const { metrics } = props;
+  const { metrics = {} } = props ?? {};
   return <div className="rounded-2xl border border-slate-200 p-3">
     <h3 className="text-xs font-black uppercase tracking-wider text-emerald-600">{t('playground.metricsTitle')}</h3>
     <dl className="mt-2 space-y-1">
