@@ -1,4 +1,5 @@
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
+import { buildLabelColorMap } from './visualEncoding.js';
 
 // Side panel: model controls plus the JSON primitives declared for the side
 // layout (vote bars, metrics, observation, ...).
@@ -8,6 +9,8 @@ export default function PlaygroundInspector({ playground, snapshot, onDispatch, 
   const side = primitives.filter((primitive) => (
     layout.includes(primitive.id) && primitive.type !== 'formula' && visualState[primitive.id] !== false
   ));
+  const scatter = primitives.find((primitive) => primitive.type === 'scatter');
+  const colorByLabel = buildLabelColorMap(scatter?.props?.points);
   return <div className="space-y-4">
     <div className="rounded-2xl border border-slate-200 p-3">
       <h3 className="text-xs font-black uppercase tracking-wider text-blue-600">{t('playground.controlsTitle')}</h3>
@@ -59,7 +62,7 @@ export default function PlaygroundInspector({ playground, snapshot, onDispatch, 
     {side.map((primitive) => {
       const Renderer = rendererByPrimitiveType[primitive.type];
       if (!Renderer) return null;
-      return <Renderer key={primitive.id} props={primitive.props} t={t} />;
+      return <Renderer key={primitive.id} props={primitive.props} t={t} colorByLabel={colorByLabel} />;
     })}
   </div>;
 }

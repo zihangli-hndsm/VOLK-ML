@@ -3192,6 +3192,26 @@ assert.throws(
       const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf-8');
       assert.ok(mainSource.includes("languagePolicy: 'preserve-current'"), 'examples load with preserve-current');
       assert.ok(mainSource.includes('applyProject(JSON.parse(await file.text()))'), 'import keeps the default project policy');
+
+      // INVALID_SCRIPT is part of the script error contract and passes
+      // through the Agent.
+      assert.ok(SCRIPT_ERROR_CODES.includes('INVALID_SCRIPT'), 'INVALID_SCRIPT is a centralized script error code');
+      const invalidHost = makeHost();
+      const invalidAgent = createPlaygroundAgentApi(invalidHost);
+      await invalidAgent.open({ playgroundId: 'linear-regression' });
+      await assert.rejects(
+        invalidAgent.dispatch({ type: 'SCRIPT_LOAD', script: { version: 99, model: { adapter: 'linear-regression' } } }),
+        (error) => error.code === 'INVALID_SCRIPT',
+        'agent surfaces INVALID_SCRIPT for malformed scripts',
+      );
+      await invalidAgent.close();
+
+      // Playground renderer failures must stay inside an Error Boundary.
+      const boundarySource = readFileSync(new URL('../src/components/playground/PlaygroundErrorBoundary.jsx', import.meta.url), 'utf-8');
+      assert.ok(boundarySource.includes('getDerivedStateFromError'), 'Error Boundary uses getDerivedStateFromError');
+      assert.ok(boundarySource.includes("t('playground.errorReset')") && boundarySource.includes("t('playground.errorClose')"), 'Error Boundary offers Reset and Close');
+      const dialogSource = readFileSync(new URL('../src/components/playgrounds/PlaygroundDialog.jsx', import.meta.url), 'utf-8');
+      assert.ok(dialogSource.includes('PlaygroundErrorBoundary'), 'PlaygroundDialog wraps the playground in an Error Boundary');
     }
   }
 }

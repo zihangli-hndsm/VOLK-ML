@@ -1,6 +1,6 @@
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
+import { buildLabelColorMap } from './visualEncoding.js';
 
-const LABEL_COLORS = ['#2563eb', '#7c3aed', '#059669', '#d97706', '#dc2626', '#0891b2'];
 const PLOT = { left: 58, right: 620, top: 20, bottom: 320 };
 
 // The unified stage only knows primitives. It never imports model math and
@@ -27,8 +27,7 @@ export default function PlaygroundStage({ snapshot, t }) {
   };
   const xToSvg = (x) => PLOT.left + ((x - ranges.xMin) / (ranges.xMax - ranges.xMin)) * (PLOT.right - PLOT.left);
   const yToSvg = (y) => PLOT.bottom - ((y - ranges.yMin) / (ranges.yMax - ranges.yMin)) * (PLOT.bottom - PLOT.top);
-  const labels = [...new Set(points.map((point) => point.label))].sort();
-  const colorByLabel = Object.fromEntries(labels.map((label, index) => [label, LABEL_COLORS[index % LABEL_COLORS.length]]));
+  const colorByLabel = buildLabelColorMap(points);
   return <svg viewBox="0 0 640 360" className="block h-auto w-full" role="img" aria-label={t('playground.chartLabel')}>
     <rect x={PLOT.left} y={PLOT.top} width={PLOT.right - PLOT.left} height={PLOT.bottom - PLOT.top} fill="#f8fafc" />
     {[0, 0.25, 0.5, 0.75, 1].map((ratio) => <g key={`grid-${ratio}`}>

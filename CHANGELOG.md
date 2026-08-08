@@ -134,3 +134,13 @@
 - Script 错误码统一与透传：新增 `src/core/playground/visualization/scriptErrors.js`（`SCRIPT_ERROR_CODES` 单一来源），validator/bindings/primitives/runtime 共用；Agent 错误归一化同时接受 `PLAYGROUND_ERROR_CODES` 与 `SCRIPT_ERROR_CODES`，script contract 错误不再被包装成 `OPERATION_FAILED`（测试：runtime SCRIPT_MODEL_MISMATCH → agent SCRIPT_MODEL_MISMATCH）。
 - 语言偏好修复：`applyProject` 新增 `languagePolicy`（默认 `'project'` 保持现有 Import/Restore/Agent loadProject 语义；`'preserve-current'` 忽略 project.language）；**仅内置 Examples** 加载使用 `preserve-current`，普通 Import/Restore 按原逻辑恢复项目语言；纯函数 `resolveLanguagePreference`（`src/core/languagePolicy.js`）单测覆盖 en-only/zh-only/bilingual/显式 import 四类场景，并静态断言 Examples 路径传 `preserve-current`、Import 路径保持默认。不改变 PROJECT_VERSION/schema。
 - 验收：`npm run check`（新增 Agent parity、validator target、$data target、error passthrough、language policy 测试）、`npm run check:compiler`、`npm run build`（672 modules）、`git diff --check` 全部通过；PR A/PR B 全部回归保持。
+
+## 2026-08-08 — P0 Playground Renderer Crash Fix
+
+- 根因：KNN 第一次 reveal 后 `voting.counts` 非空，Inspector 渲染 side 布局中的 VoteBarRenderer 时未传 `colorByLabel`，`colorByLabel[label]` 抛 TypeError；Playground 无 Error Boundary → React 子树崩溃 → 整页白屏且无法返回。
+- 共享视觉编码：新增 `src/components/playground/visualEncoding.js`（`LABEL_COLORS` + `buildLabelColorMap`），Stage 与 Inspector 都从 scatter primitive 构建同一确定性映射；同一 label 在 Scatter / Neighbor / VoteBar / DecisionRegion 颜色完全一致（颜色只属于 UI 层，不进 Adapter/Script）。
+- Inspector 修复：side renderer 现在统一接收 `colorByLabel`；VoteBarRenderer 增加防御（`colorByLabel?.[label] ?? '#94a3b8'`、`voting`/`counts` 缺失守卫）；renderer audit 为 Scatter/Neighbor/DecisionRegion/Metric/Line/Residual/QueryPoint 补齐可选上下文缺失时的降级处理。
+- Error Boundary：新增 `PlaygroundErrorBoundary.jsx` 包住 Playground（Stage/Inspector/Timeline/renderer），崩溃时显示 fallback 面板（Reset Playground / Close Playground），Close 不依赖坏 snapshot、始终可用；`key={playgroundId}` 避免旧错误污染新 Playground；reset 失败时保留 fallback。
+- React SSR render smoke：新增 `scripts/playground-render-smoke.jsx` + `scripts/check-playground-render.mjs`（esbuild 打包 + `renderToStaticMarkup`），纳入 `npm run check`；KNN 12 个快照（0→11 步）与 LR 8 个快照（0→7 步）逐步渲染 Stage+Inspector 无异常，明确断言首个非空投票快照（revealed=1、counts 非空）可渲染；VoteBarRenderer 在有/无 colorByLabel、空/畸形 props 下均不抛。
+- 错误码收尾：`INVALID_SCRIPT` 加入 `SCRIPT_ERROR_CODES`，Agent 对畸形 `SCRIPT_LOAD` 返回 `INVALID_SCRIPT`（不再被包装成 OPERATION_FAILED）。
+- 验收：`npm run check`（含 render smoke）、`npm run check:compiler`、`npm run build`（674 modules）、`git diff --check` 全部通过；PR A/PR B/语言偏好全部回归保持。已知限制：Error Boundary 的运行时捕获与 Close/Reset 的浏览器端实测需人工复核（SSR 不触发 boundary；生产代码与静态断言已覆盖），可启动本地实例验证。

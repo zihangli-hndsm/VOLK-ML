@@ -103,6 +103,13 @@ Presets (`src/core/playground/presets/`, registered in `visualization/presetRegi
 
 `src/components/playground/` contains the toolbar (Model / Dataset / Preset / Agent), the unified stage, inspector, timeline and primitive renderers. The stage only knows `primitives[]` — it resolves each primitive through `rendererRegistry.jsx` and never imports model math. Playback is script-driven: with a loaded preset the timeline drives `SCRIPT_*` actions and never special-cases a model (a static test forbids model names and `START_TRAINING`/`START_NEIGHBOR_REVEAL` in the UI directory).
 
+### Visual encoding and renderer resilience
+
+- `src/components/playground/visualEncoding.js` owns the deterministic label→color mapping (`buildLabelColorMap`). Stage and Inspector build it from the scatter primitive's points, so a label renders with the same color across scatter points, neighbor links, vote bars and decision regions. Colors are UI-layer only: adapters emit semantic labels, scripts decide what to show, and no theme system exists yet.
+- Renderers degrade gracefully on missing optional context (missing `colorByLabel`, malformed `voting`, missing arrays) instead of throwing, but never repair model math — bad model state is caught in the runtime/validator layer.
+- `PlaygroundErrorBoundary` wraps the Playground (Stage/Inspector/Timeline/renderers) so a renderer exception shows a fallback panel with Reset and Close instead of white-screening the app. The fallback only depends on `onClose`/`onReset`/`t`, never on the possibly-corrupt snapshot.
+- `scripts/check-playground-render.mjs` bundles `scripts/playground-render-smoke.jsx` with esbuild and runs React server rendering for every KNN/LR preset step (Stage + Inspector), asserting the first non-empty vote snapshot renders without exceptions; it is part of `npm run check`.
+
 ## Descriptor contract (compatibility)
 
 Each playground is a descriptor in `src/core/playgrounds/`. The registry (`registry.js`) is the only source of playground metadata.

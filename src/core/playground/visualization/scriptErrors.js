@@ -2,6 +2,7 @@
 // Agent error normalizer accepts these codes so script contract failures
 // surface with a stable SCRIPT_* code instead of OPERATION_FAILED.
 export const SCRIPT_ERROR_CODES = [
+  'INVALID_SCRIPT',
   'SCRIPT_UNKNOWN_MODEL',
   'SCRIPT_MODEL_MISMATCH',
   'SCRIPT_UNKNOWN_PRIMITIVE',
