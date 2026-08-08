@@ -70,6 +70,7 @@ import { validatePrimitive } from '../src/core/playground/visualization/primitiv
 import { listPresets, getPreset } from '../src/core/playground/visualization/presetRegistry.js';
 import { validateScript } from '../src/core/playground/visualization/scriptValidator.js';
 import { createScriptRuntime } from '../src/core/playground/visualization/scriptRuntime.js';
+import { dryRunScript } from '../src/core/playground/agent/dryRun.js';
 import { BINDING_TRANSFORMS, createBindingContext, resolveValue } from '../src/core/playground/visualization/bindings.js';
 import { SCRIPT_ERROR_CODES } from '../src/core/playground/visualization/scriptErrors.js';
 import { resolveLanguagePreference } from '../src/core/languagePolicy.js';
@@ -78,6 +79,8 @@ import { getPrimitiveSchema, listPrimitiveSchemas, validatePrimitiveContract } f
 import { PRIMITIVE_TYPES } from '../src/core/playground/visualization/primitives.js';
 import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from '../src/core/playground/trace/traceTypes.js';
 import { RESOURCE_LIMITS } from '../src/core/playground/visualization/scriptValidator.js';
+import { validateType } from '../src/core/playground/visualization/typeContracts.js';
+import { validateTracePayload } from '../src/core/playground/trace/traceTypes.js';
 import {
   buildProjectionVector,
   computeTestAccuracy,
@@ -3368,8 +3371,11 @@ assert.throws(
         }
         for (const [operation, schema] of Object.entries(adapter.scriptOperations)) {
           assert.ok(schema.args && typeof schema.args === 'object', `${adapter.id}.${operation} declares args`);
-          assert.ok(Array.isArray(schema.producesTrace), `${adapter.id}.${operation} declares producesTrace`);
-          assert.ok(schema.producesTrace.every((type) => TRACE_EVENTS[adapter.id].includes(type)), `${adapter.id}.${operation} traces are known`);
+          assert.ok(Array.isArray(schema.effects), `${adapter.id}.${operation} declares effects`);
+          for (const bucket of ['alwaysProducesTrace', 'mayProduceTrace']) {
+            assert.ok(Array.isArray(schema[bucket]), `${adapter.id}.${operation} declares ${bucket}`);
+            assert.ok(schema[bucket].every((type) => TRACE_EVENTS[adapter.id].includes(type)), `${adapter.id}.${operation} ${bucket} traces are known`);
+          }
           assert.equal(typeof adapter.scriptOperationActions[operation], 'function', `${adapter.id}.${operation} has a translator`);
         }
       }
@@ -3468,6 +3474,173 @@ assert.throws(
       assert.equal(gridResult.valid, true, 'grid script passes the dry run');
       assert.equal(gridResult.decisionGridCost, 144, 'decisionGridCost uses the resolved resolution');
       await unresolvedAgent.close();
+    }
+
+    // PR D.1: close semantic contract gaps.
+    {
+      const modelContextFor = (adapter, playground, source) => {
+        const session = createPlaygroundSession(playground, { source, seed: 7, sessionId: 'prd1' });
+        const derived = adapter.deriveScene(session.modelState, { controls: session.controls, source: session.sourceData });
+        return {
+          ...derived.scene,
+          metrics: derived.metrics ?? {},
+          formula: derived.formula ?? null,
+          observation: derived.observation ?? null,
+        };
+      };
+      const lrContext = modelContextFor(getModelAdapter('linear-regression'), lrPlayground, lrSource);
+      const knnContext = modelContextFor(getModelAdapter('knn'), knnPlayground, knnSource2);
+
+      // 1. Deep primitive type validation.
+      assert.equal(validateType([{ x: 1, y: 2 }], 'array<point2d>'), true, 'valid point2d elements pass');
+      assert.equal(validateType([123, 'invalid'], 'array<point2d>'), false, 'invalid point2d elements fail');
+      assert.equal(validateType([{ x: 1 }], 'array<point2d>'), false, 'point2d without y fails');
+      assert.equal(validateType([{ pointId: 'p', distance: 1, label: 'a' }], 'array<neighbor>'), true, 'valid neighbor passes');
+      assert.equal(validateType([{ distance: 1 }], 'array<neighbor>'), false, 'neighbor without pointId fails');
+      assert.equal(validateType([{ x: 1, y: 2, label: 'a' }], 'array<classifiedPoint2d>'), true, 'valid classified point passes');
+      const badContract = validatePrimitiveContract({
+        id: 'scatter',
+        type: 'scatter',
+        props: { points: [123, 'invalid'], axes: { x: 'a', y: 'b' } },
+      });
+      assert.equal(badContract.valid, false, 'deep primitive contract rejects malformed elements');
+      assert.equal(badContract.code, 'SCRIPT_PRIMITIVE_CONTRACT_VIOLATION', 'deep contract failure has a stable code');
+
+      // 2. semanticSchema <-> compatibleBindings consistency.
+      const resolvePath = (obj, parts) => parts.reduce((current, key) => (current == null ? undefined : current[key]), obj);
+      for (const schema of listPrimitiveSchemas()) {
+        for (const bindings of Object.values(schema.compatibleBindings ?? {})) {
+          for (const binding of bindings) {
+            if (!binding.startsWith('$model.')) continue;
+            const parts = binding.replace('$model.', '').split('.');
+            const matches = [
+              ['linear-regression', lrContext],
+              ['knn', knnContext],
+            ].filter(([, context]) => parts[0] in context);
+            assert.ok(matches.length > 0, `${binding} first segment exists in a semantic schema`);
+            for (const [adapterId, context] of matches) {
+              assert.ok(resolvePath(context, parts) !== undefined, `${binding} resolves in the ${adapterId} semantic state`);
+            }
+          }
+        }
+      }
+      assert.ok(!getPrimitiveSchema('scatter').compatibleBindings.points.includes('$model.points'), 'no stale $model.points alias');
+      assert.ok(!getPrimitiveSchema('residual-lines').compatibleBindings.points.includes('$model.residuals'), 'no stale $model.residuals alias');
+      assert.ok(!getPrimitiveSchema('query-point').compatibleBindings.query.includes('$model.query'), 'no stale $model.query alias');
+      assert.equal(resolvePath(lrContext, ['training', 'missing']), undefined, 'nested semantic gaps resolve to undefined');
+
+      // 3. scriptBaseline restores traces together with the semantic state.
+      let baselineSession = createPlaygroundSession(knnPlayground, { source: knnSource2, seed: 3, sessionId: 'prd1-baseline' });
+      baselineSession = dispatchPlaygroundAction(baselineSession, { type: 'ADD_TRAINING_POINT', x: 2.5, y: -1.5, label: 'red' });
+      const editedTraces = baselineSession.traces.slice();
+      baselineSession = dispatchPlaygroundAction(baselineSession, { type: 'SCRIPT_LOAD', script: getPreset('knn.intro') });
+      baselineSession = dispatchPlaygroundAction(baselineSession, { type: 'SCRIPT_STEP' });
+      baselineSession = dispatchPlaygroundAction(baselineSession, { type: 'SCRIPT_RESET' });
+      assert.deepEqual(baselineSession.traces, editedTraces, 'SCRIPT_RESET restores the trace baseline captured at SCRIPT_LOAD');
+      assert.ok(
+        baselineSession.modelState.rawTrain.some((point) => point.features.a === 2.5 && point.features.b === -1.5),
+        'semantic state matches the edited script baseline',
+      );
+
+      // 4. Resource limits: literal and resolved decision resolution enforced.
+      const bigGrid = {
+        version: 1,
+        id: 'big-grid',
+        model: { adapter: 'knn' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: ['decision-region'], side: [] },
+        primitives: [{
+          id: 'decision-region',
+          type: 'decision-region',
+          props: { cells: '$model.decisionRegions.cells', resolution: 1000 },
+        }],
+        steps: [{ id: 'w', wait: true, durationMs: 100 }],
+      };
+      assert.throws(() => validateScript(bigGrid), (error) => error.code === 'SCRIPT_TOO_COMPLEX', 'literal resolution over the limit is rejected');
+      let resolvedSession = createPlaygroundSession(knnPlayground, { source: knnSource2, seed: 3, sessionId: 'prd1-res' });
+      resolvedSession = { ...resolvedSession, dataState: { ...resolvedSession.dataState, resolutionValue: 1000 } };
+      const resolvedGrid = {
+        version: 1,
+        id: 'resolved-grid',
+        model: { adapter: 'knn' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: ['decision-region'], side: [] },
+        primitives: [{
+          id: 'decision-region',
+          type: 'decision-region',
+          props: { cells: '$model.decisionRegions.cells', resolution: '$data.resolutionValue' },
+        }],
+        steps: [{ id: 's', setControl: { showDecisionRegions: true } }, { id: 'w', wait: true, durationMs: 100 }],
+      };
+      const resolvedResource = dryRunScript({ script: resolvedGrid, session: resolvedSession });
+      assert.equal(resolvedResource.valid, false, 'resolved resolution over the limit fails the dry run');
+      assert.equal(resolvedResource.code, 'SCRIPT_TOO_COMPLEX', 'resource failure has a stable code');
+
+      // 5. Optional unresolved bindings warn but stay valid.
+      const optionalWarnHost = createPlaygroundHost({ getDataset: () => null });
+      const optionalWarnAgent = createPlaygroundAgentApi(optionalWarnHost);
+      await optionalWarnAgent.open({ playgroundId: 'knn-classification' });
+      const optionalWarnScript = {
+        version: 1,
+        id: 'optional-warn',
+        model: { adapter: 'knn' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: ['scatter'], side: [] },
+        primitives: [{
+          id: 'scatter',
+          type: 'scatter',
+          props: { points: '$model.displayPoints', axes: '$model.missingAxes' },
+        }],
+        steps: [{ id: 'w', wait: true, durationMs: 100 }],
+      };
+      const optionalWarn = optionalWarnAgent.dryRunScript(optionalWarnScript);
+      assert.equal(optionalWarn.valid, true, 'optional unresolved binding keeps the dry run valid');
+      assert.ok(optionalWarn.warnings.some((warning) => warning.includes('missingAxes')), 'optional unresolved binding produces a warning');
+      await optionalWarnAgent.close();
+
+      // 6. Runtime trace payloads match their required/optional schemas.
+      const runPresetSnapshots = (playground, source, presetId, seed) => {
+        let session = createPlaygroundSession(playground, { source, seed, sessionId: 'prd1-trace' });
+        const driver = {
+          dispatch: (action) => { session = dispatchPlaygroundAction(session, action); },
+          getState: () => derivePlaygroundSnapshot(session),
+          getAdapterId: () => session.adapterId,
+          resetToBaseline: () => { session = dispatchPlaygroundAction(session, { type: 'RESET' }); },
+          subscribe: () => () => {},
+        };
+        const runtime = createScriptRuntime(driver).load(structuredClone(getPreset(presetId)));
+        runtime.initialize();
+        const total = getPreset(presetId).steps.length;
+        for (let index = 0; index < total; index += 1) runtime.step();
+        return derivePlaygroundSnapshot(session).traces;
+      };
+      const emittedTraces = [
+        ...runPresetSnapshots(lrPlayground, lrSource, 'linear-regression.intuition', 7),
+        ...runPresetSnapshots(knnPlayground, knnSource2, 'knn.intro', 3),
+      ];
+      for (const event of emittedTraces) {
+        const traceCheck = validateTracePayload(event);
+        assert.equal(traceCheck.valid, true, `trace ${event.type} payload matches its schema`);
+      }
+
+      // 7. inspectContext is internally consistent with every schema source.
+      const schemaHost = createPlaygroundHost({ getDataset: () => null });
+      const schemaAgent = createPlaygroundAgentApi(schemaHost);
+      await schemaAgent.open({ playgroundId: 'knn-classification' });
+      const schemaContext = schemaAgent.inspectContext();
+      const knnSchemaAdapter = getModelAdapter('knn');
+      assert.deepEqual(schemaContext.model.semanticFields, Object.keys(knnSchemaAdapter.semanticSchema), 'inspectContext semantic fields match the schema');
+      assert.deepEqual(schemaContext.model.operations, knnSchemaAdapter.scriptOperations, 'inspectContext operations match the schemas');
+      assert.deepEqual(schemaContext.traces, TRACE_EVENTS['knn'], 'inspectContext traces match the registry');
+      assert.deepEqual(Object.keys(schemaContext.traceSchemas), TRACE_EVENTS['knn'], 'inspectContext trace schemas match the registry');
+      assert.deepEqual(schemaContext.resourceLimits, RESOURCE_LIMITS, 'inspectContext resource limits match the enforced limits');
+      assert.deepEqual(schemaContext.primitives, listPrimitiveSchemas(), 'inspectContext primitive schemas match the registry');
+      const capabilitySchemas = schemaAgent.getCapabilities().models.find((model) => model.id === 'knn').operationSchemas;
+      assert.deepEqual(capabilitySchemas, knnSchemaAdapter.scriptOperations, 'getCapabilities operation schemas match the adapters');
+      await schemaAgent.close();
     }
   }
 }

@@ -82,11 +82,15 @@ export const linearRegressionAdapter = {
   scriptOperations: {
     traceFit: {
       args: {},
-      producesTrace: ['normalization.fitted', 'regression.initialized', 'loss.measured', 'gradient.computed', 'parameters.updated', 'training.completed'],
+      effects: ['training.started', 'parameters.changed', 'prediction.invalidated'],
+      alwaysProducesTrace: ['normalization.fitted', 'regression.initialized', 'loss.measured', 'gradient.computed', 'training.completed'],
+      mayProduceTrace: ['parameters.updated', 'prediction.updated', 'residuals.computed'],
     },
     setBestFit: {
       args: {},
-      producesTrace: ['parameters.updated', 'prediction.updated', 'residuals.computed'],
+      effects: ['parameters.changed', 'prediction.changed'],
+      alwaysProducesTrace: ['parameters.updated', 'prediction.updated', 'residuals.computed'],
+      mayProduceTrace: [],
     },
   },
   scriptOperationActions: {

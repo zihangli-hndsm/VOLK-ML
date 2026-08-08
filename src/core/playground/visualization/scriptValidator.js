@@ -66,8 +66,9 @@ export function validateScript(script) {
     if (!isKnownPrimitiveType(primitive.type)) {
       throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE', { type: primitive.type, id: primitive.id });
     }
-    if (primitive.props?.decisionRegion?.resolution !== undefined
-      && primitive.props.decisionRegion.resolution > MAX_DECISION_RESOLUTION) {
+    if (primitive.props?.resolution !== undefined
+      && Number.isFinite(Number(primitive.props.resolution))
+      && Number(primitive.props.resolution) > MAX_DECISION_RESOLUTION) {
       throw scriptError('SCRIPT_TOO_COMPLEX', { reason: 'decision resolution' });
     }
     if (primitive.when !== undefined && !isJsonSafe(primitive.when)) {

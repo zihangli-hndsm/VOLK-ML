@@ -5,6 +5,7 @@ import { materializePrimitives } from '../visualization/primitiveMaterializer.js
 import { getModelAdapter } from '../model/modelRegistry.js';
 import { dispatchPlaygroundAction, derivePlaygroundSnapshot } from '../../playgrounds/session.js';
 import { scriptError } from '../visualization/scriptErrors.js';
+import { RESOURCE_LIMITS } from '../visualization/scriptValidator.js';
 
 // Strict dry run for a Visualization Script before it is accepted:
 //
@@ -35,15 +36,22 @@ function buildModelContext(snapshot) {
   };
 }
 
-function checkRequiredBindings(script, context) {
+function checkPrimitiveBindings(script, context, warnings) {
+  const seen = new Set();
   for (const primitive of script.primitives) {
     const schema = getPrimitiveSchema(primitive.type);
     if (!schema) continue;
     for (const [prop, propSchema] of Object.entries(schema.props)) {
-      if (!propSchema.required) continue;
       const raw = primitive.props?.[prop];
-      if (typeof raw === 'string' && raw.startsWith('$') && resolveValue(raw, context) === undefined) {
+      if (typeof raw !== 'string' || !raw.startsWith('$')) continue;
+      if (resolveValue(raw, context) !== undefined) continue;
+      if (propSchema.required) {
         throw scriptError('SCRIPT_BINDING_UNRESOLVED', { primitiveId: primitive.id, type: primitive.type, prop, binding: raw });
+      }
+      const key = `${primitive.id}.${prop}`;
+      if (!seen.has(key)) {
+        seen.add(key);
+        warnings.push(`optional binding ${raw} for ${primitive.id}.${prop} resolved to undefined`);
       }
     }
   }
@@ -97,7 +105,7 @@ export function dryRunScript({ script, session }) {
         trace: initialSnapshot.traces ?? [],
         metrics: initialSnapshot.metrics ?? {},
       });
-      checkRequiredBindings(script, initialContext);
+      checkPrimitiveBindings(script, initialContext, warnings);
       materializeAndValidate(initialSnapshot, script);
 
       const total = script.steps.length;
@@ -124,6 +132,7 @@ export function dryRunScript({ script, session }) {
     )).length
   ), 0);
   let decisionGridCost = 0;
+  let decisionGridCells = 0;
   if (replaySession) {
     const snapshot = derivePlaygroundSnapshot(replaySession);
     const context = createBindingContext({
@@ -136,14 +145,31 @@ export function dryRunScript({ script, session }) {
     for (const primitive of script.primitives) {
       if (primitive.type !== 'decision-region') continue;
       const resolution = Number(resolveValue(primitive.props?.resolution ?? 48, context)) || 48;
-      decisionGridCost += resolution * resolution;
+      if (resolution > RESOURCE_LIMITS.maxDecisionResolution) {
+        return {
+          valid: false,
+          code: 'SCRIPT_TOO_COMPLEX',
+          details: { reason: 'decision resolution', resolution, max: RESOURCE_LIMITS.maxDecisionResolution },
+          warnings,
+        };
+      }
+      decisionGridCells += resolution * resolution;
     }
   }
+  decisionGridCost = decisionGridCells;
+  const finalSnapshot = replaySession ? derivePlaygroundSnapshot(replaySession) : null;
+  const scatterPoints = finalSnapshot?.primitives?.find((primitive) => primitive.type === 'scatter')?.props?.points ?? [];
+  const pointCount = Array.isArray(scatterPoints) ? scatterPoints.length : 0;
   return {
     valid: true,
     estimatedSteps,
     estimatedPrimitiveUpdates,
     decisionGridCost,
+    stepCount: estimatedSteps,
+    primitiveCount: script.primitives.length,
+    decisionGridCells,
+    pointCount,
+    traceEvents: finalSnapshot?.traces?.length ?? 0,
     warnings,
   };
 }
