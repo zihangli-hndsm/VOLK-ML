@@ -3221,6 +3221,20 @@ assert.throws(
       const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf-8');
       assert.ok(mainSource.includes("languagePolicy: 'preserve-current'"), 'examples load with preserve-current');
       assert.ok(mainSource.includes('applyProject(JSON.parse(await file.text()))'), 'import keeps the default project policy');
+      // Right panel slider inverts the presentation value (drag left =
+      // wider) while the real width stays in state; the left panel slider
+      // and the divider drag semantics are unchanged.
+      assert.ok(
+        mainSource.includes('value={RIGHT_PANEL_MIN + RIGHT_PANEL_MAX - rightWidth}')
+        && mainSource.includes('setRightWidth(RIGHT_PANEL_MIN + RIGHT_PANEL_MAX - Number(event.target.value))')
+        && mainSource.includes('aria-valuetext={`${rightWidth}px`}'),
+        'the right panel slider inverts direction and reports the real width via aria-valuetext',
+      );
+      assert.ok(
+        mainSource.includes('value={leftWidth} onChange={(event) => setLeftWidth(Number(event.target.value))}')
+        && mainSource.includes('const next = initial + (side === \'left\' ? delta : -delta);'),
+        'the left panel slider and the divider drag semantics stay unchanged',
+      );
 
       // INVALID_SCRIPT is part of the script error contract and passes
       // through the Agent.

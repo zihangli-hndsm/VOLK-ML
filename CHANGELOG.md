@@ -270,3 +270,11 @@
 - 测试：谓词期望更新为 `['learning-rate-too-high']`；保留真实运行正例与「正常成功训练」负例；新增显式负例——`training.completed{stoppedReason:'diverged'}` 且无 `loss.measured`/`gradient.computed` → `show_failure_case` fidelity = false（记录缺失谓词与缺失 loss/gradient 证据）。未新增泛型 OR/条件 trace 需求机制。
 - 文档：`playgrounds.md` 与 `agent-canvas-api.md` 更新为「show_failure_case 当前仅面向 learning-rate-too-high 停止机制」；本条目按 append-only 规则对 E.2.1 条目的 `diverged` 表述作出更正说明。
 - 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；E.2.1 全部行为回归保持（方向探针、state/schema 推导数值、visual/runtime/trace 证据分离、具体 primitive 绑定 fidelity、adapter 声明 teachingCapabilities、正常成功拒绝、KNN explain_prediction、compare fidelity、mode:'composed'、E.1 安全/资源契约、既有 presets）。合并后 PR E = FINAL PASS，进入 PR F。
+
+## 2026-08-08 — Reverse Right Panel Width Slider Direction
+
+- 修复右参数面板宽度滑块的方向反馈问题：右面板锚定在视口右侧，其宽度滑块改为反转视觉方向（向左拖 = 更宽，向右拖 = 更窄），消除「滑块左移 → 面板变窄 → 左边缘右移 → 滑块远离指针 → 快速 snap 到最小值」的 moving-control 问题。
+- 实现采用显式反转展示值（确定性、跨浏览器一致）：提取 `RIGHT_PANEL_MIN/RIGHT_PANEL_MAX`（与 `LEFT_PANEL_MIN/LEFT_PANEL_MAX` 一并提取），滑块 `value = RIGHT_PANEL_MIN + RIGHT_PANEL_MAX - rightWidth`，`onChange` 反解回真实宽度写入 `rightWidth`；新增 `aria-valuetext={`${rightWidth}px`}` 让可访问性暴露真实宽度。宽度显示仍为真实 `rightWidth`px（260px–640px），已保存/导入的 `workspace.rightWidth` 无需迁移。
+- divider 拖拽语义保持不变（`next = initial + (side === 'left' ? delta : -delta)`：右面板向左拖变宽、向右拖变窄）；左侧组件库宽度滑块保持不变（左=窄、右=宽）。
+- 测试：check-core 新增源码级断言——右面板滑块反转 + aria-valuetext 真实宽度、左面板滑块与 divider 语义原样。
+- 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–E 全部回归保持。
