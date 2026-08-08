@@ -7,6 +7,12 @@ import {
 } from './playgrounds/session.js';
 import { fallbackRegressionPoints, regressionPointsFromDataset } from './linearRegressionPlayground.js';
 import { teachingDatasetById } from './teachingDatasets.js';
+import { getPreset, listPresets } from './playground/visualization/presetRegistry.js';
+import { validateScript as validateScriptDeclaration } from './playground/visualization/scriptValidator.js';
+import { dryRunScript as runDryRun } from './playground/agent/dryRun.js';
+import { generateVisualizationScript } from './playground/agent/scriptGenerator.js';
+import { listModelAdapters, getModelAdapter } from './playground/model/modelRegistry.js';
+import { PRIMITIVE_TYPES } from './playground/visualization/primitives.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
 
@@ -114,7 +120,7 @@ function resolveSource(playground, dataset) {
   throw playgroundError('INVALID_PLAYGROUND_SOURCE', { playgroundId: playground.id });
 }
 
-export function createPlaygroundHost({ getDataset }) {
+export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
   let session = null;
   const subscribers = new Set();
 
@@ -183,6 +189,101 @@ export function createPlaygroundHost({ getDataset }) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       commit(dispatchPlaygroundAction(session, { type: 'RUN_SCENARIO', scenarioId }));
       return derivePlaygroundSnapshot(session);
+    },
+
+    // ---- PR C: Agent visualization script operations ----
+    getCapabilities() {
+      return {
+        apiVersion: 1,
+        models: listModelAdapters().map((adapter) => ({
+          id: adapter.id,
+          capabilities: { ...adapter.capabilities },
+          operations: Object.keys(getModelAdapter(adapter.id)?.scriptOperations ?? {}),
+        })),
+        presets: listPresets().map((preset) => preset.id),
+        primitives: [...PRIMITIVE_TYPES],
+      };
+    },
+
+    listPresets() {
+      return listPresets();
+    },
+
+    getScript() {
+      return session ? structuredClone(session.script) : null;
+    },
+
+    exportScript() {
+      return session ? structuredClone(session.script) : null;
+    },
+
+    validateScript(script) {
+      try {
+        validateScriptDeclaration(script);
+        return { valid: true };
+      } catch (error) {
+        return { valid: false, code: error.code ?? 'INVALID_SCRIPT', details: error.details ?? {} };
+      }
+    },
+
+    async loadScript(script) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script }));
+      return derivePlaygroundSnapshot(session);
+    },
+
+    async loadPreset({ presetId, parameters = {} }) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const preset = getPreset(presetId);
+      if (!preset) throw playgroundError('PLAYGROUND_PRESET_NOT_FOUND', { presetId });
+      commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: preset }));
+      for (const [key, value] of Object.entries(parameters)) {
+        commit(dispatchPlaygroundAction(session, { type: 'SET_CONTROL', key, value }));
+      }
+      return derivePlaygroundSnapshot(session);
+    },
+
+    dryRunScript(script) {
+      return runDryRun({ script, session });
+    },
+
+    async generateScript({ goal, constraints = {} } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const presets = listPresets();
+      const externalGenerator = scriptGenerator;
+      let result;
+      let dryRun;
+      try {
+        result = generateVisualizationScript({
+          goal,
+          constraints,
+          adapterId: session.adapterId,
+          presets,
+          externalGenerator: scriptGenerator,
+        });
+        dryRun = runDryRun({ script: result.script, session });
+        if (!dryRun.valid) {
+          throw Object.assign(new Error(dryRun.code), { code: dryRun.code, details: dryRun.details });
+        }
+      } catch {
+        // Preset-first fallback (C7): pick the closest matching preset.
+        const fallbackPreset = presets.find((preset) => getPreset(preset.id)?.model.adapter === session.adapterId)
+          ?? presets.find((preset) => getPreset(preset.id));
+        const fallbackScript = fallbackPreset ? getPreset(fallbackPreset.id) : null;
+        if (!fallbackScript) throw playgroundError('PLAYGROUND_PRESET_NOT_FOUND', { presetId: goal });
+        dryRun = runDryRun({ script: fallbackScript, session });
+        commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: fallbackScript }));
+        return {
+          mode: 'preset',
+          script: fallbackScript,
+          rationale: `Script generation failed; fell back to preset ${fallbackScript.id}.`,
+          dryRun,
+          fallback: true,
+          snapshot: derivePlaygroundSnapshot(session),
+        };
+      }
+      commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: result.script }));
+      return { ...result, dryRun, snapshot: derivePlaygroundSnapshot(session) };
     },
 
     async refreshSource() {

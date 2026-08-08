@@ -3213,6 +3213,132 @@ assert.throws(
       const dialogSource = readFileSync(new URL('../src/components/playgrounds/PlaygroundDialog.jsx', import.meta.url), 'utf-8');
       assert.ok(dialogSource.includes('PlaygroundErrorBoundary'), 'PlaygroundDialog wraps the playground in an Error Boundary');
     }
+
+    // PR C: Agent generated visualization scripts (no real LLM; preset-first).
+    {
+      const hostC = createPlaygroundHost({ getDataset: () => null });
+      const agentC = createPlaygroundAgentApi(hostC);
+
+      // Capabilities and presets are introspectable.
+      const capabilities = agentC.getCapabilities();
+      assert.equal(capabilities.apiVersion, 1, 'agent capabilities version');
+      assert.ok(capabilities.models.some((model) => model.id === 'linear-regression' && model.operations.includes('traceFit')), 'LR capabilities expose operations');
+      assert.ok(capabilities.models.some((model) => model.id === 'knn' && model.operations.includes('tracePredict')), 'KNN capabilities expose operations');
+      assert.deepEqual(agentC.listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro'], 'agent lists presets');
+      assert.ok(capabilities.primitives.includes('scatter') && capabilities.primitives.includes('vote-bars'), 'agent lists primitives');
+
+      await agentC.open({ playgroundId: 'knn-classification' });
+
+      // loadPreset applies parameters on top of a preset.
+      const loaded = await agentC.loadPreset({ presetId: 'knn.intro', parameters: { k: 3 } });
+      assert.equal(loaded.script.id, 'knn.intro', 'loadPreset loads the preset');
+      assert.equal(loaded.controls.k, 3, 'loadPreset applies parameters');
+
+      // validateScript is a non-throwing query.
+      assert.deepEqual(agentC.validateScript(structuredClone(getPreset('knn.intro'))), { valid: true }, 'agent validates a good script');
+      assert.deepEqual(agentC.validateScript({ version: 999, model: { adapter: 'knn' } }), { valid: false, code: 'INVALID_SCRIPT', details: { reason: 'version' } }, 'agent rejects a malformed script');
+
+      // loadScript/getScript/exportScript roundtrip.
+      const scriptToLoad = structuredClone(getPreset('knn.intro'));
+      await agentC.loadScript(scriptToLoad);
+      assert.equal(agentC.getState().script.id, 'knn.intro', 'loadScript activates the script');
+      assert.deepEqual(agentC.getScript(), scriptToLoad, 'getScript returns the active script');
+      assert.deepEqual(agentC.exportScript(), scriptToLoad, 'exportScript exports a JSON-safe copy');
+      await assert.rejects(
+        agentC.loadScript({ version: 999, model: { adapter: 'knn' } }),
+        (error) => error.code === 'INVALID_SCRIPT',
+        'loadScript rejects malformed scripts with the stable code',
+      );
+
+      // generateScript: preset-first, parameterized and generated modes.
+      const kGoal = await agentC.generateScript({ goal: 'k=1 和 k=15 的区别' });
+      assert.equal(kGoal.mode, 'parameterized', 'k comparison goal parameterizes the KNN preset');
+      assert.equal(kGoal.dryRun.valid, true, 'parameterized script passes the dry run');
+      assert.deepEqual(kGoal.script.steps[0].setControl, { k: 1 }, 'k goal sets the k parameter');
+      assert.equal(agentC.getState().script.id, kGoal.script.id, 'generateScript loads the accepted script');
+
+      const introGoal = await agentC.generateScript({ goal: '入门' });
+      assert.equal(introGoal.mode, 'preset', 'intro goal selects an exact preset');
+      assert.equal(introGoal.script.id, 'knn.intro', 'intro goal picks the KNN preset');
+
+      await agentC.close();
+      await agentC.open({ playgroundId: 'linear-regression' });
+      const lrGoal = await agentC.generateScript({ goal: '学习率太高会发生什么' });
+      assert.equal(lrGoal.mode, 'parameterized', 'learning-rate goal parameterizes the LR preset');
+      assert.equal(lrGoal.dryRun.valid, true, 'LR parameterized script passes the dry run');
+      assert.deepEqual(lrGoal.script.steps[0].setControl, { showResiduals: true, showBestFit: true }, 'LR parameter step is applied');
+
+      await agentC.close();
+      // Fallback (C7): a failing injected generator falls back to the preset.
+      const failingHost = createPlaygroundHost({
+        getDataset: () => null,
+        scriptGenerator: () => ({ script: { version: 999, model: { adapter: 'linear-regression' } } }),
+      });
+      const failingAgent = createPlaygroundAgentApi(failingHost);
+      await failingAgent.open({ playgroundId: 'linear-regression' });
+      const fallback = await failingAgent.generateScript({ goal: 'anything' });
+      assert.equal(fallback.mode, 'preset', 'invalid generation falls back to a preset');
+      assert.equal(fallback.fallback, true, 'fallback is marked');
+      assert.equal(fallback.dryRun.valid, true, 'fallback preset passes the dry run');
+      assert.equal(failingAgent.getState().script.id, fallback.script.id, 'fallback script is loaded');
+      await failingAgent.close();
+
+      // Dry-run failure without a structural validator error still falls back.
+      const replayBreakingHost = createPlaygroundHost({
+        getDataset: () => null,
+        scriptGenerator: () => ({
+          script: {
+            version: 1,
+            id: 'replay-break',
+            model: { adapter: 'linear-regression' },
+            data: { source: 'workspace-or-default' },
+            controls: [],
+            layout: { stage: [], side: [] },
+            primitives: [],
+            steps: [{ id: 'm', invoke: { operation: 'moveQuery', args: { x: 'abc' } } }],
+          },
+        }),
+      });
+      const replayAgent = createPlaygroundAgentApi(replayBreakingHost);
+      await replayAgent.open({ playgroundId: 'linear-regression' });
+      const replayFallback = await replayAgent.generateScript({ goal: 'bad replay' });
+      assert.equal(replayFallback.mode, 'preset', 'a replay-breaking generated script falls back');
+      assert.equal(replayFallback.fallback, true, 'dry-run failure triggers fallback');
+      await replayAgent.close();
+
+      // Mock generator success: a valid custom script is accepted and loaded.
+      const customScript = {
+        version: 1,
+        id: 'mock-generated',
+        model: { adapter: 'linear-regression' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: ['scatter', 'regression-line'], side: [] },
+        primitives: [
+          { id: 'scatter', type: 'scatter', props: { points: '$model.scatterPoints', axes: '$model.axes' } },
+          { id: 'regression-line', type: 'regression-line', props: { line: '$model.line', ranges: '$model.ranges' } },
+        ],
+        steps: [{ id: 'w', wait: true, durationMs: 100 }],
+      };
+      const mockHost = createPlaygroundHost({
+        getDataset: () => null,
+        scriptGenerator: () => ({ script: customScript, rationale: 'mock' }),
+      });
+      const mockAgent = createPlaygroundAgentApi(mockHost);
+      await mockAgent.open({ playgroundId: 'linear-regression' });
+      const accepted = await mockAgent.generateScript({ goal: 'custom' });
+      assert.equal(accepted.mode, 'generated', 'valid mock generation is accepted');
+      assert.equal(accepted.dryRun.valid, true, 'mock generation passes the dry run');
+      assert.equal(mockAgent.getState().script.id, 'mock-generated', 'mock script is loaded');
+      await mockAgent.close();
+
+      // Agent-facing dryRunScript result shape.
+      await agentC.open({ playgroundId: 'linear-regression' });
+      const dryRunResult = agentC.dryRunScript(structuredClone(getPreset('linear-regression.intuition')));
+      assert.equal(dryRunResult.valid, true, 'dryRunScript reports valid');
+      assert.ok(dryRunResult.estimatedSteps > 0 && dryRunResult.estimatedPrimitiveUpdates > 0, 'dryRunScript estimates work');
+      await agentC.close();
+    }
   }
 }
 

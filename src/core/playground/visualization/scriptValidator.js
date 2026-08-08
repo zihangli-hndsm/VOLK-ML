@@ -25,8 +25,9 @@ function collectBindings(value, bindings) {
 
 // Validates a Visualization Script declaration. Throws with a stable error
 // code: SCRIPT_UNKNOWN_MODEL, SCRIPT_UNKNOWN_PRIMITIVE,
-// SCRIPT_UNSUPPORTED_OPERATION, SCRIPT_INVALID_BINDING,
-// SCRIPT_UNKNOWN_TRACE_EVENT, SCRIPT_TOO_COMPLEX, INVALID_SCRIPT.
+// SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE, SCRIPT_UNSUPPORTED_OPERATION,
+// SCRIPT_INVALID_BINDING, SCRIPT_ANNOTATION_TARGET_MISSING,
+// SCRIPT_ANNOTATION_TARGET_AMBIGUOUS, SCRIPT_TOO_COMPLEX, INVALID_SCRIPT.
 export function validateScript(script) {
   if (!script || typeof script !== 'object' || Array.isArray(script)) {
     throw scriptError('INVALID_SCRIPT', { reason: 'declaration' });
