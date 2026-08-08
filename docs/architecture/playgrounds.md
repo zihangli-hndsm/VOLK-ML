@@ -47,6 +47,12 @@ Since the PR B follow-up, **Visualization Scripts own visualization composition*
 - `'preserve-current'`: bundled Examples ignore the project's `language` field entirely, so loading an example never changes the user's UI preference. The pure decision lives in `src/core/languagePolicy.js` (`resolveLanguagePreference`).
 
 User preference owns language; example content owns the example. No `PROJECT_VERSION` change or migration is part of this policy.
+
+## Agent generated visualization scripts (PR C)
+
+- `src/core/playground/agent/dryRun.js` replays a script on a detached session clone (after structural validation and binding resolution) and returns `{ valid, estimatedSteps, estimatedPrimitiveUpdates, decisionGridCost, warnings }`. The live session is never mutated; any step that throws makes the dry run invalid.
+- `src/core/playground/agent/scriptGenerator.js` is a preset-first, rule-based generator: exact preset → parameterized preset (goal keywords map to presets and control parameters) → generated minimal script. No LLM is required; an external generator (future LLM adapter) can be injected at the host and its output still passes the same validator + dry run.
+- `playgroundHost` / `canvas.playground` expose `getCapabilities`, `listPresets`, `loadPreset`, `loadScript`, `validateScript`, `getScript`, `exportScript`, `dryRunScript` and `generateScript`. `generateScript` loads the accepted script and falls back to the closest preset (`fallback: true`) if validation or the dry run fails.
 - Descriptor `scenarios` are now `{ id, titleKey, presetId }` references; `runScenario()` and UI preset playback both execute the preset through the Script Runtime (same actions, same traces).
 - Script state (`scriptState: { status, step, totalSteps }`) is separate from the model timeline, so a 7-step script is never conflated with 20 training steps.
 - `RESET`/script `reset`/`seek`/replay all return to the session **baseline** (initial controls + source + seed), so `fresh first-N == full-run-then-seek-N == reset-then-N`.

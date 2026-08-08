@@ -85,6 +85,28 @@ await playground.close();
 const unsubscribe = playground.subscribe((snapshot) => console.log(snapshot));
 ```
 
+### Script operations (PR C)
+
+The playground namespace also exposes Visualization Script operations. These are additive; `apiVersion` stays 1.
+
+```js
+playground.getCapabilities(); // models/capabilities/operations, presets, primitives
+playground.listPresets();     // [{ id, model, controls, layout }]
+
+await playground.loadPreset({ presetId: 'knn.intro', parameters: { k: 3 } });
+await playground.loadScript(script);            // validates + activates (throws SCRIPT_* on failure)
+playground.validateScript(script);              // { valid: true } | { valid: false, code, details }
+playground.getScript();                         // active declaration (JSON-safe copy)
+playground.exportScript();                      // same as getScript, for copy/download
+playground.dryRunScript(script);                // { valid, estimatedSteps, estimatedPrimitiveUpdates, decisionGridCost, warnings }
+await playground.generateScript({ goal, constraints }); // preset-first, returns { mode, script, rationale, dryRun, snapshot, fallback? }
+```
+
+- `generateScript` is preset-first: exact preset → parameterized preset → generated minimal script. An external generator (e.g. a future LLM adapter) can be injected into the host (`createPlaygroundHost({ scriptGenerator })`); its output always passes the same validator and dry run before it is loaded.
+- Every accepted script is validated, dry-run replayed on a detached session clone, and only then loaded. Any failure falls back to the closest matching preset (`fallback: true`).
+- Script contract errors reject with stable `SCRIPT_*` codes (`SCRIPT_ERROR_CODES`, including `INVALID_SCRIPT`); they are never wrapped as `OPERATION_FAILED`.
+- No LLM is called by default; scripts never contain executable content, DOM selectors, network calls or arbitrary expressions.
+
 Behavior constraints:
 
 - `getState()` returns a detached, serializable snapshot with no React, DOM, SVG, or function references.
@@ -105,8 +127,11 @@ INVALID_PLAYGROUND_CONTROL
 INVALID_PLAYGROUND_ACTION
 INVALID_PLAYGROUND_STEP
 PLAYGROUND_SCENARIO_NOT_FOUND
+PLAYGROUND_PRESET_NOT_FOUND
 PLAYGROUND_SOURCE_STALE
 ```
+
+Visualization Script contract errors use the `SCRIPT_*` codes defined in `src/core/playground/visualization/scriptErrors.js`.
 
 ## Commands
 

@@ -144,3 +144,14 @@
 - React SSR render smoke：新增 `scripts/playground-render-smoke.jsx` + `scripts/check-playground-render.mjs`（esbuild 打包 + `renderToStaticMarkup`），纳入 `npm run check`；KNN 12 个快照（0→11 步）与 LR 8 个快照（0→7 步）逐步渲染 Stage+Inspector 无异常，明确断言首个非空投票快照（revealed=1、counts 非空）可渲染；VoteBarRenderer 在有/无 colorByLabel、空/畸形 props 下均不抛。
 - 错误码收尾：`INVALID_SCRIPT` 加入 `SCRIPT_ERROR_CODES`，Agent 对畸形 `SCRIPT_LOAD` 返回 `INVALID_SCRIPT`（不再被包装成 OPERATION_FAILED）。
 - 验收：`npm run check`（含 render smoke）、`npm run check:compiler`、`npm run build`（674 modules）、`git diff --check` 全部通过；PR A/PR B/语言偏好全部回归保持。已知限制：Error Boundary 的运行时捕获与 Close/Reset 的浏览器端实测需人工复核（SSR 不触发 boundary；生产代码与静态断言已覆盖），可启动本地实例验证。
+
+## 2026-08-08 — Agent Generated Visualization Scripts（PR C）
+
+- 新增 Agent Script 操作（`canvas.playground`，apiVersion 保持 1，additive）：`getCapabilities`（models/capabilities/operations、presets、primitives）、`listPresets`、`loadPreset({ presetId, parameters })`、`loadScript`、`validateScript`（非抛错结果对象）、`getScript`、`exportScript`、`dryRunScript`、`generateScript({ goal, constraints })`。
+- Dry run（`src/core/playground/agent/dryRun.js`）：结构校验 → 模型兼容检查 → 绑定解析（对当前快照）→ 在 detached session clone 上真实重放每一步 → 估算（steps/primitive updates/decision grid cost）；live session 永不改动，任何一步抛错即 invalid。
+- 预设优先生成（`src/core/playground/agent/scriptGenerator.js`）：exact preset → parameterized preset（目标关键词匹配控制参数，如 `k=1`→k=1、学习率→showResiduals/showBestFit）→ 从可视化 toolkit 生成最小合法脚本；不接真实 LLM，外部 generator（未来 LLM adapter）可通过 `createPlaygroundHost({ scriptGenerator })` 注入，输出同样经过 validator + dry run。
+- Fallback（C7）：生成脚本校验/干跑失败时自动回退到最接近的 preset（`fallback: true`）并加载；`loadPreset` 找不到 preset 抛 `PLAYGROUND_PRESET_NOT_FOUND`。
+- 清理：validator 注释移除已删除的 `SCRIPT_UNKNOWN_TRACE_EVENT` 残留；`INVALID_SCRIPT` 已在 `SCRIPT_ERROR_CODES` 中（随 P0 PR 加入），Agent 对畸形 `SCRIPT_LOAD` 稳定返回 `INVALID_SCRIPT`。
+- 测试（check-core）：capabilities/listPresets、loadPreset 参数、validateScript 结果对象、loadScript/getScript/exportScript 往返、generateScript 三种模式（preset/parameterized/generated）、注入失败 generator 的 fallback、replay-breaking 脚本的干跑失败 fallback、mock generator 成功路径、dryRunScript 估算。
+- 文档：`agent-canvas-api.md` 新增 Script operations 小节与错误码，`playgrounds.md` 新增 PR C 小节。
+- 验收：`npm run check`、`npm run check:compiler`、`npm run build`（676 modules）、`git diff --check` 全部通过；PR A/PR B/语言偏好/P0 全部回归保持。
