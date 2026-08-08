@@ -113,3 +113,15 @@
 - DSL 语义闭环：`consume`/`update` 从 schema/validator/文档移除（PR C 再引入）；`wait` 保留并实现（只推进 script state 与 UI 计时，Node 重放不 sleep）；validator 接受的每个 operation 都有 runtime 语义（parity 测试覆盖 invoke/setControl/show/hide/highlight/reveal/reset/annotate/wait）。
 - KNN `tracePredict` 单独执行即产生 `query.received` 与 `knn.distancesComputed` 并初始化 reveal 状态（不再依赖后续 STEP 补上）；script runtime driver 契约改为 `dispatch/getState/getAdapterId/resetToBaseline/subscribe`，operation 翻译移到 adapter `scriptOperations`（加新模型不改 script runtime）。
 - 验收：`npm run check`（新增 replay invariance、组合控制、binding/transform、layout 完整性、tracePredict、operation parity、runScenario==preset 路径、UI 无模型特判静态扫描）、`npm run check:compiler`、`npm run build`（672 modules）、`git diff --check` 全部通过。已知限制：交互式浏览器实测未在本轮执行；`consume/update` 已删除待 PR C 实现。
+
+## 2026-08-08 — Playground Script Runtime Final（PR B final follow-up）
+
+- P0 渲染修复：Linear Regression 语义状态输出完整 `bestFitLine { weight, bias, start, end }`，reference-line renderer 不再因缺少端点崩溃；新增 primitive contract smoke（所有 line primitive 端点 finite、scatter/neighbor-links/loss-curve 数组契约）覆盖 LR/KNN 打开即校验。
+- Script 可见性：primitive 支持 `when` 条件（LR residual-lines 绑 `$controls.showResiduals`、reference-line 绑 `$controls.showBestFit`、KNN decision-region 绑 `$controls.showDecisionRegions`）；materializer 在 when=false 时不生成图元，显示判断完全留在 Script 层（保留“不同 script → 不同 primitives”的组合测试）。
+- highlight 真实视觉语义：materializer 给目标 primitive 打 `props.highlighted=true`，Line/Scatter/Neighbor renderer 消费（加粗/琥珀描边）；annotate 改为 generic `visualState.overrides`，annotation primitive 的 `props.observation` 真正变化（测试断言 primitive props 而非仅 visualState）。
+- `$data` 与真实 source 一致：新增 `buildDataState({ source, workspaceDataset })`，workspace 源保留完整 workspace 上下文，teaching/fallback 源由 normalized source 重建（LR rows==scatterPoints、task=regression；KNN rows/features 来自 workspace）；三种场景（fallback / 不兼容 workspace / 兼容 workspace）均有测试。
+- `SCRIPT_LOAD` 增加模型匹配校验：`script.model.adapter !== session.adapterId` 抛 `SCRIPT_MODEL_MISMATCH`（双向测试）。
+- Script mode capabilities 独立于模型 timeline：加载 script 时 canSeek/canStep/canPlay 取自 `scriptState`（LR 初始 0/7 也可 seek，即使 training.totalSteps=0）；完成后 canStep=false、canPlay=true（可重播）。
+- `SCRIPT_PLAY` 对已完成 script 自动从头重播（step→0、status→playing），随后 STEP 正常推进。
+- Binding/transform 安全：validator 的 `collectBindings`/`isAllowedBinding` 识别 transform 语法（`mean($data.values)` 合法、`unknownTransform(...)` 拒绝）；transform 类型不匹配返回稳定 `SCRIPT_BINDING_TYPE_MISMATCH`；移除不可调用的 `filterByEvent`。
+- 验收：`npm run check`（新增 visibility 序列、primitive contract smoke、highlight/annotate props、$data parity、SCRIPT_MODEL_MISMATCH、script capabilities/restart、binding validator/type-safety）、`npm run check:compiler`、`npm run build`（672 modules）、`git diff --check` 全部通过；LR/KNN parity、PR A、PR B 全部回归保持。已知限制：`consume/update` 与多参数 transform 待 PR C/DSL v2。
