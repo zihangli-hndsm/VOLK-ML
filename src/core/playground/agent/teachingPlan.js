@@ -35,6 +35,53 @@ export function teachingError(code, details = {}) {
   return playgroundError(code, details);
 }
 
+// Single Teaching-level control validator shared by the Planner goal
+// validation and the TeachingPlan context validation. It never silently
+// coerces external values:
+//   number  -> must be an actual finite number within [min, max]
+//   boolean -> must be an actual boolean
+//   select  -> must be one of the declared options; a select without
+//              declared options is not safely plannable
+export function validateTeachingControlValue(schema, value) {
+  if (!schema || typeof schema !== 'object') {
+    throw teachingError('TEACHING_CONTROL_INVALID', { reason: 'unknown control schema' });
+  }
+  if (schema.type === 'number') {
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
+      throw teachingError('TEACHING_VALUE_OUT_OF_RANGE', { control: schema.key, value });
+    }
+    if (schema.min !== undefined && value < schema.min) {
+      throw teachingError('TEACHING_VALUE_OUT_OF_RANGE', { control: schema.key, value, min: schema.min });
+    }
+    if (schema.max !== undefined && value > schema.max) {
+      throw teachingError('TEACHING_VALUE_OUT_OF_RANGE', { control: schema.key, value, max: schema.max });
+    }
+    return value;
+  }
+  if (schema.type === 'boolean') {
+    if (typeof value !== 'boolean') {
+      throw teachingError('TEACHING_CONTROL_INVALID', {
+        control: schema.key,
+        reason: 'boolean control requires a boolean value',
+      });
+    }
+    return value;
+  }
+  if (schema.type === 'select') {
+    if (!Array.isArray(schema.options) || schema.options.length === 0) {
+      throw teachingError('TEACHING_CONTROL_INVALID', {
+        control: schema.key,
+        reason: 'select control without declared options is not safely plannable',
+      });
+    }
+    if (!schema.options.includes(value)) {
+      throw teachingError('TEACHING_VALUE_OUT_OF_RANGE', { control: schema.key, value, options: schema.options });
+    }
+    return value;
+  }
+  return value;
+}
+
 function isJsonSafe(value) {
   try {
     structuredClone(value);
@@ -122,6 +169,18 @@ export function validateTeachingPlan(plan) {
   return plan;
 }
 
+// Computes the compiled Visualization Script step cost of a TeachingPlan
+// without materializing any steps: every phase costs 1 except `reveal`,
+// which costs phase.count (0 for an empty reveal). This is the pre-expansion
+// resource guard for the Composer.
+export function estimateCompiledStepCost(plan) {
+  validateTeachingPlan(plan);
+  return plan.phases.reduce(
+    (total, phase) => total + (phase.kind === 'reveal' ? phase.count : 1),
+    0,
+  );
+}
+
 // Finds the script operation whose declarative `intent` matches an objective
 // ('predict' | 'fit' | ...). When several operations share an intent, the one
 // that declares a reveal playback timeline wins, because it is the operation
@@ -152,10 +211,14 @@ export function validatePlanAgainstContext(plan, context) {
     });
   }
   const controlKeys = new Set((context.controlSchemas ?? []).map((schema) => schema.key));
+  const controlSchemas = new Map((context.controlSchemas ?? []).map((schema) => [schema.key, schema]));
   const semanticFields = new Set(context.model?.semanticFields ?? []);
   for (const phase of plan.phases) {
     if (phase.control !== undefined && !controlKeys.has(phase.control)) {
       throw teachingError('TEACHING_CONTROL_INVALID', { control: phase.control, phaseId: phase.id });
+    }
+    if (phase.kind === 'set-control') {
+      validateTeachingControlValue(controlSchemas.get(phase.control), phase.value);
     }
     if (phase.kind === 'run' && !findOperationByIntent(context, phase.objective)) {
       throw teachingError('TEACHING_PLAN_INVALID', {
@@ -172,6 +235,28 @@ export function validatePlanAgainstContext(plan, context) {
       if (!semanticFields.has(first)) {
         throw teachingError('TEACHING_PLAN_INVALID', { reason: 'unknown evidence field', field, phaseId: phase.id });
       }
+    }
+  }
+  // Pre-expansion resource guard: a TeachingPlan must never be able to
+  // allocate an arbitrarily large Visualization Script before Script
+  // validation runs. Both the raw phase count and the compiled step cost are
+  // bounded by context.resourceLimits.maxSteps.
+  const maxSteps = context.resourceLimits?.maxSteps;
+  if (Number.isFinite(maxSteps)) {
+    if (plan.phases.length > maxSteps) {
+      throw teachingError('TEACHING_PLAN_INVALID', {
+        reason: 'resource limit',
+        phases: plan.phases.length,
+        maxSteps,
+      });
+    }
+    const estimatedSteps = estimateCompiledStepCost(plan);
+    if (estimatedSteps > maxSteps) {
+      throw teachingError('TEACHING_PLAN_INVALID', {
+        reason: 'resource limit',
+        estimatedSteps,
+        maxSteps,
+      });
     }
   }
   return plan;

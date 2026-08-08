@@ -31,6 +31,7 @@ export const PRIMITIVE_SCHEMAS = {
   },
   'reference-line': {
     placement: 'stage',
+    whenControl: 'showBestFit',
     props: {
       line: { type: 'line2d', required: true },
       ranges: { type: 'ranges2d', required: true },
@@ -42,6 +43,7 @@ export const PRIMITIVE_SCHEMAS = {
   },
   'residual-lines': {
     placement: 'stage',
+    whenControl: 'showResiduals',
     props: {
       points: { type: 'array<residualPoint>', required: true },
     },

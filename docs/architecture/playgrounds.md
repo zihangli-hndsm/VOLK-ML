@@ -69,7 +69,7 @@ User preference owns language; example content owns the example. No `PROJECT_VER
 - Script state (`scriptState: { status, step, totalSteps }`) is separate from the model timeline, so a 7-step script is never conflated with 20 training steps.
 - `RESET`/script `reset`/`seek`/replay all return to the session **baseline** (initial controls + source + seed), so `fresh first-N == full-run-then-seek-N == reset-then-N`.
 
-## TeachingPlan and deterministic composer (PR E.1 / E.1.1)
+## TeachingPlan and deterministic composer (PR E.1 / E.1.1 / E.1.2)
 
 PR E.1 introduces the intermediate **TeachingPlan** layer between a teaching
 goal and a Visualization Script:
@@ -115,7 +115,15 @@ goal
   from `context.model.operations` by their declarative `intent`, and reveal
   counts come from the operation's `playback.revealCountControl`. Pairwise
   comparison is the v1 cardinality: exactly two values, no silent defaults
-  (previously the planner invented `15`).
+  (previously the planner invented `15`). Since PR E.1.2 the Planner is
+  genuinely `inspectContext()`-only: it no longer imports the internal
+  primitive registry and derives placement/bindings from `context.primitives`
+  directly, so it runs from a serialized context. A declared `runObjective`
+  is a real contract: if no operation with the matching `intent` exists, the
+  plan fails with `TEACHING_PLAN_INVALID` (reason `unresolvable run
+  objective`) instead of silently weakening the plan. Comparison capture IDs
+  are internal (`baseline` / `left` / `right`), never derived from user
+  values, so string/select values can never collide with the baseline.
 - `src/core/playground/agent/teachingComposer.js` is the Composer
   (PR E.1.1): it **iterates/compiles `plan.phases`**; it never regenerates
   the sequence from `plan.goal.type`. Primitive selection is generic: a
@@ -132,7 +140,38 @@ goal
   before composition when its `playgroundId` does not match the context, or
   when any referenced control / evidence field / run objective no longer
   exists. A plan created for KNN can never be silently reinterpreted in an LR
-  context.
+  context. PR E.1.2 extends it to the untrusted-input boundary: every
+  `set-control` phase value is revalidated against the current
+  `controlSchemas` with the single shared Teaching-level validator
+  (`validateTeachingControlValue`), which never silently coerces values:
+  numeric controls require an actual finite number within `[min, max]`,
+  boolean controls require an actual boolean, and select controls must be a
+  declared option. Select controls without declared options (e.g. KNN
+  `xFeature`/`yFeature`) are rejected as not safely plannable until dynamic
+  option metadata exists. `composeScript(plan)` always revalidates because
+  externally supplied plans are untrusted.
+- Pre-expansion resource guard (PR E.1.2):
+  `estimateCompiledStepCost(plan)` computes the compiled Visualization
+  Script step cost without materializing steps (`observe`/`set-control`/
+  `run`/`capture`/`restore`/`summarize` = 1, `reveal` = `phase.count`).
+  `validatePlanAgainstContext` rejects a plan whose raw phase count or
+  estimated compiled steps exceed `context.resourceLimits.maxSteps` with
+  `TEACHING_PLAN_INVALID` (reason `resource limit`) **before**
+  `compilePhases()` runs, so an untrusted plan can never allocate an
+  arbitrarily large script.
+- Visibility semantics (PR E.1.2): `reference-line.whenControl =
+  'showBestFit'` and `residual-lines.whenControl = 'showResiduals'` were
+  added to the primitive schema (alongside `decision-region.whenControl =
+  'showDecisionRegions'`), matching the existing preset conditional
+  semantics. The Composer only uses the declarative `whenControl` metadata,
+  and the real Primitive Materializer honors the `when` bindings for composed
+  scripts.
+- `plan()` validation (PR E.1.2): the deterministic Planner runs the same
+  context/resource validation as the Composer before returning, so
+  `plan()` succeeds only when the plan is structurally valid, all control
+  values are valid, all objectives resolve, and the plan fits the step
+  budget. `composeScript()` still revalidates because its input is
+  untrusted.
 - Capture semantics (PR E.1): `capture` / `restoreCapture` are first-class
   script step operations. A capture stores a JSON-safe snapshot of controls,
   model state, data state, timeline, a trace checkpoint and the derived

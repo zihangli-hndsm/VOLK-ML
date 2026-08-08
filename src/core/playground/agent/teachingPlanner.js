@@ -1,9 +1,10 @@
-import { getPrimitiveSchema } from '../visualization/schemas.js';
 import {
   TEACHING_GOAL_TYPES,
   findOperationByIntent,
   teachingError,
+  validatePlanAgainstContext,
   validateTeachingPlan,
+  validateTeachingControlValue,
 } from './teachingPlan.js';
 import { parseTeachingGoalText } from './teachingGoalParser.js';
 
@@ -16,24 +17,6 @@ import { parseTeachingGoalText } from './teachingGoalParser.js';
 // delegated to parseTeachingGoalText() so lexical recognition can never
 // decide model execution behavior.
 
-function assertControlValue(schema, value) {
-  if (schema.type === 'number') {
-    const number = Number(value);
-    if (!Number.isFinite(number)) throw teachingError('TEACHING_VALUE_OUT_OF_RANGE', { control: schema.key, value });
-    if (schema.min !== undefined && number < schema.min) {
-      throw teachingError('TEACHING_VALUE_OUT_OF_RANGE', { control: schema.key, value, min: schema.min });
-    }
-    if (schema.max !== undefined && number > schema.max) {
-      throw teachingError('TEACHING_VALUE_OUT_OF_RANGE', { control: schema.key, value, max: schema.max });
-    }
-    return number;
-  }
-  if (schema.type === 'select' && schema.options && !schema.options.includes(value)) {
-    throw teachingError('TEACHING_VALUE_OUT_OF_RANGE', { control: schema.key, value, options: schema.options });
-  }
-  return value;
-}
-
 function findControlSchema(context, key) {
   return (context?.controlSchemas ?? []).find((schema) => schema.key === key) ?? null;
 }
@@ -45,7 +28,7 @@ function evidenceForContext(context) {
   const fields = new Set(['metrics', 'observation']);
   const semanticFields = new Set(context?.model?.semanticFields ?? []);
   for (const schema of context?.primitives ?? []) {
-    if (getPrimitiveSchema(schema.type)?.placement !== 'stage') continue;
+    if (schema.placement !== 'stage') continue;
     for (const candidates of Object.values(schema.compatibleBindings ?? {})) {
       for (const binding of candidates) {
         if (binding.startsWith('$model.')) {
@@ -74,7 +57,15 @@ function runPhases({ controlSchema, context, currentControls, suffix }) {
   const objective = controlSchema.runObjective;
   if (!objective) return [];
   const operationName = findOperationByIntent(context, objective);
-  if (!operationName) return [];
+  if (!operationName) {
+    // A declared runObjective is a real contract: silently falling back to
+    // immediate set-control evidence would hide a broken descriptor.
+    throw teachingError('TEACHING_PLAN_INVALID', {
+      reason: 'unresolvable run objective',
+      objective,
+      control: controlSchema.key,
+    });
+  }
   const phases = [{ id: `run-${suffix}`, kind: 'run', objective }];
   const reveals = resolveRevealCount(context, operationName, currentControls);
   if (reveals > 0) phases.push({ id: `reveal-${suffix}`, kind: 'reveal', count: reveals });
@@ -87,7 +78,7 @@ function buildComparisonPhases({ goal, context }) {
   if (!Array.isArray(goal.values) || goal.values.length !== 2) {
     throw teachingError('TEACHING_PLAN_INVALID', { reason: 'compare values need exactly two entries' });
   }
-  const values = goal.values.map((value) => assertControlValue(schema, value));
+  const values = goal.values.map((value) => validateTeachingControlValue(schema, value));
   const evidence = evidenceForContext(context);
   const currentControls = { ...(context.controls ?? {}) };
   const branch = (value, suffix) => {
@@ -95,7 +86,7 @@ function buildComparisonPhases({ goal, context }) {
     return [
       { id: `set-${suffix}`, kind: 'set-control', control: goal.control, value },
       ...runPhases({ controlSchema: schema, context, currentControls, suffix }),
-      { id: `capture-${suffix}`, kind: 'capture', captureId: String(value), evidence },
+      { id: `capture-${suffix}`, kind: 'capture', captureId: suffix, evidence },
     ];
   };
   return {
@@ -123,7 +114,7 @@ function buildWhatIfPhases({ goal, context }) {
   if (goal.value === undefined) {
     throw teachingError('TEACHING_PLAN_INVALID', { reason: 'what-if needs a value' });
   }
-  const value = assertControlValue(schema, goal.value);
+  const value = validateTeachingControlValue(schema, goal.value);
   const evidence = evidenceForContext(context);
   const currentControls = { ...(context.controls ?? {}), [goal.control]: value };
   return {
@@ -171,31 +162,34 @@ function planForStructuredGoal({ goal, context, playgroundId }) {
   }
   if (goal.type === 'compare-control') {
     const { values, phases } = buildComparisonPhases({ goal, context });
-    return validateTeachingPlan({
+    const plan = validateTeachingPlan({
       version: 1,
       id: `compare-${goal.control}`,
       playgroundId,
       goal: { type: 'compare-control', control: goal.control, values },
       phases,
     });
+    return validatePlanAgainstContext(plan, context);
   }
   if (goal.type === 'what-if') {
     const { value, phases } = buildWhatIfPhases({ goal, context });
-    return validateTeachingPlan({
+    const plan = validateTeachingPlan({
       version: 1,
       id: `what-if-${goal.control}`,
       playgroundId,
       goal: { type: 'what-if', control: goal.control, value },
       phases,
     });
+    return validatePlanAgainstContext(plan, context);
   }
-  return validateTeachingPlan({
+  const plan = validateTeachingPlan({
     version: 1,
     id: 'explain-process',
     playgroundId,
     goal: { type: 'explain-process' },
     phases: buildExplainProcessPhases({ context }),
   });
+  return validatePlanAgainstContext(plan, context);
 }
 
 export function planTeachingGoal({ goal, context }) {
