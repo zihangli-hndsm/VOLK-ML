@@ -75,12 +75,15 @@ import { dryRunScript } from '../src/core/playground/agent/dryRun.js';
 import { planTeachingGoal } from '../src/core/playground/agent/teachingPlanner.js';
 import { composeScriptFromPlan } from '../src/core/playground/agent/teachingComposer.js';
 import {
+  estimateCompiledStepCost,
   findOperationByIntent,
   TEACHING_PHASE_KINDS,
   validatePlanAgainstContext,
   validateTeachingPlan,
+  validateTeachingControlValue,
 } from '../src/core/playground/agent/teachingPlan.js';
 import { parseTeachingGoalText } from '../src/core/playground/agent/teachingGoalParser.js';
+import { materializePrimitives } from '../src/core/playground/visualization/primitiveMaterializer.js';
 import { BINDING_TRANSFORMS, createBindingContext, resolveValue } from '../src/core/playground/visualization/bindings.js';
 import { SCRIPT_ERROR_CODES } from '../src/core/playground/visualization/scriptErrors.js';
 import { resolveLanguagePreference } from '../src/core/languagePolicy.js';
@@ -3990,28 +3993,28 @@ assert.throws(
       assert.deepEqual(replayA.snapshots.at(-1).scene, replayB.snapshots.at(-1).scene, 'final scenes replay identically');
       const capturesA = replayA.session.captures;
       assert.equal(capturesA.baseline.controls.k, 5, 'baseline captures the pre-comparison k');
-      assert.equal(capturesA['1'].controls.k, 1, 'left capture stores k=1');
-      assert.equal(capturesA['15'].controls.k, 15, 'right capture stores k=15');
-      assert.ok(capturesA['1'].scene?.voting && capturesA['15'].scene?.voting, 'captures store semantic scene data');
-      assert.notDeepEqual(capturesA['1'].scene, capturesA['15'].scene, 'left and right captures differ semantically');
+      assert.equal(capturesA.left.controls.k, 1, 'left capture stores k=1');
+      assert.equal(capturesA.right.controls.k, 15, 'right capture stores k=15');
+      assert.ok(capturesA.left.scene?.voting && capturesA.right.scene?.voting, 'captures store semantic scene data');
+      assert.notDeepEqual(capturesA.left.scene, capturesA.right.scene, 'left and right captures differ semantically');
       // PR E.1.1: captures must be *completed* comparable states, not
       // revealed=0 shells. Each capture carries prediction/voting evidence
       // for the requested k, with the neighbor set sized by k.
       assert.ok(
-        capturesA['1'].semantic?.scene?.voting?.predictedLabel
-        && Object.keys(capturesA['1'].semantic.scene.voting.counts ?? {}).length > 0,
+        capturesA.left.semantic?.scene?.voting?.predictedLabel
+        && Object.keys(capturesA.left.semantic.scene.voting.counts ?? {}).length > 0,
         'left capture has completed voting evidence',
       );
       assert.ok(
-        capturesA['15'].semantic?.scene?.voting?.predictedLabel
-        && Object.keys(capturesA['15'].semantic.scene.voting.counts ?? {}).length > 0,
+        capturesA.right.semantic?.scene?.voting?.predictedLabel
+        && Object.keys(capturesA.right.semantic.scene.voting.counts ?? {}).length > 0,
         'right capture has completed voting evidence',
       );
-      assert.equal(capturesA['1'].scene.neighbors.length, 1, 'left capture represents the k=1 neighbor result');
-      assert.equal(capturesA['15'].scene.neighbors.length, 15, 'right capture represents the k=15 neighbor result');
+      assert.equal(capturesA.left.scene.neighbors.length, 1, 'left capture represents the k=1 neighbor result');
+      assert.equal(capturesA.right.scene.neighbors.length, 15, 'right capture represents the k=15 neighbor result');
       assert.ok(
-        capturesA['1'].timeline && Number.isInteger(capturesA['1'].traceCount)
-        && capturesA['1'].semantic.metrics,
+        capturesA.left.timeline && Number.isInteger(capturesA.left.traceCount)
+        && capturesA.left.semantic.metrics,
         'captures preserve timeline, trace checkpoint and semantic metrics',
       );
       assert.doesNotThrow(() => structuredClone(capturesA), 'captures are JSON-safe');
@@ -4032,10 +4035,10 @@ assert.throws(
           return session;
         };
         const freshBranchB = whatIfReplay(11).captures.result;
-        assert.deepEqual(freshBranchB.semantic, capturesA['15'].semantic, 'branch B semantic snapshot matches the fresh baseline run');
-        assert.deepEqual(freshBranchB.controls, capturesA['15'].controls, 'branch B controls match the fresh baseline run');
-        assert.deepEqual(freshBranchB.timeline, capturesA['15'].timeline, 'branch B timeline matches the fresh baseline run');
-        assert.deepEqual(freshBranchB.modelState, capturesA['15'].modelState, 'branch B model state matches the fresh baseline run');
+        assert.deepEqual(freshBranchB.semantic, capturesA.right.semantic, 'branch B semantic snapshot matches the fresh baseline run');
+        assert.deepEqual(freshBranchB.controls, capturesA.right.controls, 'branch B controls match the fresh baseline run');
+        assert.deepEqual(freshBranchB.timeline, capturesA.right.timeline, 'branch B timeline matches the fresh baseline run');
+        assert.deepEqual(freshBranchB.modelState, capturesA.right.modelState, 'branch B model state matches the fresh baseline run');
       }
 
       // Strict dry run passes with zero unresolved optional bindings.
@@ -4248,6 +4251,244 @@ assert.throws(
           () => validatePlanAgainstContext(e11CrossPlan, e11KnnContext2),
           'a matching plan validates against its context',
         );
+      }
+
+      // PR E.1.2: final TeachingPlan contract closure.
+      {
+        const e12Host = createPlaygroundHost({ getDataset: () => null });
+        await e12Host.open({ playgroundId: 'knn-classification' });
+        const e12KnnContext = e12Host.inspectContext();
+        const maxSteps = e12KnnContext.resourceLimits.maxSteps;
+        assert.ok(Number.isInteger(maxSteps) && maxSteps > 0, 'inspectContext exposes the step resource budget');
+
+        // 1. Pre-expansion resource guard: the compiled step cost is computed
+        // without materializing steps, and over-budget plans are rejected
+        // before compilePhases ever runs.
+        const syntheticPlan = (phases) => ({
+          version: 1,
+          id: 'synthetic-e12',
+          playgroundId: 'knn-classification',
+          goal: { type: 'explain-process' },
+          phases,
+        });
+        const revealPlan = (count) => syntheticPlan([
+          { id: 'observe', kind: 'observe', evidence: ['metrics', 'observation'] },
+          { id: 'reveal', kind: 'reveal', count },
+        ]);
+        assert.equal(
+          estimateCompiledStepCost(revealPlan(1_000_000_000)),
+          1_000_000_001,
+          'estimateCompiledStepCost counts reveal phases without expanding them',
+        );
+        assert.equal(estimateCompiledStepCost(revealPlan(maxSteps)), maxSteps + 1, 'estimate reports the exact compiled cost');
+        assert.doesNotThrow(
+          () => validatePlanAgainstContext(revealPlan(maxSteps - 1), e12KnnContext),
+          'a plan whose compiled cost fits the budget passes the resource guard',
+        );
+        assert.throws(
+          () => validatePlanAgainstContext(revealPlan(maxSteps), e12KnnContext),
+          (error) => error.code === 'TEACHING_PLAN_INVALID' && error.details?.reason === 'resource limit',
+          'a plan whose compiled cost exceeds maxSteps is rejected before expansion',
+        );
+        assert.throws(
+          () => composeScriptFromPlan({ plan: revealPlan(1_000_000_000), context: e12KnnContext }),
+          (error) => error.code === 'TEACHING_PLAN_INVALID' && error.details?.reason === 'resource limit',
+          'an over-budget reveal is rejected by composeScriptFromPlan without expansion',
+        );
+        const manySmallPhases = Array.from({ length: maxSteps + 1 }, (_, index) => ({
+          id: `observe-${index}`,
+          kind: 'observe',
+          evidence: ['metrics', 'observation'],
+        }));
+        assert.throws(
+          () => validatePlanAgainstContext(syntheticPlan(manySmallPhases), e12KnnContext),
+          (error) => error.code === 'TEACHING_PLAN_INVALID' && error.details?.reason === 'resource limit',
+          'many small phases exceeding maxSteps are rejected by the raw phase budget',
+        );
+        assert.doesNotThrow(
+          () => composeScriptFromPlan({
+            plan: planTeachingGoal({ goal: 'k=1 和 k=15 的区别', context: e12KnnContext }),
+            context: e12KnnContext,
+          }),
+          'normal KNN comparison passes the resource guard',
+        );
+
+        // 2. Untrusted structured plans revalidate every set-control value
+        // against the current controlSchemas (no silent coercion).
+        const whatIfSynthetic = (control, value, playgroundId) => ({
+          version: 1,
+          id: 'synthetic-whatif',
+          playgroundId,
+          goal: { type: 'what-if', control, value },
+          phases: [
+            { id: 'set', kind: 'set-control', control, value },
+            { id: 'capture', kind: 'capture', captureId: 'result', evidence: ['metrics', 'observation'] },
+          ],
+        });
+        await e12Host.close();
+        await e12Host.open({ playgroundId: 'linear-regression' });
+        const e12LrContext = e12Host.inspectContext();
+        await e12Host.close();
+        await e12Host.open({ playgroundId: 'knn-classification' });
+        const e12KnnContext2 = e12Host.inspectContext();
+        assert.throws(
+          () => composeScriptFromPlan({ plan: whatIfSynthetic('k', 999, 'knn-classification'), context: e12KnnContext2 }),
+          (error) => error.code === 'TEACHING_VALUE_OUT_OF_RANGE',
+          'k=999 fails TeachingPlan/context validation',
+        );
+        assert.throws(
+          () => composeScriptFromPlan({ plan: whatIfSynthetic('learningRate', -1, 'linear-regression'), context: e12LrContext }),
+          (error) => error.code === 'TEACHING_VALUE_OUT_OF_RANGE',
+          'learningRate=-1 fails TeachingPlan/context validation',
+        );
+        assert.throws(
+          () => composeScriptFromPlan({ plan: whatIfSynthetic('showNeighborOrder', 'yes', 'knn-classification'), context: e12KnnContext2 }),
+          (error) => error.code === 'TEACHING_CONTROL_INVALID',
+          'boolean controls require an actual boolean, not coercion',
+        );
+        assert.throws(
+          () => composeScriptFromPlan({ plan: whatIfSynthetic('distanceMetric', 'manhattan', 'knn-classification'), context: e12KnnContext2 }),
+          (error) => error.code === 'TEACHING_VALUE_OUT_OF_RANGE',
+          'distanceMetric=manhattan fails against the declared options',
+        );
+        assert.throws(
+          () => composeScriptFromPlan({ plan: whatIfSynthetic('xFeature', 'does-not-exist', 'knn-classification'), context: e12KnnContext2 }),
+          (error) => error.code === 'TEACHING_CONTROL_INVALID',
+          'select controls without declared options are not safely plannable',
+        );
+        assert.throws(
+          () => validateTeachingControlValue({ key: 'k', type: 'number', min: 1, max: 20 }, '5'),
+          (error) => error.code === 'TEACHING_VALUE_OUT_OF_RANGE',
+          'numeric strings are not coerced by the shared validator',
+        );
+        assert.throws(
+          () => validateTeachingControlValue({ key: 'flag', type: 'boolean' }, 1),
+          (error) => error.code === 'TEACHING_CONTROL_INVALID',
+          'numeric booleans are not coerced by the shared validator',
+        );
+
+        // 3. Primitive visibility semantics live in the schema and are honored
+        // by the real Primitive Materializer for composed LR scripts.
+        await e12Host.close();
+        await e12Host.open({ playgroundId: 'linear-regression' });
+        const e12LrContext2 = e12Host.inspectContext();
+        const e12LrPlan = planTeachingGoal({ goal: { type: 'what-if', control: 'learningRate', value: 2 }, context: e12LrContext2 });
+        const e12LrScript = composeScriptFromPlan({ plan: e12LrPlan, context: e12LrContext2 });
+        assert.equal(
+          e12LrScript.primitives.find((primitive) => primitive.type === 'reference-line')?.when,
+          '$controls.showBestFit',
+          'composed reference-line is gated by the schema whenControl',
+        );
+        assert.equal(
+          e12LrScript.primitives.find((primitive) => primitive.type === 'residual-lines')?.when,
+          '$controls.showResiduals',
+          'composed residual-lines is gated by the schema whenControl',
+        );
+        const e12LrSession = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 3, sessionId: 'e12-lr' });
+        const lrAdapter = getModelAdapter('linear-regression');
+        const e12LrDerived = lrAdapter.deriveScene(e12LrSession.modelState, { controls: e12LrSession.controls, source: e12LrSession.sourceData });
+        const e12LrSemantic = {
+          ...e12LrDerived.scene,
+          metrics: e12LrDerived.metrics ?? {},
+          formula: e12LrDerived.formula ?? null,
+          observation: e12LrDerived.observation ?? null,
+        };
+        const materializeLr = (controls) => materializePrimitives({
+          script: e12LrScript,
+          semanticState: e12LrSemantic,
+          traces: e12LrSession.traces,
+          controls,
+          metrics: e12LrSemantic.metrics,
+          visualState: {},
+          dataState: e12LrSession.dataState,
+        }).map((primitive) => primitive.type);
+        assert.ok(
+          !materializeLr({ ...e12LrSession.controls, showResiduals: false, showBestFit: false })
+            .some((type) => type === 'residual-lines' || type === 'reference-line'),
+          'LR residual/reference primitives are hidden when their controls are false',
+        );
+        const withResiduals = materializeLr({ ...e12LrSession.controls, showResiduals: true, showBestFit: false });
+        assert.ok(withResiduals.includes('residual-lines'), 'residual-lines materializes when showResiduals is true');
+        assert.ok(!withResiduals.includes('reference-line'), 'reference-line stays hidden when showBestFit is false');
+        const withBestFit = materializeLr({ ...e12LrSession.controls, showResiduals: false, showBestFit: true });
+        assert.ok(withBestFit.includes('reference-line'), 'reference-line materializes when showBestFit is true');
+        assert.ok(!withBestFit.includes('residual-lines'), 'residual-lines stays hidden when showResiduals is false');
+        for (const [presetId, expected] of [
+          ['linear-regression.intuition', [['reference-line', 'showBestFit'], ['residual-lines', 'showResiduals']]],
+          ['knn.intro', [['decision-region', 'showDecisionRegions']]],
+        ]) {
+          const preset = getPreset(presetId);
+          for (const [type, control] of expected) {
+            const declaration = preset.primitives.find((primitive) => primitive.type === type);
+            assert.equal(declaration.when, `$controls.${control}`, `${presetId} ${type} conditional matches the schema`);
+            assert.equal(getPrimitiveSchema(type).whenControl, control, `${type} schema declares whenControl ${control}`);
+          }
+        }
+
+        // 4. The Planner is genuinely inspectContext-only.
+        const plannerSource = readFileSync(new URL('../src/core/playground/agent/teachingPlanner.js', import.meta.url), 'utf-8');
+        assert.ok(
+          !plannerSource.includes("visualization/schemas.js"),
+          'the Planner does not import the internal primitive registry',
+        );
+        await e12Host.close();
+        await e12Host.open({ playgroundId: 'knn-classification' });
+        const clonedContext = structuredClone(e12Host.inspectContext());
+        const clonedPlan = planTeachingGoal({ goal: 'k=1 和 k=15 的区别', context: clonedContext });
+        assert.equal(clonedPlan.goal.type, 'compare-control', 'planning works from a serialized inspectContext');
+        assert.doesNotThrow(
+          () => validateScript(composeScriptFromPlan({ plan: clonedPlan, context: clonedContext })),
+          'composition works from a serialized inspectContext',
+        );
+
+        // 5. Comparison capture IDs are internal (baseline/left/right) and can
+        // never collide with user/control values.
+        const collisionContext = structuredClone(e12KnnContext);
+        collisionContext.controlSchemas = [
+          ...collisionContext.controlSchemas.filter((schema) => schema.key !== 'k'),
+          { key: 'mode', type: 'select', options: ['baseline', 'left', 'right', 'other'] },
+        ];
+        collisionContext.controls = { ...collisionContext.controls, mode: 'other' };
+        const collisionPlan = planTeachingGoal({
+          goal: { type: 'compare-control', control: 'mode', values: ['baseline', 'left'] },
+          context: collisionContext,
+        });
+        assert.deepEqual(
+          collisionPlan.phases.filter((phase) => phase.kind === 'capture').map((phase) => phase.captureId),
+          ['baseline', 'left', 'right'],
+          'comparison capture IDs are internal baseline/left/right',
+        );
+        assert.deepEqual(collisionPlan.goal.values, ['baseline', 'left'], 'compared values stay in plan.goal.values');
+        const collisionScript = composeScriptFromPlan({ plan: collisionPlan, context: collisionContext });
+        assert.deepEqual(
+          collisionScript.steps.filter((step) => step.capture).map((step) => step.capture.id),
+          ['baseline', 'left', 'right'],
+          'composed capture step ids cannot collide with user values',
+        );
+
+        // 6. A declared runObjective is a real contract: the operation must
+        // resolve, otherwise the plan fails instead of being weakened.
+        const staleOpContext = structuredClone(e12KnnContext);
+        for (const [operationName, operation] of Object.entries(staleOpContext.model.operations)) {
+          if (operation.intent === 'predict') delete staleOpContext.model.operations[operationName];
+        }
+        assert.throws(
+          () => planTeachingGoal({ goal: { type: 'compare-control', control: 'k', values: [1, 15] }, context: staleOpContext }),
+          (error) => error.code === 'TEACHING_PLAN_INVALID' && error.details?.reason === 'unresolvable run objective',
+          'a control declaring runObjective requires a matching operation in the context',
+        );
+
+        // 7. plan() runs the same context/resource validation before returning.
+        const bigKContext = structuredClone(e12KnnContext);
+        bigKContext.controlSchemas = bigKContext.controlSchemas.map((schema) => (
+          schema.key === 'k' ? { ...schema, max: 1000 } : schema
+        ));
+        assert.throws(
+          () => planTeachingGoal({ goal: { type: 'compare-control', control: 'k', values: [1, 500] }, context: bigKContext }),
+          (error) => error.code === 'TEACHING_PLAN_INVALID' && error.details?.reason === 'resource limit',
+          'plan() rejects a comparison whose valid values would expand beyond maxSteps',
+        );
+        await e12Host.close();
       }
 
       // LR and KNN existing presets remain unchanged.

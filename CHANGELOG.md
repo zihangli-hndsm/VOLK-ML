@@ -227,3 +227,15 @@
 - 交叉矩阵测试：LR compare weight、LR compare learningRate、KNN what-if k、双模型 explain-process 全部走通用链路并通过 validator + 严格 dry run；测试还覆盖 parser 单元、cardinality 负例、跨 playground/stale plan、phase 驱动、intent 解析、placement 元数据与 completed-capture 断言。
 - 文档：`agent-canvas-api.md` 与 `playgrounds.md` 更新 PR E.1.1 语义（typed phases、parser 分层、泛型 composer、capture 隔离、diagnose 拒绝）。
 - 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–E.1 全部回归保持。已知限制：`diagnose` 语义留待后续；what-if 的文本别名仅覆盖「学习率太高/发散」等关键词，显式 `key=value` 语法是通用入口。
+
+## 2026-08-08 — TeachingPlan 契约收口（PR E.1.2）
+
+- 展开前资源上限：新增 `estimateCompiledStepCost(plan)`（observe/set-control/run/capture/restore/summarize=1，reveal=count，不实例化步骤）；`validatePlanAgainstContext` 在 `compilePhases()` 之前按 `context.resourceLimits.maxSteps` 校验「原始 phase 数量」与「估算编译步数」，超预算返回 `TEACHING_PLAN_INVALID`（reason: resource limit）。测试覆盖 count=maxSteps 诚实通过、>maxSteps 拒绝、10^9 reveal 不展开直接拒绝、大量小 phase 超预算拒绝、正常 KNN/LR plan 通过。
+- 不可信输入重校验：新增共享 Teaching 级控件校验器 `validateTeachingControlValue`（Planner 目标校验与 TeachingPlan 上下文校验共用），绝不静默强转——数值控件要求真实有限数字且在 [min,max] 内、布尔控件要求真实 boolean、select 控件必须是已声明选项；未声明选项的 select（如 KNN xFeature/yFeature）判为「不可安全规划」并拒绝。负例（k=999、learningRate=-1、boolean="yes"、distanceMetric="manhattan"、xFeature="does-not-exist"）全部在 TeachingPlan/上下文校验阶段失败，不等到 dry run。
+- 恢复 primitive 可见性语义：`reference-line.whenControl='showBestFit'`、`residual-lines.whenControl='showResiduals'`（与 `decision-region.whenControl='showDecisionRegions'` 一致）写入 schema；Composer 仍只使用声明式 `whenControl`。测试经真实 Primitive Materializer 验证 composed LR 脚本的 residual-lines/reference-line 随 showResiduals/showBestFit 物化/隐藏，并比对 preset 条件语义与 schema 元数据一致。
+- Planner 真正只依赖 inspectContext：`teachingPlanner.js` 移除 `visualization/schemas.js` 导入，`evidenceForContext()` 直接读 `context.primitives` 的 placement/compatibleBindings；测试用 structuredClone 的序列化 context 证明规划与组合仍可用，并静态断言 planner 不再导入内部 primitive registry。
+- capture id 内部化：比较型 plan 的 captureId 固定为 `baseline/left/right`（不再 `String(value)`），用户/控件值只保留在 `plan.goal.values`、summarize params 与 captured controls 中；字符串/select 值（如 `"baseline"`）不可能覆盖实验基线。测试用 select 值 `['baseline','left']` 的合成 fixture 证明 capture step id 不与用户值碰撞。
+- runObjective 视为真实契约：控件声明 `runObjective` 但 context 中找不到匹配 `intent` 的操作时，plan 直接失败（`TEACHING_PLAN_INVALID`，reason: unresolvable run objective），不再静默退化为仅 set-control；未声明 runObjective 的控件仍可走即时 set-control 证据。测试覆盖删除全部 predict intent 操作后的 stale context。
+- plan() 前置校验：确定性 Planner 返回前执行与 Composer 相同的 context/资源校验，`plan()` 成功即保证结构有效、控件值有效、objective 可解析、且不会超出 maxSteps；`composeScript()` 仍会重校验（外部 plan 不可信）。测试覆盖「值合法但展开后超预算」的 compare（k=1 vs k=500）在 plan() 阶段即被拒绝。
+- 文档：`playgrounds.md` 与 `agent-canvas-api.md` 更新 PR E.1.2 语义；append-only `CHANGELOG.md` 新增本条。
+- 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–E.1.1 全部回归保持（phase 驱动、intent 查找、二元比较、KNN 完成态证据、capture 分支隔离、跨 playground 拒绝、LR compare weight/learningRate、KNN what-if k、双模型 explain-process、既有 presets）。
