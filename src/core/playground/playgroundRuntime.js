@@ -36,6 +36,8 @@ const GENERIC_ACTIONS = [
   'SCRIPT_STEP',
   'SCRIPT_SEEK',
   'SCRIPT_RESET',
+  'SCRIPT_CAPTURE',
+  'SCRIPT_RESTORE_CAPTURE',
 ];
 
 const jsonSafe = (value) => (value === undefined || typeof value === 'function' ? null : structuredClone(value));
@@ -87,6 +89,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     scriptState: preset
       ? { status: 'ready', step: 0, totalSteps: preset.steps.length }
       : { status: 'idle', step: 0, totalSteps: 0 },
+    captures: {},
     traces: recorder.list(),
     visualState: {},
     metrics: {},
@@ -198,6 +201,8 @@ function computeScriptStepActions(session) {
     }
   }
   if (stepDefinition.reset) actions.push({ type: 'RESET' });
+  if (stepDefinition.capture) actions.push({ type: 'SCRIPT_CAPTURE', captureId: stepDefinition.capture.id });
+  if (stepDefinition.restoreCapture) actions.push({ type: 'SCRIPT_RESTORE_CAPTURE', captureId: stepDefinition.restoreCapture.id });
   return actions;
 }
 
@@ -332,6 +337,49 @@ export function dispatchRuntimeAction(session, action) {
         step: 0,
         totalSteps: session.script?.steps.length ?? 0,
       },
+    };
+  }
+  if (action.type === 'SCRIPT_CAPTURE') {
+    const semantic = semanticContext(session);
+    return {
+      ...session,
+      captures: {
+        ...session.captures,
+        [action.captureId]: {
+          controls: structuredClone(session.controls),
+          modelState: structuredClone(session.modelState),
+          dataState: session.dataState ? structuredClone(session.dataState) : {},
+          timeline: structuredClone(session.timeline),
+          traceCount: session.traces.length,
+          scene: jsonSafe(semantic.scene),
+          semantic: {
+            scene: jsonSafe(semantic.scene),
+            metrics: jsonSafe(semantic.metrics),
+            observation: jsonSafe(semantic.observation),
+            formula: jsonSafe(semantic.formula),
+          },
+        },
+      },
+    };
+  }
+  if (action.type === 'SCRIPT_RESTORE_CAPTURE') {
+    const captured = session.captures?.[action.captureId];
+    if (!captured) {
+      throw scriptError('SCRIPT_CAPTURE_MISSING', { captureId: action.captureId });
+    }
+    return {
+      ...session,
+      controls: structuredClone(captured.controls),
+      modelState: structuredClone(captured.modelState),
+      dataState: captured.dataState ? structuredClone(captured.dataState) : {},
+      timeline: captured.timeline ? structuredClone(captured.timeline) : session.timeline,
+      // Branch isolation: the trace history returns to the baseline
+      // checkpoint so branch B emits exactly the same evidence as a fresh
+      // baseline -> branch B run. sessionBaseline / scriptBaseline /
+      // scriptState are never touched by restore.
+      traces: Number.isInteger(captured.traceCount)
+        ? session.traces.slice(0, captured.traceCount)
+        : session.traces,
     };
   }
   if (action.type === 'RUN_SCENARIO') {

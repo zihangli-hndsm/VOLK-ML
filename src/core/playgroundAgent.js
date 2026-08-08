@@ -51,6 +51,8 @@ export function createPlaygroundAgentApi(host) {
     exportScript: () => invoke('exportScript', () => copy(host.exportScript())),
     dryRunScript: (script) => invoke('dryRunScript', () => copy(host.dryRunScript(copy(script)))),
     generateScript: (request) => invokeAsync('generateScript', async () => copy(await host.generateScript(copy(request ?? {})))),
+    plan: (goal) => invokeAsync('plan', async () => copy(await host.plan({ goal }))),
+    composeScript: (plan) => invokeAsync('composeScript', async () => copy(await host.composeScript({ plan: copy(plan) }))),
     refreshSource: () => invokeAsync('refreshSource', async () => copy(await host.refreshSource())),
     close: () => invokeAsync('close', async () => { await host.close(); return null; }),
     subscribe(listener) {

@@ -11,6 +11,8 @@ import { getPreset, listPresets } from './playground/visualization/presetRegistr
 import { validateScript as validateScriptDeclaration } from './playground/visualization/scriptValidator.js';
 import { dryRunScript as runDryRun } from './playground/agent/dryRun.js';
 import { generateVisualizationScript } from './playground/agent/scriptGenerator.js';
+import { planTeachingGoal } from './playground/agent/teachingPlanner.js';
+import { composeScriptFromPlan } from './playground/agent/teachingComposer.js';
 import { listModelAdapters, getModelAdapter } from './playground/model/modelRegistry.js';
 import { PRIMITIVE_TYPES } from './playground/visualization/primitives.js';
 import { listPrimitiveSchemas } from './playground/visualization/schemas.js';
@@ -255,6 +257,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           ...(control.max !== undefined ? { max: control.max } : {}),
           ...(control.step !== undefined ? { step: control.step } : {}),
           ...(control.options ? { options: [...control.options] } : {}),
+          ...(control.runObjective ? { runObjective: control.runObjective } : {}),
         })),
         traces: TRACE_EVENTS[session.adapterId] ?? [],
         traceSchemas: Object.fromEntries((TRACE_EVENTS[session.adapterId] ?? []).map((type) => [type, TRACE_PAYLOAD_SCHEMAS[type] ?? {}])),
@@ -358,6 +361,27 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       }
       commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: result.script }));
       return { ...result, dryRun, snapshot: derivePlaygroundSnapshot(session) };
+    },
+
+    // PR E.1: TeachingPlanner -> TeachingPlan. The planner consumes the same
+    // inspectContext() the Agent reads, so a plan is always schema-grounded.
+    async plan({ goal }) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      return planTeachingGoal({ goal, context: this.inspectContext() });
+    },
+
+    // PR E.1: Composer -> Visualization Script. The composed script is
+    // validated and strict-dry-run against the live session before it is
+    // returned; the caller decides when to loadScript() it. The live session
+    // is never mutated here.
+    async composeScript({ plan }) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const script = composeScriptFromPlan({ plan, context: this.inspectContext() });
+      const dryRun = runDryRun({ script, session });
+      if (!dryRun.valid) {
+        throw Object.assign(new Error(dryRun.code), { code: dryRun.code, details: dryRun.details });
+      }
+      return { plan, script, dryRun };
     },
 
     async refreshSource() {

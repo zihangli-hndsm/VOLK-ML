@@ -17,6 +17,8 @@ export const SCRIPT_VERSION = 1;
 export const ALLOWED_STEP_OPERATIONS = [
   'invoke',
   'setControl',
+  'capture',
+  'restoreCapture',
   'show',
   'hide',
   'highlight',
@@ -30,6 +32,8 @@ export const ALLOWED_STEP_FIELDS = new Set([
   'id',
   'invoke',
   'setControl',
+  'capture',
+  'restoreCapture',
   'show',
   'hide',
   'highlight',

@@ -231,6 +231,7 @@ export const knnAdapter = {
   },
   scriptOperations: {
     tracePredict: {
+      intent: 'predict',
       args: {},
       effects: ['neighbors.recomputed', 'reveal.started'],
       alwaysProducesTrace: ['query.received', 'knn.distancesComputed'],
@@ -238,8 +239,12 @@ export const knnAdapter = {
       // START_NEIGHBOR_REVEAL resets the reveal state; neighbor/vote/
       // prediction events are emitted by later STEP actions.
       enablesTrace: ['knn.neighborSelected', 'knn.voteUpdated', 'prediction.emitted'],
+      // Declarative playback policy: revealing `k` times reaches the
+      // completed k-neighbor prediction evidence state.
+      playback: { revealCountControl: 'k' },
     },
     moveQuery: {
+      intent: 'predict',
       args: { x: { type: 'number|null' }, y: { type: 'number|null' } },
       effects: ['query.changed', 'prediction.invalidated', 'neighbors.recomputed'],
       alwaysProducesTrace: ['query.received', 'knn.distancesComputed'],

@@ -16,6 +16,7 @@ export const SCRIPT_ERROR_CODES = [
   'SCRIPT_TOO_COMPLEX',
   'SCRIPT_ANNOTATION_TARGET_MISSING',
   'SCRIPT_ANNOTATION_TARGET_AMBIGUOUS',
+  'SCRIPT_CAPTURE_MISSING',
 ];
 
 export function scriptError(code, details = {}) {
