@@ -70,7 +70,7 @@ import { validatePrimitive } from '../src/core/playground/visualization/primitiv
 import { listPresets, getPreset } from '../src/core/playground/visualization/presetRegistry.js';
 import { validateScript } from '../src/core/playground/visualization/scriptValidator.js';
 import { createScriptRuntime } from '../src/core/playground/visualization/scriptRuntime.js';
-import { createBindingContext, resolveValue } from '../src/core/playground/visualization/bindings.js';
+import { BINDING_TRANSFORMS, createBindingContext, resolveValue } from '../src/core/playground/visualization/bindings.js';
 import {
   buildProjectionVector,
   computeTestAccuracy,
@@ -2747,8 +2747,19 @@ assert.throws(
       assert.ok(showSnap.primitives.some((primitive) => primitive.id === 'scatter'), 'show has runtime semantics');
       const highlightSnap = runOps(opScript([{ id: 'h', highlight: 'line' }]));
       assert.equal(highlightSnap.visualState.highlight, 'line', 'highlight has runtime semantics');
-      const annotateSnap = runOps(opScript([{ id: 'a', annotate: { text: '$controls.weight' } }]));
-      assert.equal(annotateSnap.visualState.annotation.text, 0, 'annotate has runtime semantics with bindings');
+      const annotateSnap = runOps(
+        opScript(
+          [{ id: 'a', annotate: { titleKey: 'test.title', bodyKey: 'test.body', params: { weight: '$controls.weight' } } }],
+          [{ id: 'annotation', type: 'annotation', props: { observation: '$model.observation' } }],
+          { stage: [], side: ['annotation'] },
+        ),
+      );
+      const annotationPrimitive = annotateSnap.primitives.find((primitive) => primitive.type === 'annotation');
+      assert.deepEqual(
+        annotationPrimitive.props.observation,
+        { titleKey: 'test.title', bodyKey: 'test.body', params: { weight: 0 } },
+        'annotate changes the annotation primitive props',
+      );
       const waitSnap = runOps(opScript([{ id: 'w', wait: true, durationMs: 100 }]));
       assert.equal(waitSnap.scriptState.step, 1, 'wait advances script state');
       assert.equal(waitSnap.timeline.step, 0, 'wait does not move the model timeline');
@@ -2791,6 +2802,217 @@ assert.throws(
           assert.ok(!source.includes(forbidden), `${file} must not contain model-specific "${forbidden}"`);
         }
       }
+    }
+
+    // PR B final follow-up: render contracts, visibility, visual semantics,
+    // $data parity, model mismatch, script capabilities and restart.
+    {
+      const makeDriver = (getSession, setSession) => ({
+        dispatch: (action) => setSession(dispatchPlaygroundAction(getSession(), action)),
+        getState: () => derivePlaygroundSnapshot(getSession()),
+        getAdapterId: () => getSession().adapterId,
+        resetToBaseline: () => setSession(dispatchPlaygroundAction(getSession(), { type: 'RESET' })),
+        subscribe: () => () => {},
+      });
+      const runN = (playground, source, presetId, seed, n) => {
+        let session = createPlaygroundSession(playground, { source, seed, sessionId: 'prb-final' });
+        const driver = makeDriver(() => session, (next) => { session = next; });
+        const runtime = createScriptRuntime(driver).load(structuredClone(getPreset(presetId)));
+        runtime.initialize();
+        for (let index = 0; index < n; index += 1) runtime.step();
+        return derivePlaygroundSnapshot(session);
+      };
+      const assertPrimitiveContract = (snapshot, label) => {
+        for (const primitive of snapshot.primitives) {
+          if (primitive.type === 'scatter') {
+            assert.ok(Array.isArray(primitive.props.points), `${label} scatter points array`);
+          }
+          if (primitive.type === 'regression-line' || primitive.type === 'reference-line') {
+            const { start, end } = primitive.props.line ?? {};
+            assert.ok(
+              Number.isFinite(start?.x) && Number.isFinite(start?.y)
+              && Number.isFinite(end?.x) && Number.isFinite(end?.y),
+              `${label} ${primitive.type} line endpoints finite`,
+            );
+          }
+          if (primitive.type === 'neighbor-links') {
+            assert.ok(
+              Array.isArray(primitive.props.neighbors)
+              && Array.isArray(primitive.props.points)
+              && primitive.props.query && typeof primitive.props.query === 'object',
+              `${label} neighbor-links contract`,
+            );
+          }
+          if (primitive.type === 'loss-curve') {
+            assert.ok(Array.isArray(primitive.props.lossHistory), `${label} loss-curve contract`);
+          }
+        }
+      };
+
+      // P0 render contract: LR opens without line-shape crashes; every line
+      // primitive has finite endpoints; smoke contract for both models.
+      const lrInitial = derivePlaygroundSnapshot(createPlaygroundSession(lrPlayground, { source: lrSource, seed: 7, sessionId: 'prb-final' }));
+      assertPrimitiveContract(lrInitial, 'LR initial');
+      const lrFull = runN(lrPlayground, lrSource, 'linear-regression.intuition', 7, 7);
+      assertPrimitiveContract(lrFull, 'LR completed');
+      const knnInitial = derivePlaygroundSnapshot(createPlaygroundSession(knnPlayground, { source: knnSource2, seed: 3, sessionId: 'prb-final' }));
+      assertPrimitiveContract(knnInitial, 'KNN initial');
+
+      // Visibility sequence: `when` controls primitive existence.
+      const lrStep0 = runN(lrPlayground, lrSource, 'linear-regression.intuition', 7, 0);
+      assert.ok(lrStep0.primitives.some((primitive) => primitive.type === 'scatter'), 'LR step 0 has scatter');
+      assert.ok(lrStep0.primitives.some((primitive) => primitive.type === 'regression-line'), 'LR step 0 has regression-line');
+      assert.ok(!lrStep0.primitives.some((primitive) => primitive.type === 'residual-lines'), 'LR step 0 hides residual-lines');
+      assert.ok(!lrStep0.primitives.some((primitive) => primitive.type === 'reference-line'), 'LR step 0 hides reference-line');
+      const lrAfterResiduals = runN(lrPlayground, lrSource, 'linear-regression.intuition', 7, 2);
+      assert.ok(lrAfterResiduals.primitives.some((primitive) => primitive.type === 'residual-lines'), 'LR residual step reveals residual-lines');
+      assert.ok(!lrAfterResiduals.primitives.some((primitive) => primitive.type === 'reference-line'), 'LR residual step still hides reference-line');
+      assert.ok(lrFull.primitives.some((primitive) => primitive.type === 'reference-line'), 'LR final reveals reference-line');
+      const knnBeforeRegions = runN(knnPlayground, knnSource2, 'knn.intro', 3, 5);
+      const knnAfterRegions = runN(knnPlayground, knnSource2, 'knn.intro', 3, 6);
+      assert.ok(!knnBeforeRegions.primitives.some((primitive) => primitive.type === 'decision-region'), 'KNN hides decision-region before regions step');
+      assert.ok(knnAfterRegions.primitives.some((primitive) => primitive.type === 'decision-region'), 'KNN reveals decision-region after regions step');
+
+      // highlight: materializer stamps the target primitive and renderers consume it.
+      let highlightSession = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 7, sessionId: 'prb-final' });
+      const highlightDriver = makeDriver(() => highlightSession, (next) => { highlightSession = next; });
+      const highlightRuntime = createScriptRuntime(highlightDriver).load({
+        version: 1,
+        id: 'highlight-test',
+        model: { adapter: 'linear-regression' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: ['scatter', 'regression-line'], side: [] },
+        primitives: [
+          { id: 'scatter', type: 'scatter', props: { points: '$model.scatterPoints', axes: '$model.axes' } },
+          { id: 'regression-line', type: 'regression-line', props: { line: '$model.line', ranges: '$model.ranges' } },
+        ],
+        steps: [{ id: 'h', highlight: 'regression-line', durationMs: 100 }],
+      });
+      highlightRuntime.initialize();
+      highlightRuntime.step();
+      const highlightSnapshot = derivePlaygroundSnapshot(highlightSession);
+      assert.equal(
+        highlightSnapshot.primitives.find((primitive) => primitive.id === 'regression-line').props.highlighted,
+        true,
+        'highlighted target primitive carries props.highlighted=true',
+      );
+      assert.ok(
+        !highlightSnapshot.primitives.find((primitive) => primitive.id === 'scatter').props.highlighted,
+        'non-target primitive is not highlighted',
+      );
+      const rendererSources = uiFiles
+        .filter((file) => file.startsWith('renderers/'))
+        .map((file) => readFileSync(new URL(`../src/components/playground/${file}`, import.meta.url), 'utf-8'))
+        .join('\n');
+      assert.ok(rendererSources.includes('props.highlighted'), 'at least one renderer consumes props.highlighted');
+
+      // $data parity: $data must describe the model's actual source.
+      const lrFallbackData = lrInitial.dataState;
+      assert.equal(lrFallbackData.task, 'regression', 'LR fallback $data.task is regression');
+      assert.equal(lrFallbackData.rows.length, lrInitial.scene.scatterPoints.length, 'LR fallback $data.rows == model points');
+      const workspaceMismatch = createPlaygroundSession(lrPlayground, {
+        source: lrSource,
+        seed: 7,
+        sessionId: 'prb-final',
+        dataset: classificationDataset,
+      });
+      assert.equal(
+        derivePlaygroundSnapshot(workspaceMismatch).dataState.task,
+        'regression',
+        'LR fallback ignores an incompatible workspace classification dataset',
+      );
+      const knnWorkspaceSource = {
+        kind: 'workspace-dataset',
+        name: 'Class', fingerprint: 'knn-workspace',
+        points: classificationDataset.rows.map((row, index) => ({
+          id: index,
+          features: { feature_a: row.feature_a, feature_b: row.feature_b },
+          label: row.label,
+        })),
+        featureColumns: ['feature_a', 'feature_b'],
+        trainRatio: 0.8,
+        total: classificationDataset.rows.length,
+        usingDataset: true,
+      };
+      const knnWorkspaceSession = createPlaygroundSession(knnPlayground, {
+        source: knnWorkspaceSource,
+        seed: 3,
+        sessionId: 'prb-final',
+        dataset: classificationDataset,
+      });
+      const knnWorkspaceData = derivePlaygroundSnapshot(knnWorkspaceSession).dataState;
+      assert.equal(knnWorkspaceData.task, 'classification', 'KNN workspace $data.task is classification');
+      assert.equal(knnWorkspaceData.rows.length, classificationDataset.rows.length, 'KNN workspace $data rows come from the workspace dataset');
+      assert.deepEqual(knnWorkspaceData.featureColumns, ['feature_a', 'feature_b'], 'KNN workspace $data features come from the workspace dataset');
+
+      // SCRIPT_MODEL_MISMATCH in both directions.
+      const lrSession = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 7, sessionId: 'prb-final' });
+      assert.throws(
+        () => dispatchPlaygroundAction(lrSession, { type: 'SCRIPT_LOAD', script: getPreset('knn.intro') }),
+        (error) => error.code === 'SCRIPT_MODEL_MISMATCH' && error.details.expected === 'linear-regression',
+        'LR session rejects a KNN script',
+      );
+      const knnSession = createPlaygroundSession(knnPlayground, { source: knnSource2, seed: 3, sessionId: 'prb-final' });
+      assert.throws(
+        () => dispatchPlaygroundAction(knnSession, { type: 'SCRIPT_LOAD', script: getPreset('linear-regression.intuition') }),
+        (error) => error.code === 'SCRIPT_MODEL_MISMATCH' && error.details.expected === 'knn',
+        'KNN session rejects an LR script',
+      );
+
+      // Script capabilities are independent of the model timeline.
+      assert.equal(lrInitial.scriptState.totalSteps, 7, 'LR script has 7 steps');
+      assert.equal(lrInitial.scene.training.totalSteps, 0, 'LR model timeline starts at 0');
+      assert.equal(lrInitial.capabilities.canSeek, true, 'script canSeek from step 0');
+      assert.equal(lrInitial.capabilities.canStep, true, 'script canStep from step 0');
+      assert.equal(lrInitial.capabilities.canPlay, true, 'script canPlay from step 0');
+      assert.equal(lrFull.capabilities.canStep, false, 'completed script canStep is false');
+      assert.equal(lrFull.capabilities.canSeek, true, 'completed script canSeek stays true');
+      assert.equal(lrFull.capabilities.canPlay, true, 'completed script canPlay is true (restartable)');
+
+      // SCRIPT_PLAY on a completed script restarts from the beginning.
+      let restartSession = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 7, sessionId: 'prb-final' });
+      const restartDriver = makeDriver(() => restartSession, (next) => { restartSession = next; });
+      const restartRuntime = createScriptRuntime(restartDriver).load(structuredClone(getPreset('linear-regression.intuition')));
+      restartRuntime.initialize();
+      for (let index = 0; index < 7; index += 1) restartRuntime.step();
+      assert.equal(derivePlaygroundSnapshot(restartSession).scriptState.step, 7, 'script completed');
+      restartRuntime.play();
+      assert.equal(derivePlaygroundSnapshot(restartSession).scriptState.step, 0, 'play restarts a completed script');
+      assert.equal(derivePlaygroundSnapshot(restartSession).scriptState.status, 'playing', 'restart is playing');
+      restartRuntime.step();
+      assert.equal(derivePlaygroundSnapshot(restartSession).scriptState.step, 1, 'restarted script steps');
+
+      // Binding validator: transforms are collected and validated; unknown
+      // transforms are rejected; type mismatches fail with a stable error.
+      const transformScript = structuredClone(validPreset);
+      transformScript.id = 'transform-ok';
+      transformScript.primitives = [{
+        id: 'metric-card',
+        type: 'metric-card',
+        props: {
+          metrics: {
+            a: 'mean($data.values)',
+            b: 'max($data.values)',
+            c: 'extent($data.values)',
+            d: 'formatNumber($data.values)',
+            e: 'take($trace)',
+          },
+        },
+      }];
+      transformScript.layout = { stage: [], side: ['metric-card'] };
+      transformScript.steps = [{ id: 'w', wait: true, durationMs: 100 }];
+      assert.doesNotThrow(() => validateScript(transformScript), 'valid transforms pass the validator');
+      const unknownTransform = structuredClone(transformScript);
+      unknownTransform.primitives[0].props.metrics.x = 'unknownTransform($data.values)';
+      assert.throws(() => validateScript(unknownTransform), (error) => error.code === 'SCRIPT_INVALID_BINDING', 'unknown transform is rejected');
+      assert.ok(!('filterByEvent' in BINDING_TRANSFORMS), 'filterByEvent is removed from the transform whitelist');
+      const typeMismatchContext = createBindingContext({ model: {}, data: {}, controls: { k: 5 }, trace: [], metrics: {} });
+      assert.throws(
+        () => resolveValue('mean($controls.k)', typeMismatchContext),
+        (error) => error.code === 'SCRIPT_BINDING_TYPE_MISMATCH',
+        'type mismatched transforms fail with a stable SCRIPT error',
+      );
     }
   }
 }

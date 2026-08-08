@@ -48,6 +48,39 @@ export function inspectDataset(dataset) {
   };
 }
 
+// Builds the `$data` context for a session. `$data` must describe the dataset
+// the model adapter actually uses: workspace sources keep the full workspace
+// context, teaching/fallback sources are reconstructed from the normalized
+// source points so rows/features/target always match the model.
+export function buildDataState({ source, workspaceDataset }) {
+  if (source?.usingDataset && workspaceDataset) {
+    return inspectDataset(workspaceDataset);
+  }
+  if (Array.isArray(source?.featureColumns) && source.featureColumns.length >= 2) {
+    return {
+      schema: source.featureColumns.map((name) => ({ name, type: 'number', missing: 0 })),
+      rows: source.points.map((point) => ({ ...point.features })),
+      task: 'classification',
+      featureColumns: [...source.featureColumns],
+      targetColumn: 'label',
+      trainRatio: source.trainRatio ?? 0.8,
+    };
+  }
+  const feature = source?.feature ?? 'x';
+  const target = source?.target ?? 'y';
+  return {
+    schema: [
+      { name: feature, type: 'number', missing: 0 },
+      { name: target, type: 'number', missing: 0 },
+    ],
+    rows: (source?.points ?? []).map((point) => ({ [feature]: point.x, [target]: point.y })),
+    task: 'regression',
+    featureColumns: [feature],
+    targetColumn: target,
+    trainRatio: null,
+  };
+}
+
 // Converts dataset rows into shared samples { id, x: [...], y } for
 // classification; for regression the target is numeric.
 export function rowsToSamples(dataset, featureColumns, targetColumn, task) {

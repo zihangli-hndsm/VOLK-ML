@@ -19,7 +19,9 @@ const scriptError = (code, details = {}) => (
 );
 
 function collectBindings(value, bindings) {
-  if (typeof value === 'string' && value.startsWith('$')) bindings.add(value);
+  if (typeof value === 'string' && (
+    value.startsWith('$') || /^[A-Za-z]+\(\$[A-Za-z0-9_.]+\)$/.test(value)
+  )) bindings.add(value);
   if (Array.isArray(value)) value.forEach((item) => collectBindings(item, bindings));
   else if (value && typeof value === 'object') Object.values(value).forEach((item) => collectBindings(item, bindings));
 }
@@ -61,7 +63,10 @@ export function validateScript(script) {
       && primitive.props.decisionRegion.resolution > MAX_DECISION_RESOLUTION) {
       throw scriptError('SCRIPT_TOO_COMPLEX', { reason: 'decision resolution' });
     }
-    collectBindings(primitive.props, bindings);
+    if (primitive.when !== undefined && !isJsonSafe(primitive.when)) {
+      throw scriptError('INVALID_SCRIPT', { reason: 'when must be JSON-safe' });
+    }
+    collectBindings(primitive, bindings);
   }
 
   // Layout integrity: every layout bucket must reference declared primitives

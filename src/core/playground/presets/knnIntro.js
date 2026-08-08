@@ -11,7 +11,7 @@ export const knnIntro = {
     side: ['vote-bars', 'formula', 'metric-card', 'annotation'],
   },
   primitives: [
-    { id: 'decision-region', type: 'decision-region', props: { cells: '$model.decisionRegions.cells', resolution: '$model.decisionRegions.resolution' } },
+    { id: 'decision-region', type: 'decision-region', when: '$controls.showDecisionRegions', props: { cells: '$model.decisionRegions.cells', resolution: '$model.decisionRegions.resolution' } },
     { id: 'scatter', type: 'scatter', props: { points: '$model.displayPoints', axes: '$model.axes' } },
     { id: 'query-point', type: 'query-point', props: { query: '$model.displayQuery' } },
     { id: 'neighbor-links', type: 'neighbor-links', props: { neighbors: '$model.neighbors', points: '$model.displayPoints', query: '$model.displayQuery', showOrder: '$controls.showNeighborOrder' } },

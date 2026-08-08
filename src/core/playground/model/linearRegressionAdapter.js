@@ -292,6 +292,12 @@ export const linearRegressionAdapter = {
     const { points, ranges, optimum, weight, bias } = modelState;
     const gradient = sceneGradient(modelState.gradient) ?? regressionGradient(points, weight, bias);
     const prediction = (x) => weight * x + bias;
+    const bestFitLine = {
+      weight: optimum.weight,
+      bias: optimum.bias,
+      start: { x: ranges.xMin, y: optimum.weight * ranges.xMin + optimum.bias },
+      end: { x: ranges.xMax, y: optimum.weight * ranges.xMax + optimum.bias },
+    };
     const scene = {
       points: points.map((point) => ({
         ...point,
@@ -304,7 +310,7 @@ export const linearRegressionAdapter = {
         start: { x: ranges.xMin, y: prediction(ranges.xMin) },
         end: { x: ranges.xMax, y: prediction(ranges.xMax) },
       },
-      bestFitLine: optimum,
+      bestFitLine,
       gradient,
       training: {
         currentStep: modelState.training.currentStep,

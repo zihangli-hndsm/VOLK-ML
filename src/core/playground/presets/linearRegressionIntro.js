@@ -14,8 +14,8 @@ export const linearRegressionIntro = {
   primitives: [
     { id: 'scatter', type: 'scatter', props: { points: '$model.scatterPoints', axes: '$model.axes' } },
     { id: 'regression-line', type: 'regression-line', props: { line: '$model.line', ranges: '$model.ranges' } },
-    { id: 'reference-line', type: 'reference-line', props: { line: '$model.bestFitLine', ranges: '$model.ranges' } },
-    { id: 'residual-lines', type: 'residual-lines', props: { points: '$model.residualPoints' } },
+    { id: 'reference-line', type: 'reference-line', when: '$controls.showBestFit', props: { line: '$model.bestFitLine', ranges: '$model.ranges' } },
+    { id: 'residual-lines', type: 'residual-lines', when: '$controls.showResiduals', props: { points: '$model.residualPoints' } },
     { id: 'loss-curve', type: 'loss-curve', props: { lossHistory: '$model.training.lossHistory', currentStep: '$model.training.currentStep' } },
     { id: 'formula', type: 'formula', props: { formula: '$model.formula' } },
     { id: 'metric-card', type: 'metric-card', props: { metrics: '$metrics' } },

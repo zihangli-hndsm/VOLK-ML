@@ -51,11 +51,10 @@ export const EXECUTABLE_MARKERS = ['eval(', 'Function(', 'new Function', 'docume
 
 export function isAllowedBinding(binding) {
   if (typeof binding !== 'string') return false;
+  const transformMatch = /^([A-Za-z]+)\((\$[A-Za-z0-9_.]+)\)$/.exec(binding);
+  if (transformMatch) return BINDING_TRANSFORM_NAMES.has(transformMatch[1]);
+  if (binding.includes('(')) return false;
   if (!binding.startsWith('$')) return false;
-  if (binding.includes('(')) {
-    const match = /^([A-Za-z]+)\((\$[A-Za-z0-9_.]+)\)$/.exec(binding);
-    return Boolean(match && BINDING_TRANSFORM_NAMES.has(match[1]));
-  }
   return BINDING_PREFIXES.some((prefix) => binding === prefix || binding.startsWith(`${prefix}.`));
 }
 

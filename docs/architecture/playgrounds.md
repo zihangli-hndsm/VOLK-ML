@@ -28,7 +28,12 @@ Since the PR B follow-up, **Visualization Scripts own visualization composition*
 
 - Model adapters output a stable semantic state (`deriveScene`) and never produce primitives (`buildPrimitives` was removed from the contract).
 - `script.primitives` is the single source of truth: a primitive exists in the snapshot only if the script declares it, and `visualState[id] !== false` controls visibility.
-- `primitiveMaterializer.js` resolves each declaration's binding props (`$model.points`, `$controls.showNeighborOrder`, `mean($data.values)`, ...) into renderer props; bindings are recursive and JSON-safe.
+- Primitives may declare a visibility condition `when: '$controls.showResiduals'`; the materializer skips primitives whose condition is false, so show/hide decisions stay in the script, never in the adapter.
+- `primitiveMaterializer.js` resolves each declaration's binding props (`$model.points`, `$controls.showNeighborOrder`, `mean($data.values)`, ...) into renderer props; bindings are recursive and JSON-safe. `visualState.highlight` stamps `props.highlighted` on the target primitive and `visualState.overrides` patches primitive props (used by `annotate` steps).
+- Transforms are type-safe: array transforms fail with `SCRIPT_BINDING_TYPE_MISMATCH` instead of native errors, and the whitelist only contains single-argument transforms (`filterByEvent` was removed until DSL v2).
+- `$data` always describes the dataset the model actually uses: workspace sources keep the full workspace context, teaching/fallback sources are reconstructed from the normalized source points (`buildDataState`).
+- Loading a script whose `model.adapter` does not match the session is rejected with `SCRIPT_MODEL_MISMATCH`.
+- Script-mode capabilities come from `scriptState` (seekable from step 0 even when the model timeline is empty), and `SCRIPT_PLAY` on a completed script restarts from the baseline.
 - Descriptor `scenarios` are now `{ id, titleKey, presetId }` references; `runScenario()` and UI preset playback both execute the preset through the Script Runtime (same actions, same traces).
 - Script state (`scriptState: { status, step, totalSteps }`) is separate from the model timeline, so a 7-step script is never conflated with 20 training steps.
 - `RESET`/script `reset`/`seek`/replay all return to the session **baseline** (initial controls + source + seed), so `fresh first-N == full-run-then-seek-N == reset-then-N`.

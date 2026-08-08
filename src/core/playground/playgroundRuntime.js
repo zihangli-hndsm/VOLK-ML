@@ -4,7 +4,7 @@ import { getPreset } from './visualization/presetRegistry.js';
 import { materializePrimitives } from './visualization/primitiveMaterializer.js';
 import { createBindingContext, resolveValue } from './visualization/bindings.js';
 import { validateScript } from './visualization/scriptValidator.js';
-import { inspectDataset } from './data/datasetAdapter.js';
+import { buildDataState } from './data/datasetAdapter.js';
 import { getPlayground } from '../playgrounds/registry.js';
 import {
   playgroundError,
@@ -50,7 +50,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     recorder,
   });
   const preset = getPreset(adapter.defaultVisualizationPreset);
-  const dataState = inspectDataset(dataset);
+  const dataState = buildDataState({ source: normalizedSource, workspaceDataset: dataset });
   return {
     apiVersion: 1,
     sessionId: sessionId ?? `playground-${crypto.randomUUID()}`,
@@ -175,7 +175,19 @@ function computeScriptStepActions(session) {
   if (stepDefinition.hide) actions.push({ type: 'SET_VISUAL', patch: { [stepDefinition.hide]: false } });
   if (stepDefinition.highlight) actions.push({ type: 'SET_VISUAL', patch: { highlight: stepDefinition.highlight } });
   if (stepDefinition.annotate) {
-    actions.push({ type: 'SET_VISUAL', patch: { annotation: resolveValue(stepDefinition.annotate, context) } });
+    const resolved = resolveValue(stepDefinition.annotate, context);
+    const annotationId = script.primitives.find((primitive) => primitive.type === 'annotation')?.id;
+    if (annotationId) {
+      actions.push({
+        type: 'SET_VISUAL',
+        patch: {
+          overrides: {
+            ...(session.visualState.overrides ?? {}),
+            [annotationId]: { observation: resolved },
+          },
+        },
+      });
+    }
   }
   if (stepDefinition.reset) actions.push({ type: 'RESET' });
   return actions;
@@ -234,6 +246,12 @@ export function dispatchRuntimeAction(session, action) {
   // ---- Visualization Script execution (the single preset path) ----
   if (action.type === 'SCRIPT_LOAD') {
     validateScript(action.script);
+    if (action.script.model.adapter !== session.adapterId) {
+      throw Object.assign(new Error('SCRIPT_MODEL_MISMATCH'), {
+        code: 'SCRIPT_MODEL_MISMATCH',
+        details: { expected: session.adapterId, received: action.script.model.adapter },
+      });
+    }
     return {
       ...session,
       script: structuredClone(action.script),
@@ -243,6 +261,10 @@ export function dispatchRuntimeAction(session, action) {
   }
   if (action.type === 'SCRIPT_PLAY') {
     if (!session.script) return session;
+    if (session.scriptState.step >= session.scriptState.totalSteps) {
+      const reset = dispatchRuntimeAction(session, { type: 'SCRIPT_RESET' });
+      return { ...reset, scriptState: { ...reset.scriptState, status: 'playing' } };
+    }
     return { ...session, scriptState: { ...session.scriptState, status: 'playing' } };
   }
   if (action.type === 'SCRIPT_PAUSE') {
@@ -306,10 +328,20 @@ export function dispatchRuntimeAction(session, action) {
 export function deriveRuntimeSnapshot(session) {
   const adapter = requireModelAdapter(session.adapterId);
   const { scene, metrics, observation, formula, capabilities: semanticCapabilities, modelContext } = semanticContext(session);
-  const capabilities = {
-    ...semanticCapabilities,
-    canPause: session.status === 'playing',
-  };
+  const scriptLoaded = Boolean(session.scriptState && session.scriptState.totalSteps > 0);
+  const capabilities = scriptLoaded
+    ? {
+      canPlay: session.scriptState.totalSteps > 0,
+      canPause: session.scriptState.status === 'playing',
+      canStep: session.scriptState.step < session.scriptState.totalSteps,
+      canSeek: session.scriptState.totalSteps > 0,
+      canReset: true,
+      canEditData: true,
+    }
+    : {
+      ...semanticCapabilities,
+      canPause: session.status === 'playing',
+    };
   const primitives = materializePrimitives({
     script: session.script,
     semanticState: modelContext,

@@ -32,12 +32,24 @@ export function materializePrimitives({
     metrics: metrics ?? {},
   });
   return script.primitives
-    .filter((declaration) => visualState?.[declaration.id] !== false)
+    .filter((declaration) => {
+      if (declaration.when !== undefined && !resolveValue(declaration.when, context)) return false;
+      return visualState?.[declaration.id] !== false;
+    })
     .map((declaration) => {
+      const resolvedProps = resolveValue(declaration.props ?? {}, context);
+      const override = visualState?.overrides?.[declaration.id];
+      const props = {
+        ...resolvedProps,
+        ...(override ? resolveValue(override, context) : {}),
+      };
+      if (visualState?.highlight !== undefined) {
+        props.highlighted = declaration.id === visualState.highlight;
+      }
       const primitive = {
         id: declaration.id,
         type: declaration.type,
-        props: resolveValue(declaration.props ?? {}, context),
+        props,
       };
       validatePrimitive(primitive);
       return primitive;

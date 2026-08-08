@@ -6,14 +6,39 @@
 // declares exactly these prefixes and the runtime provides exactly these
 // objects, so a valid binding never resolves to `undefined` context.
 
+export function scriptRuntimeError(code, details = {}) {
+  return Object.assign(new Error(code), { code, details });
+}
+
+function requireArray(values, transform) {
+  if (!Array.isArray(values)) {
+    throw scriptRuntimeError('SCRIPT_BINDING_TYPE_MISMATCH', { transform, received: typeof values });
+  }
+  return values;
+}
+
+// Whitelist transforms. The DSL grammar only supports single-argument
+// transforms (`transform($path)`), so two-argument helpers like filterByEvent
+// are intentionally absent until DSL v2. Type mismatches fail with a stable
+// SCRIPT_* error instead of a native TypeError.
 export const BINDING_TRANSFORMS = {
-  mean: (values) => values.reduce((sum, value) => sum + value, 0) / Math.max(1, values.length),
-  min: (values) => Math.min(...values),
-  max: (values) => Math.max(...values),
-  extent: (values) => [Math.min(...values), Math.max(...values)],
-  formatNumber: (values) => values.map((value) => (Number.isInteger(value) ? String(value) : Number(value).toFixed(3))),
-  take: (values) => (Array.isArray(values) && values.length ? values[values.length - 1] : undefined),
-  filterByEvent: (values, eventType) => values.filter((value) => value?.type === eventType),
+  mean: (values) => {
+    const list = requireArray(values, 'mean');
+    return list.reduce((sum, value) => sum + value, 0) / Math.max(1, list.length);
+  },
+  min: (values) => Math.min(...requireArray(values, 'min')),
+  max: (values) => Math.max(...requireArray(values, 'max')),
+  extent: (values) => {
+    const list = requireArray(values, 'extent');
+    return [Math.min(...list), Math.max(...list)];
+  },
+  formatNumber: (values) => requireArray(values, 'formatNumber').map((value) => (
+    Number.isInteger(value) ? String(value) : Number(value).toFixed(3)
+  )),
+  take: (values) => {
+    const list = requireArray(values, 'take');
+    return list.length ? list[list.length - 1] : undefined;
+  },
 };
 
 export function createBindingContext({ model, data, controls, trace, metrics }) {
