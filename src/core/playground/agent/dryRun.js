@@ -5,7 +5,7 @@ import { materializePrimitives } from '../visualization/primitiveMaterializer.js
 import { getModelAdapter } from '../model/modelRegistry.js';
 import { dispatchPlaygroundAction, derivePlaygroundSnapshot } from '../../playgrounds/session.js';
 import { scriptError } from '../visualization/scriptErrors.js';
-import { RESOURCE_LIMITS } from '../visualization/scriptValidator.js';
+import { isValidDecisionResolution, RESOURCE_LIMITS } from '../visualization/scriptValidator.js';
 
 // Strict dry run for a Visualization Script before it is accepted:
 //
@@ -67,11 +67,29 @@ function materializeAndValidate(snapshot, script) {
     visualState: snapshot.visualState ?? {},
     dataState: snapshot.dataState ?? {},
   });
+  validateResolvedResources(primitives);
   for (const primitive of primitives) {
     const result = validatePrimitiveContract(primitive);
     if (!result.valid) throw scriptError(result.code, result.details);
   }
   return primitives;
+}
+
+// Resource validation runs on every materialized snapshot (initial, each
+// replayed step, final), so an unsafe intermediate state can never be hidden
+// by a later safe one.
+function validateResolvedResources(primitives) {
+  for (const primitive of primitives) {
+    if (primitive.type !== 'decision-region') continue;
+    const resolution = primitive.props?.resolution;
+    if (resolution !== undefined && !isValidDecisionResolution(resolution)) {
+      throw scriptError('SCRIPT_TOO_COMPLEX', {
+        reason: 'decision resolution',
+        resolution,
+        max: RESOURCE_LIMITS.maxDecisionResolution,
+      });
+    }
+  }
 }
 
 export function dryRunScript({ script, session }) {
@@ -93,6 +111,7 @@ export function dryRunScript({ script, session }) {
   }
 
   let replaySession = session ? structuredClone(session) : null;
+  let lastPrimitives = [];
   if (replaySession) {
     try {
       replaySession = dispatchPlaygroundAction(replaySession, { type: 'SCRIPT_LOAD', script: structuredClone(script) });
@@ -106,13 +125,13 @@ export function dryRunScript({ script, session }) {
         metrics: initialSnapshot.metrics ?? {},
       });
       checkPrimitiveBindings(script, initialContext, warnings);
-      materializeAndValidate(initialSnapshot, script);
+      lastPrimitives = materializeAndValidate(initialSnapshot, script);
 
       const total = script.steps.length;
       for (let index = 0; index < total; index += 1) {
         replaySession = dispatchPlaygroundAction(replaySession, { type: 'SCRIPT_STEP' });
         const stepSnapshot = derivePlaygroundSnapshot(replaySession);
-        materializeAndValidate(stepSnapshot, script);
+        lastPrimitives = materializeAndValidate(stepSnapshot, script);
       }
     } catch (error) {
       return {
@@ -124,39 +143,19 @@ export function dryRunScript({ script, session }) {
     }
   }
 
-  // Estimates from resolved props.
+  // Estimates from the final materialized snapshot (already validated).
   const estimatedSteps = script.steps.length;
   const estimatedPrimitiveUpdates = script.steps.reduce((sum, step) => (
     sum + Object.keys(step).filter((key) => (
       ['setControl', 'invoke', 'show', 'hide', 'highlight', 'reveal', 'annotate', 'reset'].includes(key)
     )).length
   ), 0);
-  let decisionGridCost = 0;
-  let decisionGridCells = 0;
-  if (replaySession) {
-    const snapshot = derivePlaygroundSnapshot(replaySession);
-    const context = createBindingContext({
-      model: buildModelContext(snapshot),
-      data: snapshot.dataState ?? {},
-      controls: snapshot.controls,
-      trace: snapshot.traces ?? [],
-      metrics: snapshot.metrics ?? {},
-    });
-    for (const primitive of script.primitives) {
-      if (primitive.type !== 'decision-region') continue;
-      const resolution = Number(resolveValue(primitive.props?.resolution ?? 48, context)) || 48;
-      if (!Number.isInteger(resolution) || resolution < 1 || resolution > RESOURCE_LIMITS.maxDecisionResolution) {
-        return {
-          valid: false,
-          code: 'SCRIPT_TOO_COMPLEX',
-          details: { reason: 'decision resolution', resolution, max: RESOURCE_LIMITS.maxDecisionResolution, invalid: true },
-          warnings,
-        };
-      }
-      decisionGridCells += resolution * resolution;
-    }
-  }
-  decisionGridCost = decisionGridCells;
+  const decisionGridCells = lastPrimitives
+    .filter((primitive) => primitive.type === 'decision-region')
+    .reduce((sum, primitive) => (
+      sum + (primitive.props?.resolution ?? RESOURCE_LIMITS.defaultDecisionResolution) ** 2
+    ), 0);
+  const decisionGridCost = decisionGridCells;
   const finalSnapshot = replaySession ? derivePlaygroundSnapshot(replaySession) : null;
   const scatterPoints = finalSnapshot?.primitives?.find((primitive) => primitive.type === 'scatter')?.props?.points ?? [];
   const pointCount = Array.isArray(scatterPoints) ? scatterPoints.length : 0;

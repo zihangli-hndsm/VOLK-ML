@@ -61,6 +61,7 @@ import {
   createPlaygroundSession,
   derivePlaygroundSnapshot,
   dispatchPlaygroundAction,
+  validateControlValue,
 } from '../src/core/playgrounds/session.js';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
@@ -3751,6 +3752,100 @@ assert.throws(
       const fractionalResolution = structuredClone(zeroResolution);
       fractionalResolution.primitives[0].props.resolution = 2.5;
       assert.throws(() => validateScript(fractionalResolution), (error) => error.code === 'SCRIPT_TOO_COMPLEX', 'fractional decision resolution is rejected');
+    }
+
+    // PR D.3: final runtime contract closure.
+    {
+      const resolutionScript = (value, extraSteps = []) => {
+        let session = createPlaygroundSession(knnPlayground, { source: knnSource2, seed: 3, sessionId: 'prd3' });
+        if (value !== undefined) session = { ...session, dataState: { ...session.dataState, resValue: value } };
+        return {
+          script: {
+            version: 1,
+            id: `res-${String(value)}`,
+            model: { adapter: 'knn' },
+            data: { source: 'workspace-or-default' },
+            controls: [],
+            layout: { stage: ['decision-region'], side: [] },
+            primitives: [{
+              id: 'decision-region',
+              type: 'decision-region',
+              when: '$controls.showDecisionRegions',
+              props: {
+                cells: '$model.decisionRegions.cells',
+                ...(value !== undefined ? { resolution: '$data.resValue' } : {}),
+              },
+            }],
+            steps: [
+              { id: 'on', setControl: { showDecisionRegions: true }, durationMs: 100 },
+              ...extraSteps,
+            ],
+          },
+          session,
+        };
+      };
+
+      // Resolved resolution 0/-1/2.5/above-max must fail, not fall back to 48.
+      for (const value of [0, -1, 2.5, 1000]) {
+        const fixture = resolutionScript(value);
+        const result = dryRunScript(fixture);
+        assert.equal(result.valid, false, `resolved resolution ${value} fails the dry run`);
+        assert.equal(result.code, 'SCRIPT_TOO_COMPLEX', `resolved resolution ${value} has a stable code`);
+      }
+
+      // An unsafe intermediate step cannot be hidden by a later safe one:
+      // cells.length is 2304 while regions are enabled, then disabled.
+      const intermediate = resolutionScript(undefined, [
+        { id: 'off', setControl: { showDecisionRegions: false }, durationMs: 100 },
+      ]);
+      intermediate.script.primitives[0].props.resolution = '$model.decisionRegions.cells.length';
+      const intermediateResult = dryRunScript(intermediate);
+      assert.equal(intermediateResult.valid, false, 'unsafe intermediate resolution fails the dry run');
+      assert.equal(intermediateResult.code, 'SCRIPT_TOO_COMPLEX', 'intermediate resource failure has a stable code');
+
+      // Resolution omitted -> renderer/runtime default 48.
+      const omitted = resolutionScript(undefined);
+      const omittedResult = dryRunScript(omitted);
+      assert.equal(omittedResult.valid, true, 'omitted resolution passes');
+      assert.equal(omittedResult.decisionGridCells, 48 * 48, 'omitted resolution uses the default grid size');
+
+      // Initial control overrides must obey the Playground descriptor.
+      const controlHost = createPlaygroundHost({ getDataset: () => null });
+      const controlAgent = createPlaygroundAgentApi(controlHost);
+      for (const [request, playgroundId] of [
+        [{ playgroundId: 'linear-regression', controls: { learningRate: 6 } }, 'linear-regression'],
+        [{ playgroundId: 'linear-regression', controls: { unknownControl: 1 } }, 'linear-regression'],
+        [{ playgroundId: 'linear-regression', controls: { weight: -101 } }, 'linear-regression'],
+        [{ playgroundId: 'linear-regression', controls: { weight: 101 } }, 'linear-regression'],
+        [{ playgroundId: 'knn-classification', controls: { distanceMetric: 'manhattan' } }, 'knn-classification'],
+      ]) {
+        await assert.rejects(
+          controlAgent.open(request),
+          (error) => error.code === 'INVALID_PLAYGROUND_CONTROL',
+          `${playgroundId} rejects out-of-contract initial control ${JSON.stringify(request.controls)}`,
+        );
+      }
+      const validOpen = await controlAgent.open({ playgroundId: 'knn-classification', controls: { k: 7 } });
+      assert.equal(validOpen.controls.k, 7, 'a valid override is applied');
+      const controlContext = controlAgent.inspectContext();
+      for (const schema of controlContext.controlSchemas) {
+        assert.doesNotThrow(
+          () => validateControlValue(schema, controlContext.controls[schema.key]),
+          `every live control ${schema.key} conforms to its schema`,
+        );
+      }
+      await controlAgent.close();
+
+      // Adapter-produced defaults also conform to their descriptors.
+      for (const [playground, source] of [[lrPlayground, lrSource], [knnPlayground, knnSource2]]) {
+        const defaultSession = createPlaygroundSession(playground, { source, seed: 7, sessionId: 'prd3-defaults' });
+        for (const control of getPlayground(playground.id).controls) {
+          assert.doesNotThrow(
+            () => validateControlValue(control, defaultSession.controls[control.key]),
+            `${playground.id} default control ${control.key} conforms`,
+          );
+        }
+      }
     }
   }
 }
