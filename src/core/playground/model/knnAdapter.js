@@ -234,13 +234,19 @@ export const knnAdapter = {
       args: {},
       effects: ['neighbors.recomputed', 'reveal.started'],
       alwaysProducesTrace: ['query.received', 'knn.distancesComputed'],
-      mayProduceTrace: ['knn.neighborSelected', 'knn.voteUpdated', 'prediction.emitted'],
+      mayProduceTrace: [],
+      // START_NEIGHBOR_REVEAL resets the reveal state; neighbor/vote/
+      // prediction events are emitted by later STEP actions.
+      enablesTrace: ['knn.neighborSelected', 'knn.voteUpdated', 'prediction.emitted'],
     },
     moveQuery: {
       args: { x: { type: 'number|null' }, y: { type: 'number|null' } },
       effects: ['query.changed', 'prediction.invalidated', 'neighbors.recomputed'],
       alwaysProducesTrace: ['query.received', 'knn.distancesComputed'],
+      // When the model is already in a revealed state, moving the query
+      // re-emits neighbor/vote/prediction immediately.
       mayProduceTrace: ['knn.neighborSelected', 'knn.voteUpdated', 'prediction.emitted'],
+      enablesTrace: ['knn.neighborSelected', 'knn.voteUpdated', 'prediction.emitted'],
     },
   },
   scriptOperationActions: {
