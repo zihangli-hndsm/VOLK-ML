@@ -13,6 +13,12 @@ import { dryRunScript as runDryRun } from './playground/agent/dryRun.js';
 import { generateVisualizationScript } from './playground/agent/scriptGenerator.js';
 import { planTeachingGoal } from './playground/agent/teachingPlanner.js';
 import { composeScriptFromPlan } from './playground/agent/teachingComposer.js';
+import {
+  evaluateGoalFidelity,
+  replayScriptForFidelity,
+} from './playground/agent/teachingFidelity.js';
+import { teachingError } from './playground/agent/teachingPlan.js';
+import { TEACHING_OBJECTIVES, getSupportedTeachingObjectives } from './playground/agent/teachingTaxonomy.js';
 import { listModelAdapters, getModelAdapter } from './playground/model/modelRegistry.js';
 import { PRIMITIVE_TYPES } from './playground/visualization/primitives.js';
 import { listPrimitiveSchemas } from './playground/visualization/schemas.js';
@@ -232,7 +238,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         }
       }
       const semanticFields = Object.keys(adapter.semanticSchema ?? {});
-      return {
+      const context = {
         version: 1,
         playground: { id: session.playgroundId, modelAdapter: session.adapterId, task: data.task ?? null },
         model: {
@@ -280,6 +286,11 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           predictedLabel: snapshot.metrics?.predictedLabel ?? null,
         },
       };
+      context.teaching = {
+        objectives: [...TEACHING_OBJECTIVES],
+        supportedObjectives: getSupportedTeachingObjectives(context),
+      };
+      return context;
     },
 
     listPresets() {
@@ -376,12 +387,18 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
     // is never mutated here.
     async composeScript({ plan }) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      const script = composeScriptFromPlan({ plan, context: this.inspectContext() });
+      const context = this.inspectContext();
+      const script = composeScriptFromPlan({ plan, context });
       const dryRun = runDryRun({ script, session });
       if (!dryRun.valid) {
         throw Object.assign(new Error(dryRun.code), { code: dryRun.code, details: dryRun.details });
       }
-      return { plan, script, dryRun };
+      const execution = replayScriptForFidelity({ script, session });
+      const fidelity = evaluateGoalFidelity({ plan, script, context, execution });
+      if (!fidelity.valid) {
+        throw teachingError('TEACHING_GOAL_FIDELITY_FAILED', { missing: fidelity.missing });
+      }
+      return { mode: 'composed', plan, script, fidelity, dryRun };
     },
 
     async refreshSource() {

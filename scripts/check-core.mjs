@@ -84,6 +84,14 @@ import {
 } from '../src/core/playground/agent/teachingPlan.js';
 import { parseTeachingGoalText } from '../src/core/playground/agent/teachingGoalParser.js';
 import { materializePrimitives } from '../src/core/playground/visualization/primitiveMaterializer.js';
+import {
+  evaluateGoalFidelity,
+  replayScriptForFidelity,
+} from '../src/core/playground/agent/teachingFidelity.js';
+import {
+  getSupportedTeachingObjectives,
+  TEACHING_OBJECTIVES,
+} from '../src/core/playground/agent/teachingTaxonomy.js';
 import { BINDING_TRANSFORMS, createBindingContext, resolveValue } from '../src/core/playground/visualization/bindings.js';
 import { SCRIPT_ERROR_CODES } from '../src/core/playground/visualization/scriptErrors.js';
 import { resolveLanguagePreference } from '../src/core/languagePolicy.js';
@@ -4102,17 +4110,17 @@ assert.throws(
         // Text parsing is lexical and produces structured candidates only.
         assert.deepEqual(
           parseTeachingGoalText('k=1 和 k=15 的区别'),
-          { type: 'compare-control', control: 'k', values: [1, 15] },
+          { type: 'compare-control', objective: 'compare', control: 'k', values: [1, 15] },
           'text parser produces a structured compare candidate',
         );
         assert.deepEqual(
           parseTeachingGoalText('k=15'),
-          { type: 'what-if', control: 'k', value: 15 },
+          { type: 'what-if', objective: 'show_parameter_effect', control: 'k', value: 15 },
           'a single assignment is a what-if candidate',
         );
         assert.deepEqual(
           parseTeachingGoalText('学习率太高'),
-          { type: 'what-if', control: 'learningRate', value: 2 },
+          { type: 'what-if', objective: 'show_failure_case', control: 'learningRate', value: 2 },
           'learning-rate aliases live in the text parser',
         );
         assert.equal(parseTeachingGoalText('解释这个模型如何工作'), null, 'generic text stays generic');
@@ -4132,8 +4140,8 @@ assert.throws(
         const e11KnnContext2 = e11Host.inspectContext();
         assert.throws(
           () => planTeachingGoal({ goal: '学习率太高会发生什么', context: e11KnnContext2 }),
-          (error) => error.code === 'TEACHING_CONTROL_INVALID',
-          'KNN + learning-rate what-if rejects instead of being reinterpreted',
+          (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED' && error.details?.objective === 'show_failure_case',
+          'KNN + learning-rate what-if rejects (failure-case objective unsupported in context)',
         );
         assert.throws(
           () => planTeachingGoal({ goal: { type: 'diagnose' }, context: e11KnnContext2 }),
@@ -4489,6 +4497,243 @@ assert.throws(
           'plan() rejects a comparison whose valid values would expand beyond maxSteps',
         );
         await e12Host.close();
+      }
+
+      // PR E.2: goal taxonomy + goal fidelity.
+      {
+        // 1. Bounded taxonomy exposed through inspectContext, with a
+        // capability-grounded supported set (no model-id maps).
+        const e2Host = createPlaygroundHost({ getDataset: () => null });
+        await e2Host.open({ playgroundId: 'knn-classification' });
+        const e2KnnContext = e2Host.inspectContext();
+        assert.deepEqual(e2KnnContext.teaching.objectives, TEACHING_OBJECTIVES, 'inspectContext exposes the full objective taxonomy');
+        assert.deepEqual(
+          e2KnnContext.teaching.supportedObjectives,
+          ['introduce', 'compare', 'show_parameter_effect', 'explain_prediction'],
+          'KNN supported objectives are derived from predict intent + evidence',
+        );
+        assert.deepEqual(
+          getSupportedTeachingObjectives(e2KnnContext),
+          e2KnnContext.teaching.supportedObjectives,
+          'getSupportedTeachingObjectives matches inspectContext',
+        );
+        await e2Host.close();
+        await e2Host.open({ playgroundId: 'linear-regression' });
+        const e2LrContext = e2Host.inspectContext();
+        assert.deepEqual(
+          e2LrContext.teaching.supportedObjectives,
+          ['introduce', 'compare', 'show_parameter_effect', 'show_training', 'show_failure_case'],
+          'LR supported objectives are derived from fit intent + training evidence',
+        );
+        assert.ok(
+          !e2KnnContext.teaching.supportedObjectives.includes('show_failure_case')
+          && !e2LrContext.teaching.supportedObjectives.includes('explain_prediction'),
+          'unsupported objectives stay out of the supported set',
+        );
+
+        // 2. Normalized semantic objectives ride alongside E.1 goal families.
+        const e2ComparePlan = planTeachingGoal({ goal: 'k=1 和 k=15 的区别', context: e2KnnContext });
+        assert.equal(e2ComparePlan.goal.type, 'compare-control', 'compare-control goal family is preserved');
+        assert.equal(e2ComparePlan.goal.objective, 'compare', 'compare-control normalizes to the compare objective');
+        const e2KnnExplain = planTeachingGoal({ goal: '解释这个模型如何工作', context: e2KnnContext });
+        assert.equal(e2KnnExplain.goal.objective, 'explain_prediction', 'KNN explain-process normalizes to explain_prediction');
+        const e2LrExplain = planTeachingGoal({ goal: '解释这个模型如何工作', context: e2LrContext });
+        assert.equal(e2LrExplain.goal.objective, 'show_training', 'LR explain-process normalizes to show_training');
+        const e2WhatIf = planTeachingGoal({ goal: { type: 'what-if', control: 'k', value: 15 }, context: e2KnnContext });
+        assert.equal(e2WhatIf.goal.objective, 'show_parameter_effect', 'what-if normalizes to show_parameter_effect');
+        const e2Failure = planTeachingGoal({ goal: '学习率太高会发生什么', context: e2LrContext });
+        assert.equal(e2Failure.goal.objective, 'show_failure_case', 'learning-rate-too-high normalizes to show_failure_case');
+        const e2Intro = planTeachingGoal({ goal: '介绍一下这个模型', context: e2KnnContext });
+        assert.equal(e2Intro.goal.objective, 'introduce', 'introduce hints normalize to the introduce objective');
+
+        // 3. Unsupported objectives reject explicitly (never silently
+        // reinterpreted as explain-process).
+        assert.throws(
+          () => planTeachingGoal({ goal: { type: 'what-if', objective: 'show_generalization', control: 'k', value: 5 }, context: e2KnnContext }),
+          (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED',
+          'show_generalization is rejected',
+        );
+        assert.throws(
+          () => planTeachingGoal({ goal: { type: 'what-if', objective: 'show_feature_effect', control: 'k', value: 5 }, context: e2KnnContext }),
+          (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED',
+          'show_feature_effect is rejected',
+        );
+        assert.throws(
+          () => planTeachingGoal({ goal: { type: 'explain-process', objective: 'explain_prediction' }, context: e2LrContext }),
+          (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED',
+          'explain_prediction on LR is rejected (no predict operation)',
+        );
+        assert.throws(
+          () => planTeachingGoal({ goal: 'Explain this KNN prediction', context: e2LrContext }),
+          (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED',
+          'explain-prediction text on LR is rejected',
+        );
+        assert.throws(
+          () => planTeachingGoal({ goal: { type: 'what-if', objective: 'show_failure_case', control: 'k', value: 15 }, context: e2KnnContext }),
+          (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED',
+          'show_failure_case on KNN is rejected (no fit/training evidence)',
+        );
+
+        // 4. Acceptance case 1: compare k=1 vs k=15 - positive and mutation
+        // negatives. The fidelity contract proves the full experiment.
+        await e2Host.close();
+        await e2Host.open({ playgroundId: 'knn-classification' });
+        const e2Agent = createPlaygroundAgentApi(e2Host);
+        const e2CompareAgentPlan = await e2Agent.plan('Compare k=1 and k=15');
+        const e2CompareComposed = await e2Agent.composeScript(e2CompareAgentPlan);
+        assert.equal(e2CompareComposed.mode, 'composed', 'composeScript marks the real Composer path');
+        assert.equal(e2CompareComposed.fidelity.valid, true, 'compare fidelity passes');
+        assert.equal(e2CompareComposed.dryRun.valid, true, 'compare dry run passes');
+        const e2CompareChecks = new Set(e2CompareComposed.fidelity.checks.map((check) => check.requirement));
+        for (const required of [
+          'control:k=1',
+          'control:k=15',
+          'operation:predict>=2',
+          'reveals>=2',
+          'capture:left',
+          'capture:right',
+          'trace:prediction.emitted',
+        ]) {
+          assert.ok(e2CompareChecks.has(required), `compare fidelity proves ${required}`);
+        }
+        assert.ok(
+          e2CompareComposed.fidelity.checks.some((check) => (
+            check.requirement.startsWith('runtimeEvidence:left:metrics.predictedLabel') && check.satisfied
+          )),
+          'left capture holds completed prediction evidence',
+        );
+        assert.ok(
+          e2CompareComposed.fidelity.checks.some((check) => (
+            check.requirement.startsWith('runtimeEvidence:right:metrics.predictedLabel') && check.satisfied
+          )),
+          'right capture holds completed prediction evidence',
+        );
+        const e2CompareBase = composeScriptFromPlan({ plan: e2CompareAgentPlan, context: e2KnnContext });
+        const mutateSteps = (mutator) => {
+          const mutated = structuredClone(e2CompareBase);
+          mutated.steps = mutator(mutated.steps);
+          return mutated;
+        };
+        const e2MutatedFixtures = [
+          {
+            name: 'missing k=15 assignment',
+            script: mutateSteps((steps) => steps.filter((step) => !(step.setControl && step.setControl.k === 15))),
+            missing: 'control:k=15',
+          },
+          {
+            name: 'missing second predict run',
+            script: mutateSteps((steps) => {
+              const invokes = steps.filter((step) => step.invoke);
+              const removeId = invokes[1]?.id;
+              return steps.filter((step) => step.id !== removeId);
+            }),
+            missing: 'operation:predict>=2',
+          },
+          {
+            name: 'missing second reveal',
+            script: mutateSteps((steps) => steps.filter((step) => !(step.reveal && step.id.startsWith('reveal-right')))),
+            missing: 'reveals>=2',
+          },
+          {
+            name: 'missing right capture',
+            script: mutateSteps((steps) => steps.filter((step) => !(step.capture && step.capture.id === 'right'))),
+            missing: 'capture:right',
+          },
+          {
+            name: 'missing evidence primitive',
+            script: (() => {
+              const mutated = structuredClone(e2CompareBase);
+              mutated.primitives = mutated.primitives.filter((primitive) => primitive.type !== 'vote-bars');
+              mutated.layout.stage = mutated.layout.stage.filter((id) => id !== 'vote-bars');
+              return mutated;
+            })(),
+            missing: 'evidence:voting',
+          },
+        ];
+        for (const fixture of e2MutatedFixtures) {
+          assert.doesNotThrow(() => validateScript(fixture.script), `${fixture.name} stays structurally valid`);
+          const report = evaluateGoalFidelity({ plan: e2CompareAgentPlan, script: fixture.script, context: e2KnnContext });
+          assert.equal(report.valid, false, `${fixture.name} fails goal fidelity`);
+          assert.ok(report.missing.includes(fixture.missing), `${fixture.name} reports the missing requirement`);
+        }
+
+        // 5. Acceptance case 2: learning rate too high. The planner derives a
+        // legal value above the baseline; a residuals-only script fails.
+        const e2LrAgentHost = createPlaygroundHost({ getDataset: () => null });
+        const e2LrAgent = createPlaygroundAgentApi(e2LrAgentHost);
+        await e2LrAgentHost.open({ playgroundId: 'linear-regression' });
+        const e2LrPlan = await e2LrAgent.plan('Show what happens when learning rate is too high');
+        assert.equal(e2LrPlan.goal.objective, 'show_failure_case', 'learning-rate-too-high normalizes to show_failure_case');
+        const e2LrBaseline = e2LrAgentHost.inspectContext().controls.learningRate;
+        const e2LrSchema = e2LrAgentHost.inspectContext().controlSchemas.find((schema) => schema.key === 'learningRate');
+        assert.ok(
+          e2LrPlan.goal.value > e2LrBaseline && e2LrPlan.goal.value >= e2LrSchema.min && e2LrPlan.goal.value <= e2LrSchema.max,
+          'the derived learning rate is above the baseline and inside controlSchemas',
+        );
+        const e2LrComposed = await e2LrAgent.composeScript(e2LrPlan);
+        assert.equal(e2LrComposed.fidelity.valid, true, 'learning-rate-too-high fidelity passes');
+        const e2LrChecks = new Set(e2LrComposed.fidelity.checks.map((check) => check.requirement));
+        for (const required of ['operation:fit>=1', 'reveals>=1', 'capture:result', 'trace:loss.measured']) {
+          assert.ok(e2LrChecks.has(required), `learning-rate fidelity proves ${required}`);
+        }
+        assert.ok(
+          e2LrComposed.fidelity.checks.some((check) => check.requirement.startsWith('runtimeEvidence:result:training.parameterHistory') && check.satisfied),
+          'parameter movement is verified from training history evidence',
+        );
+        const e2LrContext2 = e2LrAgentHost.inspectContext();
+        const e2WeakScript = {
+          version: 1,
+          id: 'weak-lr',
+          model: { adapter: 'linear-regression' },
+          data: { source: 'workspace-or-default' },
+          controls: [],
+          layout: { stage: ['scatter'], side: [] },
+          primitives: [{ id: 'scatter', type: 'scatter', props: { points: '$model.scatterPoints', axes: '$model.axes' } }],
+          steps: [{ id: 'w', wait: true, durationMs: 100 }],
+        };
+        assert.doesNotThrow(() => validateScript(e2WeakScript), 'residuals-only script stays structurally valid');
+        const e2WeakReport = evaluateGoalFidelity({ plan: e2LrPlan, script: e2WeakScript, context: e2LrContext2 });
+        assert.equal(e2WeakReport.valid, false, 'a script that only shows residuals fails the learning-rate goal');
+        const e2DerivedValuePlan = planTeachingGoal({
+          goal: { type: 'what-if', objective: 'show_failure_case', control: 'learningRate' },
+          context: e2LrContext2,
+        });
+        assert.ok(
+          e2DerivedValuePlan.goal.value > e2LrBaseline && e2DerivedValuePlan.goal.value <= e2LrSchema.max,
+          'a structured failure goal without a value derives one inside the schema',
+        );
+        await e2LrAgentHost.close();
+
+        // 6. Acceptance case 3: explain KNN prediction. The generic evaluator
+        // must contain no model-id switch.
+        const e2ExplainPlan = await e2Agent.plan('Explain this KNN prediction');
+        assert.equal(e2ExplainPlan.goal.objective, 'explain_prediction', 'explain-prediction text normalizes');
+        const e2ExplainComposed = await e2Agent.composeScript(e2ExplainPlan);
+        assert.equal(e2ExplainComposed.fidelity.valid, true, 'explain KNN prediction fidelity passes');
+        assert.ok(
+          e2ExplainComposed.fidelity.checks.some((check) => check.requirement === 'trace:prediction.emitted' && check.satisfied),
+          'explain fidelity proves a prediction was emitted',
+        );
+        const e2FidelitySource = readFileSync(new URL('../src/core/playground/agent/teachingFidelity.js', import.meta.url), 'utf-8');
+        assert.ok(
+          !e2FidelitySource.includes("playgroundId === 'knn-classification'") && !e2FidelitySource.includes('knn-classification'),
+          'the generic fidelity evaluator contains no model-id switch',
+        );
+        const e2TaxonomySource = readFileSync(new URL('../src/core/playground/agent/teachingTaxonomy.js', import.meta.url), 'utf-8');
+        assert.ok(
+          !e2TaxonomySource.includes('knn-classification') && !e2TaxonomySource.includes('linear-regression'),
+          'the taxonomy support rules contain no model objective maps',
+        );
+
+        // 7. composeScript() rejects fidelity failures with the stable code
+        // instead of returning a technically valid script.
+        const e2Mismatched = { ...e2WhatIf, goal: { ...e2WhatIf.goal, objective: 'compare' } };
+        await assert.rejects(
+          e2Agent.composeScript(e2Mismatched),
+          (error) => error.code === 'TEACHING_GOAL_FIDELITY_FAILED',
+          'a plan whose script cannot satisfy its objective is rejected',
+        );
+        await e2Host.close();
       }
 
       // LR and KNN existing presets remain unchanged.

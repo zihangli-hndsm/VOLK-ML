@@ -20,6 +20,8 @@ const COMPARE_HINTS = /比较|对比|区别|差异|compare|versus|vs\.?\b|differ
 const LEARNING_RATE_ALIASES = /学习率|learning\s*rate|learning-rate/i;
 const TOO_HIGH = /太高|过高|发散|too\s*high|diverg/i;
 const DIAGNOSE_HINTS = /诊断|diagnos/i;
+const PREDICTION_HINTS = /预测|prediction|predict/i;
+const INTRODUCE_HINTS = /介绍|introduce|overview/i;
 
 function collectAssignments(text) {
   const assignments = [];
@@ -61,9 +63,9 @@ export function parseTeachingGoalText(text) {
     const values = assignments.map((assignment) => assignment.value);
     const wantsCompare = COMPARE_HINTS.test(goalText) || values.length >= 2;
     if (wantsCompare) {
-      return { type: 'compare-control', control, values };
+      return { type: 'compare-control', objective: 'compare', control, values };
     }
-    return { type: 'what-if', control, value: values[0] };
+    return { type: 'what-if', objective: 'show_parameter_effect', control, value: values[0] };
   }
 
   // Lexical aliases: "learning rate too high / diverges" maps to a high
@@ -71,7 +73,18 @@ export function parseTeachingGoalText(text) {
   // against controlSchemas by the planner (KNN rejects learningRate, LR
   // rejects values outside 0.001..5).
   if (LEARNING_RATE_ALIASES.test(goalText) && TOO_HIGH.test(goalText)) {
-    return { type: 'what-if', control: 'learningRate', value: 2 };
+    return { type: 'what-if', objective: 'show_failure_case', control: 'learningRate', value: 2 };
+  }
+
+  // "Explain this KNN prediction" style requests normalize to the
+  // explain_prediction objective; the planner rejects it in contexts without
+  // a predict operation.
+  if (PREDICTION_HINTS.test(goalText)) {
+    return { type: 'explain-process', objective: 'explain_prediction' };
+  }
+
+  if (INTRODUCE_HINTS.test(goalText)) {
+    return { type: 'explain-process', objective: 'introduce' };
   }
 
   return null;

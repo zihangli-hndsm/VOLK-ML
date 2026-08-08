@@ -20,6 +20,7 @@ export const PLAYGROUND_ERROR_CODES = [
   'TEACHING_GOAL_UNSUPPORTED',
   'TEACHING_CONTROL_INVALID',
   'TEACHING_VALUE_OUT_OF_RANGE',
+  'TEACHING_GOAL_FIDELITY_FAILED',
 ];
 
 export function playgroundError(code, details = {}) {

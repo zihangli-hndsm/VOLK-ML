@@ -200,6 +200,75 @@ The primary acceptance path is:
 -> validateScript -> strict dry run -> deterministic replay
 ```
 
+## Goal taxonomy and goal fidelity (PR E.2)
+
+PR E.2 moves the intelligence layer from "the generated script is valid" to
+"the generated script actually satisfies the user's teaching goal":
+
+```text
+User Goal
+-> normalized Teaching Goal
+-> Teaching Planner
+-> TeachingPlan
+-> Composer
+-> Visualization Script
+-> Goal Fidelity Evaluation
+-> validator
+-> strict dry run
+-> execute
+```
+
+- `src/core/playground/agent/teachingTaxonomy.js` defines the bounded
+  pedagogical objective vocabulary: `introduce`, `compare`,
+  `explain_prediction`, `show_training`, `show_error`, `show_parameter_effect`,
+  `show_generalization`, `show_feature_effect`, `show_failure_case`.
+  `getSupportedTeachingObjectives(context)` derives the supported set from
+  capabilities and schemas (predict intent + neighbor/vote evidence ->
+  explain_prediction; fit intent + training evidence -> show_training /
+  show_failure_case; any plannable control -> compare / show_parameter_effect;
+  any playground -> introduce). There are no KNN/LR objective maps. The
+  taxonomy and supported set are exposed through
+  `inspectContext().teaching`.
+- Normalized goals carry a semantic `objective` alongside the E.1 mechanical
+  goal family: `{ type: 'compare-control', objective: 'compare', control,
+  values }`, `{ type: 'explain-process', objective: 'explain_prediction' }`,
+  etc. The Composer never depends on natural-language wording. Unsupported
+  objectives (e.g. `show_generalization` anywhere, `explain_prediction` on
+  LR, `show_failure_case` on KNN) reject with `TEACHING_GOAL_UNSUPPORTED`
+  instead of silently degrading to a generic explanation.
+- `src/core/playground/agent/teachingFidelity.js` implements the Goal
+  Requirement / Fidelity Contract: a normalized goal becomes explicit
+  machine-readable requirements (required control assignments, operation
+  intents with minimum counts, reveal playback counts, capture ids, semantic
+  evidence paths, runtime trace events). `evaluateGoalFidelity({ plan, script,
+  context, execution })` returns `{ valid, checks, missing }`.
+  - Static fidelity checks the Script declaration: required setControl
+    values exist, required operation intents are invoked at least the
+    required number of times, required reveal phases are compiled, required
+    captures exist, and required semantic evidence has a compatible primitive
+    binding.
+  - Runtime fidelity replays the script deterministically on a detached
+    clone (`replayScriptForFidelity`) and verifies outcomes, not just
+    invocations: required captures exist and hold non-empty semantic
+    evidence (e.g. `metrics.predictedLabel` non-null, `training.lossHistory`
+    non-empty), and required trace events (`prediction.emitted`,
+    `training.completed`, `loss.measured`, ...) were produced.
+- `composeScript(plan)` now runs validate TeachingPlan -> compose -> validate
+  Script -> strict dry run -> goal fidelity, and returns
+  `{ mode: 'composed', plan, script, fidelity, dryRun }`. If fidelity fails,
+  it throws `TEACHING_GOAL_FIDELITY_FAILED` with the structured missing
+  requirements. `mode: 'composed'` distinguishes the real Composer path from
+  preset fallback/generation paths.
+- Acceptance cases: compare k=1 vs k=15 proves set k=1, set k=15, predict
+  branch A/B, completed left/right captures (mutation negatives fail while
+  staying syntactically valid); learning rate too high derives a value above
+  the baseline inside `controlSchemas` and proves fit invocation, training
+  playback, loss evidence and parameter-movement evidence (a residuals-only
+  script fails); explain KNN prediction normalizes to `explain_prediction`
+  and proves query, neighbor ranking, reveal, voting and predicted-label
+  evidence through the context-advertised predict operation and semantic
+  fields.
+
 ## Layers
 
 ### Model adapters
