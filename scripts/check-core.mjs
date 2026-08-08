@@ -71,6 +71,8 @@ import { listPresets, getPreset } from '../src/core/playground/visualization/pre
 import { validateScript } from '../src/core/playground/visualization/scriptValidator.js';
 import { createScriptRuntime } from '../src/core/playground/visualization/scriptRuntime.js';
 import { BINDING_TRANSFORMS, createBindingContext, resolveValue } from '../src/core/playground/visualization/bindings.js';
+import { SCRIPT_ERROR_CODES } from '../src/core/playground/visualization/scriptErrors.js';
+import { resolveLanguagePreference } from '../src/core/languagePolicy.js';
 import {
   buildProjectionVector,
   computeTestAccuracy,
@@ -2745,8 +2747,14 @@ assert.throws(
         ),
       );
       assert.ok(showSnap.primitives.some((primitive) => primitive.id === 'scatter'), 'show has runtime semantics');
-      const highlightSnap = runOps(opScript([{ id: 'h', highlight: 'line' }]));
-      assert.equal(highlightSnap.visualState.highlight, 'line', 'highlight has runtime semantics');
+      const highlightSnap = runOps(
+        opScript(
+          [{ id: 'h', highlight: 'scatter' }],
+          [{ id: 'scatter', type: 'scatter', props: { points: '$model.scatterPoints', axes: '$model.axes' } }],
+          { stage: ['scatter'], side: [] },
+        ),
+      );
+      assert.equal(highlightSnap.visualState.highlight, 'scatter', 'highlight has runtime semantics');
       const annotateSnap = runOps(
         opScript(
           [{ id: 'a', annotate: { titleKey: 'test.title', bodyKey: 'test.body', params: { weight: '$controls.weight' } } }],
@@ -3013,6 +3021,177 @@ assert.throws(
         (error) => error.code === 'SCRIPT_BINDING_TYPE_MISMATCH',
         'type mismatched transforms fail with a stable SCRIPT error',
       );
+    }
+
+    // PR B interface cleanup: Agent playback parity, validator targets,
+    // $data target completeness, SCRIPT error passthrough, language policy.
+    {
+      const stripSessionId = (snapshot) => {
+        const { sessionId, ...rest } = snapshot;
+        return rest;
+      };
+      const makeHost = () => createPlaygroundHost({ getDataset: () => null });
+
+      // Agent play/step/seek/reset must control the active (script) timeline.
+      const hostA = makeHost();
+      const agentA = createPlaygroundAgentApi(hostA);
+      await agentA.open({ playgroundId: 'linear-regression' });
+      assert.equal(agentA.getState().scriptState.step, 0, 'LR initial scriptState 0/7');
+      assert.equal(agentA.getState().scriptState.totalSteps, 7, 'LR initial script total 7');
+      await agentA.step();
+      assert.equal(agentA.getState().scriptState.step, 1, 'agent.step() advances the script timeline');
+      await agentA.seek(3);
+      assert.equal(agentA.getState().scriptState.step, 3, 'agent.seek(3) seeks the script timeline');
+      const hostB = makeHost();
+      const agentB = createPlaygroundAgentApi(hostB);
+      await agentB.open({ playgroundId: 'linear-regression' });
+      await agentB.dispatch({ type: 'SCRIPT_SEEK', step: 3 });
+      assert.deepEqual(
+        stripSessionId(agentA.getState()),
+        stripSessionId(agentB.getState()),
+        'agent.seek() snapshot equals direct SCRIPT_SEEK snapshot',
+      );
+      await agentA.reset();
+      const resetSnap = agentA.getState();
+      assert.equal(resetSnap.scriptState.step, 0, 'agent.reset() returns to baseline script step');
+      assert.equal(resetSnap.controls.weight, 0, 'agent.reset() returns to baseline controls');
+      await agentA.runScenario('intro');
+      assert.equal(agentA.getState().scriptState.status, 'completed', 'agent runScenario completes');
+      await agentA.play();
+      assert.equal(agentA.getState().scriptState.step, 0, 'agent.play() restarts a completed script');
+      assert.equal(agentA.getState().scriptState.status, 'playing', 'restarted script is playing');
+      await agentA.close();
+
+      // No-script fallback: host.step() must route to the model timeline.
+      const emptyScript = {
+        version: 1,
+        id: 'empty',
+        model: { adapter: 'knn' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: [], side: [] },
+        primitives: [],
+        steps: [],
+      };
+      const hostC = makeHost();
+      const agentC = createPlaygroundAgentApi(hostC);
+      await agentC.open({ playgroundId: 'knn-classification' });
+      await agentC.dispatch({ type: 'SCRIPT_LOAD', script: emptyScript });
+      assert.equal(agentC.getState().scriptState.totalSteps, 0, 'empty script has no active timeline');
+      await agentC.step();
+      assert.equal(agentC.getState().metrics.revealed, 1, 'no-script host.step() routes to model STEP');
+      assert.equal(agentC.getState().scriptState.totalSteps, 0, 'script timeline untouched in no-script mode');
+      await agentC.close();
+
+      // Validator: show/hide/highlight must reference real primitives.
+      const targetScript = (steps, primitives = []) => ({
+        version: 1,
+        id: 'target-check',
+        model: { adapter: 'linear-regression' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: primitives.map((primitive) => primitive.id), side: [] },
+        primitives,
+        steps,
+      });
+      const scatterPrimitive = { id: 'scatter', type: 'scatter', props: { points: '$model.scatterPoints', axes: '$model.axes' } };
+      for (const operation of ['show', 'hide', 'highlight']) {
+        assert.throws(
+          () => validateScript(targetScript([{ id: 'x', [operation]: 'ghost' }], [scatterPrimitive])),
+          (error) => error.code === 'SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE'
+            && error.details.operation === operation
+            && error.details.primitiveId === 'ghost'
+            && error.details.stepId === 'x',
+          `${operation} ghost is rejected`,
+        );
+      }
+      const annotateNoTarget = {
+        version: 1,
+        id: 'annotate-no-target',
+        model: { adapter: 'linear-regression' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: [], side: [] },
+        primitives: [],
+        steps: [{ id: 'x', annotate: { titleKey: 'a', bodyKey: 'b' } }],
+      };
+      assert.throws(() => validateScript(annotateNoTarget), (error) => error.code === 'SCRIPT_ANNOTATION_TARGET_MISSING', 'annotate without target is rejected');
+      const annotateAmbiguous = {
+        ...annotateNoTarget,
+        primitives: [
+          { id: 'a1', type: 'annotation' },
+          { id: 'a2', type: 'annotation' },
+        ],
+        layout: { stage: [], side: ['a1', 'a2'] },
+      };
+      assert.throws(() => validateScript(annotateAmbiguous), (error) => error.code === 'SCRIPT_ANNOTATION_TARGET_AMBIGUOUS', 'multiple annotation primitives are rejected');
+
+      // KNN fallback $data must contain the declared target column.
+      const knnData = derivePlaygroundSnapshot(createPlaygroundSession(knnPlayground, {
+        source: knnSource2,
+        seed: 3,
+        sessionId: 'prb-cleanup',
+      })).dataState;
+      assert.equal(knnData.task, 'classification', 'KNN fallback $data.task');
+      assert.equal(knnData.targetColumn, 'label', 'KNN fallback $data.targetColumn');
+      assert.ok(knnData.rows.every((row) => row[knnData.targetColumn] !== undefined), 'every KNN $data row contains the target');
+      assert.deepEqual(
+        [...new Set(knnData.rows.map((row) => row.label))].sort(),
+        [...new Set(knnSource2.points.map((point) => point.label))].sort(),
+        'KNN $data labels match the model source labels',
+      );
+
+      // SCRIPT contract errors pass through the Agent without OPERATION_FAILED.
+      const mismatchHost = makeHost();
+      const mismatchAgent = createPlaygroundAgentApi(mismatchHost);
+      await mismatchAgent.open({ playgroundId: 'linear-regression' });
+      await assert.rejects(
+        mismatchAgent.dispatch({ type: 'SCRIPT_LOAD', script: getPreset('knn.intro') }),
+        (error) => error.code === 'SCRIPT_MODEL_MISMATCH' && error.details.expected === 'linear-regression',
+        'agent surfaces SCRIPT_MODEL_MISMATCH instead of OPERATION_FAILED',
+      );
+      assert.ok(SCRIPT_ERROR_CODES.includes('SCRIPT_MODEL_MISMATCH'), 'script error codes are centralized');
+      await mismatchAgent.close();
+
+      // Language policy: examples preserve the current UI preference while
+      // explicit imports keep restoring the project language.
+      const languageCase = (currentPrimary, currentSecondary, projectPrimary, projectSecondary, policy) => (
+        resolveLanguagePreference({
+          projectPrimary,
+          projectSecondary,
+          currentPrimary,
+          currentSecondary,
+          policy,
+        })
+      );
+      assert.deepEqual(
+        languageCase('en', null, 'zh', 'en', 'preserve-current'),
+        { primary: 'en', secondary: null, apply: false },
+        'English-only user keeps English when loading an example',
+      );
+      assert.deepEqual(
+        languageCase('zh', null, 'en', 'zh', 'preserve-current'),
+        { primary: 'zh', secondary: null, apply: false },
+        'Chinese-only user keeps Chinese when loading an example',
+      );
+      assert.deepEqual(
+        languageCase('en', 'zh', 'zh', 'en', 'preserve-current'),
+        { primary: 'en', secondary: 'zh', apply: false },
+        'bilingual user keeps their order when loading an example',
+      );
+      assert.deepEqual(
+        languageCase('en', null, 'zh', 'en', 'project'),
+        { primary: 'zh', secondary: 'en', apply: true },
+        'explicit project import restores the project language',
+      );
+      assert.deepEqual(
+        languageCase('en', 'zh', undefined, undefined, 'project'),
+        { primary: 'en', secondary: 'zh', apply: false },
+        'a project without language keeps the current preference',
+      );
+      const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf-8');
+      assert.ok(mainSource.includes("languagePolicy: 'preserve-current'"), 'examples load with preserve-current');
+      assert.ok(mainSource.includes('applyProject(JSON.parse(await file.text()))'), 'import keeps the default project policy');
     }
   }
 }

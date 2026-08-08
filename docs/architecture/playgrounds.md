@@ -34,6 +34,19 @@ Since the PR B follow-up, **Visualization Scripts own visualization composition*
 - `$data` always describes the dataset the model actually uses: workspace sources keep the full workspace context, teaching/fallback sources are reconstructed from the normalized source points (`buildDataState`).
 - Loading a script whose `model.adapter` does not match the session is rejected with `SCRIPT_MODEL_MISMATCH`.
 - Script-mode capabilities come from `scriptState` (seekable from step 0 even when the model timeline is empty), and `SCRIPT_PLAY` on a completed script restarts from the baseline.
+- `playgroundHost` routes `play`/`pause`/`step`/`seek`/`reset` to `SCRIPT_*` actions whenever an active Visualization Script exists, and to the model actions otherwise — the UI and the Canvas Agent control exactly the same timeline.
+- The validator rejects `show`/`hide`/`highlight` targets that are not declared primitives (`SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE`) and requires exactly one annotation primitive for `annotate` steps (`SCRIPT_ANNOTATION_TARGET_MISSING` / `SCRIPT_ANNOTATION_TARGET_AMBIGUOUS`).
+- KNN teaching/fallback `$data` rows include the `label` target column and the schema declares it, so `$data.targetColumn` always exists in `$data.rows`.
+- Script contract errors are centralized in `visualization/scriptErrors.js` (`SCRIPT_ERROR_CODES`) and pass through the Canvas Agent with their stable codes instead of `OPERATION_FAILED`.
+
+## Project language policy
+
+`applyProject(rawProject, { languagePolicy })` supports:
+
+- `'project'` (default): Import, autosave Restore and Agent `loadProject` keep the existing behavior — a project that carries a saved language preference restores it.
+- `'preserve-current'`: bundled Examples ignore the project's `language` field entirely, so loading an example never changes the user's UI preference. The pure decision lives in `src/core/languagePolicy.js` (`resolveLanguagePreference`).
+
+User preference owns language; example content owns the example. No `PROJECT_VERSION` change or migration is part of this policy.
 - Descriptor `scenarios` are now `{ id, titleKey, presetId }` references; `runScenario()` and UI preset playback both execute the preset through the Script Runtime (same actions, same traces).
 - Script state (`scriptState: { status, step, totalSteps }`) is separate from the model timeline, so a 7-step script is never conflated with 20 training steps.
 - `RESET`/script `reset`/`seek`/replay all return to the session **baseline** (initial controls + source + seed), so `fresh first-N == full-run-then-seek-N == reset-then-N`.

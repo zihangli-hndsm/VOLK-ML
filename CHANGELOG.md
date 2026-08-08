@@ -125,3 +125,12 @@
 - `SCRIPT_PLAY` 对已完成 script 自动从头重播（step→0、status→playing），随后 STEP 正常推进。
 - Binding/transform 安全：validator 的 `collectBindings`/`isAllowedBinding` 识别 transform 语法（`mean($data.values)` 合法、`unknownTransform(...)` 拒绝）；transform 类型不匹配返回稳定 `SCRIPT_BINDING_TYPE_MISMATCH`；移除不可调用的 `filterByEvent`。
 - 验收：`npm run check`（新增 visibility 序列、primitive contract smoke、highlight/annotate props、$data parity、SCRIPT_MODEL_MISMATCH、script capabilities/restart、binding validator/type-safety）、`npm run check:compiler`、`npm run build`（672 modules）、`git diff --check` 全部通过；LR/KNN parity、PR A、PR B 全部回归保持。已知限制：`consume/update` 与多参数 transform 待 PR C/DSL v2。
+
+## 2026-08-08 — Playground Interface Cleanup（PR B interface cleanup follow-up）
+
+- Agent/UI 播放同路径：`playgroundHost` 的 `play/step/seek/reset` 在存在 active Visualization Script 时自动路由到 `SCRIPT_PLAY/PAUSE/STEP/SEEK/RESET`，无 script 时回落到模型 timeline（`STEP` 等）；Canvas Agent 与 UI 控制完全相同的 timeline，新增跨层 parity 测试（agent.step→script step 1、seek(3)==直接 SCRIPT_SEEK(3) deepEqual、reset 回 baseline、completed 后 play 从头重播、无 script 时 step 走模型 reveal）。
+- Script validator 可观测语义闭环：`show/hide/highlight` 必须引用已声明 primitive，否则 `SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE`（details 含 stepId/operation/primitiveId）；`annotate` 必须恰好声明一个 annotation primitive（`SCRIPT_ANNOTATION_TARGET_MISSING` / `SCRIPT_ANNOTATION_TARGET_AMBIGUOUS`）；不再允许 validator 通过但 runtime silent no-op。
+- `$data` classification fallback 完整性：KNN teaching/fallback 的 `$data.rows` 现在包含 `label` target 列、schema 声明 `label` 列；`$data.targetColumn` 保证在每一行真实存在（含唯一 label 集合与模型源一致的测试）。
+- Script 错误码统一与透传：新增 `src/core/playground/visualization/scriptErrors.js`（`SCRIPT_ERROR_CODES` 单一来源），validator/bindings/primitives/runtime 共用；Agent 错误归一化同时接受 `PLAYGROUND_ERROR_CODES` 与 `SCRIPT_ERROR_CODES`，script contract 错误不再被包装成 `OPERATION_FAILED`（测试：runtime SCRIPT_MODEL_MISMATCH → agent SCRIPT_MODEL_MISMATCH）。
+- 语言偏好修复：`applyProject` 新增 `languagePolicy`（默认 `'project'` 保持现有 Import/Restore/Agent loadProject 语义；`'preserve-current'` 忽略 project.language）；**仅内置 Examples** 加载使用 `preserve-current`，普通 Import/Restore 按原逻辑恢复项目语言；纯函数 `resolveLanguagePreference`（`src/core/languagePolicy.js`）单测覆盖 en-only/zh-only/bilingual/显式 import 四类场景，并静态断言 Examples 路径传 `preserve-current`、Import 路径保持默认。不改变 PROJECT_VERSION/schema。
+- 验收：`npm run check`（新增 Agent parity、validator target、$data target、error passthrough、language policy 测试）、`npm run check:compiler`、`npm run build`（672 modules）、`git diff --check` 全部通过；PR A/PR B 全部回归保持。

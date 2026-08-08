@@ -1,9 +1,11 @@
 import { PLAYGROUND_ERROR_CODES } from './playgrounds/session.js';
+import { SCRIPT_ERROR_CODES } from './playground/visualization/scriptErrors.js';
 
 const copy = (value) => structuredClone(value);
 
 function normalizePlaygroundError(error) {
-  if (error && typeof error === 'object' && PLAYGROUND_ERROR_CODES.includes(error.code)) {
+  const knownCodes = new Set([...PLAYGROUND_ERROR_CODES, ...SCRIPT_ERROR_CODES]);
+  if (error && typeof error === 'object' && knownCodes.has(error.code)) {
     const normalized = new Error(error.code);
     normalized.code = error.code;
     normalized.details = error.details ?? {};

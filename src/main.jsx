@@ -39,6 +39,7 @@ import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
 import ExamplesDialog from './components/ExamplesDialog';
+import { resolveLanguagePreference } from './core/languagePolicy.js';
 import PlaygroundDialog from './components/playgrounds/PlaygroundDialog';
 import VisualGlyph from './components/VisualGlyph';
 
@@ -534,7 +535,14 @@ function Workspace() {
   );
   const previousExecutionSignature = useRef(executionInputSignature);
   const makeProject = useCallback(() => projectFromWorkspace(workspaceStateRef.current), []);
-  const applyProject = useCallback((rawProject) => {
+  const applyProject = useCallback((rawProject, { languagePolicy = 'project' } = {}) => {
+    const language = resolveLanguagePreference({
+      projectPrimary: rawProject?.language?.primary,
+      projectSecondary: rawProject?.language?.secondary,
+      currentPrimary: workspaceStateRef.current.primary,
+      currentSecondary: workspaceStateRef.current.secondary,
+      policy: languagePolicy,
+    });
     const migratedProject = validateProjectForWorkspace(rawProject);
     const project = {
       ...migratedProject,
@@ -568,8 +576,8 @@ function Workspace() {
     workspaceStateRef.current = {
       ...workspaceStateRef.current,
       projectName: project.name || t('project.sampleName'),
-      primary: project.language?.primary ?? workspaceStateRef.current.primary,
-      secondary: project.language?.secondary ?? workspaceStateRef.current.secondary,
+      primary: language.primary,
+      secondary: language.secondary,
       libraryMode: project.workspace?.libraryMode ?? workspaceStateRef.current.libraryMode,
       leftWidth: Number.isFinite(project.workspace?.leftWidth) ? project.workspace.leftWidth : workspaceStateRef.current.leftWidth,
       rightWidth: Number.isFinite(project.workspace?.rightWidth) ? project.workspace.rightWidth : workspaceStateRef.current.rightWidth,
@@ -588,7 +596,7 @@ function Workspace() {
     setNodes(restoredNodes);
     setEdges(restoredEdges);
     setSelectedId(restoredNodes[0]?.id);
-    if (project.language?.primary) setLanguages(project.language);
+    if (language.apply && project.language?.primary) setLanguages(project.language);
     if (project.workspace?.libraryMode) setLibraryMode(project.workspace.libraryMode);
     if (project.workspace?.viewMode) setViewMode(project.workspace.viewMode);
     if (Number.isFinite(project.workspace?.leftWidth)) setLeftWidth(project.workspace.leftWidth);
@@ -1384,7 +1392,7 @@ function Workspace() {
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
     <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} runtime={runtime} onRun={runBrowserGraph} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
     <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
-    <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
+    <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project, { languagePolicy: 'preserve-current' }); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => { setPlaygroundId(id); setPlaygroundOpen(true); }} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} host={playgroundHostRef.current} onClose={() => setPlaygroundOpen(false)} t={t} />
