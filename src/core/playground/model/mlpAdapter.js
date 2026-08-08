@@ -14,8 +14,10 @@ const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) 
 
 function networkState(modelState, query) {
   const { params, hiddenSize } = modelState;
-  const revealed = modelState.mode === 'prediction' ? modelState.revealed : hiddenSize;
+  const revealMode = modelState.mode === 'prediction';
+  const revealed = revealMode ? modelState.revealed : hiddenSize;
   const forward = forwardMlp(params, [query.x, query.y]);
+  const outputVisible = !revealMode || revealed >= hiddenSize;
   const nodes = [
     { id: 'in-0', layer: 0, label: 'x1', value: query.x },
     { id: 'in-1', layer: 0, label: 'x2', value: query.y },
@@ -25,7 +27,7 @@ function networkState(modelState, query) {
       label: `h${index + 1}`,
       value: index < revealed ? activation : null,
     })),
-    { id: 'out', layer: 2, label: 'ŷ', value: forward.probability },
+    { id: 'out', layer: 2, label: 'ŷ', value: outputVisible ? forward.probability : null },
   ];
   const edges = [
     ...params.W1.map((row, hidden) => row.map((weight, input) => ({
@@ -93,7 +95,7 @@ function emitQueryTrace(recorder, modelState, controls) {
   recorder.emit('query.received', { x: query.x, y: query.y });
   if (modelState.mode === 'prediction' && modelState.revealed >= modelState.hiddenSize) {
     const prediction = predictMlp(modelState.params, [query.x, query.y]);
-    recorder.emit('prediction.emitted', { label: prediction.label, k: modelState.hiddenSize });
+    recorder.emit('prediction.emitted', { label: prediction.label, hiddenUnits: modelState.hiddenSize });
   }
 }
 
@@ -200,7 +202,13 @@ export const mlpAdapter = {
       query,
       mode: null,
       revealed: 0,
-      training: { currentStep: 0, history: [], totalSteps: 0, stopReason: null },
+      training: {
+        initialParams: structuredClone(params),
+        currentStep: 0,
+        history: [],
+        totalSteps: 0,
+        stopReason: null,
+      },
       decisionRegions: null,
     };
     recorder.emit('data.loaded', { points: points.length, features: ['x1', 'x2'] });
@@ -233,7 +241,13 @@ export const mlpAdapter = {
             hiddenSize,
             revealed: 0,
             mode: null,
-            training: { currentStep: 0, history: [], totalSteps: 0, stopReason: null },
+            training: {
+              initialParams: structuredClone(params),
+              currentStep: 0,
+              history: [],
+              totalSteps: 0,
+              stopReason: null,
+            },
           }, controls),
           timeline: { totalSteps: 0, step: 0 },
         };
@@ -294,10 +308,10 @@ export const mlpAdapter = {
       return {
         modelState: {
           ...modelState,
-          params: result.params,
           mode: 'training',
           revealed: 0,
           training: {
+            initialParams: structuredClone(modelState.params),
             currentStep: 0,
             history: result.history,
             totalSteps: result.history.length,
@@ -320,15 +334,19 @@ export const mlpAdapter = {
     }
     if (action.type === 'STEP' || action.type === 'SEEK') {
       if (modelState.mode === 'training') {
-        const { history } = modelState.training;
+        const { history, initialParams } = modelState.training;
         if (!history.length) return {};
         const target = action.type === 'SEEK' ? Math.round(action.step ?? 0) : modelState.training.currentStep + 1;
         const currentStep = Math.max(0, Math.min(target, history.length));
+        const params = currentStep === 0
+          ? structuredClone(initialParams)
+          : structuredClone(history[currentStep - 1].params);
         return {
-          modelState: {
+          modelState: refreshProjection({
             ...modelState,
+            params,
             training: { ...modelState.training, currentStep },
-          },
+          }, controls),
           timeline: { step: currentStep },
         };
       }
@@ -345,7 +363,7 @@ export const mlpAdapter = {
         }
         if (revealed >= modelState.hiddenSize) {
           const prediction = predictMlp(modelState.params, [modelState.query.x, modelState.query.y]);
-          recorder.emit('prediction.emitted', { label: prediction.label, k: modelState.hiddenSize });
+          recorder.emit('prediction.emitted', { label: prediction.label, hiddenUnits: modelState.hiddenSize });
         }
         return { modelState: next, timeline: { step: revealed } };
       }

@@ -348,6 +348,42 @@ model branches.
   controls -> identical replay); the render smoke replays the MLP preset
   (20 snapshots) and SSR-renders all four new primitives.
 
+## MLP playback consistency (PR F.1.1)
+
+PR F.1.1 makes every MLP replay step semantically time-consistent. At any
+playback step the timeline, active parameters, loss/metrics, network graph,
+matrix, histogram, decision region and prediction behavior all describe the
+same neural-network parameter state; the UI never combines evidence from
+different training epochs.
+
+- `trainMlp()` history entries now carry a JSON-safe detached snapshot of the
+  full `params` each state adopts. Normal completion keeps
+  `history[last].params === result.params`; the finite loss-increasing update
+  of the `learning-rate-too-high` policy is recorded **and adopted** as the
+  final visible parameters (consistent with the LR teaching behavior), so
+  `parameters.updated` always describes a state the model actually adopts;
+  the non-finite `diverged` path retains the last finite parameters.
+- Training playback is real: `START_TRAINING` keeps the active model at the
+  baseline parameters at timeline step 0, and every `STEP`/`SEEK` updates
+  `modelState.params`, `training.currentStep` and `timeline.step` from the
+  same trajectory. Seeking to zero restores the baseline. Decision regions
+  are refreshed from the active parameters whenever they change, so a stale
+  initial grid can never sit next to a trained network.
+- Prediction explanation never leaks the final output: input nodes are
+  visible immediately, hidden nodes only as they are revealed, and the output
+  node stays `null` (with `metrics.predictedLabel` hidden) until the final
+  hidden activation is revealed. The teaching sequence is genuinely
+  input -> hidden activations -> output.
+- `prediction.emitted` is model-neutral: its payload schema gained an
+  optional `hiddenUnits`; KNN emits `{ label, k }` and MLP emits
+  `{ label, hiddenUnits }` - no adapter branch in trace validation.
+- The MLP source contract matches F.1 capability: `validateSource` requires
+  the deterministic two-dimensional `x1`/`x2` example representation and
+  rejects incompatible feature names with `INVALID_PLAYGROUND_SOURCE`
+  (generic workspace-dataset feature mapping is later dataset work).
+- `mlp.intro` is internally consistent: it configures `trainingSteps = 12`
+  before training and reveals exactly those 12 epochs before prediction.
+
 ## Layers
 
 ### Model adapters

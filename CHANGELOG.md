@@ -287,6 +287,19 @@
 - 文档：`playgrounds.md` 与 `agent-canvas-api.md` 更新 PR F.1 语义；append-only `CHANGELOG.md` 新增本条。
 - 验收：`npm run check`（含 render smoke 12 KNN + 8 LR + 20 MLP 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–E 全部回归保持。已知限制：MLP playground 暂通过 Agent 打开（`agent.open({ playgroundId: 'mlp-classification' })`），UI 入口（Ask Agent / script preview / 导出导入 / reviseScript）留待 PR F.2；workspace dataset 输入仍为确定性 XOR 示例。
 
+## 2026-08-09 — Make MLP Playback Semantically Time-Consistent（PR F.1.1）
+
+- 核心不变量：任意 MLP 回放步骤上，timeline / 激活参数 / loss / 网络图 / 矩阵 / 直方图 / 准确率 / 决策区域 / 预测行为全部描述同一个参数状态，UI 不再混用不同训练轮次的证据。
+- `trainMlp()` 的 history 每步携带 JSON-safe 完整 `params` 快照：正常完成 `history[last].params === result.params`；`learning-rate-too-high` 采用与 LR 一致的显式策略——有限且损失上升的更新被记录并被采纳为停止前的最终可见参数（`parameters.updated` 只描述模型真正采纳的状态）；非有限 `diverged` 路径保留最后有限参数。
+- 训练回放真实化：`START_TRAINING` 在 step 0 保持基线参数；`STEP`/`SEEK` 同时更新 `modelState.params`、`training.currentStep`、`timeline.step`（同一轨迹）；SEEK(0) 恢复基线。决策区域随激活参数刷新，初始随机网格不再与训练后的网络并存（测试：final cells == `computeMlpDecisionRegions(final params)`，且不等于初始网格）。
+- 预测解释不提前泄题：输入节点立即可见，隐层节点仅在 reveal 后可见，输出节点在全部隐层揭示前保持 `null`（`metrics.predictedLabel` 同样隐藏）；教学序列真实为 input → hidden activations → output。逐层测试覆盖 revealed=0/1/final。
+- `prediction.emitted` 模型中立：payload schema 增加可选 `hiddenUnits`；KNN 发 `{label, k}`，MLP 发 `{label, hiddenUnits}`（测试断言 MLP 不使用 k、KNN 不使用 hiddenUnits）。
+- MLP 源契约与 F.1 能力一致：`validateSource` 明确要求确定性二维 `x1`/`x2` 示例表示，不兼容特征名以 `INVALID_PLAYGROUND_SOURCE` 拒绝（workspace dataset 特征映射留待后续）。
+- `mlp.intro` 训练/预测边界诚实：preset 在训练前显式配置 `trainingSteps = 12`，并在预测前恰好揭示这 12 个训练步（测试按 preset 推导 reveal 数，不硬编码）。
+- 测试（check-core 新增 PR F.1.1 块）：训练时间线（step0=baseline、stepN=history[N-1].params、final=history.last、早期≠最终）、SEEK(N) ≡ STEP×N 语义等价、决策区域跟随激活参数、预测 reveal 序列、trace 语义（hiddenUnits vs k）、源契约拒绝、preset 边界推导；F.1 全部测试（确定性重放、fidelity、primitive 存在性等）保持。
+- 文档：`playgrounds.md` 更新 PR F.1.1 语义；append-only `CHANGELOG.md` 新增本条。
+- 验收：`npm run check`（含 render smoke 12 KNN + 8 LR + MLP 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–F.1 全部回归保持。合并后 PR F.1 = FINAL PASS，进入 PR F.2（Agent UI / script preview / JSON 导入导出 / reviseScript / workspace dataset）。
+
 ## 2026-08-08 — Reverse Right Panel Width Slider Direction
 
 - 修复右参数面板宽度滑块的方向反馈问题：右面板锚定在视口右侧，其宽度滑块改为反转视觉方向（向左拖 = 更宽，向右拖 = 更窄），消除「滑块左移 → 面板变窄 → 左边缘右移 → 滑块远离指针 → 快速 snap 到最小值」的 moving-control 问题。

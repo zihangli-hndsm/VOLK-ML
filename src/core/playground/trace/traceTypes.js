@@ -74,7 +74,7 @@ export const TRACE_PAYLOAD_SCHEMAS = {
   'knn.distancesComputed': { required: { count: 'integer' }, optional: { nearest: 'number' } },
   'knn.neighborSelected': { required: { rank: 'integer', pointId: 'id', distance: 'number', label: 'string' }, optional: {} },
   'knn.voteUpdated': { required: { counts: 'object' }, optional: { predictedLabel: 'string', tie: 'boolean' } },
-  'prediction.emitted': { required: { label: 'string' }, optional: { k: 'integer' } },
+  'prediction.emitted': { required: { label: 'string' }, optional: { k: 'integer', hiddenUnits: 'integer' } },
   'evaluation.completed': { required: {}, optional: { accuracy: 'number|null', k: 'integer' } },
   'mlp.initialized': { required: { hiddenSize: 'integer' }, optional: { inputSize: 'integer', outputSize: 'integer' } },
   'mlp.hiddenActivated': { required: { index: 'integer' }, optional: { activation: 'number' } },
