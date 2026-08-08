@@ -1,4 +1,5 @@
 import { playgroundError } from '../../playgrounds/session.js';
+import { TEACHING_OBJECTIVES } from './teachingTaxonomy.js';
 
 // TeachingPlan v1: a JSON-safe, model-independent description of teaching
 // intent, produced by the deterministic planner and consumed by the Composer.
@@ -97,6 +98,9 @@ function validateGoal(goal) {
   }
   if (!TEACHING_GOAL_TYPES.includes(goal.type)) {
     throw teachingError('TEACHING_GOAL_UNSUPPORTED', { type: goal.type });
+  }
+  if (goal.objective !== undefined && !TEACHING_OBJECTIVES.includes(goal.objective)) {
+    throw teachingError('TEACHING_GOAL_UNSUPPORTED', { objective: goal.objective });
   }
   if (goal.type === 'compare-control' || goal.type === 'what-if') {
     if (typeof goal.control !== 'string' || !goal.control) {

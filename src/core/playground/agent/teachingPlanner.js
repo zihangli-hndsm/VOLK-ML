@@ -7,6 +7,7 @@ import {
   validateTeachingControlValue,
 } from './teachingPlan.js';
 import { parseTeachingGoalText } from './teachingGoalParser.js';
+import { TEACHING_OBJECTIVES, getSupportedTeachingObjectives } from './teachingTaxonomy.js';
 
 // Schema-grounded Teaching Planner (PR E.1.1). The planner never contains
 // model behavior knowledge: control existence/values come from
@@ -135,14 +136,20 @@ function buildWhatIfPhases({ goal, context }) {
   };
 }
 
-function buildExplainProcessPhases({ context }) {
+function buildExplainProcessPhases({ context, objective }) {
   const evidence = evidenceForContext(context);
   const currentControls = { ...(context.controls ?? {}) };
   const phases = [{ id: 'observe', kind: 'observe', evidence }];
-  const objective = findOperationByIntent(context, 'predict') ? 'predict' : 'fit';
-  const operationName = findOperationByIntent(context, objective);
-  if (operationName) {
-    phases.push({ id: 'run', kind: 'run', objective });
+  if (objective !== 'introduce') {
+    const intent = objective === 'explain_prediction' ? 'predict' : 'fit';
+    const operationName = findOperationByIntent(context, intent);
+    if (!operationName) {
+      throw teachingError('TEACHING_PLAN_INVALID', {
+        reason: 'unresolvable run objective',
+        objective: intent,
+      });
+    }
+    phases.push({ id: 'run', kind: 'run', objective: intent });
     const reveals = resolveRevealCount(context, operationName, currentControls);
     if (reveals > 0) phases.push({ id: 'reveal', kind: 'reveal', count: reveals });
   }
@@ -156,28 +163,83 @@ function buildExplainProcessPhases({ context }) {
   return phases;
 }
 
+// Resolves the pedagogical objective for a structured/text goal. Explicit
+// objectives win; otherwise the objective is derived from the goal family
+// and the context's declared operations.
+function resolveObjective(goal, context) {
+  if (goal.objective) return goal.objective;
+  if (goal.type === 'compare-control') return 'compare';
+  if (goal.type === 'what-if') return 'show_parameter_effect';
+  if (findOperationByIntent(context, 'predict')) return 'explain_prediction';
+  if (findOperationByIntent(context, 'fit')) return 'show_training';
+  return 'introduce';
+}
+
+function assertObjectiveSupported(context, objective) {
+  if (!TEACHING_OBJECTIVES.includes(objective)) {
+    throw teachingError('TEACHING_GOAL_UNSUPPORTED', { objective });
+  }
+  if (!getSupportedTeachingObjectives(context).includes(objective)) {
+    throw teachingError('TEACHING_GOAL_UNSUPPORTED', {
+      objective,
+      reason: 'unsupported in context',
+      supported: getSupportedTeachingObjectives(context),
+    });
+  }
+}
+
+// Derives a legal "too high" probe value for a numeric control: strictly
+// above the current baseline, inside the control schema, and clearly elevated
+// (40x baseline, floor 2) so failure behavior is observable.
+function deriveHighValue(context, control) {
+  const schema = findControlSchema(context, control);
+  if (!schema || schema.type !== 'number') {
+    throw teachingError('TEACHING_CONTROL_INVALID', { control });
+  }
+  const baseline = Number(context.controls?.[control]);
+  const candidate = Number.isFinite(baseline) ? Math.max(2, baseline * 40) : 2;
+  const value = schema.max !== undefined ? Math.min(schema.max, candidate) : candidate;
+  if (schema.min !== undefined && value < schema.min) {
+    throw teachingError('TEACHING_VALUE_OUT_OF_RANGE', { control, value, min: schema.min });
+  }
+  if (Number.isFinite(baseline) && value <= baseline) {
+    throw teachingError('TEACHING_PLAN_INVALID', {
+      reason: 'cannot derive a failure probe above the baseline',
+      control,
+      baseline,
+    });
+  }
+  return value;
+}
+
 function planForStructuredGoal({ goal, context, playgroundId }) {
   if (!TEACHING_GOAL_TYPES.includes(goal.type)) {
     throw teachingError('TEACHING_GOAL_UNSUPPORTED', { type: goal.type });
   }
+  const objective = resolveObjective(goal, context);
+  assertObjectiveSupported(context, objective);
+  const resolvedGoal = { ...goal, objective };
+  if (objective === 'show_failure_case' && goal.type === 'what-if' && goal.value === undefined) {
+    resolvedGoal.value = deriveHighValue(context, goal.control);
+  }
   if (goal.type === 'compare-control') {
-    const { values, phases } = buildComparisonPhases({ goal, context });
+    const { values, phases } = buildComparisonPhases({ goal: resolvedGoal, context });
     const plan = validateTeachingPlan({
       version: 1,
       id: `compare-${goal.control}`,
       playgroundId,
-      goal: { type: 'compare-control', control: goal.control, values },
+      goal: { type: 'compare-control', objective, control: goal.control, values },
       phases,
     });
     return validatePlanAgainstContext(plan, context);
   }
   if (goal.type === 'what-if') {
-    const { value, phases } = buildWhatIfPhases({ goal, context });
+    const { value, phases } = buildWhatIfPhases({ goal: resolvedGoal, context });
     const plan = validateTeachingPlan({
       version: 1,
       id: `what-if-${goal.control}`,
       playgroundId,
-      goal: { type: 'what-if', control: goal.control, value },
+      goal: { type: 'what-if', objective, control: goal.control, value },
       phases,
     });
     return validatePlanAgainstContext(plan, context);
@@ -186,8 +248,8 @@ function planForStructuredGoal({ goal, context, playgroundId }) {
     version: 1,
     id: 'explain-process',
     playgroundId,
-    goal: { type: 'explain-process' },
-    phases: buildExplainProcessPhases({ context }),
+    goal: { type: 'explain-process', objective },
+    phases: buildExplainProcessPhases({ context, objective }),
   });
   return validatePlanAgainstContext(plan, context);
 }
