@@ -34,28 +34,29 @@ function isPlannableControl(schema) {
   return false;
 }
 
-// Capability-grounded support derivation. Rules are generic:
-//   predict intent + neighbor/vote evidence  -> explain_prediction
-//   fit intent + training evidence          -> show_training / show_failure_case
-//   any plannable control                   -> compare / show_parameter_effect
-//   any playground                          -> introduce
-// There is intentionally no model-id switch and no KNN/LR objective map.
+// Capability-grounded support derivation (PR E.2.1). The taxonomy defines the
+// objective vocabulary; the model/adapter declares its pedagogical evidence
+// contract via `teachingCapabilities` (operationIntent + visual/runtime/
+// trace evidence). An objective is supported only when the context carries a
+// declared capability whose operationIntent actually resolves. Structural
+// objectives (compare / show_parameter_effect) only need a plannable control;
+// introduce is available on any playground. There is intentionally no model
+// id switch and no guessed semantic field combination (e.g. fit + a
+// training field alone never implies show_failure_case).
 export function getSupportedTeachingObjectives(context) {
   const intents = new Set(
     Object.values(context?.model?.operations ?? {})
       .map((operation) => operation?.intent)
       .filter(Boolean),
   );
-  const fields = new Set(context?.model?.semanticFields ?? []);
   const hasPlannableControl = (context?.controlSchemas ?? []).some(isPlannableControl);
+  const capabilities = context?.teachingCapabilities ?? {};
   const supported = ['introduce'];
   if (hasPlannableControl) supported.push('compare', 'show_parameter_effect');
-  if (intents.has('predict') && fields.has('neighbors') && fields.has('voting')) {
-    supported.push('explain_prediction');
-  }
-  if (intents.has('fit') && fields.has('training')) {
-    supported.push('show_training');
-    if (fields.has('observation')) supported.push('show_failure_case');
+  for (const [objective, capability] of Object.entries(capabilities)) {
+    if (capability?.operationIntent && intents.has(capability.operationIntent)) {
+      supported.push(objective);
+    }
   }
   return supported;
 }

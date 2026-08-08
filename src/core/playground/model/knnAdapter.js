@@ -216,6 +216,19 @@ export const knnAdapter = {
     decisionSurface: true,
   },
   defaultVisualizationPreset: 'knn.intro',
+  // Declarative teaching capabilities (PR E.2.1). The model declares which
+  // objectives it can fulfill and which semantic evidence each objective
+  // requires. The generic taxonomy/fidelity layer never hardcodes KNN field
+  // names; a future model (e.g. MLP with logits/probabilities/predictedLabel)
+  // declares its own contract without touching the evaluator.
+  teachingCapabilities: {
+    explain_prediction: {
+      operationIntent: 'predict',
+      visualEvidence: ['displayQuery', 'neighbors', 'voting', 'displayPoints'],
+      runtimeEvidence: ['metrics.predictedLabel'],
+      traceEvidence: ['prediction.emitted'],
+    },
+  },
   semanticSchema: {
     displayPoints: { type: 'array<classifiedPoint2d>', description: 'Points in the active view coordinate space' },
     axes: { type: 'axes2d', description: 'Axis labels for the plot' },

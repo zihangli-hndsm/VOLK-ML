@@ -1,19 +1,25 @@
 import { dispatchPlaygroundAction, derivePlaygroundSnapshot } from '../../playgrounds/session.js';
 import { findOperationByIntent, teachingError } from './teachingPlan.js';
 import { getSupportedTeachingObjectives } from './teachingTaxonomy.js';
-import { getPrimitiveSchema } from '../visualization/schemas.js';
 
-// Goal fidelity evaluation (PR E.2).
+// Goal fidelity evaluation (PR E.2 / E.2.1).
 //
 // A generated Visualization Script can be technically valid yet fail the
 // user's teaching goal. evaluateGoalFidelity() turns a normalized goal into
 // explicit machine-readable requirements and checks them against the
-// composed Script (static fidelity) and, where an outcome is required,
-// against a deterministic replay (runtime fidelity).
+// composed Script and a deterministic replay.
 //
-// Requirements use semantic fields, operation intents, control assignments,
-// capture states and trace events - never React component names or
-// model-id switches.
+// Requirements use three explicit evidence classes (PR E.2.1):
+//   visualEvidence  - the Script declaration actually binds this semantic
+//                     path through a concrete primitive.props binding
+//   runtimeEvidence - the replayed semantic state actually contains the
+//                     result (checked on required captures / final state)
+//   traceEvidence   - the required semantic event actually occurred, with
+//                     optional payload predicates ({ trace, where })
+// Requirements come from the model's declarative teachingCapabilities for
+// explain_prediction / show_training / show_failure_case, and from generic
+// structural rules for compare / show_parameter_effect / introduce. There
+// are no model-id switches.
 
 function findControlSchema(context, key) {
   return (context?.controlSchemas ?? []).find((schema) => schema.key === key) ?? null;
@@ -36,21 +42,6 @@ export function resolveGoalObjective(plan, context) {
   throw teachingError('TEACHING_GOAL_UNSUPPORTED', { reason: 'cannot derive an objective from this goal' });
 }
 
-// Evidence candidates per objective, filtered by the semantic fields the
-// context actually advertises. Paths are dot-paths into the semantic
-// snapshot ({ scene, metrics, observation, formula }).
-const OBJECTIVE_EVIDENCE = {
-  explain_prediction: ['displayQuery', 'query', 'neighbors', 'voting', 'metrics.predictedLabel'],
-  show_training: ['training.lossHistory', 'training.parameterHistory', 'metrics', 'formula'],
-  show_failure_case: ['training.lossHistory', 'training.parameterHistory', 'metrics', 'observation'],
-  introduce: ['metrics', 'observation'],
-};
-
-function pickEvidence(context, candidates) {
-  const fields = new Set(context?.model?.semanticFields ?? []);
-  return candidates.filter((path) => fields.has(path.split('.')[0]));
-}
-
 function evidenceFromPlan(plan) {
   const seen = new Set();
   for (const phase of plan?.phases ?? []) {
@@ -59,23 +50,16 @@ function evidenceFromPlan(plan) {
   return [...seen];
 }
 
-// Completion leaf evidence: the specific semantic state that proves a branch
-// produced a finished result (prediction label for predict, loss/parameter
-// history for fit) rather than merely invoking an operation.
-function completionEvidence(context, runObjective) {
-  if (runObjective === 'predict') return pickEvidence(context, ['metrics.predictedLabel']);
-  if (runObjective === 'fit') return pickEvidence(context, ['training.lossHistory', 'training.parameterHistory']);
+function completionRuntimeEvidence(context, runObjective) {
+  if (runObjective === 'predict') return ['metrics.predictedLabel'];
+  if (runObjective === 'fit') return ['training.parameterHistory'];
   return [];
 }
 
 function buildBranchRequirements({ plan, context, captures, minBranches }) {
   const schema = findControlSchema(context, plan.goal.control);
   const runObjective = schema?.runObjective;
-  const evidence = [...new Set([
-    ...evidenceFromPlan(plan),
-    ...completionEvidence(context, runObjective),
-  ])];
-  const runtimeTraces = runObjective === 'predict'
+  const traceEvidence = runObjective === 'predict'
     ? ['prediction.emitted']
     : runObjective === 'fit'
       ? ['training.completed']
@@ -84,9 +68,29 @@ function buildBranchRequirements({ plan, context, captures, minBranches }) {
     controls: [{ key: plan.goal.control, values: plan.goal.values ?? [plan.goal.value] }],
     operations: runObjective ? [{ intent: runObjective, minCount: minBranches }] : [],
     reveals: { minCount: runObjective ? minBranches : 0 },
-    evidence,
     captures,
-    runtimeTraces,
+    visualEvidence: evidenceFromPlan(plan),
+    runtimeEvidence: completionRuntimeEvidence(context, runObjective),
+    traceEvidence,
+  };
+}
+
+function buildDeclaredRequirements({ plan, context, objective, captures, finalState }) {
+  const capability = context?.teachingCapabilities?.[objective];
+  if (!capability) {
+    throw teachingError('TEACHING_GOAL_UNSUPPORTED', { objective, reason: 'no declared teaching capability' });
+  }
+  return {
+    controls: objective === 'show_failure_case'
+      ? [{ key: plan.goal.control, values: [plan.goal.value] }]
+      : [],
+    operations: [{ intent: capability.operationIntent, minCount: 1 }],
+    reveals: { minCount: 1 },
+    captures,
+    visualEvidence: capability.visualEvidence ?? [],
+    runtimeEvidence: capability.runtimeEvidence ?? [],
+    traceEvidence: capability.traceEvidence ?? [],
+    finalState,
   };
 }
 
@@ -103,44 +107,24 @@ export function buildGoalRequirements({ plan, context }) {
     return buildBranchRequirements({ plan, context, captures: ['result'], minBranches: 1 });
   }
   if (objective === 'show_failure_case') {
-    return {
-      controls: [{ key: plan.goal.control, values: [plan.goal.value] }],
-      operations: [{ intent: 'fit', minCount: 1 }],
-      reveals: { minCount: 1 },
-      evidence: pickEvidence(context, OBJECTIVE_EVIDENCE.show_failure_case),
-      captures: ['result'],
-      runtimeTraces: ['loss.measured'],
-    };
+    return buildDeclaredRequirements({ plan, context, objective, captures: ['result'], finalState: false });
   }
   if (objective === 'explain_prediction') {
-    return {
-      operations: [{ intent: 'predict', minCount: 1 }],
-      reveals: { minCount: 1 },
-      evidence: pickEvidence(context, OBJECTIVE_EVIDENCE.explain_prediction),
-      captures: [],
-      finalState: true,
-      runtimeTraces: ['prediction.emitted'],
-    };
+    return buildDeclaredRequirements({ plan, context, objective, captures: [], finalState: true });
   }
   if (objective === 'show_training') {
-    return {
-      operations: [{ intent: 'fit', minCount: 1 }],
-      reveals: { minCount: 1 },
-      evidence: pickEvidence(context, OBJECTIVE_EVIDENCE.show_training),
-      captures: [],
-      finalState: true,
-      runtimeTraces: ['training.completed'],
-    };
+    return buildDeclaredRequirements({ plan, context, objective, captures: [], finalState: true });
   }
   if (objective === 'introduce') {
     return {
       controls: [],
       operations: [],
       reveals: { minCount: 0 },
-      evidence: pickEvidence(context, OBJECTIVE_EVIDENCE.introduce),
       captures: [],
+      visualEvidence: [],
+      runtimeEvidence: [],
+      traceEvidence: [],
       finalState: false,
-      runtimeTraces: [],
     };
   }
   throw teachingError('TEACHING_GOAL_UNSUPPORTED', { objective });
@@ -150,18 +134,28 @@ function operationIntentOf(context, operationName) {
   return context?.model?.operations?.[operationName]?.intent ?? null;
 }
 
-// A primitive covers a semantic field when its schema declares a compatible
-// binding for it. The Composer may pick one concrete binding per prop (e.g.
-// reference-line binds $model.line), but the schema still advertises the
-// alternative evidence field ($model.bestFitLine), so both are satisfiable
-// semantic evidence for the goal.
-function primitiveCoversField(primitive, first) {
-  const schema = getPrimitiveSchema(primitive?.type);
-  if (!schema) return false;
-  return Object.values(schema.compatibleBindings ?? {}).flat().some((binding) => {
-    if (binding.startsWith('$model.')) return binding.split('.')[1] === first;
-    return binding === '$metrics' && first === 'metrics';
-  });
+// Normalizes a concrete primitive binding to a semantic path:
+//   '$model.training.lossHistory' -> 'training.lossHistory'
+//   '$metrics'                    -> 'metrics'
+// visualEvidence is satisfied only when a declared primitive actually binds
+// the required path - a primitive that could theoretically bind it is
+// insufficient.
+function normalizeBinding(binding) {
+  if (typeof binding !== 'string') return null;
+  if (binding.startsWith('$model.')) return binding.slice('$model.'.length);
+  if (binding === '$metrics') return 'metrics';
+  return null;
+}
+
+function boundPathsOf(primitives) {
+  const paths = new Set();
+  for (const primitive of primitives ?? []) {
+    for (const binding of Object.values(primitive?.props ?? {})) {
+      const path = normalizeBinding(binding);
+      if (path) paths.add(path);
+    }
+  }
+  return paths;
 }
 
 function resolveEvidencePath(semantic, path) {
@@ -197,19 +191,42 @@ export function replayScriptForFidelity({ script, session }) {
   };
 }
 
-function checkRuntimeEvidence(checks, missing, requirements, execution, semanticFor, label) {
-  for (const path of requirements.evidence ?? []) {
-    const value = resolveEvidencePath(semanticFor(path), path);
+function checkRuntimeEvidence(checks, missing, label, semantic, paths) {
+  for (const path of paths ?? []) {
+    const value = resolveEvidencePath(semantic, path);
     const satisfied = presentNonEmpty(value);
     checks.push({ requirement: `runtimeEvidence:${label}:${path}`, satisfied, evidence: [value] });
     if (!satisfied) missing.push(`runtimeEvidence:${label}:${path}`);
   }
 }
 
+function checkTraceEvidence(checks, missing, traces, entries) {
+  for (const entry of entries ?? []) {
+    if (typeof entry === 'string') {
+      const present = (traces ?? []).some((trace) => trace.type === entry);
+      checks.push({ requirement: `trace:${entry}`, satisfied: present, evidence: [] });
+      if (!present) missing.push(`trace:${entry}`);
+      continue;
+    }
+    if (entry && typeof entry === 'object' && entry.trace && entry.where) {
+      const requirement = `trace:${entry.trace}${JSON.stringify(entry.where)}`;
+      const satisfied = (traces ?? []).some((trace) => (
+        trace.type === entry.trace
+        && Object.entries(entry.where).every(([field, allowed]) => (
+          Array.isArray(allowed) && allowed.includes(trace.payload?.[field])
+        ))
+      ));
+      checks.push({ requirement, satisfied, evidence: [] });
+      if (!satisfied) missing.push(requirement);
+    }
+  }
+}
+
 // Deterministic goal fidelity evaluation. `execution` (optional) comes from
 // replayScriptForFidelity(); when present, required captures must exist and
-// hold non-empty semantic evidence, and required trace events must have been
-// produced. Static checks run against the Script declaration regardless.
+// hold non-empty runtime evidence, required final-state evidence is checked
+// against the final snapshot, and required trace events (including payload
+// predicates) must have been produced.
 export function evaluateGoalFidelity({ plan, script, context, execution }) {
   const requirements = buildGoalRequirements({ plan, context });
   const checks = [];
@@ -266,12 +283,13 @@ export function evaluateGoalFidelity({ plan, script, context, execution }) {
     if (!satisfied) missing.push(`capture:${captureId}`);
   }
 
-  // Static: required semantic evidence has a compatible primitive binding.
-  for (const path of requirements.evidence ?? []) {
-    const first = path.split('.')[0];
-    const satisfied = primitives.some((primitive) => primitiveCoversField(primitive, first));
-    checks.push({ requirement: `evidence:${path}`, satisfied, evidence: [] });
-    if (!satisfied) missing.push(`evidence:${path}`);
+  // Static: required visual evidence is actually bound by the Script's
+  // concrete primitive.props (PR E.2.1 - no compatibleBindings guessing).
+  const boundPaths = boundPathsOf(primitives);
+  for (const path of requirements.visualEvidence ?? []) {
+    const satisfied = boundPaths.has(path);
+    checks.push({ requirement: `visual:${path}`, satisfied, evidence: [...boundPaths] });
+    if (!satisfied) missing.push(`visual:${path}`);
   }
 
   // Runtime: completed outcomes, not just invoked operations.
@@ -286,23 +304,19 @@ export function evaluateGoalFidelity({ plan, script, context, execution }) {
       });
       if (!exists) missing.push(`runtimeCapture:${captureId}`);
       if (exists) {
-        checkRuntimeEvidence(checks, missing, requirements, execution, () => capture.semantic ?? {}, captureId);
+        checkRuntimeEvidence(checks, missing, captureId, capture.semantic ?? {}, requirements.runtimeEvidence);
       }
     }
     if (requirements.finalState) {
       const final = execution.finalSnapshot ?? {};
-      checkRuntimeEvidence(checks, missing, requirements, execution, () => ({
+      checkRuntimeEvidence(checks, missing, 'final', {
         ...(final.scene ?? {}),
         metrics: final.metrics ?? {},
         observation: final.observation ?? null,
         formula: final.formula ?? null,
-      }), 'final');
+      }, requirements.runtimeEvidence);
     }
-    for (const event of requirements.runtimeTraces ?? []) {
-      const present = (execution.traces ?? []).some((trace) => trace.type === event);
-      checks.push({ requirement: `trace:${event}`, satisfied: present, evidence: [] });
-      if (!present) missing.push(`trace:${event}`);
-    }
+    checkTraceEvidence(checks, missing, execution.traces, requirements.traceEvidence);
   }
 
   return { valid: missing.length === 0, checks, missing };

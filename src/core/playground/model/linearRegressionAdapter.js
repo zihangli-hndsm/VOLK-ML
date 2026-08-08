@@ -67,6 +67,30 @@ export const linearRegressionAdapter = {
     parameterSurface: true,
   },
   defaultVisualizationPreset: 'linear-regression.intuition',
+  // Declarative teaching capabilities (PR E.2.1). The model owns the failure
+  // signal contract: show_failure_case is only supportable because the
+  // adapter declares the training.completed stoppedReason predicate. The
+  // generic taxonomy/fidelity layer never hardcodes LR field names.
+  teachingCapabilities: {
+    show_training: {
+      operationIntent: 'fit',
+      visualEvidence: ['line', 'training.lossHistory', 'metrics', 'formula'],
+      runtimeEvidence: ['training.parameterHistory', 'metrics'],
+      traceEvidence: ['training.completed'],
+    },
+    show_failure_case: {
+      operationIntent: 'fit',
+      visualEvidence: ['training.lossHistory', 'metrics', 'observation'],
+      runtimeEvidence: ['training.parameterHistory', 'metrics', 'observation'],
+      // The failure is only real when the runtime reports an actual
+      // stoppedReason; a completed run without one must fail fidelity.
+      traceEvidence: [
+        'loss.measured',
+        'gradient.computed',
+        { trace: 'training.completed', where: { stoppedReason: ['learning-rate-too-high', 'diverged'] } },
+      ],
+    },
+  },
   semanticSchema: {
     scatterPoints: { type: 'array<point2d>', description: 'Observed training samples' },
     axes: { type: 'axes2d', description: 'Axis labels for the plot' },

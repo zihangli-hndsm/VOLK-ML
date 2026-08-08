@@ -200,7 +200,7 @@ The primary acceptance path is:
 -> validateScript -> strict dry run -> deterministic replay
 ```
 
-## Goal taxonomy and goal fidelity (PR E.2)
+## Goal taxonomy and goal fidelity (PR E.2 / E.2.1)
 
 PR E.2 moves the intelligence layer from "the generated script is valid" to
 "the generated script actually satisfies the user's teaching goal":
@@ -221,14 +221,15 @@ User Goal
 - `src/core/playground/agent/teachingTaxonomy.js` defines the bounded
   pedagogical objective vocabulary: `introduce`, `compare`,
   `explain_prediction`, `show_training`, `show_error`, `show_parameter_effect`,
-  `show_generalization`, `show_feature_effect`, `show_failure_case`.
-  `getSupportedTeachingObjectives(context)` derives the supported set from
-  capabilities and schemas (predict intent + neighbor/vote evidence ->
-  explain_prediction; fit intent + training evidence -> show_training /
-  show_failure_case; any plannable control -> compare / show_parameter_effect;
-  any playground -> introduce). There are no KNN/LR objective maps. The
-  taxonomy and supported set are exposed through
-  `inspectContext().teaching`.
+  `show_generalization`, `show_feature_effect`, `show_failure_case`. Since PR
+  E.2.1 the taxonomy owns only the vocabulary: support is derived from the
+  model's **declared teaching capability contract** (model adapters expose
+  `teachingCapabilities` through `inspectContext()`), so the taxonomy never
+  hardcodes KNN/LR field names. Structural objectives (compare /
+  show_parameter_effect) need a plannable control; introduce is always
+  available; `fit + training field` alone never implies show_failure_case and
+  `predict intent` alone never implies explainable predictions - there must
+  be an actual declared evidence contract (including the failure signal).
 - Normalized goals carry a semantic `objective` alongside the E.1 mechanical
   goal family: `{ type: 'compare-control', objective: 'compare', control,
   values }`, `{ type: 'explain-process', objective: 'explain_prediction' }`,
@@ -239,20 +240,26 @@ User Goal
 - `src/core/playground/agent/teachingFidelity.js` implements the Goal
   Requirement / Fidelity Contract: a normalized goal becomes explicit
   machine-readable requirements (required control assignments, operation
-  intents with minimum counts, reveal playback counts, capture ids, semantic
-  evidence paths, runtime trace events). `evaluateGoalFidelity({ plan, script,
-  context, execution })` returns `{ valid, checks, missing }`.
-  - Static fidelity checks the Script declaration: required setControl
-    values exist, required operation intents are invoked at least the
-    required number of times, required reveal phases are compiled, required
-    captures exist, and required semantic evidence has a compatible primitive
-    binding.
-  - Runtime fidelity replays the script deterministically on a detached
-    clone (`replayScriptForFidelity`) and verifies outcomes, not just
-    invocations: required captures exist and hold non-empty semantic
-    evidence (e.g. `metrics.predictedLabel` non-null, `training.lossHistory`
-    non-empty), and required trace events (`prediction.emitted`,
-    `training.completed`, `loss.measured`, ...) were produced.
+  intents with minimum counts, reveal playback counts, capture ids, and three
+  explicit evidence classes since PR E.2.1):
+  - `visualEvidence` - the Script declaration actually binds this semantic
+    path through a concrete `primitive.props` binding (e.g.
+    `$model.training.lossHistory`). A primitive that could theoretically bind
+    it via `compatibleBindings` is insufficient.
+  - `runtimeEvidence` - the replayed semantic state actually contains the
+    result (e.g. `metrics.predictedLabel`, `training.parameterHistory`),
+    checked on required captures or the final snapshot.
+  - `traceEvidence` - the required semantic event actually occurred, with
+    optional payload predicates: `{ trace: 'training.completed', where:
+    { stoppedReason: ['learning-rate-too-high', 'diverged'] } }`. Runtime
+    fidelity for `show_failure_case` fails when `training.completed` exists
+    but `stoppedReason` is absent or reports ordinary success - "training
+    happened" is not "failure happened".
+  `evaluateGoalFidelity({ plan, script, context, execution })` returns
+  `{ valid, checks, missing }`. Requirement evidence for
+  explain_prediction/show_training/show_failure_case comes from the model's
+  declared `teachingCapabilities`; compare/show_parameter_effect use generic
+  structural rules.
 - `composeScript(plan)` now runs validate TeachingPlan -> compose -> validate
   Script -> strict dry run -> goal fidelity, and returns
   `{ mode: 'composed', plan, script, fidelity, dryRun }`. If fidelity fails,
@@ -268,6 +275,18 @@ User Goal
   and proves query, neighbor ranking, reveal, voting and predicted-label
   evidence through the context-advertised predict operation and semantic
   fields.
+- PR E.2.1 makes the fidelity outcome-truthful: the lexical parser emits a
+  semantic probe (`direction: 'increase'`) for qualitative "learning rate too
+  high" requests - never a numeric constant - and the Planner derives the
+  probe from current controls + controlSchemas (baseline 0.05 -> >0.05, 1.5
+  -> >1.5, 3 -> >3, 5 -> reject when no higher legal value exists).
+  Parameter movement is verified through real runtime/trace evidence
+  (`training.parameterHistory` / `gradient.computed`), not by pretending
+  `loss-curve` visualizes parameter history. Mutation tests cover a
+  successfully-completed training run with no stoppedReason (fails), a
+  schema-compatible binding change away from the required visual path
+  (fails), and runtime-only evidence surviving the removal of non-visual
+  primitives (passes).
 
 ## Layers
 

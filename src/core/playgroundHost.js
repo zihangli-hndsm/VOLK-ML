@@ -285,10 +285,12 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           revealed: snapshot.metrics?.revealed ?? null,
           predictedLabel: snapshot.metrics?.predictedLabel ?? null,
         },
+        teachingCapabilities: adapter.teachingCapabilities ?? {},
       };
       context.teaching = {
         objectives: [...TEACHING_OBJECTIVES],
         supportedObjectives: getSupportedTeachingObjectives(context),
+        capabilities: context.teachingCapabilities,
       };
       return context;
     },
