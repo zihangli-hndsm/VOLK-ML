@@ -8,6 +8,7 @@ import { validateType } from './typeContracts.js';
 
 export const PRIMITIVE_SCHEMAS = {
   scatter: {
+    placement: 'stage',
     props: {
       points: { type: 'array<point2d>', required: true },
       axes: { type: 'axes2d', required: false },
@@ -18,6 +19,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   'regression-line': {
+    placement: 'stage',
     props: {
       line: { type: 'line2d', required: true },
       ranges: { type: 'ranges2d', required: true },
@@ -28,6 +30,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   'reference-line': {
+    placement: 'stage',
     props: {
       line: { type: 'line2d', required: true },
       ranges: { type: 'ranges2d', required: true },
@@ -38,6 +41,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   'residual-lines': {
+    placement: 'stage',
     props: {
       points: { type: 'array<residualPoint>', required: true },
     },
@@ -46,6 +50,8 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   'decision-region': {
+    placement: 'stage',
+    whenControl: 'showDecisionRegions',
     props: {
       cells: { type: 'array<decisionCell>', required: true },
       resolution: { type: 'integer', required: false },
@@ -56,6 +62,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   'neighbor-links': {
+    placement: 'stage',
     props: {
       neighbors: { type: 'array<neighbor>', required: true },
       points: { type: 'array<point2d>', required: true },
@@ -70,6 +77,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   'query-point': {
+    placement: 'stage',
     props: {
       query: { type: 'point2d', required: true },
     },
@@ -78,6 +86,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   'vote-bars': {
+    placement: 'stage',
     props: {
       voting: { type: 'voteState', required: true },
     },
@@ -86,6 +95,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   'loss-curve': {
+    placement: 'stage',
     props: {
       lossHistory: { type: 'array<number>', required: true },
       currentStep: { type: 'integer', required: false },
@@ -96,6 +106,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   formula: {
+    placement: 'side',
     props: {
       formula: { type: 'formula', required: true },
     },
@@ -104,6 +115,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   annotation: {
+    placement: 'side',
     props: {
       observation: { type: 'observation', required: true },
     },
@@ -112,6 +124,7 @@ export const PRIMITIVE_SCHEMAS = {
     },
   },
   'metric-card': {
+    placement: 'side',
     props: {
       metrics: { type: 'metrics', required: true },
     },
@@ -161,5 +174,7 @@ export function listPrimitiveSchemas() {
     type,
     props: PRIMITIVE_SCHEMAS[type]?.props ?? {},
     compatibleBindings: PRIMITIVE_SCHEMAS[type]?.compatibleBindings ?? {},
+    ...(PRIMITIVE_SCHEMAS[type]?.placement ? { placement: PRIMITIVE_SCHEMAS[type].placement } : {}),
+    ...(PRIMITIVE_SCHEMAS[type]?.whenControl ? { whenControl: PRIMITIVE_SCHEMAS[type].whenControl } : {}),
   }));
 }

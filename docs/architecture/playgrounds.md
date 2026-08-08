@@ -69,7 +69,7 @@ User preference owns language; example content owns the example. No `PROJECT_VER
 - Script state (`scriptState: { status, step, totalSteps }`) is separate from the model timeline, so a 7-step script is never conflated with 20 training steps.
 - `RESET`/script `reset`/`seek`/replay all return to the session **baseline** (initial controls + source + seed), so `fresh first-N == full-run-then-seek-N == reset-then-N`.
 
-## TeachingPlan and deterministic composer (PR E.1)
+## TeachingPlan and deterministic composer (PR E.1 / E.1.1)
 
 PR E.1 introduces the intermediate **TeachingPlan** layer between a teaching
 goal and a Visualization Script:
@@ -89,27 +89,63 @@ goal
 - `src/core/playground/agent/teachingPlan.js` defines the JSON-safe
   TeachingPlan v1 schema: `{ version: 1, id, playgroundId, goal, phases }`.
   A plan describes teaching intent (`explain-process` / `compare-control` /
-  `what-if` / `diagnose`), never renderer implementation.
-- `src/core/playground/agent/teachingPlanner.js` is the deterministic
-  planner. It consumes `inspectContext()`: control values are validated
-  against `controlSchemas` (min/max/options), so `k=25` on KNN or an
-  undeclared control rejects with a stable `TEACHING_*` code instead of
-  producing an impossible plan. Structured goal objects are the contract a
-  later LLM planner must obey; natural-language goals are matched by the
-  same schema-grounded rules.
-- `src/core/playground/agent/teachingComposer.js` is the Composer:
-  TeachingPlan -> Visualization Script. Primitives are discovered from the
-  PR D primitive schemas (`compatibleBindings`) and steps only invoke
-  operations declared in the adapter's `scriptOperations`. There is no
-  model-specific renderer branch.
+  `what-if`), never renderer implementation. Since PR E.1.1 phases are
+  **typed and semantically meaningful**:
+
+  ```js
+  { id, kind: 'observe' | 'set-control' | 'run' | 'reveal' | 'capture' | 'restore' | 'summarize', ... }
+  ```
+
+  The invariant is: **changing `TeachingPlan.phases` changes the composed
+  script**. `diagnose` is deliberately not advertised: it is rejected with
+  `TEACHING_GOAL_UNSUPPORTED` until its semantics are implemented.
+- `src/core/playground/agent/teachingGoalParser.js` is the lexical layer
+  (PR E.1.1): `text -> parseTeachingGoalText -> structured goal candidate`.
+  It recognizes explicit `key=value` syntax (two values for one control, or a
+  compare hint, imply compare-control; one value implies what-if) and
+  learning-rate aliases. It never decides model execution behavior; every
+  candidate is checked against `controlSchemas` by the planner, so an
+  explicit request for an unavailable control (e.g. `k=1 和 k=15` on LR)
+  fails with `TEACHING_CONTROL_INVALID` instead of silently becoming an
+  explain-process.
+- `src/core/playground/agent/teachingPlanner.js` is the schema-grounded
+  planner (PR E.1.1). It consumes `inspectContext()`: control existence and
+  values come from `controlSchemas` (min/max/options), run objectives come
+  from the declarative `runObjective` on the control schema, operations come
+  from `context.model.operations` by their declarative `intent`, and reveal
+  counts come from the operation's `playback.revealCountControl`. Pairwise
+  comparison is the v1 cardinality: exactly two values, no silent defaults
+  (previously the planner invented `15`).
+- `src/core/playground/agent/teachingComposer.js` is the Composer
+  (PR E.1.1): it **iterates/compiles `plan.phases`**; it never regenerates
+  the sequence from `plan.goal.type`. Primitive selection is generic: a
+  primitive is materializable when every required prop has a compatible
+  binding, placement comes from the declarative `placement` metadata
+  (`stage` / `side`) in `visualization/schemas.js`, and visibility conditions
+  come from the declarative `whenControl` metadata. Run operations are looked
+  up by `intent` (`predict` / `fit`) - never by names like `traceFit` or
+  `tracePredict` - and reveal steps come from `reveal` phases whose counts
+  the planner resolved from `playback.revealCountControl`. There are no
+  KNN/LR-shaped primitive families and no hardcoded control names in the
+  Composer.
+- `validatePlanAgainstContext(plan, context)` (PR E.1.1) rejects a plan
+  before composition when its `playgroundId` does not match the context, or
+  when any referenced control / evidence field / run objective no longer
+  exists. A plan created for KNN can never be silently reinterpreted in an LR
+  context.
 - Capture semantics (PR E.1): `capture` / `restoreCapture` are first-class
   script step operations. A capture stores a JSON-safe snapshot of controls,
-  model state, data state and the derived semantic scene; restore returns to
-  it. Comparison plans (e.g. k=1 vs k=15) capture a baseline, run the first
-  configuration, capture the result, restore the baseline, run the second
-  configuration and capture that result. Capture/restore never corrupts
-  `sessionBaseline` or `scriptBaseline`, and replay is deterministic for the
-  same seed. `SCRIPT_CAPTURE_MISSING` is a stable script error code.
+  model state, data state, timeline, a trace checkpoint and the derived
+  semantic snapshot (scene/metrics/observation/formula); restore returns to
+  it, including the timeline and trace history, so branch B begins from the
+  same experiment baseline as branch A except for the intentionally changed
+  controls. Comparison plans (e.g. k=1 vs k=15) capture a baseline, run the
+  first configuration to **completed evidence** (e.g. KNN reveal count = k,
+  so each capture carries real voting/prediction rather than `revealed=0`),
+  capture the result, restore the baseline, run the second configuration and
+  capture that result. Capture/restore never corrupts `sessionBaseline`,
+  `scriptBaseline` or `scriptState`, and replay is deterministic for the same
+  seed. `SCRIPT_CAPTURE_MISSING` is a stable script error code.
 - The Agent exposes `plan(goal)` and `composeScript(plan)` on
   `canvas.playground` (additive; `apiVersion` stays 1). `composeScript`
   validates and strict-dry-runs the composed script before returning it; the

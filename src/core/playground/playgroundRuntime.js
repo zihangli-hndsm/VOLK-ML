@@ -340,7 +340,7 @@ export function dispatchRuntimeAction(session, action) {
     };
   }
   if (action.type === 'SCRIPT_CAPTURE') {
-    const { scene } = semanticContext(session);
+    const semantic = semanticContext(session);
     return {
       ...session,
       captures: {
@@ -349,7 +349,15 @@ export function dispatchRuntimeAction(session, action) {
           controls: structuredClone(session.controls),
           modelState: structuredClone(session.modelState),
           dataState: session.dataState ? structuredClone(session.dataState) : {},
-          scene: jsonSafe(scene),
+          timeline: structuredClone(session.timeline),
+          traceCount: session.traces.length,
+          scene: jsonSafe(semantic.scene),
+          semantic: {
+            scene: jsonSafe(semantic.scene),
+            metrics: jsonSafe(semantic.metrics),
+            observation: jsonSafe(semantic.observation),
+            formula: jsonSafe(semantic.formula),
+          },
         },
       },
     };
@@ -364,6 +372,14 @@ export function dispatchRuntimeAction(session, action) {
       controls: structuredClone(captured.controls),
       modelState: structuredClone(captured.modelState),
       dataState: captured.dataState ? structuredClone(captured.dataState) : {},
+      timeline: captured.timeline ? structuredClone(captured.timeline) : session.timeline,
+      // Branch isolation: the trace history returns to the baseline
+      // checkpoint so branch B emits exactly the same evidence as a fresh
+      // baseline -> branch B run. sessionBaseline / scriptBaseline /
+      // scriptState are never touched by restore.
+      traces: Number.isInteger(captured.traceCount)
+        ? session.traces.slice(0, captured.traceCount)
+        : session.traces,
     };
   }
   if (action.type === 'RUN_SCENARIO') {

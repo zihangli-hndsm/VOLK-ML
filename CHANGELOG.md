@@ -214,3 +214,16 @@
 - 测试（check-core 新增 PR E.1 块）：TeachingPlan JSON-safe/校验往返、空 goal 与未知 goal 类型拒绝、未声明控件拒绝、比较值越界拒绝、Planner 仅使用已声明控件（LR 收到 k=... 目标回落 explain-process）、Composer 仅使用已声明 primitive/兼容绑定/操作、capture 确定性重放、baseline 恢复与双 baseline 不被污染、composed script 过 validator + 严格 dry run（零 warning）、Agent plan→compose→load→replay 端到端、错误码透传、LR/KNN 现有 presets 不变。
 - 文档：`agent-canvas-api.md` 新增 `plan()` / `composeScript()` 与 `TEACHING_*` 错误码；`playgrounds.md` 新增 PR E.1 小节与验收路径。
 - 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`（683 modules）、`git diff --check` 全部通过；PR A–D.3 全部回归保持。已知限制：capture 不绑定 `$capture.*` 表达式（留待需要时再定义）；文本目标仅支持 k=... / 学习率关键词，更广的自然语言理解留给未来 LLM Planner。
+
+## 2026-08-08 — TeachingPlan 成为可执行中间表示（PR E.1.1）
+
+- TeachingPlan.phases 类型化并语义化：`observe / set-control / run / reveal / capture / restore / summarize` 七个 phase kind；Composer 改为逐 phase 编译，不再从 `goal.type` 重新生成教学序列；测试证明删除/重排 phase 会改变生成脚本、相同 phases 不同 goal.type 生成完全相同的脚本。
+- 文本解析与 schema 规划分离：新增 `src/core/playground/agent/teachingGoalParser.js`（`parseTeachingGoalText` → 结构化 goal 候选，仅做词汇识别，不做模型决策）；planner 只消费 `inspectContext()` —— 控件存在性/取值来自 `controlSchemas`、run objective 来自控件描述符的声明式 `runObjective`、操作按 `intent`（`predict`/`fit`）从 `context.model.operations` 选择、reveal 次数来自操作的 `playback.revealCountControl`。显式请求不可用控件（LR + `k=1 和 k=15`、KNN + 学习率）返回 `TEACHING_CONTROL_INVALID`，不再静默降级为 explain-process。
+- 比较语义修正：`compare-control` 采用 v1 二元契约（恰好 2 个值，`[1,5,15]` 与单值 compare 均拒绝）；不再默认补 `15`。KNN k=1 vs k=15 的左右 capture 现在都是「已完成证据」——按 k 执行 reveal 播放，capture 含真实 voting/prediction（`revealed=k`、邻居数=k），而非 `revealed=0` 空壳。
+- Composer 去模板化：删除 `base=[...]` / `knn=[...]` 分组与 `tracePredict/traceFit/showNeighborOrder/showDecisionRegions/showResiduals/showBestFit` 硬编码假设；primitive 可物化性由 `compatibleBindings` 判定，stage/side 排布来自新增的声明式 `placement` 元数据，可见性条件来自 `whenControl` 元数据（`visualization/schemas.js` 为唯一来源），操作选择按 `intent`，reveal 来自 phase count。
+- 上下文前置校验：新增 `validatePlanAgainstContext`（playgroundId 匹配、控件/证据字段/run objective 存在性），跨 playground 或 stale plan 在组合前即失败（`TEACHING_PLAN_INVALID` / `TEACHING_CONTROL_INVALID`）。
+- capture 分支隔离：capture 现在同时保存 controls/modelState/dataState/timeline/trace 检查点/完整 semantic 快照（scene+metrics+observation+formula）；restore 恢复 timeline 并按 traceCount 截断 traces，保证「fresh baseline → branch B」与「branch A → restore → branch B」的语义状态完全一致；`sessionBaseline`/`scriptBaseline`/`scriptState` 永不被 restore 触碰。
+- 不宣传未实现能力：`diagnose` 从 `TEACHING_GOAL_TYPES` 移除，结构化与文本（诊断/diagnose）请求均返回 `TEACHING_GOAL_UNSUPPORTED`。
+- 交叉矩阵测试：LR compare weight、LR compare learningRate、KNN what-if k、双模型 explain-process 全部走通用链路并通过 validator + 严格 dry run；测试还覆盖 parser 单元、cardinality 负例、跨 playground/stale plan、phase 驱动、intent 解析、placement 元数据与 completed-capture 断言。
+- 文档：`agent-canvas-api.md` 与 `playgrounds.md` 更新 PR E.1.1 语义（typed phases、parser 分层、泛型 composer、capture 隔离、diagnose 拒绝）。
+- 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–E.1 全部回归保持。已知限制：`diagnose` 语义留待后续；what-if 的文本别名仅覆盖「学习率太高/发散」等关键词，显式 `key=value` 语法是通用入口。

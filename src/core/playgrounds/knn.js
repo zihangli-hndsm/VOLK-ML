@@ -18,7 +18,9 @@ export const knnPlayground = {
   controls: [
     { key: 'xFeature', type: 'select' },
     { key: 'yFeature', type: 'select' },
-    { key: 'k', type: 'number', min: 1, max: MAX_K, step: 1 },
+    // runObjective declares which model operation a what-if/compare on this
+    // control should run; it is declarative metadata, not a model-id switch.
+    { key: 'k', type: 'number', min: 1, max: MAX_K, step: 1, runObjective: 'predict' },
     { key: 'queryX', type: 'number' },
     { key: 'queryY', type: 'number' },
     { key: 'showNeighborOrder', type: 'boolean' },
