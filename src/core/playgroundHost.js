@@ -7,6 +7,7 @@ import {
 } from './playgrounds/session.js';
 import { fallbackRegressionPoints, regressionPointsFromDataset } from './linearRegressionPlayground.js';
 import { teachingDatasetById } from './teachingDatasets.js';
+import { generateXorDataset } from './playground/model/mlpMath.js';
 import { getPreset, listPresets } from './playground/visualization/presetRegistry.js';
 import { validateScript as validateScriptDeclaration } from './playground/visualization/scriptValidator.js';
 import { dryRunScript as runDryRun } from './playground/agent/dryRun.js';
@@ -124,6 +125,18 @@ function resolveSource(playground, dataset) {
       points,
       featureColumns: columns,
       trainRatio: teaching?.trainRatio ?? 0.8,
+      total: points.length,
+      usingDataset: false,
+    };
+  }
+  if (playground.id === 'mlp-classification') {
+    const points = generateXorDataset({ seed: 2026 });
+    return {
+      kind: 'example',
+      name: 'XOR example',
+      fingerprint: 'example-mlp-xor-v1',
+      points,
+      featureColumns: ['x1', 'x2'],
       total: points.length,
       usingDataset: false,
     };

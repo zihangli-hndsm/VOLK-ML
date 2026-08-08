@@ -1,7 +1,8 @@
 import { linearRegressionPlayground } from './linearRegression.js';
 import { knnPlayground } from './knn.js';
+import { mlpPlayground } from './mlp.js';
 
-const playgrounds = [linearRegressionPlayground, knnPlayground];
+const playgrounds = [linearRegressionPlayground, knnPlayground, mlpPlayground];
 const byId = new Map(playgrounds.map((playground) => [playground.id, playground]));
 
 const summarize = (playground) => ({

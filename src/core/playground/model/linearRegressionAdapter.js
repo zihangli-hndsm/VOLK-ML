@@ -384,6 +384,12 @@ export const linearRegressionAdapter = {
         totalSteps: modelState.training.totalSteps,
         lossHistory: modelState.training.history.slice(0, modelState.training.currentStep).map((entry) => entry.loss),
         parameterHistory: modelState.training.history.slice(0, modelState.training.currentStep).map((entry) => ({ weight: entry.weight, bias: entry.bias })),
+        // Derived parameter trajectory (weight over steps) for the generic
+        // parameter-trajectory primitive.
+        parameterTrajectory: modelState.training.history.slice(0, modelState.training.currentStep).map((entry, index) => ({
+          step: entry.step ?? index + 1,
+          value: entry.weight,
+        })),
       },
       ranges,
       scatterPoints: points.map(({ id, x, y }) => ({ id, x, y })),

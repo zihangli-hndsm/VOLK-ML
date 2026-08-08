@@ -111,6 +111,12 @@ import {
   refitKnnFromSplit,
   voteNeighbors,
 } from '../src/core/knnMath.js';
+import {
+  generateXorDataset,
+  initMlpParameters,
+  predictMlp,
+  trainMlp,
+} from '../src/core/playground/model/mlpMath.js';
 import { migrateProject, PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from '../src/core/project.js';
 import { estimateExecutionPlan } from '../src/core/runtimeTiers.js';
 import { tutorialByOp } from '../src/core/tutorials.js';
@@ -2458,7 +2464,10 @@ assert.throws(
     assert.equal(typeof knnPlayground.deriveScene, 'undefined', 'KNN descriptor no longer derives its own scene');
     const adapterIds = listModelAdapters().map((adapter) => adapter.id);
     assert.deepEqual(new Set(adapterIds).size, adapterIds.length, 'model adapter ids are unique');
-    assert.ok(adapterIds.includes('linear-regression') && adapterIds.includes('knn'), 'both model adapters are registered');
+    assert.ok(
+      adapterIds.includes('linear-regression') && adapterIds.includes('knn') && adapterIds.includes('mlp'),
+      'all model adapters are registered',
+    );
     for (const adapter of listModelAdapters()) {
       assert.ok(adapter.defaultVisualizationPreset, `${adapter.id} declares a default preset`);
       for (const capability of ['fit', 'predict', 'evaluate']) {
@@ -2467,7 +2476,7 @@ assert.throws(
     }
 
     // 2. Model adapters must not import React.
-    for (const file of ['linearRegressionAdapter.js', 'knnAdapter.js']) {
+    for (const file of ['linearRegressionAdapter.js', 'knnAdapter.js', 'mlpAdapter.js']) {
       const source = readFileSync(new URL(`../src/core/playground/model/${file}`, import.meta.url), 'utf-8');
       assert.ok(!/from\s+['"]react['"]/.test(source) && !/from\s+['"]react-dom['"]/.test(source), `${file} must not import React`);
     }
@@ -2484,7 +2493,7 @@ assert.throws(
 
     // 3. Every preset is a valid, JSON-safe declaration; serialize ->
     // deserialize -> replay produces the identical trace.
-    assert.deepEqual(listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro']);
+    assert.deepEqual(listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro', 'mlp.intro']);
     for (const preset of listPresets()) {
       const declaration = getPreset(preset.id);
       assert.doesNotThrow(() => validateScript(declaration), `${preset.id} validates`);
@@ -3267,7 +3276,7 @@ assert.throws(
       assert.equal(capabilities.apiVersion, 1, 'agent capabilities version');
       assert.ok(capabilities.models.some((model) => model.id === 'linear-regression' && model.operations.includes('traceFit')), 'LR capabilities expose operations');
       assert.ok(capabilities.models.some((model) => model.id === 'knn' && model.operations.includes('tracePredict')), 'KNN capabilities expose operations');
-      assert.deepEqual(agentC.listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro'], 'agent lists presets');
+      assert.deepEqual(agentC.listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro', 'mlp.intro'], 'agent lists presets');
       assert.ok(capabilities.primitives.includes('scatter') && capabilities.primitives.includes('vote-bars'), 'agent lists primitives');
 
       await agentC.open({ playgroundId: 'knn-classification' });
@@ -3388,9 +3397,19 @@ assert.throws(
       // Semantic schemas must match the semantic state adapters produce.
       const lrAdapter = getModelAdapter('linear-regression');
       const knnAdapter = getModelAdapter('knn');
+      const mlpAdapter = getModelAdapter('mlp');
+      const mlpPlayground = getPlayground('mlp-classification');
+      const mlpSource = {
+        kind: 'example',
+        name: 'XOR',
+        fingerprint: 'mlp-contract',
+        points: generateXorDataset({ seed: 7 }),
+        featureColumns: ['x1', 'x2'],
+      };
       for (const [adapter, playground, source] of [
         [lrAdapter, lrPlayground, lrSource],
         [knnAdapter, knnPlayground, knnSource2],
+        [mlpAdapter, mlpPlayground, mlpSource],
       ]) {
         assert.ok(adapter.semanticSchema && Object.keys(adapter.semanticSchema).length > 0, `${adapter.id} declares a semantic schema`);
         const session = createPlaygroundSession(playground, { source, seed: 7, sessionId: 'prd-schema' });
@@ -3419,7 +3438,7 @@ assert.throws(
       // bindings in the presets.
       assert.deepEqual(Object.keys(getPrimitiveSchema('scatter')?.props ?? {}), ['points', 'axes'], 'scatter schema');
       assert.ok(PRIMITIVE_TYPES.every((type) => getPrimitiveSchema(type)), 'every primitive type has a schema');
-      for (const presetId of ['linear-regression.intuition', 'knn.intro']) {
+      for (const presetId of ['linear-regression.intuition', 'knn.intro', 'mlp.intro']) {
         const preset = getPreset(presetId);
         for (const declaration of preset.primitives) {
           const schema = getPrimitiveSchema(declaration.type);
@@ -3525,6 +3544,13 @@ assert.throws(
       };
       const lrContext = modelContextFor(getModelAdapter('linear-regression'), lrPlayground, lrSource);
       const knnContext = modelContextFor(getModelAdapter('knn'), knnPlayground, knnSource2);
+      const mlpContext = modelContextFor(getModelAdapter('mlp'), getPlayground('mlp-classification'), {
+        kind: 'example',
+        name: 'XOR',
+        fingerprint: 'mlp-contract',
+        points: generateXorDataset({ seed: 7 }),
+        featureColumns: ['x1', 'x2'],
+      });
 
       // 1. Deep primitive type validation.
       assert.equal(validateType([{ x: 1, y: 2 }], 'array<point2d>'), true, 'valid point2d elements pass');
@@ -3551,6 +3577,7 @@ assert.throws(
             const matches = [
               ['linear-regression', lrContext],
               ['knn', knnContext],
+              ['mlp', mlpContext],
             ].filter(([, context]) => parts[0] in context);
             assert.ok(matches.length > 0, `${binding} first segment exists in a semantic schema`);
             for (const [adapterId, context] of matches) {
@@ -4961,6 +4988,187 @@ assert.throws(
           'the taxonomy does not hardcode KNN field names',
         );
         await e21Host.close();
+      }
+
+      // PR F.1: toolkit expansion + MLP playground.
+      {
+        // 1. MLP is a first-class playground with declarative teaching
+        // capabilities, derived support and no model-id maps.
+        assert.ok(
+          listPlaygrounds().some((playground) => playground.id === 'mlp-classification'),
+          'the MLP playground is registered',
+        );
+        const mlpAdapter = getModelAdapter('mlp');
+        assert.ok(mlpAdapter, 'the MLP adapter is registered');
+        assert.ok(
+          mlpAdapter.teachingCapabilities.show_training && mlpAdapter.teachingCapabilities.explain_prediction,
+          'MLP declares show_training and explain_prediction capabilities',
+        );
+        const f1Host = createPlaygroundHost({ getDataset: () => null });
+        await f1Host.open({ playgroundId: 'mlp-classification' });
+        const f1MlpContext = f1Host.inspectContext();
+        assert.deepEqual(
+          f1MlpContext.teaching.supportedObjectives,
+          ['introduce', 'compare', 'show_parameter_effect', 'show_training', 'explain_prediction'],
+          'MLP supported objectives come from declared capabilities + resolvable intents',
+        );
+        assert.ok(
+          getSupportedTeachingObjectives(f1MlpContext).includes('explain_prediction')
+          && !getSupportedTeachingObjectives(f1MlpContext).includes('show_failure_case'),
+          'MLP supports explain_prediction and honestly rejects show_failure_case',
+        );
+
+        // 2. The MLP preset validates, strict-dry-runs and replays
+        // deterministically, emitting only schema-valid trace events.
+        const mlpPreset = getPreset('mlp.intro');
+        assert.doesNotThrow(() => validateScript(mlpPreset), 'mlp.intro validates');
+        assert.equal(mlpPreset.model.adapter, 'mlp', 'mlp.intro targets the MLP adapter');
+        const f1MlpSession = createPlaygroundSession(getPlayground('mlp-classification'), {
+          source: {
+            kind: 'example',
+            name: 'XOR',
+            fingerprint: 'mlp-f1',
+            points: generateXorDataset({ seed: 3 }),
+            featureColumns: ['x1', 'x2'],
+          },
+          seed: 3,
+          sessionId: 'f1-mlp',
+        });
+        const f1PresetDry = dryRunScript({ script: structuredClone(mlpPreset), session: f1MlpSession });
+        assert.equal(f1PresetDry.valid, true, 'mlp.intro passes the strict dry run');
+        const replayMlpPreset = (seed) => {
+          let session = createPlaygroundSession(getPlayground('mlp-classification'), {
+            source: {
+              kind: 'example',
+              name: 'XOR',
+              fingerprint: 'mlp-f1',
+              points: generateXorDataset({ seed: 3 }),
+              featureColumns: ['x1', 'x2'],
+            },
+            seed,
+            sessionId: 'f1-mlp-replay',
+          });
+          session = dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: structuredClone(mlpPreset) });
+          const total = session.scriptState.totalSteps;
+          for (let index = 0; index < total; index += 1) session = dispatchPlaygroundAction(session, { type: 'SCRIPT_STEP' });
+          return derivePlaygroundSnapshot(session);
+        };
+        assert.deepEqual(replayMlpPreset(3), replayMlpPreset(3), 'MLP preset replays deterministically');
+        const f1MlpFinal = replayMlpPreset(3);
+        assert.equal(f1MlpFinal.scriptState.status, 'completed', 'MLP preset completes');
+        assert.ok(f1MlpFinal.scene.training.lossHistory.length > 0, 'MLP training produced a loss history');
+        assert.ok(
+          f1MlpFinal.primitives.some((primitive) => primitive.type === 'network-graph')
+          && f1MlpFinal.primitives.some((primitive) => primitive.type === 'matrix-grid')
+          && f1MlpFinal.primitives.some((primitive) => primitive.type === 'parameter-trajectory'),
+          'the unified materializer emits the new toolkit primitives for MLP',
+        );
+        const replayTraces = (() => {
+          let session = createPlaygroundSession(getPlayground('mlp-classification'), {
+            source: {
+              kind: 'example',
+              name: 'XOR',
+              fingerprint: 'mlp-f1',
+              points: generateXorDataset({ seed: 3 }),
+              featureColumns: ['x1', 'x2'],
+            },
+            seed: 3,
+            sessionId: 'f1-mlp-traces',
+          });
+          session = dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: structuredClone(mlpPreset) });
+          const total = session.scriptState.totalSteps;
+          for (let index = 0; index < total; index += 1) session = dispatchPlaygroundAction(session, { type: 'SCRIPT_STEP' });
+          return session.traces;
+        })();
+        assert.ok(replayTraces.length > 0, 'MLP preset emits trace events');
+        for (const event of replayTraces) {
+          const traceCheck = validateTracePayload(event);
+          assert.equal(traceCheck.valid, true, `MLP trace ${event.type} payload matches its schema`);
+        }
+
+        // 3. Generic Agent pipeline: explain_prediction and show_training
+        // compose with fidelity on MLP; unsupported objectives reject.
+        const f1Agent = createPlaygroundAgentApi(f1Host);
+        const f1Explain = await f1Agent.plan('Explain this MLP prediction');
+        assert.equal(f1Explain.goal.objective, 'explain_prediction', 'MLP explain text normalizes to explain_prediction');
+        const f1ExplainComposed = await f1Agent.composeScript(f1Explain);
+        assert.equal(f1ExplainComposed.mode, 'composed', 'MLP compose marks the real Composer path');
+        assert.equal(f1ExplainComposed.fidelity.valid, true, 'MLP explain_prediction passes goal fidelity');
+        assert.ok(
+          f1ExplainComposed.fidelity.checks.some((check) => check.requirement.startsWith('visual:network.nodes') && check.satisfied),
+          'MLP explain fidelity proves the network graph is visually bound',
+        );
+        const f1Training = await f1Agent.plan({ type: 'explain-process', objective: 'show_training' });
+        const f1TrainingComposed = await f1Agent.composeScript(f1Training);
+        assert.equal(f1TrainingComposed.fidelity.valid, true, 'MLP show_training passes goal fidelity');
+        assert.ok(
+          f1TrainingComposed.fidelity.checks.some((check) => check.requirement.startsWith('runtimeEvidence:final:training.parameterHistory') && check.satisfied),
+          'MLP show_training proves parameter movement from training history',
+        );
+        const f1Compare = await f1Agent.plan({ type: 'compare-control', control: 'hiddenUnits', values: [2, 6] });
+        const f1CompareComposed = await f1Agent.composeScript(f1Compare);
+        assert.equal(f1CompareComposed.fidelity.valid, true, 'MLP compare hiddenUnits passes fidelity');
+        const f1WhatIf = await f1Agent.plan({ type: 'what-if', control: 'learningRate', value: 1 });
+        const f1WhatIfComposed = await f1Agent.composeScript(f1WhatIf);
+        assert.equal(f1WhatIfComposed.fidelity.valid, true, 'MLP what-if learningRate passes fidelity');
+        await assert.rejects(
+          f1Agent.plan({ type: 'what-if', objective: 'show_failure_case', control: 'learningRate', value: 2 }),
+          (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED',
+          'show_failure_case is honestly rejected on MLP (no declared failure contract)',
+        );
+
+        // 4. The intelligence/visualization layers contain no MLP model
+        // branch: Script Runtime, Materializer, Composer, fidelity evaluator,
+        // unified stage and renderer registry stay model-agnostic.
+        for (const file of [
+          '../src/core/playground/playgroundRuntime.js',
+          '../src/core/playground/visualization/primitiveMaterializer.js',
+          '../src/core/playground/agent/teachingComposer.js',
+          '../src/core/playground/agent/teachingFidelity.js',
+          '../src/components/playground/PlaygroundStage.jsx',
+          '../src/components/playground/rendererRegistry.jsx',
+        ]) {
+          const source = readFileSync(new URL(file, import.meta.url), 'utf-8');
+          assert.ok(!source.includes('mlp'), `${file} contains no MLP model branch`);
+        }
+
+        // 5. Toolkit: the new primitives are typed, placement-declared and
+        // schema-grounded, and the MLP math actually learns XOR
+        // deterministically (with an honest divergence signal at high lr).
+        for (const type of ['parameter-trajectory', 'network-graph', 'matrix-grid', 'histogram']) {
+          assert.ok(PRIMITIVE_TYPES.includes(type), `${type} is a registered primitive`);
+          const schema = getPrimitiveSchema(type);
+          assert.ok(schema && schema.placement, `${type} declares placement metadata`);
+          assert.ok(Object.keys(schema.compatibleBindings).length > 0, `${type} declares compatible bindings`);
+        }
+        assert.equal(
+          validateType([{ step: 1, value: 0.5 }], 'array<trajectoryPoint>'),
+          true,
+          'trajectoryPoint contract validates',
+        );
+        assert.equal(
+          validateType([{ id: 'a', layer: 0 }, { id: 'b', layer: 1, value: 0.2 }], 'array<networkNode>'),
+          true,
+          'networkNode contract validates',
+        );
+        const xorPoints = generateXorDataset({ seed: 2026 });
+        const xorSamples = xorPoints.map((point) => ({
+          x: [point.features.x1, point.features.x2],
+          y: point.label === 'b' ? 1 : 0,
+        }));
+        const xorParams = initMlpParameters({ hiddenSize: 3, seed: 2026 });
+        const xorResult = trainMlp({ samples: xorSamples, params: xorParams, learningRate: 0.5, steps: 50, seed: 2026 });
+        const xorCorrect = xorPoints.filter((point) => (
+          predictMlp(xorResult.params, [point.features.x1, point.features.x2]).label === point.label
+        )).length;
+        assert.equal(xorCorrect, xorPoints.length, 'the MLP learns XOR to 100% accuracy deterministically');
+        assert.equal(xorResult.stopReason, null, 'default training converges without a failure stop');
+        // The MLP teaching surface caps learningRate at 2 (show_failure_case
+        // is honestly unsupported), but the trainer's stop-reason machinery
+        // still reports an honest failure at extreme learning rates.
+        const diverged = trainMlp({ samples: xorSamples, params: xorParams, learningRate: 20, steps: 20, seed: 2026 });
+        assert.equal(diverged.stopReason, 'learning-rate-too-high', 'an excessive learning rate reports a failure stop');
+        await f1Host.close();
       }
 
       // LR and KNN existing presets remain unchanged.

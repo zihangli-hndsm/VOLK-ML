@@ -9,7 +9,12 @@ import { fallbackRegressionPoints } from '../src/core/linearRegressionPlayground
 import PlaygroundStage from '../src/components/playground/PlaygroundStage.jsx';
 import PlaygroundInspector from '../src/components/playground/PlaygroundInspector.jsx';
 import VoteBarRenderer from '../src/components/playground/renderers/VoteBarRenderer.jsx';
+import ParameterTrajectoryRenderer from '../src/components/playground/renderers/ParameterTrajectoryRenderer.jsx';
+import NetworkGraphRenderer from '../src/components/playground/renderers/NetworkGraphRenderer.jsx';
+import MatrixGridRenderer from '../src/components/playground/renderers/MatrixGridRenderer.jsx';
+import HistogramRenderer from '../src/components/playground/renderers/HistogramRenderer.jsx';
 import { buildLabelColorMap } from '../src/components/playground/visualEncoding.js';
+import { generateXorDataset } from '../src/core/playground/model/mlpMath.js';
 
 const t = (key) => key;
 const noopDispatch = () => {};
@@ -104,12 +109,41 @@ export function runPlaygroundRenderSmoke() {
   const lrSnapshots = snapshotsForPreset(lr, lrSource, 'linear-regression.intuition', 7);
   for (const snapshot of lrSnapshots) renderStageAndInspector(lr, snapshot);
 
+  // PR F.1: the MLP preset trains, reveals epochs and hidden activations; the
+  // new toolkit primitives (network-graph, matrix-grid, parameter-trajectory,
+  // histogram) render at every step and degrade gracefully with empty props.
+  const mlp = getPlayground('mlp-classification');
+  const mlpSource = {
+    kind: 'example', name: 'XOR', fingerprint: 'render-mlp',
+    points: generateXorDataset({ seed: 3 }),
+    featureColumns: ['x1', 'x2'],
+  };
+  const mlpSnapshots = snapshotsForPreset(mlp, mlpSource, 'mlp.intro', 3);
+  for (const snapshot of mlpSnapshots) renderStageAndInspector(mlp, snapshot);
+  const mlpFinal = mlpSnapshots.at(-1);
+  assert.ok(mlpFinal.script.layout.stage.includes('network-graph'), 'MLP preset stage includes network-graph');
+  assert.ok(mlpFinal.primitives.some((primitive) => primitive.type === 'parameter-trajectory'), 'parameter-trajectory is materialized');
+  assert.ok(mlpFinal.primitives.some((primitive) => primitive.type === 'matrix-grid'), 'matrix-grid is materialized');
+  assert.ok(mlpFinal.primitives.some((primitive) => primitive.type === 'loss-curve'), 'loss-curve is materialized');
+  assert.ok(Array.isArray(mlpFinal.scene.histogram.bins) && mlpFinal.scene.histogram.bins.length > 0, 'MLP scene provides histogram bins');
+  for (const Renderer of [ParameterTrajectoryRenderer, NetworkGraphRenderer, MatrixGridRenderer, HistogramRenderer]) {
+    renderToStaticMarkup(React.createElement(Renderer, { props: {}, t }));
+    renderToStaticMarkup(React.createElement(Renderer, { props: { points: [], nodes: [], edges: [], cells: [], bins: [] }, t }));
+  }
+  const histogramSnapshot = {
+    ...mlpFinal,
+    script: { ...mlpFinal.script, layout: { ...mlpFinal.script.layout, side: ['histogram'] } },
+    primitives: [...mlpFinal.primitives, { id: 'histogram', type: 'histogram', props: { bins: mlpFinal.scene.histogram.bins } }],
+  };
+  renderToStaticMarkup(React.createElement(PlaygroundInspector, { playground: mlp, snapshot: histogramSnapshot, onDispatch: noopDispatch, t }));
+
   console.log(
-    `Playground render smoke passed: ${knnSnapshots.length} KNN snapshots, ${lrSnapshots.length} LR snapshots, first non-empty vote at revealed=${firstVote.metrics.revealed}.`,
+    `Playground render smoke passed: ${knnSnapshots.length} KNN snapshots, ${lrSnapshots.length} LR snapshots, ${mlpSnapshots.length} MLP snapshots, first non-empty vote at revealed=${firstVote.metrics.revealed}.`,
   );
   return {
     knnSteps: knnSnapshots.length,
     lrSteps: lrSnapshots.length,
+    mlpSteps: mlpSnapshots.length,
     firstVoteRevealed: firstVote.metrics.revealed,
   };
 }

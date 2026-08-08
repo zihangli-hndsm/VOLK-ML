@@ -297,6 +297,57 @@ User Goal
   path truthfully; a `diverged` execution therefore fails
   `show_failure_case` fidelity (documented by an explicit negative fixture).
 
+## Toolkit expansion + MLP playground (PR F.1)
+
+PR F.1 adds the first general-neural-visualization primitives and an MLP
+playground as the decisive test that the unified architecture holds without
+model branches.
+
+- Four model-independent primitives joined the toolkit
+  (`src/core/playground/visualization/primitives.js` + `schemas.js` +
+  `typeContracts.js`):
+  - `parameter-trajectory` (stage): draws `{step, value}` points; binds
+    `$model.training.parameterTrajectory` (LR and MLP scenes expose the
+    derived field).
+  - `network-graph` (stage): layered graph of `{id, layer, label?, value?}`
+    nodes and `{source, target, weight?}` edges; binds
+    `$model.network.nodes` / `$model.network.edges`.
+  - `matrix-grid` (stage): weight matrix of `{row, column, value, label?}`
+    cells; binds `$model.matrix.rows/columns/cells`.
+  - `histogram` (side): bins of `{start, end, count}`; binds
+    `$model.histogram.bins`.
+  Every primitive is typed (deep contract validation), placement-declared,
+  SSR-smoke-tested and degrades gracefully with empty props.
+- `src/core/playground/model/mlpMath.js` is the pure deterministic MLP
+  mathematics: seeded XOR data generation, seeded parameter initialization
+  (weights in [-1, 1] so full-batch gradients stay learnable), tanh hidden
+  layer with sigmoid output and binary cross-entropy, full-batch
+  backpropagation, and the same honest failure semantics as LR
+  (`learning-rate-too-high` / `diverged`).
+- `src/core/playground/model/mlpAdapter.js` registers the `mlp` adapter:
+  semantic schema (`scatterPoints`, `axes`, `decisionRegions`, `training`
+  with `lossHistory`/`parameterHistory`/`parameterTrajectory`, `network`,
+  `matrix`, `histogram`, `metrics`, `observation`), script operations
+  `traceFit` (intent `fit`, reveal count = trainingSteps) and `tracePredict`
+  (intent `predict`, hidden-unit reveal count = hiddenUnits), trace events
+  with payload schemas, and declarative teaching capabilities
+  (`show_training` + `explain_prediction`). `show_failure_case` is honestly
+  unsupported on MLP and rejected with `TEACHING_GOAL_UNSUPPORTED`.
+- `mlp-classification` playground: deterministic XOR source, controls
+  (`hiddenUnits`, `learningRate`, `trainingSteps`, `queryX`, `queryY`,
+  `showDecisionRegions`) and the `mlp.intro` preset. The preset trains,
+  reveals loss/parameter trajectory epochs, then reveals hidden activations
+  for a prediction.
+- The unified layers stay model-agnostic: `playgroundRuntime.js`,
+  `primitiveMaterializer.js`, `teachingComposer.js`, `teachingFidelity.js`,
+  `PlaygroundStage.jsx` and `rendererRegistry.jsx` contain no `mlp` branch
+  (source-level contract test). The generic goal -> plan -> compose ->
+  fidelity pipeline serves MLP `explain_prediction`, `show_training`,
+  `compare hiddenUnits` and `what-if learningRate` unchanged.
+- The MLP learns XOR to 100% accuracy deterministically (same seed +
+  controls -> identical replay); the render smoke replays the MLP preset
+  (20 snapshots) and SSR-renders all four new primitives.
+
 ## Layers
 
 ### Model adapters

@@ -1,5 +1,6 @@
 import { linearRegressionAdapter } from './linearRegressionAdapter.js';
 import { knnAdapter } from './knnAdapter.js';
+import { mlpAdapter } from './mlpAdapter.js';
 
 // Model Adapter contract:
 //   { id, capabilities, defaultVisualizationPreset,
@@ -11,7 +12,7 @@ import { knnAdapter } from './knnAdapter.js';
 // session reducer. The unified playground runtime owns the session, and the
 // Primitive Materializer owns visualization composition (adapters never
 // produce primitives).
-const adapters = [linearRegressionAdapter, knnAdapter];
+const adapters = [linearRegressionAdapter, knnAdapter, mlpAdapter];
 const byId = new Map(adapters.map((adapter) => [adapter.id, adapter]));
 
 export function listModelAdapters() {

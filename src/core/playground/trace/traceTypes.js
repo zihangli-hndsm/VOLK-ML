@@ -31,6 +31,17 @@ export const TRACE_EVENTS = {
     'prediction.emitted',
     'evaluation.completed',
   ],
+  'mlp': [
+    'data.loaded',
+    'mlp.initialized',
+    'loss.measured',
+    'gradient.computed',
+    'parameters.updated',
+    'training.completed',
+    'query.received',
+    'mlp.hiddenActivated',
+    'prediction.emitted',
+  ],
 };
 
 import { validateType } from '../visualization/typeContracts.js';
@@ -65,6 +76,8 @@ export const TRACE_PAYLOAD_SCHEMAS = {
   'knn.voteUpdated': { required: { counts: 'object' }, optional: { predictedLabel: 'string', tie: 'boolean' } },
   'prediction.emitted': { required: { label: 'string' }, optional: { k: 'integer' } },
   'evaluation.completed': { required: {}, optional: { accuracy: 'number|null', k: 'integer' } },
+  'mlp.initialized': { required: { hiddenSize: 'integer' }, optional: { inputSize: 'integer', outputSize: 'integer' } },
+  'mlp.hiddenActivated': { required: { index: 'integer' }, optional: { activation: 'number' } },
 };
 
 // Validates an emitted trace event against its payload schema. Required
