@@ -47,10 +47,22 @@ export const mlpPlayground = {
   validateSource(source) {
     if (!source || typeof source !== 'object') throw playgroundError('INVALID_PLAYGROUND_SOURCE');
     if (source.kind !== 'example') throw playgroundError('INVALID_PLAYGROUND_SOURCE', { kind: source.kind });
-    const featureColumns = Array.isArray(source.featureColumns) && source.featureColumns.length >= 2
+    // F.1 intentionally supports only the deterministic XOR example source;
+    // the adapter/math read the x1/x2 features directly. Do not advertise a
+    // broader source contract than the implementation supports. Generic
+    // workspace-dataset feature mapping is later dataset-integration work.
+    const featureColumns = Array.isArray(source.featureColumns)
+      && source.featureColumns.length === 2
+      && source.featureColumns.includes('x1')
+      && source.featureColumns.includes('x2')
       ? source.featureColumns
       : null;
-    if (!featureColumns) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least two numeric features' });
+    if (!featureColumns) {
+      throw playgroundError('INVALID_PLAYGROUND_SOURCE', {
+        reason: 'MLP F.1 requires the deterministic x1/x2 example representation',
+        featureColumns: source.featureColumns,
+      });
+    }
     const points = Array.isArray(source.points)
       ? source.points.map((point, index) => ({
         id: point.id ?? index,

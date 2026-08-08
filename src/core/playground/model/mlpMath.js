@@ -134,18 +134,27 @@ function finiteParams(params) {
 }
 
 // Deterministic full-batch gradient-descent training. Returns the final
-// parameters plus a per-step history with loss, representative parameter
-// movement (weight / bias) and the stop reason, mirroring the LR adapter's
-// failure semantics:
-//   'learning-rate-too-high' when a finite step increases the loss,
-//   'diverged' when parameters become non-finite.
-export function trainMlp({ samples, params, learningRate, steps, seed = DEFAULT_MLP_SEED }) {
-  let current = {
+// parameters plus a per-step history. Every history entry carries a
+// JSON-safe detached snapshot of the full parameters that state adopts, so
+// playback can reconstruct each training step (PR F.1.1):
+//   - normal completion: history[last].params === result.params
+//   - 'learning-rate-too-high': the finite loss-increasing update is
+//     recorded in history AND adopted as the final visible parameters
+//     (consistent with the LR teaching behavior); parameters.updated always
+//     describes a state the model actually adopts
+//   - 'diverged': the non-finite update is never adopted; result.params stays
+//     at the last finite parameters
+function cloneParams(params) {
+  return {
     W1: params.W1.map((row) => [...row]),
     b1: [...params.b1],
     W2: params.W2.map((row) => [...row]),
     b2: params.b2,
   };
+}
+
+export function trainMlp({ samples, params, learningRate, steps, seed = DEFAULT_MLP_SEED }) {
+  let current = cloneParams(params);
   const history = [];
   let previousLoss = mlpLossForSamples(current, samples);
   let stopReason = null;
@@ -188,13 +197,17 @@ export function trainMlp({ samples, params, learningRate, steps, seed = DEFAULT_
       weight: next.W1[0][0],
       bias: next.b1[0],
       gradientMagnitude,
+      params: cloneParams(next),
     });
     if (nextLoss - previousLoss > 1e-9 * Math.max(1, Math.abs(previousLoss))) {
       stopReason = 'learning-rate-too-high';
+      // The finite loss-increasing update was recorded above and becomes the
+      // final visible parameters before training stops.
+      current = cloneParams(next);
       break;
     }
     previousLoss = nextLoss;
-    current = next;
+    current = cloneParams(next);
   }
   return { params: current, history, stopReason };
 }

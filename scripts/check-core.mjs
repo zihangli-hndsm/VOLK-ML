@@ -112,6 +112,7 @@ import {
   voteNeighbors,
 } from '../src/core/knnMath.js';
 import {
+  computeMlpDecisionRegions,
   generateXorDataset,
   initMlpParameters,
   predictMlp,
@@ -5169,6 +5170,180 @@ assert.throws(
         const diverged = trainMlp({ samples: xorSamples, params: xorParams, learningRate: 20, steps: 20, seed: 2026 });
         assert.equal(diverged.stopReason, 'learning-rate-too-high', 'an excessive learning rate reports a failure stop');
         await f1Host.close();
+      }
+
+      // PR F.1.1: MLP playback is semantically time-consistent.
+      {
+        const f11Source = {
+          kind: 'example', name: 'XOR', fingerprint: 'f11',
+          points: generateXorDataset({ seed: 3 }),
+          featureColumns: ['x1', 'x2'],
+        };
+        const f11Playground = getPlayground('mlp-classification');
+        const f11Fresh = () => createPlaygroundSession(f11Playground, { source: f11Source, seed: 3, sessionId: 'f11' });
+        const f11Samples = f11Source.points.map((point) => ({
+          x: [point.features.x1, point.features.x2],
+          label: point.label,
+        }));
+        const expectedAccuracy = (params) => (
+          f11Samples.filter((sample) => predictMlp(params, sample.x).label === sample.label).length
+          / f11Samples.length
+        );
+
+        // 1. Training playback updates the active parameters from the same
+        // trajectory: step 0 = baseline, step N = history[N-1].params,
+        // final = history[last].params, and an early snapshot differs.
+        let f11Session = dispatchPlaygroundAction(f11Fresh(), { type: 'START_TRAINING' });
+        const f11Baseline = structuredClone(f11Session.modelState.params);
+        const f11History = f11Session.modelState.training.history;
+        assert.ok(f11History.length > 0 && Boolean(f11History[0].params), 'history entries carry detached params snapshots');
+        assert.deepEqual(f11Session.modelState.params, f11Baseline, 'START_TRAINING keeps step 0 at the baseline params');
+        assert.equal(f11Session.modelState.training.currentStep, 0, 'START_TRAINING leaves the timeline at step 0');
+        f11Session = dispatchPlaygroundAction(f11Session, { type: 'STEP' });
+        assert.deepEqual(f11Session.modelState.params, f11History[0].params, 'step 1 adopts history[0].params');
+        const f11Scene1 = derivePlaygroundSnapshot(f11Session).scene;
+        assert.equal(f11Scene1.metrics.accuracy, expectedAccuracy(f11History[0].params), 'scene accuracy matches the active step-1 params');
+        f11Session = dispatchPlaygroundAction(f11Session, { type: 'STEP' });
+        assert.deepEqual(f11Session.modelState.params, f11History[1].params, 'step 2 adopts history[1].params');
+        for (let index = f11Session.modelState.training.currentStep; index < f11History.length; index += 1) {
+          f11Session = dispatchPlaygroundAction(f11Session, { type: 'STEP' });
+        }
+        assert.deepEqual(f11Session.modelState.params, f11History.at(-1).params, 'the final step adopts history[last].params');
+        const f11EarlyScene = derivePlaygroundSnapshot(f11Fresh()).scene;
+        const f11LateScene = derivePlaygroundSnapshot(f11Session).scene;
+        assert.ok(
+          JSON.stringify(f11EarlyScene.network) !== JSON.stringify(f11LateScene.network)
+          || JSON.stringify(f11EarlyScene.matrix) !== JSON.stringify(f11LateScene.matrix),
+          'an early snapshot differs from the final one (playback is not fake)',
+        );
+        f11Session = dispatchPlaygroundAction(f11Session, { type: 'SEEK', step: 0 });
+        assert.deepEqual(f11Session.modelState.params, f11Baseline, 'SEEK(0) restores the baseline params');
+        assert.equal(f11Session.timeline.step, 0, 'SEEK(0) resets the timeline');
+
+        // 2. SEEK(N) equals STEP x N for semantic model state.
+        for (const target of [1, 3, 7]) {
+          const seek = dispatchPlaygroundAction(dispatchPlaygroundAction(f11Fresh(), { type: 'START_TRAINING' }), { type: 'SEEK', step: target });
+          let stepped = dispatchPlaygroundAction(f11Fresh(), { type: 'START_TRAINING' });
+          for (let index = 0; index < target; index += 1) stepped = dispatchPlaygroundAction(stepped, { type: 'STEP' });
+          assert.deepEqual(seek.modelState.params, stepped.modelState.params, `SEEK(${target}) params equal STEP x ${target}`);
+          assert.deepEqual(
+            derivePlaygroundSnapshot(seek).scene.metrics,
+            derivePlaygroundSnapshot(stepped).scene.metrics,
+            `SEEK(${target}) metrics equal STEP x ${target}`,
+          );
+        }
+
+        // 3. Decision regions follow the active parameters; the initial grid
+        // is never silently reused next to a trained network.
+        let f11Regions = f11Fresh();
+        f11Regions = dispatchPlaygroundAction(f11Regions, { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true });
+        f11Regions = dispatchPlaygroundAction(f11Regions, { type: 'START_TRAINING' });
+        const f11InitialGrid = structuredClone(f11Regions.modelState.decisionRegions);
+        f11Regions = dispatchPlaygroundAction(f11Regions, { type: 'SEEK', step: f11History.length });
+        const f11ActiveParams = f11Regions.modelState.params;
+        assert.deepEqual(
+          f11Regions.modelState.decisionRegions.cells,
+          computeMlpDecisionRegions({ params: f11ActiveParams, points: f11Source.points, resolution: 48 }).cells,
+          'final decision-region cells equal the grid of the final active params',
+        );
+        assert.notDeepEqual(
+          f11Regions.modelState.decisionRegions.cells,
+          f11InitialGrid.cells,
+          'the initial random grid is not reused after training',
+        );
+
+        // 4. Prediction explanation never leaks the final output before the
+        // final reveal: input -> hidden activations -> output.
+        let f11Predict = dispatchPlaygroundAction(f11Fresh(), { type: 'START_PREDICT' });
+        const f11Reveal0 = derivePlaygroundSnapshot(f11Predict).scene;
+        assert.ok(
+          f11Reveal0.network.nodes.filter((node) => node.layer === 1).every((node) => node.value === null)
+          && f11Reveal0.network.nodes.find((node) => node.id === 'out').value === null,
+          'before any reveal, hidden and output values are null',
+        );
+        assert.equal(f11Reveal0.metrics.predictedLabel, null, 'before any reveal, the predicted label is hidden');
+        f11Predict = dispatchPlaygroundAction(f11Predict, { type: 'STEP' });
+        const f11Reveal1 = derivePlaygroundSnapshot(f11Predict).scene;
+        const f11Hidden1 = f11Reveal1.network.nodes.filter((node) => node.layer === 1);
+        assert.ok(
+          typeof f11Hidden1[0].value === 'number' && f11Hidden1.slice(1).every((node) => node.value === null),
+          'the first reveal exposes exactly the first hidden activation',
+        );
+        assert.equal(f11Reveal1.network.nodes.find((node) => node.id === 'out').value, null, 'the output stays hidden mid-reveal');
+        assert.equal(f11Reveal1.metrics.predictedLabel, null, 'the predicted label stays hidden mid-reveal');
+        for (let index = f11Predict.modelState.revealed; index < f11Predict.modelState.hiddenSize; index += 1) {
+          f11Predict = dispatchPlaygroundAction(f11Predict, { type: 'STEP' });
+        }
+        const f11RevealFinal = derivePlaygroundSnapshot(f11Predict).scene;
+        assert.ok(
+          f11RevealFinal.network.nodes.filter((node) => node.layer === 1).every((node) => typeof node.value === 'number'),
+          'after the final reveal all hidden activations are visible',
+        );
+        assert.equal(
+          typeof f11RevealFinal.network.nodes.find((node) => node.id === 'out').value,
+          'number',
+          'after the final reveal the output probability is visible',
+        );
+        assert.ok(f11RevealFinal.metrics.predictedLabel !== null, 'after the final reveal the predicted label is set');
+        assert.ok(f11Predict.traces.some((trace) => trace.type === 'prediction.emitted'), 'the final reveal emits prediction.emitted');
+
+        // 5. Trace semantics are model-neutral: MLP uses hiddenUnits, KNN
+        // keeps k; neither misuses the other's field.
+        const f11MlpEmitted = f11Predict.traces.find((trace) => trace.type === 'prediction.emitted');
+        assert.ok(
+          Number.isInteger(f11MlpEmitted.payload.hiddenUnits) && f11MlpEmitted.payload.k === undefined,
+          'MLP prediction.emitted carries hiddenUnits, never KNN k',
+        );
+        const f11KnnSession = createPlaygroundSession(getPlayground('knn-classification'), {
+          source: {
+            kind: 'example', name: 'Example', fingerprint: 'f11-knn',
+            points: Array.from({ length: 60 }, (_, index) => ({
+              id: `k${index}`,
+              features: { a: (index % 6) - 3 + (index % 2), b: Math.floor(index / 6) - 5 },
+              label: index % 2 === 0 ? 'red' : 'blue',
+            })),
+            featureColumns: ['a', 'b'],
+          },
+          seed: 3,
+          sessionId: 'f11-knn',
+        });
+        const f11KnnReplay = dispatchPlaygroundAction(f11KnnSession, { type: 'SCRIPT_LOAD', script: structuredClone(getPreset('knn.intro')) });
+        const f11KnnTotal = f11KnnReplay.scriptState.totalSteps;
+        let f11Knn = f11KnnReplay;
+        for (let index = 0; index < f11KnnTotal; index += 1) f11Knn = dispatchPlaygroundAction(f11Knn, { type: 'SCRIPT_STEP' });
+        const f11KnnEmitted = f11Knn.traces.find((trace) => trace.type === 'prediction.emitted');
+        assert.ok(
+          Number.isInteger(f11KnnEmitted.payload.k) && f11KnnEmitted.payload.hiddenUnits === undefined,
+          'KNN prediction.emitted keeps k and never uses hiddenUnits',
+        );
+
+        // 6. The MLP source contract matches F.1 capability: incompatible
+        // feature names reject instead of producing NaN inputs.
+        const f11BadSource = {
+          kind: 'example', name: 'Bad', fingerprint: 'bad',
+          points: generateXorDataset({ seed: 3 }).map((point, index) => ({
+            id: `p${index}`,
+            features: { a: point.features.x1, b: point.features.x2 },
+            label: point.label,
+          })),
+          featureColumns: ['a', 'b'],
+        };
+        assert.throws(
+          () => createPlaygroundSession(f11Playground, { source: f11BadSource, seed: 3, sessionId: 'bad' }),
+          (error) => error.code === 'INVALID_PLAYGROUND_SOURCE',
+          'an example with non-x1/x2 feature columns is rejected',
+        );
+
+        // 7. The preset's training/prediction boundary is internally
+        // consistent: reveal count before prediction equals the scenario's
+        // configured trainingSteps (derived, not hardcoded).
+        const f11Preset = getPreset('mlp.intro');
+        const f11ConfigStep = f11Preset.steps.find((step) => step.setControl?.trainingSteps !== undefined);
+        const f11TrainIndex = f11Preset.steps.findIndex((step) => step.invoke?.operation === 'traceFit');
+        const f11PredictIndex = f11Preset.steps.findIndex((step) => step.invoke?.operation === 'tracePredict');
+        const f11RevealCount = f11Preset.steps.slice(f11TrainIndex + 1, f11PredictIndex).filter((step) => step.reveal).length;
+        assert.ok(f11ConfigStep, 'the preset configures trainingSteps before training');
+        assert.equal(f11RevealCount, f11ConfigStep.setControl.trainingSteps, 'training reveals equal the configured trainingSteps');
       }
 
       // LR and KNN existing presets remain unchanged.
