@@ -4,6 +4,7 @@ import { getPreset } from './visualization/presetRegistry.js';
 import { materializePrimitives } from './visualization/primitiveMaterializer.js';
 import { createBindingContext, resolveValue } from './visualization/bindings.js';
 import { validateScript } from './visualization/scriptValidator.js';
+import { scriptError } from './visualization/scriptErrors.js';
 import { buildDataState } from './data/datasetAdapter.js';
 import { getPlayground } from '../playgrounds/registry.js';
 import {
@@ -247,10 +248,7 @@ export function dispatchRuntimeAction(session, action) {
   if (action.type === 'SCRIPT_LOAD') {
     validateScript(action.script);
     if (action.script.model.adapter !== session.adapterId) {
-      throw Object.assign(new Error('SCRIPT_MODEL_MISMATCH'), {
-        code: 'SCRIPT_MODEL_MISMATCH',
-        details: { expected: session.adapterId, received: action.script.model.adapter },
-      });
+      throw scriptError('SCRIPT_MODEL_MISMATCH', { expected: session.adapterId, received: action.script.model.adapter });
     }
     return {
       ...session,

@@ -29,18 +29,19 @@ export function isKnownPrimitiveType(type) {
 
 export function validatePrimitive(primitive) {
   if (!primitive || typeof primitive !== 'object' || Array.isArray(primitive)) {
-    throw Object.assign(new Error('SCRIPT_UNKNOWN_PRIMITIVE'), { code: 'SCRIPT_UNKNOWN_PRIMITIVE' });
+    throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE');
   }
   if (typeof primitive.id !== 'string' || !primitive.id) {
-    throw Object.assign(new Error('SCRIPT_UNKNOWN_PRIMITIVE'), { code: 'SCRIPT_UNKNOWN_PRIMITIVE', details: { reason: 'id' } });
+    throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE', { reason: 'id' });
   }
   if (!isKnownPrimitiveType(primitive.type)) {
-    throw Object.assign(new Error('SCRIPT_UNKNOWN_PRIMITIVE'), { code: 'SCRIPT_UNKNOWN_PRIMITIVE', details: { type: primitive.type } });
+    throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE', { type: primitive.type });
   }
   try {
     structuredClone(primitive);
   } catch {
-    throw Object.assign(new Error('SCRIPT_UNKNOWN_PRIMITIVE'), { code: 'SCRIPT_UNKNOWN_PRIMITIVE', details: { reason: 'not json-safe' } });
+    throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE', { reason: 'not json-safe' });
   }
   return primitive;
 }
+import { scriptError } from './scriptErrors.js';

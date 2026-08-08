@@ -58,8 +58,11 @@ export function buildDataState({ source, workspaceDataset }) {
   }
   if (Array.isArray(source?.featureColumns) && source.featureColumns.length >= 2) {
     return {
-      schema: source.featureColumns.map((name) => ({ name, type: 'number', missing: 0 })),
-      rows: source.points.map((point) => ({ ...point.features })),
+      schema: [
+        ...source.featureColumns.map((name) => ({ name, type: 'number', missing: 0 })),
+        { name: 'label', type: 'string', missing: 0 },
+      ],
+      rows: source.points.map((point) => ({ ...point.features, label: point.label })),
       task: 'classification',
       featureColumns: [...source.featureColumns],
       targetColumn: 'label',

@@ -6,9 +6,7 @@
 // declares exactly these prefixes and the runtime provides exactly these
 // objects, so a valid binding never resolves to `undefined` context.
 
-export function scriptRuntimeError(code, details = {}) {
-  return Object.assign(new Error(code), { code, details });
-}
+import { scriptError as scriptRuntimeError } from './scriptErrors.js';
 
 function requireArray(values, transform) {
   if (!Array.isArray(values)) {

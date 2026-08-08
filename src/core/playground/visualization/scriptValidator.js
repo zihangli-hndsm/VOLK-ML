@@ -8,15 +8,12 @@ import {
   isJsonSafe,
   SCRIPT_VERSION,
 } from './scriptSchema.js';
+import { scriptError } from './scriptErrors.js';
 
 const MAX_STEPS = 200;
 const MAX_PRIMITIVES = 40;
 const MAX_DURATION_MS = 10000;
 const MAX_DECISION_RESOLUTION = 48;
-
-const scriptError = (code, details = {}) => (
-  Object.assign(new Error(code), { code, details })
-);
 
 function collectBindings(value, bindings) {
   if (typeof value === 'string' && (
@@ -51,11 +48,13 @@ export function validateScript(script) {
 
   const primitiveIds = new Set();
   const bindings = new Set();
+  let annotationCount = 0;
   for (const primitive of script.primitives) {
     if (typeof primitive.id !== 'string' || !primitive.id || primitiveIds.has(primitive.id)) {
       throw scriptError('INVALID_SCRIPT', { reason: 'primitive id must be unique' });
     }
     primitiveIds.add(primitive.id);
+    if (primitive.type === 'annotation') annotationCount += 1;
     if (!isKnownPrimitiveType(primitive.type)) {
       throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE', { type: primitive.type, id: primitive.id });
     }
@@ -93,6 +92,19 @@ export function validateScript(script) {
     }
     const operations = Object.keys(step).filter((key) => ALLOWED_STEP_OPERATIONS.includes(key));
     if (!operations.length) throw scriptError('INVALID_SCRIPT', { reason: 'step has no operation' });
+    for (const operation of ['show', 'hide', 'highlight']) {
+      if (step[operation] !== undefined && !primitiveIds.has(step[operation])) {
+        throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE', {
+          stepId: step.id,
+          operation,
+          primitiveId: step[operation],
+        });
+      }
+    }
+    if (step.annotate !== undefined) {
+      if (annotationCount === 0) throw scriptError('SCRIPT_ANNOTATION_TARGET_MISSING', { stepId: step.id });
+      if (annotationCount > 1) throw scriptError('SCRIPT_ANNOTATION_TARGET_AMBIGUOUS', { stepId: step.id, count: annotationCount });
+    }
     if (Number.isFinite(Number(step.durationMs)) && Number(step.durationMs) > MAX_DURATION_MS) {
       throw scriptError('SCRIPT_TOO_COMPLEX', { reason: 'duration' });
     }

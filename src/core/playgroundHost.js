@@ -10,6 +10,17 @@ import { teachingDatasetById } from './teachingDatasets.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
 
+// Playback routing: with an active Visualization Script the host controls the
+// Script Runtime (SCRIPT_* actions); without one it falls back to the model
+// runtime actions. UI and Agent share this single routing layer.
+function hasActiveScript(session) {
+  return Boolean(
+    session?.script
+    && session?.scriptState
+    && session.scriptState.totalSteps > 0
+  );
+}
+
 function resolveSource(playground, dataset) {
   if (playground.id === 'linear-regression') {
     if (dataset?.task === 'regression') {
@@ -152,11 +163,21 @@ export function createPlaygroundHost({ getDataset }) {
       return derivePlaygroundSnapshot(session);
     },
 
-    async play() { return this.dispatch({ type: 'PLAY' }); },
-    async pause() { return this.dispatch({ type: 'PAUSE' }); },
-    async step() { return this.dispatch({ type: 'STEP' }); },
-    async seek(step) { return this.dispatch({ type: 'SEEK', step }); },
-    async reset() { return this.dispatch({ type: 'RESET' }); },
+    async play() {
+      return this.dispatch(hasActiveScript(session) ? { type: 'SCRIPT_PLAY' } : { type: 'PLAY' });
+    },
+    async pause() {
+      return this.dispatch(hasActiveScript(session) ? { type: 'SCRIPT_PAUSE' } : { type: 'PAUSE' });
+    },
+    async step() {
+      return this.dispatch(hasActiveScript(session) ? { type: 'SCRIPT_STEP' } : { type: 'STEP' });
+    },
+    async seek(step) {
+      return this.dispatch(hasActiveScript(session) ? { type: 'SCRIPT_SEEK', step } : { type: 'SEEK', step });
+    },
+    async reset() {
+      return this.dispatch(hasActiveScript(session) ? { type: 'SCRIPT_RESET' } : { type: 'RESET' });
+    },
 
     async runScenario(scenarioId) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
