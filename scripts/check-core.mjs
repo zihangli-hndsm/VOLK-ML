@@ -72,6 +72,9 @@ import { listPresets, getPreset } from '../src/core/playground/visualization/pre
 import { validateScript } from '../src/core/playground/visualization/scriptValidator.js';
 import { createScriptRuntime } from '../src/core/playground/visualization/scriptRuntime.js';
 import { dryRunScript } from '../src/core/playground/agent/dryRun.js';
+import { planTeachingGoal } from '../src/core/playground/agent/teachingPlanner.js';
+import { composeScriptFromPlan } from '../src/core/playground/agent/teachingComposer.js';
+import { validateTeachingPlan } from '../src/core/playground/agent/teachingPlan.js';
 import { BINDING_TRANSFORMS, createBindingContext, resolveValue } from '../src/core/playground/visualization/bindings.js';
 import { SCRIPT_ERROR_CODES } from '../src/core/playground/visualization/scriptErrors.js';
 import { resolveLanguagePreference } from '../src/core/languagePolicy.js';
@@ -3846,6 +3849,171 @@ assert.throws(
           );
         }
       }
+    }
+
+    // PR E.1: TeachingPlan + deterministic composer.
+    {
+      // The planner consumes inspectContext(); the k control schema comes
+      // from the Playground descriptor, never from hardcoded knowledge.
+      const host = createPlaygroundHost({ getDataset: () => null });
+      await host.open({ playgroundId: 'knn-classification' });
+      const knnContext = host.inspectContext();
+      const kSchema = knnContext.controlSchemas.find((schema) => schema.key === 'k');
+      assert.ok(kSchema && kSchema.min === 1 && kSchema.max === 20, 'k control schema comes from the descriptor');
+
+      // TeachingPlan v1: JSON-safe, deterministic, declarative.
+      const plan = planTeachingGoal({ goal: 'k=1 和 k=15 的区别', context: knnContext });
+      assert.equal(plan.version, 1, 'TeachingPlan schema version');
+      assert.equal(plan.goal.type, 'compare-control', 'k comparison maps to compare-control');
+      assert.deepEqual(plan.goal.values, [1, 15], 'comparison values are parsed from the goal');
+      assert.doesNotThrow(() => structuredClone(plan), 'TeachingPlan is JSON-safe');
+      assert.doesNotThrow(() => validateTeachingPlan(structuredClone(plan)), 'TeachingPlan round-trips through its validator');
+
+      // Unsupported / invalid goals are rejected with stable errors.
+      assert.throws(
+        () => planTeachingGoal({ goal: '', context: knnContext }),
+        (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED',
+        'empty goals are rejected',
+      );
+      assert.throws(
+        () => planTeachingGoal({ goal: { type: 'generate-video' }, context: knnContext }),
+        (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED',
+        'unsupported goal types are rejected',
+      );
+      assert.throws(
+        () => planTeachingGoal({ goal: { type: 'compare-control', control: 'nonexistent', values: [1, 5] }, context: knnContext }),
+        (error) => error.code === 'TEACHING_CONTROL_INVALID',
+        'undeclared controls are rejected',
+      );
+      assert.throws(
+        () => planTeachingGoal({ goal: 'k=25 和 k=30 的区别', context: knnContext }),
+        (error) => error.code === 'TEACHING_VALUE_OUT_OF_RANGE',
+        'comparison values above the schema max are rejected',
+      );
+      assert.throws(
+        () => planTeachingGoal({ goal: 'k=0 和 k=5 的区别', context: knnContext }),
+        (error) => error.code === 'TEACHING_VALUE_OUT_OF_RANGE',
+        'comparison values below the schema min are rejected',
+      );
+
+      // The planner only uses declared controls: on LR a k=... goal falls
+      // back to a process explanation instead of inventing a k control.
+      await host.close();
+      await host.open({ playgroundId: 'linear-regression' });
+      const lrContext = host.inspectContext();
+      const lrFallback = planTeachingGoal({ goal: 'k=1 和 k=15 的区别', context: lrContext });
+      assert.equal(lrFallback.goal.type, 'explain-process', 'planner never plans an undeclared control');
+      const lrSchema = lrContext.controlSchemas.find((schema) => schema.key === 'learningRate');
+      const lrWhatIf = planTeachingGoal({ goal: '学习率太高会发生什么', context: lrContext });
+      assert.equal(lrWhatIf.goal.type, 'what-if', 'learning-rate goal maps to what-if');
+      assert.ok(
+        lrWhatIf.goal.value >= lrSchema.min && lrWhatIf.goal.value <= lrSchema.max,
+        'what-if value conforms to the control schema',
+      );
+
+      // Composer only emits declared primitives, canonical bindings and
+      // declared operations (no model-specific renderer knowledge).
+      const lrWhatIfScript = composeScriptFromPlan({ plan: lrWhatIf, context: lrContext });
+      const declaredPrimitiveTypes = new Set(listPrimitiveSchemas().map((schema) => schema.type));
+      const checkComposedScript = (script, context) => {
+        for (const primitive of script.primitives) {
+          assert.ok(declaredPrimitiveTypes.has(primitive.type), `composer only emits declared primitives (${primitive.type})`);
+          const schema = getPrimitiveSchema(primitive.type);
+          for (const [prop, binding] of Object.entries(primitive.props ?? {})) {
+            assert.ok(schema.props[prop], `composer binds a declared prop ${primitive.type}.${prop}`);
+            assert.ok(
+              (schema.compatibleBindings[prop] ?? []).includes(binding),
+              `${primitive.type}.${prop} uses a canonical compatible binding`,
+            );
+          }
+        }
+        for (const step of script.steps) {
+          if (step.invoke) {
+            assert.ok(context.model.operations[step.invoke.operation], `composer only invokes declared operations (${step.invoke.operation})`);
+          }
+        }
+        assert.doesNotThrow(() => validateScript(script), 'composed script passes the validator');
+      };
+      checkComposedScript(lrWhatIfScript, lrContext);
+      const lrDryRun = dryRunScript({
+        script: lrWhatIfScript,
+        session: createPlaygroundSession(lrPlayground, { source: lrSource, seed: 3, sessionId: 'e1-lr-whatif' }),
+      });
+      assert.equal(lrDryRun.valid, true, 'LR what-if script passes the strict dry run');
+      assert.equal(lrDryRun.warnings.length, 0, 'LR what-if script resolves every binding without warnings');
+      await host.close();
+
+      // Capture semantics: deterministic replay, semantic captures and
+      // baseline restoration without corrupting session/script baselines.
+      await host.open({ playgroundId: 'knn-classification' });
+      const knnCompareContext = host.inspectContext();
+      const knnPlan = planTeachingGoal({
+        goal: { type: 'compare-control', control: 'k', values: [1, 15] },
+        context: knnCompareContext,
+      });
+      const knnScript = composeScriptFromPlan({ plan: knnPlan, context: knnCompareContext });
+      checkComposedScript(knnScript, knnCompareContext);
+      assert.ok(
+        knnScript.steps.some((step) => step.capture?.id === 'baseline')
+        && knnScript.steps.some((step) => step.restoreCapture?.id === 'baseline'),
+        'comparison script captures and restores a baseline',
+      );
+
+      const replayComparison = (seed) => {
+        let session = createPlaygroundSession(knnPlayground, { source: knnSource2, seed, sessionId: 'e1-replay' });
+        session = dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: structuredClone(knnScript) });
+        const total = session.scriptState.totalSteps;
+        const snapshots = [];
+        for (let index = 0; index < total; index += 1) {
+          session = dispatchPlaygroundAction(session, { type: 'SCRIPT_STEP' });
+          snapshots.push(derivePlaygroundSnapshot(session));
+        }
+        return { session, snapshots };
+      };
+      const replayA = replayComparison(11);
+      const replayB = replayComparison(11);
+      assert.deepEqual(
+        replayA.snapshots.map((snapshot) => snapshot.controls),
+        replayB.snapshots.map((snapshot) => snapshot.controls),
+        'capture replay is deterministic for the same seed',
+      );
+      assert.deepEqual(replayA.snapshots.at(-1).scene, replayB.snapshots.at(-1).scene, 'final scenes replay identically');
+      const capturesA = replayA.session.captures;
+      assert.equal(capturesA.baseline.controls.k, 5, 'baseline captures the pre-comparison k');
+      assert.equal(capturesA['1'].controls.k, 1, 'left capture stores k=1');
+      assert.equal(capturesA['15'].controls.k, 15, 'right capture stores k=15');
+      assert.ok(capturesA['1'].scene?.voting && capturesA['15'].scene?.voting, 'captures store semantic scene data');
+      assert.notDeepEqual(capturesA['1'].scene, capturesA['15'].scene, 'left and right captures differ semantically');
+      assert.doesNotThrow(() => structuredClone(capturesA), 'captures are JSON-safe');
+      assert.equal(replayA.session.scriptBaseline.controls.k, 5, 'scriptBaseline stays at SCRIPT_LOAD time');
+      assert.equal(replayA.session.baseline.controls.k, 5, 'sessionBaseline stays at open time');
+
+      // Strict dry run passes with zero unresolved optional bindings.
+      const dryAgent = createPlaygroundAgentApi(host);
+      const dryResult = dryAgent.dryRunScript(structuredClone(knnScript));
+      assert.equal(dryResult.valid, true, 'composed comparison script passes the strict dry run');
+      assert.equal(dryResult.warnings.length, 0, 'composed comparison script has no unresolved optional bindings');
+
+      // Agent plan -> composeScript -> loadScript end-to-end, with stable
+      // teaching error codes passing through the Agent normalization.
+      const agentPlan = await dryAgent.plan('k=1 和 k=15 的区别');
+      assert.equal(agentPlan.goal.type, 'compare-control', 'agent plan works');
+      const agentComposed = await dryAgent.composeScript(agentPlan);
+      assert.equal(agentComposed.dryRun.valid, true, 'agent composeScript dry-runs the composed script');
+      await dryAgent.loadScript(agentComposed.script);
+      const agentTotal = dryAgent.getState().scriptState.totalSteps;
+      for (let index = 0; index < agentTotal; index += 1) await dryAgent.step();
+      assert.equal(dryAgent.getState().scriptState.status, 'completed', 'agent replayed the composed script');
+      await assert.rejects(
+        dryAgent.plan({ type: 'compare-control', control: 'k', values: [25, 30] }),
+        (error) => error.code === 'TEACHING_VALUE_OUT_OF_RANGE',
+        'agent surfaces teaching errors with stable codes',
+      );
+      await host.close();
+
+      // LR and KNN existing presets remain unchanged.
+      assert.doesNotThrow(() => validateScript(getPreset('knn.intro')), 'knn.intro still validates');
+      assert.doesNotThrow(() => validateScript(getPreset('linear-regression.intuition')), 'LR intuition preset still validates');
     }
   }
 }

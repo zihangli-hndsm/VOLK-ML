@@ -69,6 +69,62 @@ User preference owns language; example content owns the example. No `PROJECT_VER
 - Script state (`scriptState: { status, step, totalSteps }`) is separate from the model timeline, so a 7-step script is never conflated with 20 training steps.
 - `RESET`/script `reset`/`seek`/replay all return to the session **baseline** (initial controls + source + seed), so `fresh first-N == full-run-then-seek-N == reset-then-N`.
 
+## TeachingPlan and deterministic composer (PR E.1)
+
+PR E.1 introduces the intermediate **TeachingPlan** layer between a teaching
+goal and a Visualization Script:
+
+```text
+goal
+-> inspectContext
+-> Teaching Planner
+-> TeachingPlan
+-> Composer
+-> Visualization Script
+-> validateScript
+-> dryRunScript
+-> load
+```
+
+- `src/core/playground/agent/teachingPlan.js` defines the JSON-safe
+  TeachingPlan v1 schema: `{ version: 1, id, playgroundId, goal, phases }`.
+  A plan describes teaching intent (`explain-process` / `compare-control` /
+  `what-if` / `diagnose`), never renderer implementation.
+- `src/core/playground/agent/teachingPlanner.js` is the deterministic
+  planner. It consumes `inspectContext()`: control values are validated
+  against `controlSchemas` (min/max/options), so `k=25` on KNN or an
+  undeclared control rejects with a stable `TEACHING_*` code instead of
+  producing an impossible plan. Structured goal objects are the contract a
+  later LLM planner must obey; natural-language goals are matched by the
+  same schema-grounded rules.
+- `src/core/playground/agent/teachingComposer.js` is the Composer:
+  TeachingPlan -> Visualization Script. Primitives are discovered from the
+  PR D primitive schemas (`compatibleBindings`) and steps only invoke
+  operations declared in the adapter's `scriptOperations`. There is no
+  model-specific renderer branch.
+- Capture semantics (PR E.1): `capture` / `restoreCapture` are first-class
+  script step operations. A capture stores a JSON-safe snapshot of controls,
+  model state, data state and the derived semantic scene; restore returns to
+  it. Comparison plans (e.g. k=1 vs k=15) capture a baseline, run the first
+  configuration, capture the result, restore the baseline, run the second
+  configuration and capture that result. Capture/restore never corrupts
+  `sessionBaseline` or `scriptBaseline`, and replay is deterministic for the
+  same seed. `SCRIPT_CAPTURE_MISSING` is a stable script error code.
+- The Agent exposes `plan(goal)` and `composeScript(plan)` on
+  `canvas.playground` (additive; `apiVersion` stays 1). `composeScript`
+  validates and strict-dry-runs the composed script before returning it; the
+  caller loads it with the existing `loadScript()`.
+
+The primary acceptance path is:
+
+```text
+"Compare k=1 and k=15 and explain what changes."
+-> inspectContext -> TeachingPlan(compare-control, values [1, 15])
+-> compose script -> capture baseline -> run k=1 -> capture left
+-> restore baseline -> run k=15 -> capture right
+-> validateScript -> strict dry run -> deterministic replay
+```
+
 ## Layers
 
 ### Model adapters

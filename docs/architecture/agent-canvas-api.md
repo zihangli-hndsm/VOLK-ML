@@ -101,6 +101,8 @@ playground.exportScript();                      // same as getScript, for copy/d
 playground.dryRunScript(script);                // { valid, estimatedSteps, estimatedPrimitiveUpdates, decisionGridCost, warnings }
 await playground.generateScript({ goal, constraints }); // preset-first, returns { mode, script, rationale, dryRun, snapshot, fallback? }
 playground.inspectContext();                    // full machine-readable world model (PR D)
+await playground.plan(goal);                    // TeachingPlan (PR E.1): deterministic, schema-grounded
+await playground.composeScript(plan);           // TeachingPlan -> Visualization Script (PR E.1)
 ```
 
 - `inspectContext()` returns the Agent's world model: playground id/adapter/task, model capabilities + operation schemas + semantic schema, data context (features, target, row count, statistics, projection), controls, trace event list + payload schemas, primitive schemas, bindable prefixes, resource limits and current state. These answers come from schemas, not hardcoded prompts.
@@ -115,6 +117,9 @@ playground.inspectContext();                    // full machine-readable world m
 
 - `generateScript` is preset-first: exact preset → parameterized preset → generated minimal script. An external generator (e.g. a future LLM adapter) can be injected into the host (`createPlaygroundHost({ scriptGenerator })`); its output always passes the same validator and dry run before it is loaded.
 - Every accepted script is validated, dry-run replayed on a detached session clone, and only then loaded. Any failure falls back to the closest matching preset (`fallback: true`).
+- `plan(goal)` (PR E.1) converts a teaching goal into a JSON-safe **TeachingPlan v1**. The deterministic planner consumes the same `inspectContext()` the Agent reads: comparison values and what-if values are validated against `controlSchemas`, and the goal type (`explain-process` / `compare-control` / `what-if` / `diagnose`) is only produced when the context actually supports it. Impossible goals reject with stable `TEACHING_*` codes (`TEACHING_GOAL_UNSUPPORTED`, `TEACHING_CONTROL_INVALID`, `TEACHING_VALUE_OUT_OF_RANGE`, `TEACHING_PLAN_INVALID`).
+- `composeScript(plan)` (PR E.1) implements the deterministic Composer: TeachingPlan -> Visualization Script. Primitives and bindings are discovered from the PR D primitive schemas (`compatibleBindings`) and the model's declared `scriptOperations` - never from model-specific renderer code. The composed script is validated and strict-dry-run against the live session before it is returned; the caller then `loadScript()`s it. Comparison plans capture semantic snapshots (`capture`/`restoreCapture` steps) so k=1 vs k=15 style experiments are deterministic and replayable.
+- Teaching errors and `SCRIPT_CAPTURE_MISSING` pass through the Agent with their stable codes, exactly like the other Playground/`SCRIPT_*` contract errors.
 - Script contract errors reject with stable `SCRIPT_*` codes (`SCRIPT_ERROR_CODES`, including `INVALID_SCRIPT`); they are never wrapped as `OPERATION_FAILED`.
 - No LLM is called by default; scripts never contain executable content, DOM selectors, network calls or arbitrary expressions.
 

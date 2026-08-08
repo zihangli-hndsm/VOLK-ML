@@ -120,6 +120,14 @@ export function validateScript(script) {
       if (annotationCount === 0) throw scriptError('SCRIPT_ANNOTATION_TARGET_MISSING', { stepId: step.id });
       if (annotationCount > 1) throw scriptError('SCRIPT_ANNOTATION_TARGET_AMBIGUOUS', { stepId: step.id, count: annotationCount });
     }
+    for (const operation of ['capture', 'restoreCapture']) {
+      if (step[operation] !== undefined) {
+        if (!step[operation] || typeof step[operation] !== 'object'
+          || typeof step[operation].id !== 'string' || !step[operation].id) {
+          throw scriptError('INVALID_SCRIPT', { reason: `${operation} requires an id`, stepId: step.id });
+        }
+      }
+    }
     if (Number.isFinite(Number(step.durationMs)) && Number(step.durationMs) > MAX_DURATION_MS) {
       throw scriptError('SCRIPT_TOO_COMPLEX', { reason: 'duration' });
     }

@@ -202,3 +202,15 @@
 - LR `learningRate` 描述符 max 由 1 提升到 5（有依据：标准化 z-score 数据下 lr>1 才是演示“学习率过高”教学场景的必要条件），因此 D.2 的发散测试不再依赖越界 control；`learningRate: 6` 等越界值在公开路径被拒绝。
 - 文档：`agent-canvas-api.md` 与 `playgrounds.md` 更新 PR D.3 语义。
 - 验收：`npm run check`、`npm run check:compiler`、`npm run build`（680 modules）、`git diff --check` 全部通过；PR A–D.2 全部回归保持。
+
+## 2026-08-08 — TeachingPlan + Deterministic Composer（PR E.1）
+
+- 新增中间 TeachingPlan 层：目标教学链路变为 `goal → inspectContext → Teaching Planner → TeachingPlan → Composer → Visualization Script → validateScript → dryRunScript → load`；TeachingPlan v1 是 JSON-safe、模型无关的教学意图描述（`explain-process` / `compare-control` / `what-if` / `diagnose`）。
+- 确定性 Planner（`src/core/playground/agent/teachingPlanner.js`）只消费 `inspectContext()`：比较值与 what-if 值一律对照 `controlSchemas`（min/max/options）校验，未声明控件或越界值返回稳定错误 `TEACHING_CONTROL_INVALID` / `TEACHING_VALUE_OUT_OF_RANGE` / `TEACHING_GOAL_UNSUPPORTED` / `TEACHING_PLAN_INVALID`；结构化 goal 对象作为未来 LLM Planner 必须遵守的确定性契约。
+- 确定性 Composer（`src/core/playground/agent/teachingComposer.js`）从 PR D 的 primitive schema（`compatibleBindings`）与 adapter 的 `scriptOperations` 发现图元与绑定，无任何模型特判渲染分支；`setup` 步骤按 `controlSchemas` 过滤控件（KNN 不会收到 LR 专属控件，反之亦然）。
+- 新增 capture 语义：`capture` / `restoreCapture` 成为一等 script step 操作，capture 保存 JSON-safe 的 controls/modelState/dataState/语义 scene；比较型脚本（如 k=1 vs k=15）执行「capture baseline → 跑 k=1 → capture left → restore baseline → 跑 k=15 → capture right」，恢复不破坏 `sessionBaseline` / `scriptBaseline`，同 seed 重放完全确定；新增错误码 `SCRIPT_CAPTURE_MISSING`。
+- Agent 新增 `canvas.playground.plan(goal)` 与 `canvas.playground.composeScript(plan)`（additive，`apiVersion` 保持 1）；compose 产物先过 validator + 严格 dry run 才返回，由调用方 `loadScript()` 加载；`TEACHING_*` 错误与 `SCRIPT_CAPTURE_MISSING` 经 Agent 归一化透传。
+- 本地化：`playground.comparison.*`、`playground.whatIf.*`、`playground.process.*` 新增中英文键。
+- 测试（check-core 新增 PR E.1 块）：TeachingPlan JSON-safe/校验往返、空 goal 与未知 goal 类型拒绝、未声明控件拒绝、比较值越界拒绝、Planner 仅使用已声明控件（LR 收到 k=... 目标回落 explain-process）、Composer 仅使用已声明 primitive/兼容绑定/操作、capture 确定性重放、baseline 恢复与双 baseline 不被污染、composed script 过 validator + 严格 dry run（零 warning）、Agent plan→compose→load→replay 端到端、错误码透传、LR/KNN 现有 presets 不变。
+- 文档：`agent-canvas-api.md` 新增 `plan()` / `composeScript()` 与 `TEACHING_*` 错误码；`playgrounds.md` 新增 PR E.1 小节与验收路径。
+- 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`（683 modules）、`git diff --check` 全部通过；PR A–D.3 全部回归保持。已知限制：capture 不绑定 `$capture.*` 表达式（留待需要时再定义）；文本目标仅支持 k=... / 学习率关键词，更广的自然语言理解留给未来 LLM Planner。
