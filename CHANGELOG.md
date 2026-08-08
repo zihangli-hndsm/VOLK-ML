@@ -271,6 +271,22 @@
 - 文档：`playgrounds.md` 与 `agent-canvas-api.md` 更新为「show_failure_case 当前仅面向 learning-rate-too-high 停止机制」；本条目按 append-only 规则对 E.2.1 条目的 `diverged` 表述作出更正说明。
 - 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；E.2.1 全部行为回归保持（方向探针、state/schema 推导数值、visual/runtime/trace 证据分离、具体 primitive 绑定 fidelity、adapter 声明 teachingCapabilities、正常成功拒绝、KNN explain_prediction、compare fidelity、mode:'composed'、E.1 安全/资源契约、既有 presets）。合并后 PR E = FINAL PASS，进入 PR F。
 
+## 2026-08-09 — Toolkit 扩展 + MLP Playground（PR F.1）
+
+- 新增 4 个模型无关 primitive（typed props + placement + compatibleBindings + SSR smoke + 空 props 优雅降级）：
+  - `parameter-trajectory`（stage）：绘制 `{step, value}` 参数轨迹，绑定 `$model.training.parameterTrajectory`（LR 与 MLP scene 均新增派生字段）；
+  - `network-graph`（stage）：分层网络图（`networkNode`/`networkEdge`），绑定 `$model.network.nodes/edges`；
+  - `matrix-grid`（stage）：权重矩阵网格（`matrixCell`），绑定 `$model.matrix.rows/columns/cells`；
+  - `histogram`（side）：直方图（`histogramBin`），绑定 `$model.histogram.bins`。
+- 新增纯数学模块 `src/core/playground/model/mlpMath.js`：种子化 XOR 数据、种子化参数初始化（权重 [-1,1] 保证全批量梯度可学习）、tanh 隐层 + sigmoid 输出 + 二元交叉熵全批量反向传播、与 LR 一致的诚实失败语义（`learning-rate-too-high` / `diverged`）。
+- 新增 `mlp` adapter 与 `mlp-classification` playground：semantic schema（scatterPoints/axes/decisionRegions/training(lossHistory, parameterHistory, parameterTrajectory)/network/matrix/histogram/metrics/observation）、操作 `traceFit`（intent fit，reveal=trainingSteps）与 `tracePredict`（intent predict，隐层单元 reveal=hiddenUnits）、MLP trace 事件与 payload schema、声明式 teachingCapabilities（`show_training` + `explain_prediction`）；`show_failure_case` 在 MLP 上诚实不可用（`TEACHING_GOAL_UNSUPPORTED`）。
+- `mlp.intro` preset：训练 → 逐轮揭示 loss/参数轨迹 → 揭示查询点隐层激活；确定性重放、严格 dry run、20 个 render smoke 快照全部通过。
+- 统一层零模型分支：`playgroundRuntime.js` / `primitiveMaterializer.js` / `teachingComposer.js` / `teachingFidelity.js` / `PlaygroundStage.jsx` / `rendererRegistry.jsx` 均无 `mlp` 特判（源码级契约测试）；泛型 goal→plan→compose→fidelity 管线原样服务 MLP 的 `explain_prediction`、`show_training`、compare hiddenUnits、what-if learningRate。
+- MLP 数学确定性：同 seed + 控件 → 100% 学会 XOR（lr 0.5 / 50 步），极端学习率（20）触发诚实 `learning-rate-too-high` 停止。
+- 测试（check-core 新增 PR F.1 块）：MLP 注册与支持集推导、preset 校验/严格 dry run/确定性重放、trace payload 校验、Agent plan→compose→fidelity（explain/show_training/compare/what-if）、不支持目标拒绝、无模型分支源码断言、新 primitive 类型契约、XOR 学习与失败停止；D.1 的 semanticSchema↔compatibleBindings 契约循环纳入 MLP 上下文。
+- 文档：`playgrounds.md` 与 `agent-canvas-api.md` 更新 PR F.1 语义；append-only `CHANGELOG.md` 新增本条。
+- 验收：`npm run check`（含 render smoke 12 KNN + 8 LR + 20 MLP 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–E 全部回归保持。已知限制：MLP playground 暂通过 Agent 打开（`agent.open({ playgroundId: 'mlp-classification' })`），UI 入口（Ask Agent / script preview / 导出导入 / reviseScript）留待 PR F.2；workspace dataset 输入仍为确定性 XOR 示例。
+
 ## 2026-08-08 — Reverse Right Panel Width Slider Direction
 
 - 修复右参数面板宽度滑块的方向反馈问题：右面板锚定在视口右侧，其宽度滑块改为反转视觉方向（向左拖 = 更宽，向右拖 = 更窄），消除「滑块左移 → 面板变窄 → 左边缘右移 → 滑块远离指针 → 快速 snap 到最小值」的 moving-control 问题。

@@ -21,6 +21,10 @@ export const PRIMITIVE_TYPES = [
   'annotation',
   'metric-card',
   'legend',
+  'parameter-trajectory',
+  'network-graph',
+  'matrix-grid',
+  'histogram',
 ];
 
 export function isKnownPrimitiveType(type) {

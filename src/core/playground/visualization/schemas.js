@@ -138,6 +138,50 @@ export const PRIMITIVE_SCHEMAS = {
     props: {},
     compatibleBindings: {},
   },
+  'parameter-trajectory': {
+    placement: 'stage',
+    props: {
+      points: { type: 'array<trajectoryPoint>', required: true },
+      axes: { type: 'axes2d', required: false },
+    },
+    compatibleBindings: {
+      points: ['$model.training.parameterTrajectory'],
+      axes: ['$model.axes'],
+    },
+  },
+  'network-graph': {
+    placement: 'stage',
+    props: {
+      nodes: { type: 'array<networkNode>', required: true },
+      edges: { type: 'array<networkEdge>', required: true },
+    },
+    compatibleBindings: {
+      nodes: ['$model.network.nodes'],
+      edges: ['$model.network.edges'],
+    },
+  },
+  'matrix-grid': {
+    placement: 'stage',
+    props: {
+      rows: { type: 'integer', required: true },
+      columns: { type: 'integer', required: true },
+      cells: { type: 'array<matrixCell>', required: true },
+    },
+    compatibleBindings: {
+      rows: ['$model.matrix.rows'],
+      columns: ['$model.matrix.columns'],
+      cells: ['$model.matrix.cells'],
+    },
+  },
+  histogram: {
+    placement: 'side',
+    props: {
+      bins: { type: 'array<histogramBin>', required: true },
+    },
+    compatibleBindings: {
+      bins: ['$model.histogram.bins'],
+    },
+  },
 };
 
 export function getPrimitiveSchema(type) {

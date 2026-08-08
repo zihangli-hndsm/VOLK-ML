@@ -9,6 +9,10 @@ import LossCurveRenderer from './renderers/LossCurveRenderer.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import AnnotationRenderer from './renderers/AnnotationRenderer.jsx';
 import MetricRenderer from './renderers/MetricRenderer.jsx';
+import ParameterTrajectoryRenderer from './renderers/ParameterTrajectoryRenderer.jsx';
+import NetworkGraphRenderer from './renderers/NetworkGraphRenderer.jsx';
+import MatrixGridRenderer from './renderers/MatrixGridRenderer.jsx';
+import HistogramRenderer from './renderers/HistogramRenderer.jsx';
 
 // The unified stage resolves primitive types through this registry. Renderers
 // draw JSON props only and never import model mathematics.
@@ -26,4 +30,8 @@ export const rendererByPrimitiveType = {
   annotation: AnnotationRenderer,
   'metric-card': MetricRenderer,
   legend: null,
+  'parameter-trajectory': ParameterTrajectoryRenderer,
+  'network-graph': NetworkGraphRenderer,
+  'matrix-grid': MatrixGridRenderer,
+  histogram: HistogramRenderer,
 };

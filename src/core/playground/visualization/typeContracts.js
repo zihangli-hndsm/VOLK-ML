@@ -30,6 +30,27 @@ const ELEMENT_CONTRACTS = {
     && ELEMENT_CONTRACTS.number(value.x)
     && ELEMENT_CONTRACTS.number(value.y)
     && typeof value.label === 'string',
+  trajectoryPoint: (value) => isRecord(value)
+    && ELEMENT_CONTRACTS.number(value.step)
+    && ELEMENT_CONTRACTS.number(value.value),
+  networkNode: (value) => isRecord(value)
+    && ELEMENT_CONTRACTS.id(value.id)
+    && ELEMENT_CONTRACTS.integer(value.layer)
+    && (value.label === undefined || typeof value.label === 'string')
+    && (value.value === undefined || value.value === null || ELEMENT_CONTRACTS.number(value.value)),
+  networkEdge: (value) => isRecord(value)
+    && ELEMENT_CONTRACTS.id(value.source)
+    && ELEMENT_CONTRACTS.id(value.target)
+    && (value.weight === undefined || value.weight === null || ELEMENT_CONTRACTS.number(value.weight)),
+  matrixCell: (value) => isRecord(value)
+    && ELEMENT_CONTRACTS.integer(value.row)
+    && ELEMENT_CONTRACTS.integer(value.column)
+    && ELEMENT_CONTRACTS.number(value.value)
+    && (value.label === undefined || typeof value.label === 'string'),
+  histogramBin: (value) => isRecord(value)
+    && ELEMENT_CONTRACTS.number(value.start)
+    && ELEMENT_CONTRACTS.number(value.end)
+    && ELEMENT_CONTRACTS.number(value.count),
 };
 
 // Structural contracts for composite semantic types: they validate the fields
@@ -62,6 +83,15 @@ const STRUCTURAL_CONTRACTS = {
   normalization: (value) => isRecord(value)
     && (value.means === undefined || (Array.isArray(value.means) && value.means.every(ELEMENT_CONTRACTS.number)))
     && (value.stds === undefined || (Array.isArray(value.stds) && value.stds.every(ELEMENT_CONTRACTS.number))),
+  networkState: (value) => isRecord(value)
+    && (value.nodes === undefined || (Array.isArray(value.nodes) && value.nodes.every(ELEMENT_CONTRACTS.networkNode)))
+    && (value.edges === undefined || (Array.isArray(value.edges) && value.edges.every(ELEMENT_CONTRACTS.networkEdge))),
+  matrixState: (value) => isRecord(value)
+    && (value.rows === undefined || ELEMENT_CONTRACTS.integer(value.rows))
+    && (value.columns === undefined || ELEMENT_CONTRACTS.integer(value.columns))
+    && (value.cells === undefined || (Array.isArray(value.cells) && value.cells.every(ELEMENT_CONTRACTS.matrixCell))),
+  histogramState: (value) => isRecord(value)
+    && (value.bins === undefined || (Array.isArray(value.bins) && value.bins.every(ELEMENT_CONTRACTS.histogramBin))),
   formula: (value) => isRecord(value) && typeof value.key === 'string' && isRecord(value.params ?? {}),
   observation: (value) => isRecord(value)
     && typeof value.titleKey === 'string'
