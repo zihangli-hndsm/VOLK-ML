@@ -34,26 +34,18 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, onCl
   }, [open, playgroundId, host]);
 
   useEffect(() => {
-    if (!snapshot || snapshot.status !== 'playing') return undefined;
-    if (snapshot.timeline.totalSteps > 0 && snapshot.timeline.step >= snapshot.timeline.totalSteps) return undefined;
-    const scenario = snapshot.scenario
-      ? playground?.scenarios.find((item) => item.id === snapshot.scenario.id)
-      : null;
-    const base = scenario ? scenario.steps[snapshot.scenario.stepIndex]?.durationMs ?? 600 : 600;
+    if (!snapshot) return undefined;
+    const script = snapshot.scriptState;
+    if (!script || script.status !== 'playing') return undefined;
+    if (script.step >= script.totalSteps) return undefined;
+    const stepDefinition = snapshot.script?.steps?.[script.step];
+    const base = stepDefinition?.durationMs ?? 600;
     const reducedMotion = typeof window !== 'undefined'
       && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     const delay = reducedMotion ? 0 : base / Math.max(0.25, snapshot.timeline.speed);
-    const timer = setTimeout(() => {
-      if (snapshot.scenario) {
-        host.dispatch({ type: 'SCENARIO_NEXT' });
-      } else if (snapshot.playgroundId === 'linear-regression' && snapshot.scene.training.totalSteps === 0) {
-        host.dispatch({ type: 'START_TRAINING' });
-      } else {
-        host.dispatch({ type: 'STEP' });
-      }
-    }, delay);
+    const timer = setTimeout(() => host.dispatch({ type: 'SCRIPT_STEP' }), delay);
     return () => clearTimeout(timer);
-  }, [snapshot, host, playground]);
+  }, [snapshot, host]);
 
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;
   const formulaPrimitive = snapshot.primitives.find((primitive) => primitive.type === 'formula');

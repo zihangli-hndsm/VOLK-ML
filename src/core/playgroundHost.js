@@ -131,6 +131,7 @@ export function createPlaygroundHost({ getDataset }) {
         source,
         controls: request.controls ?? {},
         seed: request.seed,
+        dataset: getDataset(),
       }));
       return derivePlaygroundSnapshot(session);
     },
@@ -160,12 +161,6 @@ export function createPlaygroundHost({ getDataset }) {
     async runScenario(scenarioId) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       commit(dispatchPlaygroundAction(session, { type: 'RUN_SCENARIO', scenarioId }));
-      let guard = 0;
-      while (session.scenario && guard < 100) {
-        commit(dispatchPlaygroundAction(session, { type: 'SCENARIO_NEXT' }));
-        guard += 1;
-        await Promise.resolve();
-      }
       return derivePlaygroundSnapshot(session);
     },
 
@@ -178,6 +173,7 @@ export function createPlaygroundHost({ getDataset }) {
         controls: session.controls,
         sessionId: session.sessionId,
         seed: session.seed,
+        dataset: getDataset(),
       }));
       return derivePlaygroundSnapshot(session);
     },

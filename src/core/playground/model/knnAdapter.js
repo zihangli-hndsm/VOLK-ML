@@ -216,6 +216,10 @@ export const knnAdapter = {
     decisionSurface: true,
   },
   defaultVisualizationPreset: 'knn.intro',
+  scriptOperations: {
+    tracePredict: () => ({ type: 'START_NEIGHBOR_REVEAL' }),
+    moveQuery: (args) => ({ type: 'MOVE_QUERY_POINT', x: args?.x ?? null, y: args?.y ?? null }),
+  },
 
   initialize({ source, controls, seed, recorder }) {
     const points = source.points.map((point) => ({
@@ -463,8 +467,10 @@ export const knnAdapter = {
       };
     }
     if (action.type === 'START_NEIGHBOR_REVEAL') {
+      const next = { ...modelState, revealed: 0 };
+      emitQueryTrace(recorder, next, next.fit, controls);
       return {
-        modelState: { ...modelState, revealed: 0 },
+        modelState: next,
         timeline: { step: 0, totalSteps: modelState.fit.k },
       };
     }
@@ -561,6 +567,25 @@ export const knnAdapter = {
           fit.normalization.means[featureColumns.indexOf(feature)],
         ])),
       },
+      displayPoints: modelState.points.map((point) => {
+        const raw = [point.features[xFeature], point.features[yFeature]];
+        const normalized = [
+          (raw[0] - fit.normalization.means[xi]) / fit.normalization.stds[xi],
+          (raw[1] - fit.normalization.means[yi]) / fit.normalization.stds[yi],
+        ];
+        return {
+          id: point.id,
+          label: point.label,
+          subset: trainIds.has(point.id) ? 'train' : 'test',
+          x: useNormalized ? normalized[0] : raw[0],
+          y: useNormalized ? normalized[1] : raw[1],
+        };
+      }),
+      displayQuery: {
+        x: useNormalized ? queryVector[xi] : modelState.query.x,
+        y: useNormalized ? queryVector[yi] : modelState.query.y,
+      },
+      axes: { x: xFeature, y: yFeature },
     };
     let observation = {
       titleKey: 'playground.knn.observation.intro',
@@ -621,45 +646,4 @@ export const knnAdapter = {
     };
   },
 
-  buildPrimitives(modelState, scene, derived, { controls }) {
-    const displayPoint = (point) => ({
-      id: point.id,
-      label: point.label,
-      subset: point.subset,
-      x: scene.normalize ? point.normalizedX : point.x,
-      y: scene.normalize ? point.normalizedY : point.y,
-    });
-    const displayQuery = {
-      x: scene.normalize ? scene.query.normalizedX : scene.query.x,
-      y: scene.normalize ? scene.query.normalizedY : scene.query.y,
-    };
-    const primitives = [
-      { id: 'scatter', type: 'scatter', source: { model: 'points' }, props: { points: scene.points.map(displayPoint), axes: { x: modelState.xFeature, y: modelState.yFeature } } },
-    ];
-    if (scene.decisionRegions.enabled) {
-      primitives.push({
-        id: 'decision-region',
-        type: 'decision-region',
-        source: { model: 'decisionRegions' },
-        props: { cells: scene.decisionRegions.cells, resolution: scene.decisionRegions.resolution, normalize: scene.normalize },
-      });
-    }
-    primitives.push({ id: 'query-point', type: 'query-point', source: { model: 'query' }, props: { query: displayQuery } });
-    primitives.push({
-      id: 'neighbor-links',
-      type: 'neighbor-links',
-      source: { model: 'neighbors' },
-      props: {
-        neighbors: scene.neighbors,
-        points: scene.points.map(displayPoint),
-        query: displayQuery,
-        showOrder: Boolean(controls.showNeighborOrder),
-      },
-    });
-    primitives.push({ id: 'vote-bars', type: 'vote-bars', source: { model: 'voting' }, props: { voting: scene.voting } });
-    primitives.push({ id: 'formula', type: 'formula', source: { model: 'formula' }, props: { formula: derived.formula } });
-    primitives.push({ id: 'metric-card', type: 'metric-card', source: { model: 'metrics' }, props: { metrics: derived.metrics } });
-    primitives.push({ id: 'annotation', type: 'annotation', source: { model: 'observation' }, props: { observation: derived.observation } });
-    return primitives;
-  },
 };

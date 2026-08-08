@@ -46,19 +46,7 @@ export const knnPlayground = {
     {
       id: 'intro',
       titleKey: 'playground.scenario.intro',
-      steps: [
-        { action: { type: 'SET_CONTROL', key: 'showNeighborOrder', value: true }, durationMs: 500, narrationKey: 'playground.knn.scenario.introOrder' },
-        { action: { type: 'SET_CONTROL', key: 'k', value: 1 }, durationMs: 500, narrationKey: 'playground.knn.scenario.introK1' },
-        { action: { type: 'START_NEIGHBOR_REVEAL' }, durationMs: 400, narrationKey: 'playground.knn.scenario.introReveal' },
-        { action: { type: 'STEP' }, durationMs: 700, narrationKey: 'playground.knn.scenario.introNeighbor1' },
-        { action: { type: 'SET_CONTROL', key: 'k', value: 5 }, durationMs: 600, narrationKey: 'playground.knn.scenario.introK5' },
-        { action: { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true }, durationMs: 600, narrationKey: 'playground.knn.scenario.introRegions' },
-        { action: { type: 'STEP' }, durationMs: 600, narrationKey: 'playground.knn.scenario.introNeighbor2' },
-        { action: { type: 'STEP' }, durationMs: 600, narrationKey: 'playground.knn.scenario.introNeighbor3' },
-        { action: { type: 'STEP' }, durationMs: 600, narrationKey: 'playground.knn.scenario.introNeighbor4' },
-        { action: { type: 'STEP' }, durationMs: 700, narrationKey: 'playground.knn.scenario.introVote' },
-        { action: { type: 'MOVE_QUERY_POINT', x: null, y: null }, durationMs: 800, narrationKey: 'playground.knn.scenario.introBoundary' },
-      ],
+      presetId: 'knn.intro',
     },
   ],
 

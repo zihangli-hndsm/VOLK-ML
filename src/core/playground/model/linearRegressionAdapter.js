@@ -67,6 +67,10 @@ export const linearRegressionAdapter = {
     parameterSurface: true,
   },
   defaultVisualizationPreset: 'linear-regression.intuition',
+  scriptOperations: {
+    traceFit: () => ({ type: 'START_TRAINING' }),
+    setBestFit: () => ({ type: 'SET_BEST_FIT' }),
+  },
 
   initialize({ source, controls, recorder }) {
     const points = source.points.map((point) => ({ id: point.id, x: point.x, y: point.y }));
@@ -284,7 +288,7 @@ export const linearRegressionAdapter = {
     return {};
   },
 
-  deriveScene(modelState, { controls }) {
+  deriveScene(modelState, { controls, source }) {
     const { points, ranges, optimum, weight, bias } = modelState;
     const gradient = sceneGradient(modelState.gradient) ?? regressionGradient(points, weight, bias);
     const prediction = (x) => weight * x + bias;
@@ -309,6 +313,9 @@ export const linearRegressionAdapter = {
         parameterHistory: modelState.training.history.slice(0, modelState.training.currentStep).map((entry) => ({ weight: entry.weight, bias: entry.bias })),
       },
       ranges,
+      scatterPoints: points.map(({ id, x, y }) => ({ id, x, y })),
+      residualPoints: points.map((point) => ({ id: point.id, x: point.x, y: point.y, prediction: prediction(point.x) })),
+      axes: { x: source?.feature ?? 'x', y: source?.target ?? 'y' },
     };
     const mse = meanSquaredError(points, weight, bias);
     const training = modelState.training;
@@ -376,23 +383,4 @@ export const linearRegressionAdapter = {
     };
   },
 
-  buildPrimitives(modelState, scene, derived, { controls, source }) {
-    const primitives = [
-      { id: 'scatter', type: 'scatter', source: { model: 'points' }, props: { points: scene.points.map((point) => ({ id: point.id, x: point.x, y: point.y })), axes: { x: source.feature, y: source.target } } },
-      { id: 'regression-line', type: 'regression-line', source: { model: 'line' }, props: { line: scene.line, ranges: scene.ranges } },
-    ];
-    if (controls.showBestFit) {
-      primitives.push({ id: 'reference-line', type: 'reference-line', source: { model: 'bestFitLine' }, props: { line: scene.bestFitLine, ranges: scene.ranges } });
-    }
-    if (controls.showResiduals) {
-      primitives.push({ id: 'residual-lines', type: 'residual-lines', source: { model: 'residuals' }, props: { points: scene.points.map((point) => ({ id: point.id, x: point.x, y: point.y, prediction: point.prediction })) } });
-    }
-    if (scene.training.lossHistory.length > 0) {
-      primitives.push({ id: 'loss-curve', type: 'loss-curve', source: { model: 'training' }, props: { lossHistory: scene.training.lossHistory, currentStep: scene.training.currentStep } });
-    }
-    primitives.push({ id: 'formula', type: 'formula', source: { model: 'formula' }, props: { formula: derived.formula } });
-    primitives.push({ id: 'metric-card', type: 'metric-card', source: { model: 'metrics' }, props: { metrics: derived.metrics } });
-    primitives.push({ id: 'annotation', type: 'annotation', source: { model: 'observation' }, props: { observation: derived.observation } });
-    return primitives;
-  },
 };

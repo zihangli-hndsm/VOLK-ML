@@ -17,7 +17,17 @@ const finiteNumber = (value) => {
 // Normalizes a raw workspace/teaching dataset into { schema, rows, task,
 // featureColumns, targetColumn, trainRatio }.
 export function inspectDataset(dataset) {
-  if (!dataset || typeof dataset !== 'object') {
+  if (dataset === null || dataset === undefined) {
+    return {
+      schema: [],
+      rows: [],
+      task: null,
+      featureColumns: [],
+      targetColumn: null,
+      trainRatio: 0.8,
+    };
+  }
+  if (typeof dataset !== 'object') {
     throw Object.assign(new Error('INVALID_PLAYGROUND_SOURCE'), { code: 'INVALID_PLAYGROUND_SOURCE', details: { reason: 'dataset' } });
   }
   const featureColumns = Array.isArray(dataset.featureColumns)

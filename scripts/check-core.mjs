@@ -70,6 +70,7 @@ import { validatePrimitive } from '../src/core/playground/visualization/primitiv
 import { listPresets, getPreset } from '../src/core/playground/visualization/presetRegistry.js';
 import { validateScript } from '../src/core/playground/visualization/scriptValidator.js';
 import { createScriptRuntime } from '../src/core/playground/visualization/scriptRuntime.js';
+import { createBindingContext, resolveValue } from '../src/core/playground/visualization/bindings.js';
 import {
   buildProjectionVector,
   computeTestAccuracy,
@@ -2458,7 +2459,7 @@ assert.throws(
       assert.doesNotThrow(() => validateScript(declaration), `${preset.id} validates`);
       assert.doesNotThrow(() => structuredClone(declaration), `${preset.id} is JSON-safe`);
       assert.equal(declaration.version, 1, `${preset.id} schema version`);
-      assert.ok(declaration.primitives.every((primitive) => !('props' in primitive)), `${preset.id} primitives are declarative`);
+      assert.ok(declaration.primitives.every((primitive) => primitive.props && typeof primitive.props === 'object'), `${preset.id} primitives declare props`);
     }
 
     const runPreset = (playground, source, presetId, seed) => {
@@ -2466,7 +2467,9 @@ assert.throws(
       const driver = {
         dispatch: (action) => { session = dispatchPlaygroundAction(session, action); },
         getState: () => derivePlaygroundSnapshot(session),
-        getPlaygroundId: () => session.playgroundId,
+        getAdapterId: () => session.adapterId,
+        resetToBaseline: () => { session = dispatchPlaygroundAction(session, { type: 'RESET' }); },
+        subscribe: () => () => {},
       };
       const runtime = createScriptRuntime(driver).load(structuredClone(getPreset(presetId)));
       runtime.initialize();
@@ -2521,7 +2524,7 @@ assert.throws(
     expectScriptError((script) => { script.primitives[0].type = 'alien-chart'; }, 'SCRIPT_UNKNOWN_PRIMITIVE');
     expectScriptError((script) => { script.steps[1].invoke = { operation: 'evalCode', args: {} }; }, 'SCRIPT_UNSUPPORTED_OPERATION');
     expectScriptError((script) => { script.steps[2].annotate = { text: '$controls.k * evil()' }; }, 'SCRIPT_INVALID_BINDING');
-    expectScriptError((script) => { script.steps[3].consume = { event: 'knn.exploded', count: 1 }; }, 'SCRIPT_UNKNOWN_TRACE_EVENT');
+    expectScriptError((script) => { script.steps[3].consume = { event: 'knn.exploded', count: 1 }; }, 'INVALID_SCRIPT');
     expectScriptError((script) => { script.steps[1].wait = 1; script.steps[1].narrationKey = 'x'.repeat(1); script.steps[1].extra = true; }, 'INVALID_SCRIPT');
     expectScriptError((script) => { script.steps[0].annotate = { text: 'eval("alert(1)")' }; }, 'INVALID_SCRIPT');
     expectScriptError((script) => { script.steps = Array.from({ length: 250 }, (_, index) => ({ id: `s${index}`, wait: true })); }, 'SCRIPT_TOO_COMPLEX');
@@ -2530,6 +2533,265 @@ assert.throws(
     const nonJson = structuredClone(validPreset);
     nonJson.steps[0].annotate = { text: () => 'nope' };
     assert.throws(() => validateScript(nonJson), (error) => error.code === 'INVALID_SCRIPT', 'validator rejects non-JSON values');
+
+    // PR B follow-up: script-driven runtime.
+    {
+      const makeDriver = (getSession, setSession) => ({
+        dispatch: (action) => setSession(dispatchPlaygroundAction(getSession(), action)),
+        getState: () => derivePlaygroundSnapshot(getSession()),
+        getAdapterId: () => getSession().adapterId,
+        resetToBaseline: () => setSession(dispatchPlaygroundAction(getSession(), { type: 'RESET' })),
+        subscribe: () => () => {},
+      });
+      const fingerprint = (snapshot) => {
+        const { sessionId, ...rest } = snapshot;
+        return rest;
+      };
+      const runPresetSteps = (playground, source, presetId, seed, count) => {
+        let session = createPlaygroundSession(playground, { source, seed, sessionId: 'prb-followup' });
+        const driver = makeDriver(() => session, (next) => { session = next; });
+        const runtime = createScriptRuntime(driver).load(structuredClone(getPreset(presetId)));
+        runtime.initialize();
+        for (let index = 0; index < count; index += 1) runtime.step();
+        return { fingerprint: fingerprint(derivePlaygroundSnapshot(session)), session };
+      };
+
+      // Replay invariance: fresh first-N == full-run-then-seek-N ==
+      // full-run-then-reset-then-N for N in {0, 1, middle, total}.
+      for (const [playground, source, presetId, seed, total, probes] of [
+        [lrPlayground, lrSource, 'linear-regression.intuition', 7, 7, [0, 1, 3, 7]],
+        [knnPlayground, knnSource2, 'knn.intro', 3, 11, [0, 1, 3, 6, 11]],
+      ]) {
+        for (const n of probes) {
+          const fresh = runPresetSteps(playground, source, presetId, seed, n);
+          const full = runPresetSteps(playground, source, presetId, seed, total);
+          const seeked = (() => {
+            let session = createPlaygroundSession(playground, { source, seed, sessionId: 'prb-followup' });
+            const driver = makeDriver(() => session, (next) => { session = next; });
+            const runtime = createScriptRuntime(driver).load(structuredClone(getPreset(presetId)));
+            runtime.initialize();
+            for (let index = 0; index < total; index += 1) runtime.step();
+            runtime.seek(n);
+            return fingerprint(derivePlaygroundSnapshot(session));
+          })();
+          const resetReplay = (() => {
+            let session = createPlaygroundSession(playground, { source, seed, sessionId: 'prb-followup' });
+            const driver = makeDriver(() => session, (next) => { session = next; });
+            const runtime = createScriptRuntime(driver).load(structuredClone(getPreset(presetId)));
+            runtime.initialize();
+            for (let index = 0; index < total; index += 1) runtime.step();
+            runtime.reset();
+            for (let index = 0; index < n; index += 1) runtime.step();
+            return fingerprint(derivePlaygroundSnapshot(session));
+          })();
+          assert.deepEqual(fresh.fingerprint, seeked, `${presetId} fresh step ${n} == seek(${n})`);
+          assert.deepEqual(fresh.fingerprint, resetReplay, `${presetId} fresh step ${n} == reset+${n} steps`);
+        }
+      }
+
+      // Composition: the script owns which primitives exist.
+      const withLoss = structuredClone(getPreset('linear-regression.intuition'));
+      const withoutLoss = structuredClone(withLoss);
+      withoutLoss.id = 'lr-no-loss';
+      withoutLoss.primitives = withoutLoss.primitives.filter((primitive) => primitive.id !== 'loss-curve');
+      withoutLoss.layout.stage = withoutLoss.layout.stage.filter((id) => id !== 'loss-curve');
+      assert.doesNotThrow(() => validateScript(withoutLoss));
+      const withLossRun = runPresetSteps(lrPlayground, lrSource, 'linear-regression.intuition', 7, 7);
+      assert.ok(withLossRun.session.script.primitives.some((primitive) => primitive.type === 'loss-curve'));
+      // NOTE: runPresetSteps loads by preset id; load the custom declaration instead.
+      let customSession = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 7, sessionId: 'prb-followup' });
+      const customDriver = makeDriver(() => customSession, (next) => { customSession = next; });
+      const customRuntime = createScriptRuntime(customDriver).load(withoutLoss);
+      customRuntime.initialize();
+      for (let index = 0; index < withoutLoss.steps.length; index += 1) customRuntime.step();
+      const noLossSnapshot = derivePlaygroundSnapshot(customSession);
+      assert.ok(noLossSnapshot.primitives.some((primitive) => primitive.type === 'scatter'), 'script A still shows scatter');
+      assert.ok(!noLossSnapshot.primitives.some((primitive) => primitive.type === 'loss-curve'), 'script without loss-curve omits it');
+      assert.ok(withLossRun.session.script.primitives.some((primitive) => primitive.type === 'loss-curve'), 'script with loss-curve declares it');
+
+      // Same model state, different scripts -> primitives differ exactly by
+      // the declared residual primitive.
+      const minimalScript = (id, includeResiduals) => ({
+        version: 1,
+        id,
+        model: { adapter: 'linear-regression' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: {
+          stage: includeResiduals ? ['scatter', 'regression-line', 'residual-lines'] : ['scatter', 'regression-line'],
+          side: [],
+        },
+        primitives: [
+          { id: 'scatter', type: 'scatter', props: { points: '$model.scatterPoints', axes: '$model.axes' } },
+          { id: 'regression-line', type: 'regression-line', props: { line: '$model.line', ranges: '$model.ranges' } },
+          ...(includeResiduals ? [{ id: 'residual-lines', type: 'residual-lines', props: { points: '$model.residualPoints' } }] : []),
+        ],
+        steps: [{ id: 'wait', wait: true, durationMs: 100 }],
+      });
+      const runCustomScript = (script) => {
+        let session = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 7, sessionId: 'prb-followup' });
+        const driver = makeDriver(() => session, (next) => { session = next; });
+        const runtime = createScriptRuntime(driver).load(script);
+        runtime.initialize();
+        runtime.step();
+        return derivePlaygroundSnapshot(session);
+      };
+      const snapA = runCustomScript(minimalScript('script-a', false));
+      const snapB = runCustomScript(minimalScript('script-b', true));
+      assert.deepEqual(snapA.scene, snapB.scene, 'same model state across scripts');
+      assert.deepEqual(
+        snapB.primitives.map((primitive) => primitive.id),
+        [...snapA.primitives.map((primitive) => primitive.id), 'residual-lines'],
+        'primitives differ exactly by the residual declaration',
+      );
+
+      // Bindings: every declared prefix resolves; transforms work; nested
+      // props resolve recursively.
+      const bindingContext = createBindingContext({
+        model: { points: [{ x: 1 }, { x: 3 }] },
+        data: { values: [1, 2, 3] },
+        controls: { k: 5 },
+        trace: [{ type: 'a' }, { type: 'b' }],
+        metrics: { mse: 2 },
+      });
+      assert.equal(resolveValue('$model.points', bindingContext).length, 2, '$model resolves');
+      assert.equal(resolveValue('$data.values', bindingContext).length, 3, '$data resolves');
+      assert.equal(resolveValue('$controls.k', bindingContext), 5, '$controls resolves');
+      assert.equal(resolveValue('$metrics.mse', bindingContext), 2, '$metrics resolves');
+      assert.equal(resolveValue('$trace', bindingContext).length, 2, '$trace resolves');
+      assert.equal(resolveValue('mean($data.values)', bindingContext), 2, 'transform mean() resolves');
+      assert.equal(resolveValue('max($data.values)', bindingContext), 3, 'transform max() resolves');
+      const nested = resolveValue(
+        { axes: { x: '$model.points' }, list: ['$controls.k', '$metrics.mse'], literal: 7 },
+        bindingContext,
+      );
+      assert.equal(nested.axes.x.length, 2, 'nested object bindings resolve');
+      assert.deepEqual(nested.list, [5, 2], 'array bindings resolve');
+      assert.equal(nested.literal, 7, 'literals pass through');
+
+      // Layout integrity: unknown primitive reference and duplicates.
+      const layoutBad = structuredClone(validPreset);
+      layoutBad.layout.stage.push('ghost');
+      assert.throws(() => validateScript(layoutBad), (error) => error.code === 'SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE', 'unknown layout id rejected');
+      const layoutDup = structuredClone(validPreset);
+      layoutDup.layout.side = ['formula', 'formula'];
+      assert.throws(() => validateScript(layoutDup), (error) => error.code === 'INVALID_SCRIPT', 'duplicate layout id rejected');
+
+      // KNN tracePredict alone initializes the reveal state and emits the
+      // query trace events without relying on a later STEP.
+      const predictOnly = {
+        version: 1,
+        id: 'knn-predict-only',
+        model: { adapter: 'knn' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: [], side: [] },
+        primitives: [],
+        steps: [{ id: 'predict', invoke: { operation: 'tracePredict', args: {} }, durationMs: 100 }],
+      };
+      let predictSession = createPlaygroundSession(knnPlayground, { source: knnSource2, seed: 3, sessionId: 'prb-followup' });
+      const predictDriver = makeDriver(() => predictSession, (next) => { predictSession = next; });
+      const predictRuntime = createScriptRuntime(predictDriver).load(predictOnly);
+      predictRuntime.initialize();
+      predictRuntime.step();
+      const predictSnapshot = derivePlaygroundSnapshot(predictSession);
+      assert.ok(predictSnapshot.traces.some((event) => event.type === 'query.received'), 'tracePredict emits query.received');
+      assert.ok(predictSnapshot.traces.some((event) => event.type === 'knn.distancesComputed'), 'tracePredict emits knn.distancesComputed');
+      assert.equal(predictSnapshot.metrics.revealed, 0, 'tracePredict initializes the reveal state');
+
+      // Validator/runtime parity: every allowed operation has runtime
+      // semantics (no silent no-op).
+      const opScript = (steps, primitives = [], layout = { stage: [], side: [] }) => ({
+        version: 1,
+        id: 'op-parity',
+        model: { adapter: 'linear-regression' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout,
+        primitives,
+        steps,
+      });
+      const runOps = (script) => {
+        let session = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 7, sessionId: 'prb-followup' });
+        const driver = makeDriver(() => session, (next) => { session = next; });
+        const runtime = createScriptRuntime(driver).load(script);
+        runtime.initialize();
+        for (let index = 0; index < script.steps.length; index += 1) runtime.step();
+        return derivePlaygroundSnapshot(session);
+      };
+      const setControlSnap = runOps(opScript([{ id: 's', setControl: { weight: 1.5 } }]));
+      assert.equal(setControlSnap.controls.weight, 1.5, 'setControl has runtime semantics');
+      const invokeSnap = runOps(opScript([{ id: 't', invoke: { operation: 'traceFit', args: {} } }]));
+      assert.ok(invokeSnap.traces.some((event) => event.type === 'training.completed'), 'invoke has runtime semantics');
+      const revealSnap = runOps(opScript([
+        { id: 't', invoke: { operation: 'traceFit', args: {} } },
+        { id: 'r', reveal: true },
+      ]));
+      assert.equal(revealSnap.timeline.step, 1, 'reveal has runtime semantics');
+      const hideSnap = runOps(
+        opScript(
+          [{ id: 'h', hide: 'scatter' }],
+          [{ id: 'scatter', type: 'scatter', props: { points: '$model.scatterPoints', axes: '$model.axes' } }],
+          { stage: ['scatter'], side: [] },
+        ),
+      );
+      assert.equal(hideSnap.visualState.scatter, false, 'hide has runtime semantics');
+      assert.ok(!hideSnap.primitives.some((primitive) => primitive.id === 'scatter'), 'hidden primitive is not materialized');
+      const showSnap = runOps(
+        opScript(
+          [{ id: 's', show: 'scatter' }],
+          [{ id: 'scatter', type: 'scatter', props: { points: '$model.scatterPoints', axes: '$model.axes' } }],
+          { stage: ['scatter'], side: [] },
+        ),
+      );
+      assert.ok(showSnap.primitives.some((primitive) => primitive.id === 'scatter'), 'show has runtime semantics');
+      const highlightSnap = runOps(opScript([{ id: 'h', highlight: 'line' }]));
+      assert.equal(highlightSnap.visualState.highlight, 'line', 'highlight has runtime semantics');
+      const annotateSnap = runOps(opScript([{ id: 'a', annotate: { text: '$controls.weight' } }]));
+      assert.equal(annotateSnap.visualState.annotation.text, 0, 'annotate has runtime semantics with bindings');
+      const waitSnap = runOps(opScript([{ id: 'w', wait: true, durationMs: 100 }]));
+      assert.equal(waitSnap.scriptState.step, 1, 'wait advances script state');
+      assert.equal(waitSnap.timeline.step, 0, 'wait does not move the model timeline');
+      const resetSnap = runOps(opScript([
+        { id: 'set', setControl: { weight: 5 } },
+        { id: 'r', reset: true },
+      ]));
+      assert.equal(resetSnap.controls.weight, 0, 'reset returns to the baseline controls');
+
+      // runScenario and direct preset execution share the exact path.
+      const sharedDataset = {
+        name: 'R', task: 'regression',
+        rows: [{ x: 0, y: 1 }, { x: 1, y: 3 }, { x: 2, y: 5 }, { x: 3, y: 7 }, { x: 4, y: 9 }],
+        columns: [
+          { name: 'x', type: 'number', missing: 0 },
+          { name: 'y', type: 'number', missing: 0 },
+        ],
+        featureColumns: ['x'], targetColumn: 'y',
+      };
+      const scenarioHost = createPlaygroundHost({ getDataset: () => sharedDataset });
+      const scenarioAgent = createPlaygroundAgentApi(scenarioHost);
+      await scenarioAgent.open({ playgroundId: 'linear-regression' });
+      await scenarioAgent.runScenario('intro');
+      const viaScenario = scenarioAgent.getState();
+      const sharedSample = regressionPointsFromDataset(sharedDataset);
+      const sharedSource = {
+        kind: 'workspace-dataset', name: 'R', fingerprint: 'shared',
+        points: sharedSample.points.map((point, index) => ({ id: `d${index}`, x: point.x, y: point.y })),
+        feature: 'x', target: 'y', total: sharedSample.total, usingDataset: true,
+      };
+      const presetFull = runPresetSteps(lrPlayground, sharedSource, 'linear-regression.intuition', undefined, 7);
+      assert.deepEqual(viaScenario.traces, presetFull.fingerprint.traces, 'runScenario traces == preset execution traces');
+      assert.deepEqual(viaScenario.primitives, presetFull.fingerprint.primitives, 'runScenario primitives == preset execution primitives');
+      await scenarioAgent.close();
+
+      // UI must never special-case a model.
+      for (const file of uiFiles) {
+        const source = readFileSync(new URL(`../src/components/playground/${file}`, import.meta.url), 'utf-8');
+        for (const forbidden of ['linear-regression', 'knn', 'START_TRAINING', 'START_NEIGHBOR_REVEAL']) {
+          assert.ok(!source.includes(forbidden), `${file} must not contain model-specific "${forbidden}"`);
+        }
+      }
+    }
   }
 }
 

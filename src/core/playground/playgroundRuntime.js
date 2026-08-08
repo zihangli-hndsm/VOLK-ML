@@ -1,6 +1,10 @@
 import { requireModelAdapter } from './model/modelRegistry.js';
 import { createTraceRecorder } from './trace/traceBuilder.js';
 import { getPreset } from './visualization/presetRegistry.js';
+import { materializePrimitives } from './visualization/primitiveMaterializer.js';
+import { createBindingContext, resolveValue } from './visualization/bindings.js';
+import { validateScript } from './visualization/scriptValidator.js';
+import { inspectDataset } from './data/datasetAdapter.js';
 import { getPlayground } from '../playgrounds/registry.js';
 import {
   playgroundError,
@@ -11,8 +15,8 @@ import {
 // The unified playground runtime. This module owns the session reducer: the
 // UI, the Agent and the visualization script runtime all dispatch the same
 // JSON actions through dispatchRuntimeAction(). Model-specific behavior lives
-// in the model adapters; the session (controls, timeline, status, traces,
-// visual state) lives here.
+// in the model adapters; visualization composition lives in the Primitive
+// Materializer (scripts declare primitives, adapters never do).
 
 const GENERIC_ACTIONS = [
   'SET_CONTROL',
@@ -25,11 +29,17 @@ const GENERIC_ACTIONS = [
   'RUN_SCENARIO',
   'SCENARIO_NEXT',
   'SET_VISUAL',
+  'SCRIPT_LOAD',
+  'SCRIPT_PLAY',
+  'SCRIPT_PAUSE',
+  'SCRIPT_STEP',
+  'SCRIPT_SEEK',
+  'SCRIPT_RESET',
 ];
 
 const jsonSafe = (value) => (value === undefined || typeof value === 'function' ? null : structuredClone(value));
 
-export function createRuntimeSession(playground, { source, controls = {}, seed, sessionId }) {
+export function createRuntimeSession(playground, { source, controls = {}, seed, sessionId, dataset }) {
   const adapter = requireModelAdapter(playground.adapterId ?? playground.id);
   const normalizedSource = playground.validateSource(source);
   const recorder = createTraceRecorder();
@@ -40,6 +50,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     recorder,
   });
   const preset = getPreset(adapter.defaultVisualizationPreset);
+  const dataState = inspectDataset(dataset);
   return {
     apiVersion: 1,
     sessionId: sessionId ?? `playground-${crypto.randomUUID()}`,
@@ -47,6 +58,11 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     adapterId: adapter.id,
     status: 'ready',
     seed,
+    baseline: {
+      controls: structuredClone(initialized.controls),
+      source: structuredClone(normalizedSource),
+      seed,
+    },
     sourceData: normalizedSource,
     source: {
       kind: normalizedSource.kind,
@@ -56,12 +72,13 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     },
     controls: initialized.controls,
     modelState: initialized.modelState,
-    dataState: {},
+    dataState,
     timeline: { step: 0, totalSteps: initialized.totalSteps ?? 0, speed: 1 },
     scenario: null,
-    script: preset
-      ? { id: preset.id, model: preset.model, layout: structuredClone(preset.layout) }
-      : null,
+    script: preset ? structuredClone(preset) : null,
+    scriptState: preset
+      ? { status: 'ready', step: 0, totalSteps: preset.steps.length }
+      : { status: 'idle', step: 0, totalSteps: 0 },
     traces: recorder.list(),
     visualState: {},
     metrics: {},
@@ -95,6 +112,75 @@ function applyModelAction(session, action) {
   };
 }
 
+function semanticContext(session) {
+  const adapter = requireModelAdapter(session.adapterId);
+  const semantic = adapter.deriveScene(session.modelState, {
+    controls: session.controls,
+    source: session.sourceData,
+  });
+  // Scripts bind against a stable model context: the semantic scene plus
+  // metrics/formula/observation at the top level. snapshot.scene keeps the
+  // historical scene shape for backward compatibility.
+  const modelContext = {
+    ...semantic.scene,
+    metrics: semantic.metrics ?? {},
+    formula: semantic.formula ?? null,
+    observation: semantic.observation ?? null,
+  };
+  return {
+    scene: semantic.scene,
+    metrics: semantic.metrics ?? {},
+    observation: semantic.observation ?? null,
+    formula: semantic.formula ?? null,
+    capabilities: semantic.capabilities ?? {},
+    modelContext,
+    context: createBindingContext({
+      model: modelContext,
+      data: session.dataState ?? {},
+      controls: session.controls,
+      trace: session.traces,
+      metrics: semantic.metrics ?? {},
+    }),
+  };
+}
+
+// Translates one script step into the same JSON actions the UI and Agent use.
+// Operation names go through adapter.scriptOperations so adding a model never
+// requires changing the runtime.
+function computeScriptStepActions(session) {
+  const { script, scriptState, adapterId } = session;
+  const stepDefinition = script.steps[scriptState.step];
+  const adapter = requireModelAdapter(adapterId);
+  const { context } = semanticContext(session);
+  const actions = [];
+  if (stepDefinition.setControl) {
+    const resolved = resolveValue(stepDefinition.setControl, context);
+    for (const [key, value] of Object.entries(resolved)) {
+      actions.push({ type: 'SET_CONTROL', key, value });
+    }
+  }
+  if (stepDefinition.invoke) {
+    const translator = adapter.scriptOperations?.[stepDefinition.invoke.operation];
+    if (!translator) {
+      throw Object.assign(new Error('SCRIPT_UNSUPPORTED_OPERATION'), {
+        code: 'SCRIPT_UNSUPPORTED_OPERATION',
+        details: { operation: stepDefinition.invoke.operation },
+      });
+    }
+    const action = translator(resolveValue(stepDefinition.invoke.args ?? {}, context));
+    if (action) actions.push(action);
+  }
+  if (stepDefinition.reveal) actions.push({ type: 'STEP' });
+  if (stepDefinition.show) actions.push({ type: 'SET_VISUAL', patch: { [stepDefinition.show]: true } });
+  if (stepDefinition.hide) actions.push({ type: 'SET_VISUAL', patch: { [stepDefinition.hide]: false } });
+  if (stepDefinition.highlight) actions.push({ type: 'SET_VISUAL', patch: { highlight: stepDefinition.highlight } });
+  if (stepDefinition.annotate) {
+    actions.push({ type: 'SET_VISUAL', patch: { annotation: resolveValue(stepDefinition.annotate, context) } });
+  }
+  if (stepDefinition.reset) actions.push({ type: 'RESET' });
+  return actions;
+}
+
 export function dispatchRuntimeAction(session, action) {
   validateActionShape(action);
   const playground = getPlayground(session.playgroundId);
@@ -104,12 +190,14 @@ export function dispatchRuntimeAction(session, action) {
   }
 
   if (action.type === 'RESET') {
-    return createRuntimeSession(playground, {
-      source: session.sourceData ?? session.source,
-      controls: session.controls,
+    const baseline = session.baseline ?? { controls: session.controls, source: session.sourceData, seed: session.seed };
+    const reset = createRuntimeSession(playground, {
+      source: baseline.source,
+      controls: baseline.controls,
+      seed: baseline.seed,
       sessionId: session.sessionId,
-      seed: session.seed,
     });
+    return { ...reset, dataState: session.dataState };
   }
   if (action.type === 'SET_CONTROL') {
     const control = playground.controls.find((item) => item.key === action.key);
@@ -119,10 +207,7 @@ export function dispatchRuntimeAction(session, action) {
     return { ...next, status: 'paused', traces: recorder.list() };
   }
   if (action.type === 'SET_VISUAL') {
-    return {
-      ...session,
-      visualState: { ...session.visualState, ...(action.patch ?? {}) },
-    };
+    return { ...session, visualState: { ...session.visualState, ...(action.patch ?? {}) } };
   }
   if (action.type === 'PLAY') {
     if (session.timeline.totalSteps > 0 && session.timeline.step >= session.timeline.totalSteps) {
@@ -145,43 +230,95 @@ export function dispatchRuntimeAction(session, action) {
       status: finished ? 'completed' : session.status === 'playing' ? 'playing' : 'paused',
     };
   }
+
+  // ---- Visualization Script execution (the single preset path) ----
+  if (action.type === 'SCRIPT_LOAD') {
+    validateScript(action.script);
+    return {
+      ...session,
+      script: structuredClone(action.script),
+      scriptState: { status: 'ready', step: 0, totalSteps: action.script.steps.length },
+      visualState: {},
+    };
+  }
+  if (action.type === 'SCRIPT_PLAY') {
+    if (!session.script) return session;
+    return { ...session, scriptState: { ...session.scriptState, status: 'playing' } };
+  }
+  if (action.type === 'SCRIPT_PAUSE') {
+    if (!session.script) return session;
+    return { ...session, scriptState: { ...session.scriptState, status: 'paused' } };
+  }
+  if (action.type === 'SCRIPT_STEP') {
+    if (!session.script || !session.scriptState || session.scriptState.step >= session.scriptState.totalSteps) {
+      return session.scriptState
+        ? { ...session, scriptState: { ...session.scriptState, status: 'completed' } }
+        : session;
+    }
+    const stepActions = computeScriptStepActions(session);
+    let next = session;
+    for (const stepAction of stepActions) next = dispatchRuntimeAction(next, stepAction);
+    const step = session.scriptState.step + 1;
+    const done = step >= session.scriptState.totalSteps;
+    const status = done ? 'completed' : session.scriptState.status === 'playing' ? 'playing' : 'paused';
+    return { ...next, script: session.script, scriptState: { ...session.scriptState, step, status } };
+  }
+  if (action.type === 'SCRIPT_SEEK') {
+    let next = dispatchRuntimeAction(session, { type: 'SCRIPT_RESET' });
+    const target = Math.max(0, Math.min(Number(action.step) || 0, next.scriptState.totalSteps));
+    for (let index = 0; index < target; index += 1) next = dispatchRuntimeAction(next, { type: 'SCRIPT_STEP' });
+    return next;
+  }
+  if (action.type === 'SCRIPT_RESET') {
+    const reset = dispatchRuntimeAction(session, { type: 'RESET' });
+    return {
+      ...reset,
+      script: session.script,
+      scriptState: {
+        status: 'ready',
+        step: 0,
+        totalSteps: session.script?.steps.length ?? 0,
+      },
+    };
+  }
   if (action.type === 'RUN_SCENARIO') {
     const scenario = playground.scenarios.find((item) => item.id === action.scenarioId);
     if (!scenario) throw playgroundError('PLAYGROUND_SCENARIO_NOT_FOUND', { scenarioId: action.scenarioId });
-    if (!scenario.steps.length) {
-      return { ...session, scenario: { id: scenario.id, stepIndex: 0 }, status: 'completed' };
+    const preset = getPreset(scenario.presetId ?? scenario.id);
+    if (!preset) throw playgroundError('PLAYGROUND_SCENARIO_NOT_FOUND', { scenarioId: action.scenarioId });
+    let next = dispatchRuntimeAction(session, { type: 'SCRIPT_LOAD', script: preset });
+    next = { ...next, scriptState: { ...next.scriptState, status: 'playing' } };
+    let guard = 0;
+    while (next.scriptState.status !== 'completed' && guard < 500) {
+      next = dispatchRuntimeAction(next, { type: 'SCRIPT_STEP' });
+      guard += 1;
     }
-    const first = dispatchRuntimeAction(session, scenario.steps[0].action);
-    return { ...first, scenario: { id: scenario.id, stepIndex: 0 }, status: 'playing' };
+    return { ...next, status: 'completed', scenario: null };
   }
   if (action.type === 'SCENARIO_NEXT') {
-    if (!session.scenario) return { ...session, status: 'paused' };
-    const scenario = playground.scenarios.find((item) => item.id === session.scenario.id);
-    if (!scenario) throw playgroundError('PLAYGROUND_SCENARIO_NOT_FOUND', { scenarioId: session.scenario.id });
-    const nextIndex = session.scenario.stepIndex + 1;
-    if (nextIndex >= scenario.steps.length) {
-      return { ...session, scenario: null, status: 'completed' };
-    }
-    const next = dispatchRuntimeAction(session, scenario.steps[nextIndex].action);
-    return { ...next, scenario: { id: scenario.id, stepIndex: nextIndex }, status: 'playing' };
+    return session.scenario ? { ...session, status: 'paused' } : { ...session, status: 'paused' };
   }
+
   const { next, recorder } = applyModelAction(session, action);
   return { ...next, traces: recorder.list() };
 }
 
 export function deriveRuntimeSnapshot(session) {
   const adapter = requireModelAdapter(session.adapterId);
-  const derived = adapter.deriveScene(session.modelState, { controls: session.controls });
+  const { scene, metrics, observation, formula, capabilities: semanticCapabilities, modelContext } = semanticContext(session);
   const capabilities = {
-    ...derived.capabilities,
+    ...semanticCapabilities,
     canPause: session.status === 'playing',
   };
-  const primitives = adapter.buildPrimitives(
-    session.modelState,
-    derived.scene,
-    derived,
-    { controls: session.controls, source: session.sourceData },
-  );
+  const primitives = materializePrimitives({
+    script: session.script,
+    semanticState: modelContext,
+    traces: session.traces,
+    controls: session.controls,
+    metrics,
+    visualState: session.visualState,
+    dataState: session.dataState,
+  });
   return {
     apiVersion: 1,
     sessionId: session.sessionId,
@@ -191,14 +328,16 @@ export function deriveRuntimeSnapshot(session) {
     controls: jsonSafe(session.controls),
     timeline: jsonSafe(session.timeline),
     scenario: session.scenario ? jsonSafe(session.scenario) : null,
-    scene: jsonSafe(derived.scene),
-    metrics: jsonSafe(derived.metrics ?? {}),
-    observation: derived.observation ? jsonSafe(derived.observation) : null,
-    formula: derived.formula ? jsonSafe(derived.formula) : null,
+    scene: jsonSafe(scene),
+    metrics: jsonSafe(metrics),
+    observation: observation ? jsonSafe(observation) : null,
+    formula: formula ? jsonSafe(formula) : null,
     capabilities,
     traces: jsonSafe(session.traces),
     script: session.script ? jsonSafe(session.script) : null,
+    scriptState: jsonSafe(session.scriptState),
     visualState: jsonSafe(session.visualState),
+    dataState: jsonSafe(session.dataState),
     primitives: primitives.map((primitive) => jsonSafe(primitive)),
   };
 }

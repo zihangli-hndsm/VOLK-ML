@@ -1,7 +1,7 @@
 export default function VoteBarRenderer({ props, t, colorByLabel }) {
   const { voting } = props;
   return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-    <p className="text-xs font-black uppercase tracking-wider text-slate-500">{t('playground.knn.votes')}</p>
+    <p className="text-xs font-black uppercase tracking-wider text-slate-500">{t('playground.votes')}</p>
     <div className="mt-2 space-y-1">
       {Object.entries(voting.counts).map(([label, count]) => {
         const total = Object.values(voting.counts).reduce((sum, value) => sum + value, 0) || 1;
@@ -15,7 +15,7 @@ export default function VoteBarRenderer({ props, t, colorByLabel }) {
           {predicted && <span className="text-xs font-black text-slate-900">←</span>}
         </div>;
       })}
-      {voting.tie && <p className="mt-1 text-xs font-bold text-amber-700">{t('playground.knn.voteTie')}</p>}
+      {voting.tie && <p className="mt-1 text-xs font-bold text-amber-700">{t('playground.voteTie')}</p>}
     </div>
   </div>;
 }
