@@ -83,11 +83,17 @@ export const linearRegressionAdapter = {
       visualEvidence: ['training.lossHistory', 'metrics', 'observation'],
       runtimeEvidence: ['training.parameterHistory', 'metrics', 'observation'],
       // The failure is only real when the runtime reports an actual
-      // stoppedReason; a completed run without one must fail fidelity.
+      // stoppedReason; a completed run without one must fail fidelity. Only
+      // the inspectable learning-rate-too-high regime is advertised: it
+      // emits loss.measured + gradient.computed and keeps the attempted
+      // parameter transition in training.parameterHistory. The early
+      // non-finite `diverged` stop reason remains valid runtime behavior but
+      // is not a supported pedagogical outcome until a future contract can
+      // explain that path truthfully.
       traceEvidence: [
         'loss.measured',
         'gradient.computed',
-        { trace: 'training.completed', where: { stoppedReason: ['learning-rate-too-high', 'diverged'] } },
+        { trace: 'training.completed', where: { stoppedReason: ['learning-rate-too-high'] } },
       ],
     },
   },
