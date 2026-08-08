@@ -42,6 +42,7 @@ export function createPlaygroundAgentApi(host) {
     reset: () => invokeAsync('reset', async () => copy(await host.reset())),
     runScenario: (scenarioId) => invokeAsync('runScenario', async () => copy(await host.runScenario(String(scenarioId)))),
     getCapabilities: () => invoke('getCapabilities', () => copy(host.getCapabilities())),
+    inspectContext: () => invoke('inspectContext', () => copy(host.inspectContext())),
     listPresets: () => invoke('listPresets', () => copy(host.listPresets())),
     loadPreset: (request) => invokeAsync('loadPreset', async () => copy(await host.loadPreset(copy(request ?? {})))),
     validateScript: (script) => invoke('validateScript', () => copy(host.validateScript(copy(script)))),

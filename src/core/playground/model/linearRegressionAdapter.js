@@ -67,7 +67,29 @@ export const linearRegressionAdapter = {
     parameterSurface: true,
   },
   defaultVisualizationPreset: 'linear-regression.intuition',
+  semanticSchema: {
+    scatterPoints: { type: 'array<point2d>', description: 'Observed training samples' },
+    axes: { type: 'axes2d', description: 'Axis labels for the plot' },
+    line: { type: 'line2d', description: 'Current regression line' },
+    bestFitLine: { type: 'line2d', description: 'Least-squares reference line' },
+    residualPoints: { type: 'array<residualPoint>', description: 'Per-point residual segments' },
+    ranges: { type: 'ranges2d', description: 'Plot ranges' },
+    training: { type: 'trainingState', description: 'Gradient descent progress' },
+    metrics: { type: 'metrics', description: 'Current MSE' },
+    formula: { type: 'formula', description: 'Rendered formula' },
+    observation: { type: 'observation', description: 'Teaching observation' },
+  },
   scriptOperations: {
+    traceFit: {
+      args: {},
+      producesTrace: ['normalization.fitted', 'regression.initialized', 'loss.measured', 'gradient.computed', 'parameters.updated', 'training.completed'],
+    },
+    setBestFit: {
+      args: {},
+      producesTrace: ['parameters.updated', 'prediction.updated', 'residuals.computed'],
+    },
+  },
+  scriptOperationActions: {
     traceFit: () => ({ type: 'START_TRAINING' }),
     setBestFit: () => ({ type: 'SET_BEST_FIT' }),
   },

@@ -15,6 +15,13 @@ const MAX_PRIMITIVES = 40;
 const MAX_DURATION_MS = 10000;
 const MAX_DECISION_RESOLUTION = 48;
 
+export const RESOURCE_LIMITS = {
+  maxSteps: MAX_STEPS,
+  maxPrimitives: MAX_PRIMITIVES,
+  maxDecisionResolution: MAX_DECISION_RESOLUTION,
+  maxDurationMs: MAX_DURATION_MS,
+};
+
 function collectBindings(value, bindings) {
   if (typeof value === 'string' && (
     value.startsWith('$') || /^[A-Za-z]+\(\$[A-Za-z0-9_.]+\)$/.test(value)

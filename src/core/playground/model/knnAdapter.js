@@ -216,7 +216,30 @@ export const knnAdapter = {
     decisionSurface: true,
   },
   defaultVisualizationPreset: 'knn.intro',
+  semanticSchema: {
+    displayPoints: { type: 'array<classifiedPoint2d>', description: 'Points in the active view coordinate space' },
+    axes: { type: 'axes2d', description: 'Axis labels for the plot' },
+    displayQuery: { type: 'point2d', description: 'Query point in the active view coordinate space' },
+    neighbors: { type: 'array<neighbor>', description: 'Ranked neighbors of the query' },
+    voting: { type: 'voteState', description: 'Current neighbor vote counts' },
+    decisionRegions: { type: 'decisionRegion', description: '2D decision region grid' },
+    projection: { type: 'projection', description: '2D slice projection metadata' },
+    normalization: { type: 'normalization', description: 'Feature normalization statistics' },
+    metrics: { type: 'metrics', description: 'Accuracy and reveal metrics' },
+    formula: { type: 'formula', description: 'Rendered formula' },
+    observation: { type: 'observation', description: 'Teaching observation' },
+  },
   scriptOperations: {
+    tracePredict: {
+      args: {},
+      producesTrace: ['query.received', 'knn.distancesComputed'],
+    },
+    moveQuery: {
+      args: { x: { type: 'number|null' }, y: { type: 'number|null' } },
+      producesTrace: ['query.received', 'knn.distancesComputed'],
+    },
+  },
+  scriptOperationActions: {
     tracePredict: () => ({ type: 'START_NEIGHBOR_REVEAL' }),
     moveQuery: (args) => ({ type: 'MOVE_QUERY_POINT', x: args?.x ?? null, y: args?.y ?? null }),
   },

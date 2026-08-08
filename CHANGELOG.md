@@ -155,3 +155,15 @@
 - 测试（check-core）：capabilities/listPresets、loadPreset 参数、validateScript 结果对象、loadScript/getScript/exportScript 往返、generateScript 三种模式（preset/parameterized/generated）、注入失败 generator 的 fallback、replay-breaking 脚本的干跑失败 fallback、mock generator 成功路径、dryRunScript 估算。
 - 文档：`agent-canvas-api.md` 新增 Script operations 小节与错误码，`playgrounds.md` 新增 PR C 小节。
 - 验收：`npm run check`、`npm run check:compiler`、`npm run build`（676 modules）、`git diff --check` 全部通过；PR A/PR B/语言偏好/P0 全部回归保持。
+
+## 2026-08-08 — Agent Context and Semantic Contracts（PR D）
+
+- 新增 `canvas.playground.inspectContext()`：完整机器可读世界模型——playground(id/adapter/task)、model(capabilities + operation schemas + semantic schema)、data(features/target/rowCount/statistics/projection)、controls、traces + trace payload schemas、primitives schemas、bindings、resourceLimits、currentState；答案全部来自 schema，不是硬编码 prompt。
+- Model Adapter 契约升级：新增 `semanticSchema`（字段必须存在于 `deriveScene` 语义状态，contract test 校验）；`scriptOperations` 改为类型化 operation schema（`args` + `producesTrace`，`producesTrace ⊆ TRACE_EVENTS`），翻译器独立为 `scriptOperationActions`；新增 `TRACE_PAYLOAD_SCHEMAS`（每个 trace 事件声明 payload 字段类型）。
+- 新增 `visualization/schemas.js`：13 个 primitive 的类型化 props 契约 + 兼容绑定（`compatibleBindings`），成为 validator 上下文、inspectContext、严格 dry run 与测试的单一来源；新增 `validatePrimitiveContract`（required prop 缺失/类型不匹配 → `SCRIPT_PRIMITIVE_CONTRACT_VIOLATION`）。
+- 强化 dry run：required primitive prop 的 binding 解析为 undefined → `SCRIPT_BINDING_UNRESOLVED`（不再只是 warning）；每个 script step 在 detached clone 上重放后执行 derive→materialize→contract 校验；`decisionGridCost` 基于 resolved props（如 resolution 12 → 144）。
+- 动态脚本基线：`SCRIPT_LOAD` 捕获 `scriptBaseline`（当前 controls/modelState/dataState/source/seed）；`SCRIPT_RESET`/`SCRIPT_SEEK`/replay 回 scriptBaseline，普通 `RESET` 始终回打开时的 `sessionBaseline`（两种 reset 语义分离，测试覆盖）。
+- 新增错误码：`SCRIPT_BINDING_UNRESOLVED`、`SCRIPT_PRIMITIVE_CONTRACT_VIOLATION`（并入 `SCRIPT_ERROR_CODES`，Agent 透传）。
+- 测试（check-core）：semantic schema↔语义状态一致性、operation schema（args/producesTrace/translator）、primitive schema 全覆盖 + preset 绑定兼容、trace payload 覆盖、inspectContext 十类字段、scriptBaseline vs sessionBaseline、严格 dry run（unresolved binding / resolved grid cost）。
+- 文档：`agent-canvas-api.md` 与 `playgrounds.md` 新增 PR D 小节。
+- 验收：`npm run check`、`npm run check:compiler`、`npm run build`（678 modules）、`git diff --check` 全部通过；PR A/PR B/语言偏好/P0/PR C 全部回归保持。

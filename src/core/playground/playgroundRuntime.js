@@ -64,6 +64,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
       source: structuredClone(normalizedSource),
       seed,
     },
+    scriptBaseline: null,
     sourceData: normalizedSource,
     source: {
       kind: normalizedSource.kind,
@@ -161,7 +162,7 @@ function computeScriptStepActions(session) {
     }
   }
   if (stepDefinition.invoke) {
-    const translator = adapter.scriptOperations?.[stepDefinition.invoke.operation];
+    const translator = adapter.scriptOperationActions?.[stepDefinition.invoke.operation];
     if (!translator) {
       throw Object.assign(new Error('SCRIPT_UNSUPPORTED_OPERATION'), {
         code: 'SCRIPT_UNSUPPORTED_OPERATION',
@@ -255,6 +256,13 @@ export function dispatchRuntimeAction(session, action) {
       script: structuredClone(action.script),
       scriptState: { status: 'ready', step: 0, totalSteps: action.script.steps.length },
       visualState: {},
+      scriptBaseline: {
+        controls: structuredClone(session.controls),
+        modelState: structuredClone(session.modelState),
+        dataState: session.dataState ? structuredClone(session.dataState) : {},
+        source: structuredClone(session.sourceData ?? session.source),
+        seed: session.seed,
+      },
     };
   }
   if (action.type === 'SCRIPT_PLAY') {
@@ -290,7 +298,24 @@ export function dispatchRuntimeAction(session, action) {
     return next;
   }
   if (action.type === 'SCRIPT_RESET') {
-    const reset = dispatchRuntimeAction(session, { type: 'RESET' });
+    const baseline = session.scriptBaseline;
+    const reset = baseline
+      ? (() => {
+        const shell = createRuntimeSession(playground, {
+          source: baseline.source,
+          controls: baseline.controls,
+          seed: baseline.seed,
+          sessionId: session.sessionId,
+        });
+        return {
+          ...shell,
+          modelState: structuredClone(baseline.modelState),
+          dataState: baseline.dataState ? structuredClone(baseline.dataState) : {},
+          baseline: structuredClone(session.baseline ?? shell.baseline),
+          scriptBaseline: structuredClone(session.scriptBaseline),
+        };
+      })()
+      : dispatchRuntimeAction(session, { type: 'RESET' });
     return {
       ...reset,
       script: session.script,
