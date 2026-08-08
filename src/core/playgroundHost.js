@@ -20,6 +20,7 @@ import {
 } from './playground/agent/teachingFidelity.js';
 import { teachingError } from './playground/agent/teachingPlan.js';
 import { TEACHING_OBJECTIVES, getSupportedTeachingObjectives } from './playground/agent/teachingTaxonomy.js';
+import { reviseScriptDeclaration } from './playground/agent/scriptRevision.js';
 import { listModelAdapters, getModelAdapter } from './playground/model/modelRegistry.js';
 import { PRIMITIVE_TYPES } from './playground/visualization/primitives.js';
 import { listPrimitiveSchemas } from './playground/visualization/schemas.js';
@@ -146,10 +147,16 @@ function resolveSource(playground, dataset) {
 
 export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
   let session = null;
+  // Where the active script came from: 'preset' | 'generated' | 'composed' |
+  // 'revised' | 'imported'. The UI surfaces this so users can always tell
+  // whether they are looking at a preset, an Agent composition or an import.
+  let scriptProvenance = 'preset';
   const subscribers = new Set();
 
+  const present = (snapshot) => (snapshot ? { ...snapshot, provenance: scriptProvenance } : null);
+
   const notify = () => {
-    const snapshot = session ? derivePlaygroundSnapshot(session) : null;
+    const snapshot = present(session ? derivePlaygroundSnapshot(session) : null);
     subscribers.forEach((listener) => {
       try { listener(snapshot); } catch { /* one subscriber must not break the host */ }
     });
@@ -174,7 +181,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         seed: request.seed,
         dataset: getDataset(),
       }));
-      return derivePlaygroundSnapshot(session);
+      scriptProvenance = 'preset';
+      return present(derivePlaygroundSnapshot(session));
     },
 
     async ensureOpen(playgroundId) {
@@ -184,13 +192,13 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
 
     getState() {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      return derivePlaygroundSnapshot(session);
+      return present(derivePlaygroundSnapshot(session));
     },
 
     async dispatch(action) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       commit(dispatchPlaygroundAction(session, action));
-      return derivePlaygroundSnapshot(session);
+      return present(derivePlaygroundSnapshot(session));
     },
 
     async play() {
@@ -212,7 +220,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
     async runScenario(scenarioId) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       commit(dispatchPlaygroundAction(session, { type: 'RUN_SCENARIO', scenarioId }));
-      return derivePlaygroundSnapshot(session);
+      scriptProvenance = 'preset';
+      return present(derivePlaygroundSnapshot(session));
     },
 
     // ---- PR C: Agent visualization script operations ----
@@ -329,10 +338,11 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       }
     },
 
-    async loadScript(script) {
+    async loadScript(script, options = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script }));
-      return derivePlaygroundSnapshot(session);
+      scriptProvenance = options.provenance ?? 'imported';
+      return present(derivePlaygroundSnapshot(session));
     },
 
     async loadPreset({ presetId, parameters = {} }) {
@@ -343,7 +353,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       for (const [key, value] of Object.entries(parameters)) {
         commit(dispatchPlaygroundAction(session, { type: 'SET_CONTROL', key, value }));
       }
-      return derivePlaygroundSnapshot(session);
+      scriptProvenance = 'preset';
+      return present(derivePlaygroundSnapshot(session));
     },
 
     dryRunScript(script) {
@@ -376,17 +387,19 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         if (!fallbackScript) throw playgroundError('PLAYGROUND_PRESET_NOT_FOUND', { presetId: goal });
         dryRun = runDryRun({ script: fallbackScript, session });
         commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: fallbackScript }));
+        scriptProvenance = 'preset';
         return {
           mode: 'preset',
           script: fallbackScript,
           rationale: `Script generation failed; fell back to preset ${fallbackScript.id}.`,
           dryRun,
           fallback: true,
-          snapshot: derivePlaygroundSnapshot(session),
+          snapshot: present(derivePlaygroundSnapshot(session)),
         };
       }
       commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: result.script }));
-      return { ...result, dryRun, snapshot: derivePlaygroundSnapshot(session) };
+      scriptProvenance = result.mode === 'preset' ? 'preset' : 'generated';
+      return { ...result, dryRun, snapshot: present(derivePlaygroundSnapshot(session)) };
     },
 
     // PR E.1: TeachingPlanner -> TeachingPlan. The planner consumes the same
@@ -416,6 +429,22 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       return { mode: 'composed', plan, script, fidelity, dryRun };
     },
 
+    // PR F.2: bounded revision of an existing TeachingPlan + Script. The
+    // revised declaration always passes validateScript -> strict dry run ->
+    // goal fidelity before it is returned; the caller previews it and then
+    // loads it explicitly (provenance 'revised').
+    async reviseScript({ plan, script, request }) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const result = reviseScriptDeclaration({
+        plan,
+        script,
+        request,
+        context: this.inspectContext(),
+        session,
+      });
+      return { mode: 'revised', ...result };
+    },
+
     async refreshSource() {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const playground = getPlayground(session.playgroundId);
@@ -427,7 +456,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         seed: session.seed,
         dataset: getDataset(),
       }));
-      return derivePlaygroundSnapshot(session);
+      scriptProvenance = 'preset';
+      return present(derivePlaygroundSnapshot(session));
     },
 
     // UI-only convenience: opens the requested playground, closing a different

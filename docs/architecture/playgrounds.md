@@ -384,6 +384,64 @@ different training epochs.
 - `mlp.intro` is internally consistent: it configures `trainingSteps = 12`
   before training and reveals exactly those 12 epochs before prediction.
 
+## Agent playground UI + script tooling (PR F.2)
+
+PR F.2 exposes the Agent-Customizable Playground architecture to users. The
+user-facing loop is complete:
+
+```text
+User teaching request
+-> Agent plan
+-> TeachingPlan
+-> Composer
+-> Visualization Script
+-> preview / inspect
+-> run
+-> revise
+-> export / import
+```
+
+- **Agent panel** (`src/components/playground/PlaygroundAgentPanel.jsx`):
+  "Ask Agent" input -> `agent.plan(goal)` -> `agent.composeScript(plan)` ->
+  preview. Nothing runs unseen: the generated TeachingPlan / Script enters a
+  preview state first with tabs **Overview / Teaching Plan / Visualization
+  Script / Fidelity** (raw JSON read-only; no executable content), and only
+  the explicit **Run** button loads and plays it through the existing Script
+  Runtime. The preview shows goal, objective, phases, controls changed,
+  operations, captures, primitives, step count and fidelity evidence
+  (grouped: controls / operations / visual / runtime / trace, each
+  checked).
+- **Script tooling**: **Copy JSON** (exact declaration), **Download JSON**
+  (`volk-ml-playground-script.json`), **Load JSON** (file input goes through
+  `validateScript` -> model/playground compatibility -> strict dry run before
+  it can replace the active script; failures surface the stable `SCRIPT_*`
+  code plus a message).
+- **Script provenance**: the host tracks where the active script came from -
+  `preset` / `generated` / `composed` / `revised` / `imported` - and exposes
+  it on every host-derived snapshot (`snapshot.provenance`). The toolbar UI
+  visibly distinguishes Preset / Composed by Agent / Imported Script, and
+  `mode: 'composed'` (plus goal-fidelity status) is preserved for Agent
+  compositions.
+- **`reviseScript`** (`src/core/playground/agent/scriptRevision.js`, exposed
+  as `agent.reviseScript({ plan, script, request })`): a bounded, typed
+  revision vocabulary - `shorten {maxSteps}`, `remove_visual
+  {primitiveTypes}`, `keep_visuals {primitiveTypes}`, `focus_result`,
+  `change_comparison_values {control, values}`. Every revision goes through
+  validate -> strict dry run -> goal fidelity; a revision that would destroy
+  the requested teaching goal is rejected with
+  `TEACHING_GOAL_FIDELITY_FAILED` (never a silently misleading script).
+  There is no free-form natural-language mutation.
+- **Playground picker**: the header offers a registry-driven selector
+  (`listPlaygrounds()`), so KNN / Linear Regression / MLP all open from the
+  normal Playground UI without hardcoded per-model pages; a newly registered
+  playground is discoverable through registry metadata.
+- **`mlp.intro` is self-contained**: it configures `hiddenUnits = 3` (and
+  `trainingSteps = 12`) before training, so changing controls before
+  `RUN_SCENARIO` cannot make the intro incomplete (regression-tested).
+- Workspace-dataset integration for MLP is intentionally deferred to F.3:
+  F.2 keeps the clean F.1 adapter architecture rather than bolting on a new
+  abstraction.
+
 ## Layers
 
 ### Model adapters

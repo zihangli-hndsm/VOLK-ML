@@ -5346,6 +5346,156 @@ assert.throws(
         assert.equal(f11RevealCount, f11ConfigStep.setControl.trainingSteps, 'training reveals equal the configured trainingSteps');
       }
 
+      // PR F.2: Agent playground UI + script tooling.
+      {
+        const f2Host = createPlaygroundHost({ getDataset: () => null });
+        const f2Agent = createPlaygroundAgentApi(f2Host);
+
+        // 1. Composition -> preview -> run loop for every supported model /
+        // objective. Nothing runs unseen: compose returns mode 'composed'
+        // with fidelity, and only an explicit loadScript + SCRIPT_PLAY runs.
+        const f2Cases = [
+          ['knn-classification', 'Explain this KNN prediction', 'explain_prediction'],
+          ['linear-regression', '解释这个模型如何工作', 'show_training'],
+          ['linear-regression', 'Show what happens when learning rate is too high', 'show_failure_case'],
+          ['mlp-classification', 'Explain this MLP prediction', 'explain_prediction'],
+          ['mlp-classification', { type: 'explain-process', objective: 'show_training' }, 'show_training'],
+        ];
+        for (const [playgroundId, goal, objective] of f2Cases) {
+          await f2Agent.open({ playgroundId });
+          const plan = await f2Agent.plan(goal);
+          assert.equal(plan.goal.objective, objective, `${playgroundId} ${objective} plans`);
+          const composed = await f2Agent.composeScript(plan);
+          assert.equal(composed.mode, 'composed', `${playgroundId} compose marks the Composer path`);
+          assert.equal(composed.fidelity.valid, true, `${playgroundId} ${objective} preview fidelity passes`);
+          await f2Host.loadScript(structuredClone(composed.script), { provenance: 'composed' });
+          assert.equal(f2Agent.getState().provenance, 'composed', `${playgroundId} composed provenance`);
+          await f2Agent.dispatch({ type: 'SCRIPT_PLAY' });
+          await f2Agent.pause();
+          await f2Agent.close();
+        }
+
+        // 2. Script tooling: copy-equivalent JSON, download serialization,
+        // safe load, and rejection of malformed / wrong-model / bad-binding
+        // scripts before they can replace the active script.
+        await f2Agent.open({ playgroundId: 'linear-regression' });
+        await f2Agent.loadPreset({ presetId: 'linear-regression.intuition' });
+        assert.deepEqual(f2Agent.getScript(), f2Agent.exportScript(), 'copy/export returns the exact declaration');
+        const f2Serialized = JSON.stringify(f2Agent.exportScript());
+        assert.deepEqual(JSON.parse(f2Serialized), f2Agent.exportScript(), 'download serialization round-trips');
+        const f2Imported = structuredClone(getPreset('linear-regression.intuition'));
+        await f2Host.loadScript(f2Imported, { provenance: 'imported' });
+        assert.equal(f2Agent.getState().provenance, 'imported', 'loaded JSON is marked as imported');
+        await assert.rejects(
+          f2Agent.loadScript({ version: 999, model: { adapter: 'linear-regression' } }),
+          (error) => error.code === 'INVALID_SCRIPT',
+          'malformed scripts are rejected before load',
+        );
+        await assert.rejects(
+          f2Agent.loadScript(structuredClone(getPreset('knn.intro'))),
+          (error) => error.code === 'SCRIPT_MODEL_MISMATCH',
+          'wrong-model scripts are rejected before load',
+        );
+        const f2BadBinding = structuredClone(getPreset('linear-regression.intuition'));
+        f2BadBinding.primitives[0].props.points = '$model.doesNotExist';
+        assert.equal(f2Agent.validateScript(f2BadBinding).valid, true, 'bad bindings pass structural validation');
+        assert.equal(f2Agent.dryRunScript(f2BadBinding).valid, false, 'bad bindings fail the strict dry run before load');
+        await f2Agent.close();
+
+        // 3. Bounded revision: shorten / keep_visuals pass when fidelity
+        // permits, and revisions that destroy required evidence reject.
+        await f2Agent.open({ playgroundId: 'linear-regression' });
+        const f2LrPlan = await f2Agent.plan('解释这个模型如何工作');
+        const f2LrComposed = await f2Agent.composeScript(f2LrPlan);
+        const f2Shortened = await f2Agent.reviseScript({
+          plan: f2LrPlan,
+          script: f2LrComposed.script,
+          request: { type: 'shorten', maxSteps: 3 },
+        });
+        assert.equal(f2Shortened.mode, 'revised', 'revision marks the revised path');
+        assert.equal(f2Shortened.script.steps.length, 3, 'shorten keeps the requested step count');
+        assert.equal(f2Shortened.fidelity.valid, true, 'shorten(3) keeps the teaching goal satisfiable');
+        await assert.rejects(
+          f2Agent.reviseScript({
+            plan: f2LrPlan,
+            script: f2LrComposed.script,
+            request: { type: 'keep_visuals', primitiveTypes: ['loss-curve', 'parameter-trajectory'] },
+          }),
+          (error) => error.code === 'TEACHING_GOAL_FIDELITY_FAILED',
+          'keeping only loss + parameter trajectory is honestly rejected (required visual evidence missing)',
+        );
+        await f2Agent.close();
+
+        await f2Agent.open({ playgroundId: 'knn-classification' });
+        const f2KnnPlan = await f2Agent.plan('Explain this KNN prediction');
+        const f2KnnComposed = await f2Agent.composeScript(f2KnnPlan);
+        const f2Kept = await f2Agent.reviseScript({
+          plan: f2KnnPlan,
+          script: f2KnnComposed.script,
+          request: { type: 'keep_visuals', primitiveTypes: ['scatter', 'neighbor-links', 'vote-bars'] },
+        });
+        assert.deepEqual(
+          f2Kept.script.primitives.map((primitive) => primitive.type).sort(),
+          ['neighbor-links', 'scatter', 'vote-bars'],
+          'keep_visuals keeps exactly the requested primitive types',
+        );
+        assert.equal(f2Kept.fidelity.valid, true, 'keep_visuals passes when fidelity permits');
+        await assert.rejects(
+          f2Agent.reviseScript({
+            plan: f2KnnPlan,
+            script: f2KnnComposed.script,
+            request: { type: 'remove_visual', primitiveTypes: ['vote-bars'] },
+          }),
+          (error) => error.code === 'TEACHING_GOAL_FIDELITY_FAILED',
+          'removing required visual evidence rejects with fidelity failure',
+        );
+        const f2ComparisonPlan = await f2Agent.plan('Compare k=1 and k=15');
+        const f2ComparisonScript = (await f2Agent.composeScript(f2ComparisonPlan)).script;
+        const f2Changed = await f2Agent.reviseScript({
+          plan: f2ComparisonPlan,
+          script: f2ComparisonScript,
+          request: { type: 'change_comparison_values', control: 'k', values: [1, 5] },
+        });
+        assert.deepEqual(f2Changed.plan.goal.values, [1, 5], 'change_comparison_values replans the comparison');
+        assert.equal(f2Changed.fidelity.valid, true, 'the replanned comparison passes fidelity');
+        assert.ok(f2Changed.script.steps.some((step) => step.setControl?.k === 5), 'the revised script sets the new value');
+        await assert.rejects(
+          f2Agent.reviseScript({ plan: f2KnnPlan, script: f2KnnComposed.script, request: { type: 'unknown_operation' } }),
+          (error) => error.code === 'TEACHING_PLAN_INVALID',
+          'unknown revision types are rejected',
+        );
+        await f2Agent.close();
+
+        // 4. Scenario robustness: changing MLP hiddenUnits before RUN_SCENARIO
+        // must not break the self-contained mlp.intro preset.
+        const f2MlpSource = {
+          kind: 'example', name: 'XOR', fingerprint: 'f2',
+          points: generateXorDataset({ seed: 3 }),
+          featureColumns: ['x1', 'x2'],
+        };
+        let f2Mlp = createPlaygroundSession(getPlayground('mlp-classification'), { source: f2MlpSource, seed: 3, sessionId: 'f2-mlp' });
+        f2Mlp = dispatchPlaygroundAction(f2Mlp, { type: 'SET_CONTROL', key: 'hiddenUnits', value: 6 });
+        f2Mlp = dispatchPlaygroundAction(f2Mlp, { type: 'RUN_SCENARIO', scenarioId: 'intro' });
+        assert.equal(f2Mlp.controls.hiddenUnits, 3, 'mlp.intro restores its configured hiddenUnits');
+        assert.ok(f2Mlp.traces.some((trace) => trace.type === 'prediction.emitted'), 'mlp.intro still completes the prediction');
+
+        // 5. Provenance is truthful across every script-loading path.
+        await f2Agent.open({ playgroundId: 'linear-regression' });
+        assert.equal(f2Agent.getState().provenance, 'preset', 'open starts as a preset');
+        await f2Agent.runScenario('intro');
+        assert.equal(f2Agent.getState().provenance, 'preset', 'runScenario stays a preset');
+        await f2Agent.close();
+
+        // 6. The new UI panel imports no model math and the generic layers
+        // still contain no MLP branch.
+        const f2PanelSource = readFileSync(new URL('../src/components/playground/PlaygroundAgentPanel.jsx', import.meta.url), 'utf-8');
+        assert.ok(
+          !/from\s+['"]\.\.\/\.\.\/core\/(playground\/|knnMath|linearRegression)/.test(f2PanelSource)
+          && !f2PanelSource.includes("from '../../core/playground/model/"),
+          'the Agent panel imports no model mathematics',
+        );
+      }
+
       // LR and KNN existing presets remain unchanged.
       assert.doesNotThrow(() => validateScript(getPreset('knn.intro')), 'knn.intro still validates');
       assert.doesNotThrow(() => validateScript(getPreset('linear-regression.intuition')), 'LR intuition preset still validates');
