@@ -13,6 +13,9 @@ import { dryRunScript as runDryRun } from './playground/agent/dryRun.js';
 import { generateVisualizationScript } from './playground/agent/scriptGenerator.js';
 import { listModelAdapters, getModelAdapter } from './playground/model/modelRegistry.js';
 import { PRIMITIVE_TYPES } from './playground/visualization/primitives.js';
+import { listPrimitiveSchemas } from './playground/visualization/schemas.js';
+import { RESOURCE_LIMITS } from './playground/visualization/scriptValidator.js';
+import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from './playground/trace/traceTypes.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
 
@@ -199,9 +202,71 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           id: adapter.id,
           capabilities: { ...adapter.capabilities },
           operations: Object.keys(getModelAdapter(adapter.id)?.scriptOperations ?? {}),
+          operationSchemas: getModelAdapter(adapter.id)?.scriptOperations ?? {},
         })),
         presets: listPresets().map((preset) => preset.id),
         primitives: [...PRIMITIVE_TYPES],
+      };
+    },
+
+    inspectContext() {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const adapter = getModelAdapter(session.adapterId);
+      const snapshot = derivePlaygroundSnapshot(session);
+      const data = snapshot.dataState ?? {};
+      const statistics = {};
+      for (const feature of data.featureColumns ?? []) {
+        const values = (data.rows ?? [])
+          .map((row) => Number(row?.[feature]))
+          .filter((value) => Number.isFinite(value));
+        if (values.length) {
+          statistics[feature] = {
+            count: values.length,
+            mean: values.reduce((sum, value) => sum + value, 0) / values.length,
+            min: Math.min(...values),
+            max: Math.max(...values),
+          };
+        }
+      }
+      const semanticFields = Object.keys(adapter.semanticSchema ?? {});
+      return {
+        version: 1,
+        playground: { id: session.playgroundId, modelAdapter: session.adapterId, task: data.task ?? null },
+        model: {
+          capabilities: { ...adapter.capabilities },
+          operations: adapter.scriptOperations ?? {},
+          semanticFields,
+          semanticSchema: adapter.semanticSchema ?? {},
+        },
+        data: {
+          task: data.task ?? null,
+          featureColumns: data.featureColumns ?? [],
+          targetColumn: data.targetColumn ?? null,
+          rowCount: (data.rows ?? []).length,
+          statistics,
+          projection: snapshot.scene?.projection ?? null,
+        },
+        controls: snapshot.controls,
+        traces: TRACE_EVENTS[session.adapterId] ?? [],
+        traceSchemas: Object.fromEntries((TRACE_EVENTS[session.adapterId] ?? []).map((type) => [type, TRACE_PAYLOAD_SCHEMAS[type] ?? {}])),
+        primitives: listPrimitiveSchemas(),
+        bindings: [
+          { prefix: '$model', fields: semanticFields },
+          { prefix: '$data', fields: ['schema', 'rows', 'task', 'featureColumns', 'targetColumn', 'trainRatio'] },
+          { prefix: '$controls', fields: Object.keys(snapshot.controls ?? {}) },
+          { prefix: '$metrics', fields: Object.keys(snapshot.metrics ?? {}) },
+          { prefix: '$trace', fields: null },
+        ],
+        resourceLimits: { ...RESOURCE_LIMITS },
+        currentState: {
+          status: snapshot.status,
+          scriptId: snapshot.script?.id ?? null,
+          scriptStep: snapshot.scriptState?.step ?? 0,
+          scriptTotalSteps: snapshot.scriptState?.totalSteps ?? 0,
+          modelStep: snapshot.timeline?.step ?? 0,
+          revealed: snapshot.metrics?.revealed ?? null,
+          predictedLabel: snapshot.metrics?.predictedLabel ?? null,
+        },
       };
     },
 

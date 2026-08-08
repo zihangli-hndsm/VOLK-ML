@@ -53,6 +53,14 @@ User preference owns language; example content owns the example. No `PROJECT_VER
 - `src/core/playground/agent/dryRun.js` replays a script on a detached session clone (after structural validation and binding resolution) and returns `{ valid, estimatedSteps, estimatedPrimitiveUpdates, decisionGridCost, warnings }`. The live session is never mutated; any step that throws makes the dry run invalid.
 - `src/core/playground/agent/scriptGenerator.js` is a preset-first, rule-based generator: exact preset → parameterized preset (goal keywords map to presets and control parameters) → generated minimal script. No LLM is required; an external generator (future LLM adapter) can be injected at the host and its output still passes the same validator + dry run.
 - `playgroundHost` / `canvas.playground` expose `getCapabilities`, `listPresets`, `loadPreset`, `loadScript`, `validateScript`, `getScript`, `exportScript`, `dryRunScript` and `generateScript`. `generateScript` loads the accepted script and falls back to the closest preset (`fallback: true`) if validation or the dry run fails.
+
+## Agent context and semantic contracts (PR D)
+
+- `inspectContext()` (PR D) gives the Agent a stable, machine-readable world model: playground/model/data/controls/traces/primitives/bindings/resourceLimits/currentState, all sourced from schemas.
+- Model adapters declare `semanticSchema` (fields must exist in the derived semantic state — contract tested), typed `scriptOperations` (`args` + `producesTrace`) with `scriptOperationActions` translators, and every trace event has a `TRACE_PAYLOAD_SCHEMAS` entry.
+- `visualization/schemas.js` is the single source for primitive contracts (typed props + compatible bindings), shared by the validator context, `inspectContext`, the strict dry run and tests.
+- The dry run is now strict: unresolved required bindings → `SCRIPT_BINDING_UNRESOLVED`; every script step is replayed on a detached clone and each snapshot is materialized and validated against the primitive contract (`SCRIPT_PRIMITIVE_CONTRACT_VIOLATION`); `decisionGridCost` uses resolved props.
+- Dynamic script baseline: `SCRIPT_LOAD` captures `scriptBaseline` (current semantic state); `SCRIPT_RESET`/`SCRIPT_SEEK`/replay return to it, while the regular `RESET` returns to the open-time `sessionBaseline`. New error codes: `SCRIPT_BINDING_UNRESOLVED`, `SCRIPT_PRIMITIVE_CONTRACT_VIOLATION`.
 - Descriptor `scenarios` are now `{ id, titleKey, presetId }` references; `runScenario()` and UI preset playback both execute the preset through the Script Runtime (same actions, same traces).
 - Script state (`scriptState: { status, step, totalSteps }`) is separate from the model timeline, so a 7-step script is never conflated with 20 training steps.
 - `RESET`/script `reset`/`seek`/replay all return to the session **baseline** (initial controls + source + seed), so `fresh first-N == full-run-then-seek-N == reset-then-N`.

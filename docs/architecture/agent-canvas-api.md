@@ -100,7 +100,13 @@ playground.getScript();                         // active declaration (JSON-safe
 playground.exportScript();                      // same as getScript, for copy/download
 playground.dryRunScript(script);                // { valid, estimatedSteps, estimatedPrimitiveUpdates, decisionGridCost, warnings }
 await playground.generateScript({ goal, constraints }); // preset-first, returns { mode, script, rationale, dryRun, snapshot, fallback? }
+playground.inspectContext();                    // full machine-readable world model (PR D)
 ```
+
+- `inspectContext()` returns the Agent's world model: playground id/adapter/task, model capabilities + operation schemas + semantic schema, data context (features, target, row count, statistics, projection), controls, trace event list + payload schemas, primitive schemas, bindable prefixes, resource limits and current state. These answers come from schemas, not hardcoded prompts.
+- Each model adapter declares `semanticSchema` (matching `deriveScene`), `scriptOperations` as typed operation schemas (`args`, `producesTrace`) with `scriptOperationActions` translators, and every trace event has a payload schema in `TRACE_PAYLOAD_SCHEMAS`.
+- `dryRunScript` is strict: unresolved required bindings fail with `SCRIPT_BINDING_UNRESOLVED`, every step is materialized and checked against the primitive contract (`SCRIPT_PRIMITIVE_CONTRACT_VIOLATION`), and `decisionGridCost` is computed from resolved props.
+- Script reset semantics: `SCRIPT_RESET`/`SCRIPT_SEEK`/replay return to the `scriptBaseline` captured at `SCRIPT_LOAD`; the regular `RESET` always returns to the open-time `sessionBaseline`.
 
 - `generateScript` is preset-first: exact preset → parameterized preset → generated minimal script. An external generator (e.g. a future LLM adapter) can be injected into the host (`createPlaygroundHost({ scriptGenerator })`); its output always passes the same validator and dry run before it is loaded.
 - Every accepted script is validated, dry-run replayed on a detached session clone, and only then loaded. Any failure falls back to the closest matching preset (`fallback: true`).

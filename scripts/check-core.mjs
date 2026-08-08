@@ -73,6 +73,11 @@ import { createScriptRuntime } from '../src/core/playground/visualization/script
 import { BINDING_TRANSFORMS, createBindingContext, resolveValue } from '../src/core/playground/visualization/bindings.js';
 import { SCRIPT_ERROR_CODES } from '../src/core/playground/visualization/scriptErrors.js';
 import { resolveLanguagePreference } from '../src/core/languagePolicy.js';
+import { getModelAdapter } from '../src/core/playground/model/modelRegistry.js';
+import { getPrimitiveSchema, listPrimitiveSchemas, validatePrimitiveContract } from '../src/core/playground/visualization/schemas.js';
+import { PRIMITIVE_TYPES } from '../src/core/playground/visualization/primitives.js';
+import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from '../src/core/playground/trace/traceTypes.js';
+import { RESOURCE_LIMITS } from '../src/core/playground/visualization/scriptValidator.js';
 import {
   buildProjectionVector,
   computeTestAccuracy,
@@ -3338,6 +3343,131 @@ assert.throws(
       assert.equal(dryRunResult.valid, true, 'dryRunScript reports valid');
       assert.ok(dryRunResult.estimatedSteps > 0 && dryRunResult.estimatedPrimitiveUpdates > 0, 'dryRunScript estimates work');
       await agentC.close();
+    }
+
+    // PR D: agent context and semantic contracts.
+    {
+      // Semantic schemas must match the semantic state adapters produce.
+      const lrAdapter = getModelAdapter('linear-regression');
+      const knnAdapter = getModelAdapter('knn');
+      for (const [adapter, playground, source] of [
+        [lrAdapter, lrPlayground, lrSource],
+        [knnAdapter, knnPlayground, knnSource2],
+      ]) {
+        assert.ok(adapter.semanticSchema && Object.keys(adapter.semanticSchema).length > 0, `${adapter.id} declares a semantic schema`);
+        const session = createPlaygroundSession(playground, { source, seed: 7, sessionId: 'prd-schema' });
+        const derived = adapter.deriveScene(session.modelState, { controls: session.controls, source: session.sourceData });
+        const modelContext = {
+          ...derived.scene,
+          metrics: derived.metrics ?? {},
+          formula: derived.formula ?? null,
+          observation: derived.observation ?? null,
+        };
+        for (const field of Object.keys(adapter.semanticSchema)) {
+          assert.ok(field in modelContext, `${adapter.id} semantic schema field ${field} exists in the semantic state`);
+        }
+        for (const [operation, schema] of Object.entries(adapter.scriptOperations)) {
+          assert.ok(schema.args && typeof schema.args === 'object', `${adapter.id}.${operation} declares args`);
+          assert.ok(Array.isArray(schema.producesTrace), `${adapter.id}.${operation} declares producesTrace`);
+          assert.ok(schema.producesTrace.every((type) => TRACE_EVENTS[adapter.id].includes(type)), `${adapter.id}.${operation} traces are known`);
+          assert.equal(typeof adapter.scriptOperationActions[operation], 'function', `${adapter.id}.${operation} has a translator`);
+        }
+      }
+
+      // Primitive schemas: every type has one; required props have compatible
+      // bindings in the presets.
+      assert.deepEqual(Object.keys(getPrimitiveSchema('scatter')?.props ?? {}), ['points', 'axes'], 'scatter schema');
+      assert.ok(PRIMITIVE_TYPES.every((type) => getPrimitiveSchema(type)), 'every primitive type has a schema');
+      for (const presetId of ['linear-regression.intuition', 'knn.intro']) {
+        const preset = getPreset(presetId);
+        for (const declaration of preset.primitives) {
+          const schema = getPrimitiveSchema(declaration.type);
+          for (const [prop, propSchema] of Object.entries(schema.props)) {
+            if (!propSchema.required) continue;
+            const binding = declaration.props?.[prop];
+            assert.ok(typeof binding === 'string', `${presetId} ${declaration.id} required prop ${prop} uses a binding`);
+            assert.ok(
+              (schema.compatibleBindings[prop] ?? []).includes(binding),
+              `${presetId} ${declaration.id}.${prop} binding ${binding} is compatible`,
+            );
+          }
+        }
+      }
+
+      // Trace payload schemas cover every declared event.
+      for (const [adapterId, events] of Object.entries(TRACE_EVENTS)) {
+        for (const event of events) {
+          assert.ok(TRACE_PAYLOAD_SCHEMAS[event], `${adapterId} trace ${event} has a payload schema`);
+        }
+      }
+
+      // inspectContext answers the PR D acceptance questions from schemas.
+      const contextHost = createPlaygroundHost({ getDataset: () => null });
+      const contextAgent = createPlaygroundAgentApi(contextHost);
+      await contextAgent.open({ playgroundId: 'knn-classification' });
+      const context = contextAgent.inspectContext();
+      assert.equal(context.version, 1, 'inspectContext version');
+      assert.equal(context.playground.modelAdapter, 'knn', 'inspectContext identifies the model adapter');
+      assert.equal(context.playground.task, 'classification', 'inspectContext identifies the task');
+      assert.ok(context.model.operations.tracePredict, 'inspectContext exposes operation schemas');
+      assert.ok(context.model.semanticFields.includes('displayPoints'), 'inspectContext exposes semantic fields');
+      assert.ok(context.data.featureColumns.includes('x1'), 'inspectContext exposes data features');
+      assert.equal(context.data.targetColumn, 'label', 'inspectContext exposes the target column');
+      assert.ok(context.data.rowCount > 0 && context.data.statistics.x1, 'inspectContext exposes data statistics');
+      assert.ok(context.primitives.some((primitive) => primitive.type === 'neighbor-links' && primitive.props.neighbors), 'inspectContext exposes primitive schemas');
+      assert.ok(context.bindings.some((binding) => binding.prefix === '$model' && binding.fields.includes('neighbors')), 'inspectContext exposes bindings');
+      assert.equal(context.resourceLimits.maxSteps, RESOURCE_LIMITS.maxSteps, 'inspectContext exposes resource limits');
+      assert.ok(context.traces.includes('knn.distancesComputed') && context.traceSchemas['knn.neighborSelected'], 'inspectContext exposes trace schemas');
+      await contextAgent.close();
+
+      // Dynamic script baseline: SCRIPT_LOAD captures the current semantic
+      // state; SCRIPT_RESET returns to it while RESET returns to the open state.
+      let baselineSession = createPlaygroundSession(knnPlayground, { source: knnSource2, seed: 3, sessionId: 'prd-baseline' });
+      baselineSession = dispatchPlaygroundAction(baselineSession, { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true });
+      baselineSession = dispatchPlaygroundAction(baselineSession, { type: 'SCRIPT_LOAD', script: getPreset('knn.intro') });
+      baselineSession = dispatchPlaygroundAction(baselineSession, { type: 'SCRIPT_STEP' });
+      assert.equal(baselineSession.controls.showDecisionRegions, true, 'edit survives into the script baseline');
+      const scriptReset = dispatchPlaygroundAction(baselineSession, { type: 'SCRIPT_RESET' });
+      assert.equal(scriptReset.controls.showDecisionRegions, true, 'SCRIPT_RESET returns to the script baseline');
+      const modelReset = dispatchPlaygroundAction(scriptReset, { type: 'RESET' });
+      assert.equal(modelReset.controls.showDecisionRegions, false, 'RESET returns to the open session baseline');
+
+      // Strict dry run: unresolved required bindings and resolved grid cost.
+      const unresolvedScript = {
+        version: 1,
+        id: 'unresolved',
+        model: { adapter: 'knn' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: ['scatter'], side: [] },
+        primitives: [{ id: 'scatter', type: 'scatter', props: { points: '$model.missingField', axes: '$model.axes' } }],
+        steps: [{ id: 'w', wait: true, durationMs: 100 }],
+      };
+      const unresolvedHost = createPlaygroundHost({ getDataset: () => null });
+      const unresolvedAgent = createPlaygroundAgentApi(unresolvedHost);
+      await unresolvedAgent.open({ playgroundId: 'knn-classification' });
+      const unresolved = unresolvedAgent.dryRunScript(unresolvedScript);
+      assert.equal(unresolved.valid, false, 'unresolved required binding fails the dry run');
+      assert.equal(unresolved.code, 'SCRIPT_BINDING_UNRESOLVED', 'unresolved binding has a stable code');
+      const gridScript = {
+        version: 1,
+        id: 'grid',
+        model: { adapter: 'knn' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: ['decision-region'], side: [] },
+        primitives: [{
+          id: 'decision-region',
+          type: 'decision-region',
+          when: '$controls.showDecisionRegions',
+          props: { cells: '$model.decisionRegions.cells', resolution: 12 },
+        }],
+        steps: [{ id: 's', setControl: { showDecisionRegions: true } }, { id: 'w', wait: true, durationMs: 100 }],
+      };
+      const gridResult = unresolvedAgent.dryRunScript(gridScript);
+      assert.equal(gridResult.valid, true, 'grid script passes the dry run');
+      assert.equal(gridResult.decisionGridCost, 144, 'decisionGridCost uses the resolved resolution');
+      await unresolvedAgent.close();
     }
   }
 }

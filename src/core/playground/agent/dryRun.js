@@ -1,19 +1,22 @@
 import { validateScript } from '../visualization/scriptValidator.js';
 import { createBindingContext, resolveValue } from '../visualization/bindings.js';
+import { getPrimitiveSchema, validatePrimitiveContract } from '../visualization/schemas.js';
+import { materializePrimitives } from '../visualization/primitiveMaterializer.js';
 import { getModelAdapter } from '../model/modelRegistry.js';
-import { dispatchPlaygroundAction } from '../../playgrounds/session.js';
+import { dispatchPlaygroundAction, derivePlaygroundSnapshot } from '../../playgrounds/session.js';
+import { scriptError } from '../visualization/scriptErrors.js';
 
-// Dry run for a Visualization Script before it is accepted by the Agent:
+// Strict dry run for a Visualization Script before it is accepted:
 //
-//   1. structural validation (scriptValidator);
-//   2. model compatibility check against the current session;
-//   3. binding resolution against the current semantic snapshot;
-//   4. real replay on a detached session clone (every step must produce a
-//      valid snapshot without throwing);
-//   5. cost estimates (steps, primitive updates, decision grid).
+//   1. structural validation;
+//   2. model compatibility against the current session;
+//   3. binding resolution: required primitive props must resolve (undefined
+//      is SCRIPT_BINDING_UNRESOLVED, not a warning);
+//   4. real replay on a detached session clone where every step is followed
+//      by derive -> materialize -> primitive contract validation;
+//   5. resource estimates based on resolved props.
 //
-// The live session is never mutated. Any step that throws makes the dry run
-// invalid, so an Agent can never execute a script that only looks valid.
+// The live session is never mutated.
 
 function collectBindings(value, bindings) {
   if (typeof value === 'string' && (value.startsWith('$') || /^[A-Za-z]+\(\$[A-Za-z0-9_.]+\)$/.test(value))) {
@@ -21,6 +24,46 @@ function collectBindings(value, bindings) {
   }
   if (Array.isArray(value)) value.forEach((item) => collectBindings(item, bindings));
   else if (value && typeof value === 'object') Object.values(value).forEach((item) => collectBindings(item, bindings));
+}
+
+function buildModelContext(snapshot) {
+  return {
+    ...snapshot.scene,
+    metrics: snapshot.metrics ?? {},
+    formula: snapshot.formula ?? null,
+    observation: snapshot.observation ?? null,
+  };
+}
+
+function checkRequiredBindings(script, context) {
+  for (const primitive of script.primitives) {
+    const schema = getPrimitiveSchema(primitive.type);
+    if (!schema) continue;
+    for (const [prop, propSchema] of Object.entries(schema.props)) {
+      if (!propSchema.required) continue;
+      const raw = primitive.props?.[prop];
+      if (typeof raw === 'string' && raw.startsWith('$') && resolveValue(raw, context) === undefined) {
+        throw scriptError('SCRIPT_BINDING_UNRESOLVED', { primitiveId: primitive.id, type: primitive.type, prop, binding: raw });
+      }
+    }
+  }
+}
+
+function materializeAndValidate(snapshot, script) {
+  const primitives = materializePrimitives({
+    script,
+    semanticState: buildModelContext(snapshot),
+    traces: snapshot.traces ?? [],
+    controls: snapshot.controls ?? {},
+    metrics: snapshot.metrics ?? {},
+    visualState: snapshot.visualState ?? {},
+    dataState: snapshot.dataState ?? {},
+  });
+  for (const primitive of primitives) {
+    const result = validatePrimitiveContract(primitive);
+    if (!result.valid) throw scriptError(result.code, result.details);
+  }
+  return primitives;
 }
 
 export function dryRunScript({ script, session }) {
@@ -41,33 +84,27 @@ export function dryRunScript({ script, session }) {
     };
   }
 
-  // Bindings: try to resolve every declared binding against the current
-  // snapshot; unresolved bindings are warnings, not hard failures.
-  if (session) {
-    const snapshot = deriveSnapshotForBindings(session);
-    const context = createBindingContext({
-      model: snapshot.scene,
-      data: snapshot.dataState ?? {},
-      controls: snapshot.controls,
-      trace: snapshot.traces ?? [],
-      metrics: snapshot.metrics ?? {},
-    });
-    const bindings = [];
-    collectBindings(script, bindings);
-    for (const binding of bindings) {
-      const resolved = resolveValue(binding, context);
-      if (resolved === undefined) warnings.push(`binding ${binding} resolved to undefined`);
-    }
-  }
-
-  // Real replay on a detached clone.
   let replaySession = session ? structuredClone(session) : null;
   if (replaySession) {
     try {
       replaySession = dispatchPlaygroundAction(replaySession, { type: 'SCRIPT_LOAD', script: structuredClone(script) });
+      // Required binding resolution against the state right after load.
+      const initialSnapshot = derivePlaygroundSnapshot(replaySession);
+      const initialContext = createBindingContext({
+        model: buildModelContext(initialSnapshot),
+        data: initialSnapshot.dataState ?? {},
+        controls: initialSnapshot.controls,
+        trace: initialSnapshot.traces ?? [],
+        metrics: initialSnapshot.metrics ?? {},
+      });
+      checkRequiredBindings(script, initialContext);
+      materializeAndValidate(initialSnapshot, script);
+
       const total = script.steps.length;
       for (let index = 0; index < total; index += 1) {
         replaySession = dispatchPlaygroundAction(replaySession, { type: 'SCRIPT_STEP' });
+        const stepSnapshot = derivePlaygroundSnapshot(replaySession);
+        materializeAndValidate(stepSnapshot, script);
       }
     } catch (error) {
       return {
@@ -79,37 +116,34 @@ export function dryRunScript({ script, session }) {
     }
   }
 
+  // Estimates from resolved props.
   const estimatedSteps = script.steps.length;
   const estimatedPrimitiveUpdates = script.steps.reduce((sum, step) => (
     sum + Object.keys(step).filter((key) => (
       ['setControl', 'invoke', 'show', 'hide', 'highlight', 'reveal', 'annotate', 'reset'].includes(key)
     )).length
   ), 0);
-  const decisionGridCost = script.primitives
-    .filter((primitive) => primitive.type === 'decision-region')
-    .reduce((sum, primitive) => {
-      const resolution = primitive.props?.resolution ?? 48;
-      return sum + resolution * resolution;
-    }, 0);
+  let decisionGridCost = 0;
+  if (replaySession) {
+    const snapshot = derivePlaygroundSnapshot(replaySession);
+    const context = createBindingContext({
+      model: buildModelContext(snapshot),
+      data: snapshot.dataState ?? {},
+      controls: snapshot.controls,
+      trace: snapshot.traces ?? [],
+      metrics: snapshot.metrics ?? {},
+    });
+    for (const primitive of script.primitives) {
+      if (primitive.type !== 'decision-region') continue;
+      const resolution = Number(resolveValue(primitive.props?.resolution ?? 48, context)) || 48;
+      decisionGridCost += resolution * resolution;
+    }
+  }
   return {
     valid: true,
     estimatedSteps,
     estimatedPrimitiveUpdates,
     decisionGridCost,
     warnings,
-  };
-}
-
-function deriveSnapshotForBindings(session) {
-  // The session is JSON-safe; build a lightweight snapshot without touching
-  // the live runtime to keep the dry run side-effect free.
-  const adapter = getModelAdapter(session.adapterId);
-  const derived = adapter.deriveScene(session.modelState, { controls: session.controls, source: session.sourceData });
-  return {
-    scene: { ...derived.scene, metrics: derived.metrics, formula: derived.formula, observation: derived.observation },
-    controls: session.controls,
-    dataState: session.dataState,
-    traces: session.traces,
-    metrics: derived.metrics,
   };
 }
