@@ -35,6 +35,7 @@ import {
 import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
+import { listPlaygrounds } from './core/playgrounds/registry.js';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
@@ -1357,6 +1358,21 @@ function Workspace() {
     <header className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
       <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><label className="hidden min-w-0 md:block"><span className="sr-only">{t('project.name')}</span><input value={projectName} onChange={(event) => setProjectName(event.target.value)} className="w-44 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 lg:w-56" /><span className="mt-0.5 block text-[10px] text-slate-400">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span></label></div>
       <nav className="flex items-center gap-1.5 overflow-x-auto text-sm">
+        <label className="flex items-center rounded-xl bg-slate-100 px-2 py-2">
+          <span className="sr-only">{t('nav.playground')}</span>
+          <select aria-label={t('nav.playground')} value="" onChange={(event) => {
+            const id = event.target.value;
+            if (id) {
+              setPlaygroundId(id);
+              setPlaygroundOpen(true);
+            }
+          }} className="bg-transparent text-sm font-bold outline-none">
+            <option value="">{t('nav.playground')}</option>
+            {listPlaygrounds().map((playground) => (
+              <option key={playground.id} value={playground.id}>{t(playground.titleKey)}</option>
+            ))}
+          </select>
+        </label>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setLeftOpen((value) => !value)}>☰ <span className="hidden sm:inline">{t('nav.blocks')}</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setRightOpen((value) => !value)}>⚙ <span className="hidden sm:inline">{t('nav.parameters')}</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setViewMode((value) => value === 'canvas' ? 'architecture' : 'canvas')}>{viewMode === 'canvas' ? '⌘' : '⌁'} <span className="hidden lg:inline">{t(`nav.${viewMode === 'canvas' ? 'architecture' : 'canvas'}`)}</span></button>
@@ -1405,7 +1421,7 @@ function Workspace() {
     <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project, { languagePolicy: 'preserve-current' }); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => { setPlaygroundId(id); setPlaygroundOpen(true); }} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
-    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} host={playgroundHostRef.current} onClose={() => setPlaygroundOpen(false)} t={t} />
+    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} host={playgroundHostRef.current} agent={playgroundAgentRef.current} onClose={() => setPlaygroundOpen(false)} t={t} />
   </div>;
 }
 

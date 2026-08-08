@@ -4,9 +4,10 @@ import PlaygroundToolbar from './PlaygroundToolbar.jsx';
 import PlaygroundStage from './PlaygroundStage.jsx';
 import PlaygroundInspector from './PlaygroundInspector.jsx';
 import PlaygroundTimeline from './PlaygroundTimeline.jsx';
+import PlaygroundAgentPanel from './PlaygroundAgentPanel.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 
-export default function UnifiedPlaygroundDialog({ open, playgroundId, host, onClose, t }) {
+export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t }) {
   const [snapshot, setSnapshot] = useState(null);
   const playground = useMemo(() => (playgroundId ? getPlayground(playgroundId) : null), [playgroundId]);
 
@@ -53,6 +54,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, onCl
     <section className="max-h-[94vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
       <div className="space-y-4">
         <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} onClose={onClose} t={t} />
+        {agent && <PlaygroundAgentPanel host={host} agent={agent} snapshot={snapshot} t={t} />}
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <PlaygroundStage snapshot={snapshot} t={t} />
