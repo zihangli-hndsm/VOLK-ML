@@ -212,6 +212,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
     inspectContext() {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const adapter = getModelAdapter(session.adapterId);
+      const playground = getPlayground(session.playgroundId);
       const snapshot = derivePlaygroundSnapshot(session);
       const data = snapshot.dataState ?? {};
       const statistics = {};
@@ -247,6 +248,14 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           projection: snapshot.scene?.projection ?? null,
         },
         controls: snapshot.controls,
+        controlSchemas: (playground?.controls ?? []).map((control) => ({
+          key: control.key,
+          type: control.type,
+          ...(control.min !== undefined ? { min: control.min } : {}),
+          ...(control.max !== undefined ? { max: control.max } : {}),
+          ...(control.step !== undefined ? { step: control.step } : {}),
+          ...(control.options ? { options: [...control.options] } : {}),
+        })),
         traces: TRACE_EVENTS[session.adapterId] ?? [],
         traceSchemas: Object.fromEntries((TRACE_EVENTS[session.adapterId] ?? []).map((type) => [type, TRACE_PAYLOAD_SCHEMAS[type] ?? {}])),
         primitives: listPrimitiveSchemas(),

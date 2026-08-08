@@ -3372,7 +3372,7 @@ assert.throws(
         for (const [operation, schema] of Object.entries(adapter.scriptOperations)) {
           assert.ok(schema.args && typeof schema.args === 'object', `${adapter.id}.${operation} declares args`);
           assert.ok(Array.isArray(schema.effects), `${adapter.id}.${operation} declares effects`);
-          for (const bucket of ['alwaysProducesTrace', 'mayProduceTrace']) {
+          for (const bucket of ['alwaysProducesTrace', 'mayProduceTrace', 'enablesTrace']) {
             assert.ok(Array.isArray(schema[bucket]), `${adapter.id}.${operation} declares ${bucket}`);
             assert.ok(schema[bucket].every((type) => TRACE_EVENTS[adapter.id].includes(type)), `${adapter.id}.${operation} ${bucket} traces are known`);
           }
@@ -3641,6 +3641,116 @@ assert.throws(
       const capabilitySchemas = schemaAgent.getCapabilities().models.find((model) => model.id === 'knn').operationSchemas;
       assert.deepEqual(capabilitySchemas, knnSchemaAdapter.scriptOperations, 'getCapabilities operation schemas match the adapters');
       await schemaAgent.close();
+    }
+
+    // PR D.2: final agent contract fidelity cleanup.
+    {
+      const runOperation = (session, operationName, args = {}) => {
+        const adapter = getModelAdapter(session.adapterId);
+        const before = session.traces.slice();
+        const action = adapter.scriptOperationActions[operationName](args);
+        const next = dispatchPlaygroundAction(session, action);
+        const delta = next.traces.slice(before.length).map((event) => event.type);
+        return { next, delta, schema: adapter.scriptOperations[operationName] };
+      };
+      const assertImmediateTraceContract = (session, operationName, args = {}) => {
+        const { delta, schema } = runOperation(session, operationName, args);
+        const permitted = new Set([...(schema.alwaysProducesTrace ?? []), ...(schema.mayProduceTrace ?? [])]);
+        assert.ok(delta.every((type) => permitted.has(type)), `${operationName} immediate delta ${delta.join(',')} ⊆ always∪may`);
+        for (const type of schema.alwaysProducesTrace ?? []) {
+          assert.ok(delta.includes(type), `${operationName} always event ${type} is actually observed`);
+        }
+        for (const type of schema.enablesTrace ?? []) {
+          assert.ok(TRACE_EVENTS[session.adapterId].includes(type), `${operationName} enablesTrace ${type} is known`);
+        }
+        return delta;
+      };
+
+      // LR traceFit: immediate events come from START_TRAINING only; STEP-only
+      // events stay in enablesTrace.
+      const lrFitSession = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 7, sessionId: 'prd2' });
+      const lrFitDelta = assertImmediateTraceContract(lrFitSession, 'traceFit');
+      assert.ok(!lrFitDelta.includes('prediction.updated') && !lrFitDelta.includes('residuals.computed'), 'traceFit does not emit STEP-only events');
+      // Divergence path: observed delta still obeys always/may.
+      const lrDivergeSession = createPlaygroundSession(lrPlayground, {
+        source: lrSource,
+        seed: 7,
+        sessionId: 'prd2-div',
+        controls: { learningRate: 1.5, trainingSteps: 5 },
+      });
+      const lrDivergeDelta = assertImmediateTraceContract(lrDivergeSession, 'traceFit');
+      assert.ok(!lrDivergeDelta.includes('parameters.updated'), 'diverged traceFit may skip parameters.updated');
+
+      // KNN tracePredict: neighbor/vote/prediction are enabled, not immediate.
+      const knnPredictSession = createPlaygroundSession(knnPlayground, { source: knnSource2, seed: 3, sessionId: 'prd2' });
+      const knnPredictDelta = assertImmediateTraceContract(knnPredictSession, 'tracePredict');
+      assert.deepEqual(knnPredictDelta, ['query.received', 'knn.distancesComputed'], 'tracePredict emits exactly the query traces');
+      // KNN moveQuery with a fresh reveal state emits only query traces...
+      const knnMoveFresh = assertImmediateTraceContract(knnPredictSession, 'moveQuery', { x: 0, y: 0 });
+      assert.deepEqual(knnMoveFresh, ['query.received', 'knn.distancesComputed'], 'fresh moveQuery emits only query traces');
+      // ...but with an active reveal state it may emit neighbor/vote immediately.
+      let revealedSession = dispatchPlaygroundAction(knnPredictSession, { type: 'START_NEIGHBOR_REVEAL' });
+      revealedSession = dispatchPlaygroundAction(revealedSession, { type: 'STEP' });
+      const knnMoveRevealed = assertImmediateTraceContract(revealedSession, 'moveQuery', { x: 0, y: 0 });
+      assert.ok(knnMoveRevealed.includes('knn.neighborSelected'), 'moveQuery may emit neighbor events when already revealed');
+
+      // controlSchemas match the Playground descriptors and cover current values.
+      for (const [playground, source] of [[lrPlayground, lrSource], [knnPlayground, knnSource2]]) {
+        const controlHost = createPlaygroundHost({ getDataset: () => null });
+        const controlAgent = createPlaygroundAgentApi(controlHost);
+        await controlAgent.open({ playgroundId: playground.id });
+        const controlContext = controlAgent.inspectContext();
+        const descriptors = getPlayground(playground.id).controls;
+        assert.deepEqual(controlContext.controlSchemas, descriptors, `${playground.id} controlSchemas match the descriptors`);
+        for (const key of Object.keys(controlContext.controls)) {
+          assert.ok(controlContext.controlSchemas.some((schema) => schema.key === key), `${playground.id} current control ${key} has a schema`);
+        }
+        for (const schema of controlContext.controlSchemas) {
+          assert.ok(schema.key in controlContext.controls, `${playground.id} schema key ${schema.key} is a real control`);
+        }
+        await controlAgent.close();
+      }
+
+      // Composite type contracts reject malformed records.
+      assert.equal(validateType({}, 'line2d'), false, 'empty line2d fails');
+      assert.equal(validateType({}, 'axes2d'), false, 'empty axes2d fails');
+      assert.equal(validateType({ xMin: 0 }, 'ranges2d'), false, 'partial ranges2d fails');
+      assert.equal(validateType({ resolution: 48, cells: [123] }, 'decisionRegion'), false, 'decisionRegion with malformed cells fails');
+      assert.equal(validateType({ counts: 'bad' }, 'voteState'), false, 'voteState with non-object counts fails');
+      assert.equal(validateType({ start: { x: 0, y: 0 }, end: { x: 1, y: 1 }, weight: 1, bias: 0 }, 'line2d'), true, 'valid line2d passes');
+      const badLineContract = validatePrimitiveContract({
+        id: 'line',
+        type: 'regression-line',
+        props: { line: {}, ranges: { xMin: 0, xMax: 1, yMin: 0, yMax: 1 } },
+      });
+      assert.equal(badLineContract.valid, false, 'regression-line with empty line fails the primitive contract');
+
+      // decision-region resource validation is type-specific.
+      const nonRegionWithResolution = {
+        version: 1,
+        id: 'non-region',
+        model: { adapter: 'knn' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: ['scatter'], side: [] },
+        primitives: [{ id: 'scatter', type: 'scatter', props: { points: '$model.displayPoints', resolution: 1000 } }],
+        steps: [{ id: 'w', wait: true, durationMs: 100 }],
+      };
+      assert.doesNotThrow(() => validateScript(nonRegionWithResolution), 'non-decision-region primitives ignore the resolution limit');
+      const zeroResolution = {
+        version: 1,
+        id: 'zero-res',
+        model: { adapter: 'knn' },
+        data: { source: 'workspace-or-default' },
+        controls: [],
+        layout: { stage: ['decision-region'], side: [] },
+        primitives: [{ id: 'decision-region', type: 'decision-region', props: { cells: '$model.decisionRegions.cells', resolution: 0 } }],
+        steps: [{ id: 'w', wait: true, durationMs: 100 }],
+      };
+      assert.throws(() => validateScript(zeroResolution), (error) => error.code === 'SCRIPT_TOO_COMPLEX', 'non-positive decision resolution is rejected');
+      const fractionalResolution = structuredClone(zeroResolution);
+      fractionalResolution.primitives[0].props.resolution = 2.5;
+      assert.throws(() => validateScript(fractionalResolution), (error) => error.code === 'SCRIPT_TOO_COMPLEX', 'fractional decision resolution is rejected');
     }
   }
 }

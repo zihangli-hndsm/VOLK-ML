@@ -181,3 +181,13 @@
 - 新增错误码：`SCRIPT_TRACE_PAYLOAD_INVALID`（并入 `SCRIPT_ERROR_CODES`）。
 - 文档：`agent-canvas-api.md` 与 `playgrounds.md` 更新 PR D.1 语义。
 - 验收：`npm run check`、`npm run check:compiler`、`npm run build`（679 modules）、`git diff --check` 全部通过；PR A/PR B/语言偏好/P0/PR C/PR D 全部回归保持。
+
+## 2026-08-08 — Finalize Agent Semantic Contracts（PR D.2）
+
+- Operation trace 语义与真实运行时对齐：`scriptOperations` 新增 `enablesTrace`（由后续 STEP/reveal/playback 产生的事件），`alwaysProducesTrace`/`mayProduceTrace` 严格表示「调用该操作时直接产生」的事件；KNN `tracePredict` 只直接产生 query.received/knn.distancesComputed，neighbor/vote/prediction 移入 enablesTrace；KNN `moveQuery` 在已 reveal 状态下可立即产生 neighbor/vote/prediction（mayProduceTrace）；LR `traceFit` 的 prediction.updated/residuals.computed 移入 enablesTrace，loss/gradient/parameters 按发散/早停路径诚实归入 may。
+- 运行时 trace delta 契约测试：捕获操作前 traces → 调用操作 → delta 必须 ⊆ always∪may；每个 always 事件必须实际观测到；代表性状态覆盖 LR 正常/发散、KNN 未 reveal/已 reveal 的 moveQuery。
+- inspectContext 暴露 `controlSchemas`：来自 Playground descriptor 的 key/type/min/max/step/options（保留当前 `controls`）；一致性测试：每个当前 control 有 schema、schema key 都是真实 control、controlSchemas 与 descriptor deepEqual。
+- 组合类型契约补全：`typeContracts.js` 对 line2d（start/end point2d、weight/bias 有限）、ranges2d、axes2d、decisionRegion、voteState、trainingState、projection、normalization、formula、observation、metrics 做结构校验；负例（空 line、空 axes、malformed cells、非对象 counts）被拒绝。
+- validator 清理：`maxDecisionResolution` 资源校验仅作用于 `decision-region` primitive（不再误伤未来带 resolution 属性的图元），并拒绝非正整数/小数 resolution（`SCRIPT_TOO_COMPLEX`）；dry run 的 resolved 校验同样要求正整数。
+- 文档：`agent-canvas-api.md` 与 `playgrounds.md` 更新 PR D.2 语义。
+- 验收：`npm run check`、`npm run check:compiler`、`npm run build`（680 modules）、`git diff --check` 全部通过；PR A–D.1 全部回归保持。

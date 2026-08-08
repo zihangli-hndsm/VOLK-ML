@@ -83,14 +83,20 @@ export const linearRegressionAdapter = {
     traceFit: {
       args: {},
       effects: ['training.started', 'parameters.changed', 'prediction.invalidated'],
-      alwaysProducesTrace: ['normalization.fitted', 'regression.initialized', 'loss.measured', 'gradient.computed', 'training.completed'],
-      mayProduceTrace: ['parameters.updated', 'prediction.updated', 'residuals.computed'],
+      // START_TRAINING emits normalization/initialization and per-step events
+      // while the step is finite; divergence or early stop skips some of them.
+      alwaysProducesTrace: ['normalization.fitted', 'regression.initialized', 'training.completed'],
+      mayProduceTrace: ['loss.measured', 'gradient.computed', 'parameters.updated'],
+      // prediction.updated / residuals.computed are produced by later STEP
+      // playback, not by the traceFit invocation itself.
+      enablesTrace: ['prediction.updated', 'residuals.computed'],
     },
     setBestFit: {
       args: {},
       effects: ['parameters.changed', 'prediction.changed'],
       alwaysProducesTrace: ['parameters.updated', 'prediction.updated', 'residuals.computed'],
       mayProduceTrace: [],
+      enablesTrace: [],
     },
   },
   scriptOperationActions: {

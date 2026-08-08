@@ -145,11 +145,11 @@ export function dryRunScript({ script, session }) {
     for (const primitive of script.primitives) {
       if (primitive.type !== 'decision-region') continue;
       const resolution = Number(resolveValue(primitive.props?.resolution ?? 48, context)) || 48;
-      if (resolution > RESOURCE_LIMITS.maxDecisionResolution) {
+      if (!Number.isInteger(resolution) || resolution < 1 || resolution > RESOURCE_LIMITS.maxDecisionResolution) {
         return {
           valid: false,
           code: 'SCRIPT_TOO_COMPLEX',
-          details: { reason: 'decision resolution', resolution, max: RESOURCE_LIMITS.maxDecisionResolution },
+          details: { reason: 'decision resolution', resolution, max: RESOURCE_LIMITS.maxDecisionResolution, invalid: true },
           warnings,
         };
       }

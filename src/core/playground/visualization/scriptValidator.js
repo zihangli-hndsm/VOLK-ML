@@ -66,10 +66,11 @@ export function validateScript(script) {
     if (!isKnownPrimitiveType(primitive.type)) {
       throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE', { type: primitive.type, id: primitive.id });
     }
-    if (primitive.props?.resolution !== undefined
-      && Number.isFinite(Number(primitive.props.resolution))
-      && Number(primitive.props.resolution) > MAX_DECISION_RESOLUTION) {
-      throw scriptError('SCRIPT_TOO_COMPLEX', { reason: 'decision resolution' });
+    if (primitive.type === 'decision-region' && typeof primitive.props?.resolution === 'number'
+      && (!Number.isInteger(primitive.props.resolution)
+        || primitive.props.resolution < 1
+        || primitive.props.resolution > MAX_DECISION_RESOLUTION)) {
+      throw scriptError('SCRIPT_TOO_COMPLEX', { reason: 'decision resolution', resolution: primitive.props.resolution, max: MAX_DECISION_RESOLUTION });
     }
     if (primitive.when !== undefined && !isJsonSafe(primitive.when)) {
       throw scriptError('INVALID_SCRIPT', { reason: 'when must be JSON-safe' });
