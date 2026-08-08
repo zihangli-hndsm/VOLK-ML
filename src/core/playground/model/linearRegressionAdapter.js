@@ -81,6 +81,7 @@ export const linearRegressionAdapter = {
   },
   scriptOperations: {
     traceFit: {
+      intent: 'fit',
       args: {},
       effects: ['training.started', 'parameters.changed', 'prediction.invalidated'],
       // START_TRAINING emits normalization/initialization and per-step events
@@ -90,8 +91,12 @@ export const linearRegressionAdapter = {
       // prediction.updated / residuals.computed are produced by later STEP
       // playback, not by the traceFit invocation itself.
       enablesTrace: ['prediction.updated', 'residuals.computed'],
+      // Declarative playback policy: revealing `trainingSteps` times reaches
+      // the completed training evidence state.
+      playback: { revealCountControl: 'trainingSteps' },
     },
     setBestFit: {
+      intent: 'parameterize',
       args: {},
       effects: ['parameters.changed', 'prediction.changed'],
       alwaysProducesTrace: ['parameters.updated', 'prediction.updated', 'residuals.computed'],

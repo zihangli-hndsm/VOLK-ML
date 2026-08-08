@@ -1,8 +1,20 @@
-import { TEACHING_GOAL_TYPES, teachingError, validateTeachingPlan } from './teachingPlan.js';
+import { getPrimitiveSchema } from '../visualization/schemas.js';
+import {
+  TEACHING_GOAL_TYPES,
+  findOperationByIntent,
+  teachingError,
+  validateTeachingPlan,
+} from './teachingPlan.js';
+import { parseTeachingGoalText } from './teachingGoalParser.js';
 
-// Deterministic Teaching Planner. It derives everything from
-// inspectContext() (controlSchemas, operations, semantic fields) and never
-// hardcodes model knowledge such as "KNN supports k 1..20".
+// Schema-grounded Teaching Planner (PR E.1.1). The planner never contains
+// model behavior knowledge: control existence/values come from
+// context.controlSchemas, run objectives come from the declarative
+// `runObjective` on the control schema, operations come from
+// context.model.operations (by `intent`), and reveal counts come from the
+// operation's declarative `playback.revealCountControl`. Text parsing is
+// delegated to parseTeachingGoalText() so lexical recognition can never
+// decide model execution behavior.
 
 function assertControlValue(schema, value) {
   if (schema.type === 'number') {
@@ -26,84 +38,164 @@ function findControlSchema(context, key) {
   return (context?.controlSchemas ?? []).find((schema) => schema.key === key) ?? null;
 }
 
-function comparePhases(values) {
-  return [
-    { id: 'show-data', titleKey: 'playground.process.title' },
-    { id: 'capture-baseline' },
-    { id: `evaluate-${values[0]}`, titleKey: 'playground.comparison.title' },
-    { id: 'capture-left' },
-    { id: 'restore-baseline' },
-    { id: `evaluate-${values[1]}`, titleKey: 'playground.comparison.title' },
-    { id: 'capture-right' },
-    { id: 'summarize', titleKey: 'playground.comparison.body' },
-  ];
+// Generic semantic evidence for teaching phases: the stage primitives that
+// are materializable in this context define which model fields carry the
+// story, plus metrics/observation which every adapter declares.
+function evidenceForContext(context) {
+  const fields = new Set(['metrics', 'observation']);
+  const semanticFields = new Set(context?.model?.semanticFields ?? []);
+  for (const schema of context?.primitives ?? []) {
+    if (getPrimitiveSchema(schema.type)?.placement !== 'stage') continue;
+    for (const candidates of Object.values(schema.compatibleBindings ?? {})) {
+      for (const binding of candidates) {
+        if (binding.startsWith('$model.')) {
+          const first = binding.slice('$model.'.length).split('.')[0];
+          if (semanticFields.has(first)) fields.add(first);
+        }
+      }
+    }
+  }
+  return [...fields].sort();
 }
 
-function buildComparePlan({ goal, context, playgroundId }) {
+function resolveRevealCount(context, operationName, currentControls) {
+  const playback = context?.model?.operations?.[operationName]?.playback;
+  if (!playback?.revealCountControl) return 0;
+  const raw = currentControls?.[playback.revealCountControl];
+  const number = Number(raw);
+  return Number.isFinite(number) ? Math.max(0, Math.round(number)) : 0;
+}
+
+// Builds the run+reveal phases for one branch of a compare/what-if plan.
+// The run objective comes from the control's declarative `runObjective`; if
+// the model declares no operation for it, the set-control itself is the
+// evidence (e.g. LR weight/bias updates the prediction immediately).
+function runPhases({ controlSchema, context, currentControls, suffix }) {
+  const objective = controlSchema.runObjective;
+  if (!objective) return [];
+  const operationName = findOperationByIntent(context, objective);
+  if (!operationName) return [];
+  const phases = [{ id: `run-${suffix}`, kind: 'run', objective }];
+  const reveals = resolveRevealCount(context, operationName, currentControls);
+  if (reveals > 0) phases.push({ id: `reveal-${suffix}`, kind: 'reveal', count: reveals });
+  return phases;
+}
+
+function buildComparisonPhases({ goal, context }) {
   const schema = findControlSchema(context, goal.control);
   if (!schema) throw teachingError('TEACHING_CONTROL_INVALID', { control: goal.control });
-  if (!Array.isArray(goal.values) || goal.values.length < 2) {
-    throw teachingError('TEACHING_PLAN_INVALID', { reason: 'compare values need at least two entries' });
+  if (!Array.isArray(goal.values) || goal.values.length !== 2) {
+    throw teachingError('TEACHING_PLAN_INVALID', { reason: 'compare values need exactly two entries' });
   }
   const values = goal.values.map((value) => assertControlValue(schema, value));
-  return validateTeachingPlan({
-    version: 1,
-    id: `compare-${goal.control}`,
-    playgroundId,
-    goal: { type: 'compare-control', control: goal.control, values },
-    phases: comparePhases(values),
-  });
+  const evidence = evidenceForContext(context);
+  const currentControls = { ...(context.controls ?? {}) };
+  const branch = (value, suffix) => {
+    currentControls[goal.control] = value;
+    return [
+      { id: `set-${suffix}`, kind: 'set-control', control: goal.control, value },
+      ...runPhases({ controlSchema: schema, context, currentControls, suffix }),
+      { id: `capture-${suffix}`, kind: 'capture', captureId: String(value), evidence },
+    ];
+  };
+  return {
+    values,
+    phases: [
+      { id: 'observe', kind: 'observe', evidence },
+      { id: 'capture-baseline', kind: 'capture', captureId: 'baseline', evidence },
+      ...branch(values[0], 'left'),
+      { id: 'restore-baseline', kind: 'restore', captureId: 'baseline' },
+      ...branch(values[1], 'right'),
+      {
+        id: 'summarize',
+        kind: 'summarize',
+        titleKey: 'playground.comparison.title',
+        bodyKey: 'playground.comparison.body',
+        params: { control: goal.control, left: values[0], right: values[1] },
+      },
+    ],
+  };
 }
 
-function buildWhatIfPlan({ goal, context, playgroundId }) {
+function buildWhatIfPhases({ goal, context }) {
   const schema = findControlSchema(context, goal.control);
   if (!schema) throw teachingError('TEACHING_CONTROL_INVALID', { control: goal.control });
+  if (goal.value === undefined) {
+    throw teachingError('TEACHING_PLAN_INVALID', { reason: 'what-if needs a value' });
+  }
   const value = assertControlValue(schema, goal.value);
-  return validateTeachingPlan({
-    version: 1,
-    id: `what-if-${goal.control}`,
-    playgroundId,
-    goal: { type: 'what-if', control: goal.control, value },
+  const evidence = evidenceForContext(context);
+  const currentControls = { ...(context.controls ?? {}), [goal.control]: value };
+  return {
+    value,
     phases: [
-      { id: 'show-data', titleKey: 'playground.process.title' },
-      { id: 'set-control', titleKey: 'playground.whatIf.title' },
-      { id: 'train', titleKey: 'playground.whatIf.body' },
-      { id: 'inspect', titleKey: 'playground.whatIf.body' },
-      { id: 'summarize', titleKey: 'playground.whatIf.body' },
+      { id: 'observe', kind: 'observe', evidence },
+      { id: 'set-control', kind: 'set-control', control: goal.control, value },
+      ...runPhases({ controlSchema: schema, context, currentControls, suffix: 'result' }),
+      { id: 'capture-result', kind: 'capture', captureId: 'result', evidence },
+      {
+        id: 'summarize',
+        kind: 'summarize',
+        titleKey: 'playground.whatIf.title',
+        bodyKey: 'playground.whatIf.body',
+        params: { control: goal.control, value },
+      },
     ],
-  });
+  };
 }
 
-function buildProcessPlan({ goalType, playgroundId }) {
-  return validateTeachingPlan({
-    version: 1,
-    id: goalType,
-    playgroundId,
-    goal: { type: goalType },
-    phases: [
-      { id: 'show-data', titleKey: 'playground.process.title' },
-      { id: 'run-model', titleKey: 'playground.process.body' },
-      { id: 'reveal', titleKey: 'playground.process.body' },
-      { id: 'summarize', titleKey: 'playground.process.body' },
-    ],
+function buildExplainProcessPhases({ context }) {
+  const evidence = evidenceForContext(context);
+  const currentControls = { ...(context.controls ?? {}) };
+  const phases = [{ id: 'observe', kind: 'observe', evidence }];
+  const objective = findOperationByIntent(context, 'predict') ? 'predict' : 'fit';
+  const operationName = findOperationByIntent(context, objective);
+  if (operationName) {
+    phases.push({ id: 'run', kind: 'run', objective });
+    const reveals = resolveRevealCount(context, operationName, currentControls);
+    if (reveals > 0) phases.push({ id: 'reveal', kind: 'reveal', count: reveals });
+  }
+  phases.push({
+    id: 'summarize',
+    kind: 'summarize',
+    titleKey: 'playground.process.title',
+    bodyKey: 'playground.process.body',
+    params: {},
   });
+  return phases;
 }
 
-// Structured goal objects are the deterministic contract a later LLM planner
-// must obey. Every value is checked against the controlSchemas from
-// inspectContext(), so an impossible experiment is rejected with a stable
-// error instead of being guessed.
-function planStructuredGoal({ goal, context, playgroundId }) {
+function planForStructuredGoal({ goal, context, playgroundId }) {
   if (!TEACHING_GOAL_TYPES.includes(goal.type)) {
     throw teachingError('TEACHING_GOAL_UNSUPPORTED', { type: goal.type });
   }
   if (goal.type === 'compare-control') {
-    return buildComparePlan({ goal, context, playgroundId });
+    const { values, phases } = buildComparisonPhases({ goal, context });
+    return validateTeachingPlan({
+      version: 1,
+      id: `compare-${goal.control}`,
+      playgroundId,
+      goal: { type: 'compare-control', control: goal.control, values },
+      phases,
+    });
   }
   if (goal.type === 'what-if') {
-    return buildWhatIfPlan({ goal, context, playgroundId });
+    const { value, phases } = buildWhatIfPhases({ goal, context });
+    return validateTeachingPlan({
+      version: 1,
+      id: `what-if-${goal.control}`,
+      playgroundId,
+      goal: { type: 'what-if', control: goal.control, value },
+      phases,
+    });
   }
-  return buildProcessPlan({ goalType: goal.type, playgroundId });
+  return validateTeachingPlan({
+    version: 1,
+    id: 'explain-process',
+    playgroundId,
+    goal: { type: 'explain-process' },
+    phases: buildExplainProcessPhases({ context }),
+  });
 }
 
 export function planTeachingGoal({ goal, context }) {
@@ -111,46 +203,19 @@ export function planTeachingGoal({ goal, context }) {
     throw teachingError('TEACHING_PLAN_INVALID', { reason: 'context' });
   }
   const playgroundId = context.playground?.id;
+  if (!playgroundId) throw teachingError('TEACHING_PLAN_INVALID', { reason: 'playgroundId' });
 
-  // Explicit structured goal: validate it against the schema directly.
-  if (goal && typeof goal === 'object' && !Array.isArray(goal)) {
-    return planStructuredGoal({ goal, context, playgroundId });
+  // Text goals go through the lexical parser first; structured goals are the
+  // deterministic contract a later LLM planner must obey. Both are then
+  // checked against controlSchemas/operations by the schema-grounded code.
+  let structured = goal;
+  if (typeof goal !== 'object' || goal === null || Array.isArray(goal)) {
+    structured = parseTeachingGoalText(goal);
   }
-
-  const goalText = String(goal ?? '').trim();
-  if (!goalText) throw teachingError('TEACHING_GOAL_UNSUPPORTED', { goal });
-  const kSchema = findControlSchema(context, 'k');
-  const lrSchema = findControlSchema(context, 'learningRate');
-
-  let plan = null;
-
-  // compare-control: any explicit k=... values imply a parameter comparison.
-  const kValues = [...goalText.matchAll(/k\s*=\s*([0-9]+)/gi)].map((match) => Number(match[1]));
-  if (kSchema && kValues.length > 0) {
-    const values = kValues.length >= 2 ? kValues.slice(0, 2) : [kValues[0], 15];
-    values.forEach((value) => assertControlValue(kSchema, value));
-    plan = {
-      version: 1,
-      id: 'compare-control-k',
-      playgroundId,
-      goal: { type: 'compare-control', control: 'k', values },
-      phases: comparePhases(values),
-    };
+  if (structured && typeof structured === 'object' && !Array.isArray(structured)) {
+    return planForStructuredGoal({ goal: structured, context, playgroundId });
   }
-
-  // what-if: learning-rate style requests on a numeric control.
-  if (!plan && lrSchema && /learning rate|学习率|what.?if|lr|太高|过高|发散|diverg/i.test(goalText)) {
-    plan = buildWhatIfPlan({
-      goal: { type: 'what-if', control: 'learningRate', value: 2 },
-      context,
-      playgroundId,
-    });
-  }
-
-  // explain-process: default teaching intent for both models.
-  if (!plan) {
-    plan = buildProcessPlan({ goalType: 'explain-process', playgroundId });
-  }
-
-  return validateTeachingPlan(plan);
+  // Genuinely generic request: explain-process fallback is reserved for
+  // requests that did not explicitly ask for an unsupported control/operation.
+  return planForStructuredGoal({ goal: { type: 'explain-process' }, context, playgroundId });
 }

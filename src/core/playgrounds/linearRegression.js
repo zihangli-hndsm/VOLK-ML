@@ -20,8 +20,10 @@ export const linearRegressionPlayground = {
     // Max 5: gradient descent runs on standardized (z-scored) data, so values
     // > 1 are required to demonstrate the learning-rate-too-high teaching
     // scenario. The descriptor is the single source for every public path.
-    { key: 'learningRate', type: 'number', min: 0.001, max: 5, step: 0.001 },
-    { key: 'trainingSteps', type: 'number', min: 1, max: 100, step: 1 },
+    // runObjective declares which model operation a what-if/compare on this
+    // control should run; it is declarative metadata, not a model-id switch.
+    { key: 'learningRate', type: 'number', min: 0.001, max: 5, step: 0.001, runObjective: 'fit' },
+    { key: 'trainingSteps', type: 'number', min: 1, max: 100, step: 1, runObjective: 'fit' },
     { key: 'showResiduals', type: 'boolean' },
     { key: 'showBestFit', type: 'boolean' },
   ],
