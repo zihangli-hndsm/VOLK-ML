@@ -43,10 +43,16 @@ const jsonSafe = (value) => (value === undefined || typeof value === 'function' 
 export function createRuntimeSession(playground, { source, controls = {}, seed, sessionId, dataset }) {
   const adapter = requireModelAdapter(playground.adapterId ?? playground.id);
   const normalizedSource = playground.validateSource(source);
+  const validatedControls = {};
+  for (const [key, value] of Object.entries(controls)) {
+    const control = playground.controls.find((item) => item.key === key);
+    if (!control) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key });
+    validatedControls[key] = validateControlValue(control, value);
+  }
   const recorder = createTraceRecorder();
   const initialized = adapter.initialize({
     source: normalizedSource,
-    controls,
+    controls: validatedControls,
     seed,
     recorder,
   });

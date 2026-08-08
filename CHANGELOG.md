@@ -191,3 +191,14 @@
 - validator 清理：`maxDecisionResolution` 资源校验仅作用于 `decision-region` primitive（不再误伤未来带 resolution 属性的图元），并拒绝非正整数/小数 resolution（`SCRIPT_TOO_COMPLEX`）；dry run 的 resolved 校验同样要求正整数。
 - 文档：`agent-canvas-api.md` 与 `playgrounds.md` 更新 PR D.2 语义。
 - 验收：`npm run check`、`npm run check:compiler`、`npm run build`（680 modules）、`git diff --check` 全部通过；PR A–D.1 全部回归保持。
+
+## 2026-08-08 — Final Runtime Contract Closure（PR D.3）
+
+- resolved 资源校验精确化：移除 `Number(...) || 48` 的 truthiness 兜底——`0`/`-1`/`2.5`/`NaN`/超上限的 resolved resolution 不再静默变成 48；仅当 resolution 确实缺失（undefined）时才用 renderer 默认 48。
+- 逐步骤资源校验：dry run 新增共享 `validateResolvedResources`，在 initial、每个重放步骤、final 快照的 materialize 后执行（先于 primitive 契约校验，保证 resolution 错误统一为 `SCRIPT_TOO_COMPLEX`）；中间步骤超限、后续步骤回落的脚本也会失败。
+- 共享规则：`isValidDecisionResolution`（正整数且 ≤ max）同时供静态 validator 与 dry run 使用；`RESOURCE_LIMITS` 增加 `defaultDecisionResolution: 48`。
+- 初始 controls 强制校验：`createRuntimeSession` 在 session/runtime 边界对每个外部传入的初始 control 用 Playground descriptor 校验（未知 key / 低于 min / 高于 max / 非法 select 选项 → `INVALID_PLAYGROUND_CONTROL`），`open({ controls })` 不再绕过 `validateControlValue`。
+- 契约一致性：新增不变式测试——adapter 默认初始 controls 与有效 override 后的每个 live control 都符合其 controlSchema；LR/KNN 各跑一遍。
+- LR `learningRate` 描述符 max 由 1 提升到 5（有依据：标准化 z-score 数据下 lr>1 才是演示“学习率过高”教学场景的必要条件），因此 D.2 的发散测试不再依赖越界 control；`learningRate: 6` 等越界值在公开路径被拒绝。
+- 文档：`agent-canvas-api.md` 与 `playgrounds.md` 更新 PR D.3 语义。
+- 验收：`npm run check`、`npm run check:compiler`、`npm run build`（680 modules）、`git diff --check` 全部通过；PR A–D.2 全部回归保持。

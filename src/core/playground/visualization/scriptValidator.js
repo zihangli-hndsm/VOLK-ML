@@ -19,8 +19,15 @@ export const RESOURCE_LIMITS = {
   maxSteps: MAX_STEPS,
   maxPrimitives: MAX_PRIMITIVES,
   maxDecisionResolution: MAX_DECISION_RESOLUTION,
+  defaultDecisionResolution: 48,
   maxDurationMs: MAX_DURATION_MS,
 };
+
+// Single rule for decision-region resolution limits, shared by the static
+// validator and the strict dry run (which validates resolved values).
+export function isValidDecisionResolution(resolution) {
+  return Number.isInteger(resolution) && resolution >= 1 && resolution <= MAX_DECISION_RESOLUTION;
+}
 
 function collectBindings(value, bindings) {
   if (typeof value === 'string' && (
@@ -67,9 +74,7 @@ export function validateScript(script) {
       throw scriptError('SCRIPT_UNKNOWN_PRIMITIVE', { type: primitive.type, id: primitive.id });
     }
     if (primitive.type === 'decision-region' && typeof primitive.props?.resolution === 'number'
-      && (!Number.isInteger(primitive.props.resolution)
-        || primitive.props.resolution < 1
-        || primitive.props.resolution > MAX_DECISION_RESOLUTION)) {
+      && !isValidDecisionResolution(primitive.props.resolution)) {
       throw scriptError('SCRIPT_TOO_COMPLEX', { reason: 'decision resolution', resolution: primitive.props.resolution, max: MAX_DECISION_RESOLUTION });
     }
     if (primitive.when !== undefined && !isJsonSafe(primitive.when)) {
