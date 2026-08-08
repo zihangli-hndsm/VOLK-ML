@@ -232,11 +232,15 @@ export const knnAdapter = {
   scriptOperations: {
     tracePredict: {
       args: {},
-      producesTrace: ['query.received', 'knn.distancesComputed'],
+      effects: ['neighbors.recomputed', 'reveal.started'],
+      alwaysProducesTrace: ['query.received', 'knn.distancesComputed'],
+      mayProduceTrace: ['knn.neighborSelected', 'knn.voteUpdated', 'prediction.emitted'],
     },
     moveQuery: {
       args: { x: { type: 'number|null' }, y: { type: 'number|null' } },
-      producesTrace: ['query.received', 'knn.distancesComputed'],
+      effects: ['query.changed', 'prediction.invalidated', 'neighbors.recomputed'],
+      alwaysProducesTrace: ['query.received', 'knn.distancesComputed'],
+      mayProduceTrace: ['knn.neighborSelected', 'knn.voteUpdated', 'prediction.emitted'],
     },
   },
   scriptOperationActions: {

@@ -167,3 +167,17 @@
 - 测试（check-core）：semantic schema↔语义状态一致性、operation schema（args/producesTrace/translator）、primitive schema 全覆盖 + preset 绑定兼容、trace payload 覆盖、inspectContext 十类字段、scriptBaseline vs sessionBaseline、严格 dry run（unresolved binding / resolved grid cost）。
 - 文档：`agent-canvas-api.md` 与 `playgrounds.md` 新增 PR D 小节。
 - 验收：`npm run check`、`npm run check:compiler`、`npm run build`（678 modules）、`git diff --check` 全部通过；PR A/PR B/语言偏好/P0/PR C 全部回归保持。
+
+## 2026-08-08 — Close PR D Semantic Contract Gaps（PR D.1）
+
+- 深度 primitive 类型校验：新增 `visualization/typeContracts.js`，`array<point2d>`/`array<neighbor>`/`array<decisionCell>`/`array<number>` 等校验元素形状（不再只查 `Array.isArray`）；`validatePrimitiveContract` 接入深度校验；负例测试（`points: [123, "invalid"]`、缺 pointId 的 neighbor）被稳定拒绝。
+- semanticSchema ↔ compatibleBindings 一致性：`compatibleBindings` 规范化为规范语义路径（移除 `$model.points`/`$model.residuals`/`$model.query` 残留别名）；契约测试双向校验——每个 `$model.*` 路径的首段存在于某 adapter 的 semanticSchema，且完整路径在运行时语义状态中可解析（含嵌套路径 `decisionRegions.cells`、`training.lossHistory`）。
+- scriptBaseline trace 一致性：`SCRIPT_LOAD` 捕获 baseline 时同时保存 `traces`，`SCRIPT_RESET` 一起恢复 controls/modelState/dataState/source/seed/traces；测试覆盖「编辑 KNN 训练点后 SCRIPT_LOAD → 执行 → SCRIPT_RESET」语义状态与 trace 描述同一 baseline；普通 `RESET` 仍回 sessionBaseline，deterministic replay 不破坏。
+- 资源限制强制：validator 对 decision-region 使用 `props.resolution`（不再用过期嵌套路径），字面量超 `maxDecisionResolution` 抛 `SCRIPT_TOO_COMPLEX`；dry run 对 resolved resolution 同样强制（注入 `$data.resolutionValue=1000` 的测试）；dry run 估算扩展为 `stepCount/primitiveCount/decisionGridCells/pointCount/traceEvents`（不虚构 cost 公式）。
+- 可选绑定警告恢复：required binding 未解析仍 `SCRIPT_BINDING_UNRESOLVED`；optional binding 未解析 → valid + 去重 warning（正反测试）。
+- Operation schema 增强：`scriptOperations` 改为 `{ args, effects, alwaysProducesTrace, mayProduceTrace }`（诚实区分确定/条件性 trace，如 KNN moveQuery 在已 reveal 时可能额外产生 neighbor/vote/prediction 事件）；`scriptOperationActions` 保持不变；inspectContext/getCapabilities 暴露完整 operation schema。
+- Trace payload schema 显式 required/optional：`TRACE_PAYLOAD_SCHEMAS` 每个事件拆分 required/optional；新增 `validateTracePayload`，在契约测试中对 LR/KNN 场景发出的每条 trace 事件做 payload 校验（按实际 emit 行为校准，如 `parameters.updated` 的 step 为可选、`data.loaded` 区分回归/分类字段）。
+- inspectContext 跨源一致性测试：semanticFields==semanticSchema keys、operations==scriptOperations、traces/traceSchemas==TRACE_EVENTS、resourceLimits==RESOURCE_LIMITS、primitives==listPrimitiveSchemas、getCapabilities.operationSchemas==adapter.scriptOperations。
+- 新增错误码：`SCRIPT_TRACE_PAYLOAD_INVALID`（并入 `SCRIPT_ERROR_CODES`）。
+- 文档：`agent-canvas-api.md` 与 `playgrounds.md` 更新 PR D.1 语义。
+- 验收：`npm run check`、`npm run check:compiler`、`npm run build`（679 modules）、`git diff --check` 全部通过；PR A/PR B/语言偏好/P0/PR C/PR D 全部回归保持。

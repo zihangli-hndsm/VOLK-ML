@@ -33,28 +33,67 @@ export const TRACE_EVENTS = {
   ],
 };
 
-// Payload shape registry for trace events. Every event type declares the
-// fields an Agent can expect; DSL v2 will consume these directly instead of
-// binding the whole `$trace` array.
+import { validateType } from '../visualization/typeContracts.js';
+
+// Payload shape registry for trace events. Every event type declares required
+// and optional fields so the schema describes actual runtime behavior (e.g.
+// data.loaded carries different fields for regression vs classification).
 export const TRACE_PAYLOAD_SCHEMAS = {
-  'data.loaded': { points: 'integer', feature: 'string', target: 'string', features: 'array<string>', trainRatio: 'number' },
-  'split.created': { trainRows: 'integer', testRows: 'integer', trainIds: 'array', testIds: 'array', kind: 'string' },
-  'normalization.fitted': { xMean: 'number', xStd: 'number', yMean: 'number', yStd: 'number', means: 'array<number>', stds: 'array<number>' },
-  'regression.initialized': { weight: 'number', bias: 'number' },
-  'prediction.updated': { weight: 'number', bias: 'number' },
-  'residuals.computed': { count: 'integer', mse: 'number' },
-  'loss.measured': { step: 'integer', loss: 'number', lossNormalized: 'number' },
-  'gradient.computed': { step: 'integer', weight: 'number', bias: 'number', magnitude: 'number' },
-  'parameters.updated': { step: 'integer', weight: 'number', bias: 'number' },
-  'training.completed': { steps: 'integer', requestedSteps: 'integer', stoppedReason: 'string' },
-  'knn.samplesStored': { count: 'integer', trainIds: 'array' },
-  'query.received': { x: 'number', y: 'number', vector: 'array<number>' },
-  'knn.distancesComputed': { count: 'integer', nearest: 'number' },
-  'knn.neighborSelected': { rank: 'integer', pointId: 'id', distance: 'number', label: 'string' },
-  'knn.voteUpdated': { counts: 'object', predictedLabel: 'string', tie: 'boolean' },
-  'prediction.emitted': { label: 'string', k: 'integer' },
-  'evaluation.completed': { accuracy: 'number', k: 'integer' },
+  'data.loaded': {
+    required: { points: 'integer' },
+    optional: { feature: 'string', target: 'string', features: 'array<string>', trainRatio: 'number' },
+  },
+  'split.created': {
+    required: { trainRows: 'integer', testRows: 'integer' },
+    optional: { trainIds: 'array', testIds: 'array', kind: 'string' },
+  },
+  'normalization.fitted': {
+    required: {},
+    optional: { xMean: 'number', xStd: 'number', yMean: 'number', yStd: 'number', means: 'array<number>', stds: 'array<number>' },
+  },
+  'regression.initialized': { required: { weight: 'number', bias: 'number' }, optional: {} },
+  'prediction.updated': { required: { weight: 'number', bias: 'number' }, optional: {} },
+  'residuals.computed': { required: { count: 'integer' }, optional: { mse: 'number' } },
+  'loss.measured': { required: { step: 'integer', loss: 'number' }, optional: { lossNormalized: 'number' } },
+  'gradient.computed': { required: { step: 'integer', magnitude: 'number' }, optional: { weight: 'number', bias: 'number' } },
+  'parameters.updated': { required: { weight: 'number', bias: 'number' }, optional: { step: 'integer' } },
+  'training.completed': { required: { steps: 'integer', requestedSteps: 'integer' }, optional: { stoppedReason: 'string' } },
+  'knn.samplesStored': { required: { count: 'integer' }, optional: { trainIds: 'array' } },
+  'query.received': { required: { x: 'number', y: 'number' }, optional: { vector: 'array<number>' } },
+  'knn.distancesComputed': { required: { count: 'integer' }, optional: { nearest: 'number' } },
+  'knn.neighborSelected': { required: { rank: 'integer', pointId: 'id', distance: 'number', label: 'string' }, optional: {} },
+  'knn.voteUpdated': { required: { counts: 'object' }, optional: { predictedLabel: 'string', tie: 'boolean' } },
+  'prediction.emitted': { required: { label: 'string' }, optional: { k: 'integer' } },
+  'evaluation.completed': { required: {}, optional: { accuracy: 'number|null', k: 'integer' } },
 };
+
+// Validates an emitted trace event against its payload schema. Required
+// fields must exist and match; optional fields are checked when present.
+export function validateTracePayload(event) {
+  const schema = TRACE_PAYLOAD_SCHEMAS[event.type];
+  if (!schema) {
+    return { valid: false, code: 'SCRIPT_UNKNOWN_TRACE_EVENT', details: { type: event.type } };
+  }
+  for (const [field, type] of Object.entries(schema.required ?? {})) {
+    if (event.payload?.[field] === undefined || !validateType(event.payload[field], type)) {
+      return {
+        valid: false,
+        code: 'SCRIPT_TRACE_PAYLOAD_INVALID',
+        details: { type: event.type, field, expected: type, required: true },
+      };
+    }
+  }
+  for (const [field, type] of Object.entries(schema.optional ?? {})) {
+    if (event.payload?.[field] !== undefined && !validateType(event.payload[field], type)) {
+      return {
+        valid: false,
+        code: 'SCRIPT_TRACE_PAYLOAD_INVALID',
+        details: { type: event.type, field, expected: type, required: false },
+      };
+    }
+  }
+  return { valid: true };
+}
 
 export function isKnownTraceEvent(adapterId, type) {
   return Array.isArray(TRACE_EVENTS[adapterId]) && TRACE_EVENTS[adapterId].includes(type);

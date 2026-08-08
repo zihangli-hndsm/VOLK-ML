@@ -262,6 +262,7 @@ export function dispatchRuntimeAction(session, action) {
         dataState: session.dataState ? structuredClone(session.dataState) : {},
         source: structuredClone(session.sourceData ?? session.source),
         seed: session.seed,
+        traces: structuredClone(session.traces),
       },
     };
   }
@@ -311,6 +312,7 @@ export function dispatchRuntimeAction(session, action) {
           ...shell,
           modelState: structuredClone(baseline.modelState),
           dataState: baseline.dataState ? structuredClone(baseline.dataState) : {},
+          traces: baseline.traces ? structuredClone(baseline.traces) : shell.traces,
           baseline: structuredClone(session.baseline ?? shell.baseline),
           scriptBaseline: structuredClone(session.scriptBaseline),
         };

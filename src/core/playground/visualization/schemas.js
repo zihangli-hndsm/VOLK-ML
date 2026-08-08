@@ -1,4 +1,5 @@
 import { PRIMITIVE_TYPES } from './primitives.js';
+import { validateType } from './typeContracts.js';
 
 // Primitive contract schemas: the single source of truth shared by the
 // validator, the Agent context (inspectContext), the strict dry run and the
@@ -12,7 +13,7 @@ export const PRIMITIVE_SCHEMAS = {
       axes: { type: 'axes2d', required: false },
     },
     compatibleBindings: {
-      points: ['$model.scatterPoints', '$model.displayPoints', '$model.points'],
+      points: ['$model.scatterPoints', '$model.displayPoints'],
       axes: ['$model.axes'],
     },
   },
@@ -41,7 +42,7 @@ export const PRIMITIVE_SCHEMAS = {
       points: { type: 'array<residualPoint>', required: true },
     },
     compatibleBindings: {
-      points: ['$model.residualPoints', '$model.residuals'],
+      points: ['$model.residualPoints'],
     },
   },
   'decision-region': {
@@ -63,8 +64,8 @@ export const PRIMITIVE_SCHEMAS = {
     },
     compatibleBindings: {
       neighbors: ['$model.neighbors'],
-      points: ['$model.displayPoints', '$model.points'],
-      query: ['$model.displayQuery', '$model.query'],
+      points: ['$model.displayPoints'],
+      query: ['$model.displayQuery'],
       showOrder: ['$controls.showNeighborOrder'],
     },
   },
@@ -73,7 +74,7 @@ export const PRIMITIVE_SCHEMAS = {
       query: { type: 'point2d', required: true },
     },
     compatibleBindings: {
-      query: ['$model.displayQuery', '$model.query'],
+      query: ['$model.displayQuery'],
     },
   },
   'vote-bars': {
@@ -128,21 +129,9 @@ export function getPrimitiveSchema(type) {
   return PRIMITIVE_SCHEMAS[type] ?? null;
 }
 
-function matchesType(value, type) {
-  if (type === 'array<point2d>' || type === 'array<residualPoint>' || type === 'array<decisionCell>'
-    || type === 'array<neighbor>' || type === 'array<number>') {
-    return Array.isArray(value);
-  }
-  if (type === 'integer') return Number.isInteger(value);
-  if (type === 'number') return typeof value === 'number' && Number.isFinite(value);
-  if (type === 'boolean') return typeof value === 'boolean';
-  if (type === 'string') return typeof value === 'string';
-  return value !== null && typeof value === 'object';
-}
-
 // Strict contract validation used by the dry run and the contract tests:
-// required props must exist and match the declared basic type. This is a
-// lightweight type check, not a full JSON schema.
+// required props must exist and match the declared semantic type (including
+// element shapes for typed arrays such as array<point2d>).
 export function validatePrimitiveContract(primitive) {
   const schema = getPrimitiveSchema(primitive.type);
   if (!schema) {
@@ -156,7 +145,7 @@ export function validatePrimitiveContract(primitive) {
         details: { primitiveId: primitive.id, type: primitive.type, prop },
       };
     }
-    if (primitive.props?.[prop] !== undefined && !matchesType(primitive.props[prop], propSchema.type)) {
+    if (primitive.props?.[prop] !== undefined && !validateType(primitive.props[prop], propSchema.type)) {
       return {
         valid: false,
         code: 'SCRIPT_PRIMITIVE_CONTRACT_VIOLATION',
