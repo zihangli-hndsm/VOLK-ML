@@ -4755,7 +4755,7 @@ assert.throws(
         const e21Execution = replayScriptForFidelity({ script: e21FailureScript, session: e21LrSession });
         const e21Fidelity = evaluateGoalFidelity({ plan: e21FailurePlan, script: e21FailureScript, context: e21LrContext, execution: e21Execution });
         assert.equal(e21Fidelity.valid, true, 'the real failure run passes fidelity');
-        const predicateRequirement = 'trace:training.completed{"stoppedReason":["learning-rate-too-high","diverged"]}';
+        const predicateRequirement = 'trace:training.completed{"stoppedReason":["learning-rate-too-high"]}';
         assert.ok(
           e21Fidelity.checks.some((check) => check.requirement === predicateRequirement && check.satisfied),
           'fidelity proves the stoppedReason predicate',
@@ -4790,6 +4790,41 @@ assert.throws(
         assert.ok(
           successReport.missing.includes(predicateRequirement),
           'the missing stoppedReason predicate is reported',
+        );
+        // The early non-finite `diverged` stop reason is valid runtime
+        // behavior but is intentionally not a supported pedagogical outcome
+        // of show_failure_case: it emits no loss.measured/gradient.computed,
+        // so the declared inspectable failure contract cannot be satisfied.
+        const divergedExecution = {
+          captures: {
+            result: {
+              semantic: {
+                scene: { training: { lossHistory: [], parameterHistory: [] } },
+                metrics: { mse: null },
+                observation: { titleKey: 'x', bodyKey: 'y', params: {} },
+                formula: null,
+              },
+            },
+          },
+          traces: [
+            { type: 'training.completed', payload: { steps: 0, requestedSteps: 20, stoppedReason: 'diverged' } },
+          ],
+          finalSnapshot: null,
+        };
+        const divergedReport = evaluateGoalFidelity({
+          plan: e21FailurePlan,
+          script: e21FailureScript,
+          context: e21LrContext,
+          execution: divergedExecution,
+        });
+        assert.equal(divergedReport.valid, false, 'the diverged stop reason fails show_failure_case fidelity');
+        assert.ok(
+          divergedReport.missing.includes(predicateRequirement),
+          'diverged does not satisfy the learning-rate-too-high predicate',
+        );
+        assert.ok(
+          divergedReport.missing.some((item) => item === 'trace:loss.measured' || item === 'trace:gradient.computed'),
+          'diverged lacks the inspectable loss/gradient evidence',
         );
 
         // 2. The text parser emits a semantic probe, never a numeric

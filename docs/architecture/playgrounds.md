@@ -251,9 +251,9 @@ User Goal
     checked on required captures or the final snapshot.
   - `traceEvidence` - the required semantic event actually occurred, with
     optional payload predicates: `{ trace: 'training.completed', where:
-    { stoppedReason: ['learning-rate-too-high', 'diverged'] } }`. Runtime
-    fidelity for `show_failure_case` fails when `training.completed` exists
-    but `stoppedReason` is absent or reports ordinary success - "training
+    { stoppedReason: ['learning-rate-too-high'] } }`. Runtime fidelity for
+    `show_failure_case` fails when `training.completed` exists but
+    `stoppedReason` is absent or reports ordinary success - "training
     happened" is not "failure happened".
   `evaluateGoalFidelity({ plan, script, context, execution })` returns
   `{ valid, checks, missing }`. Requirement evidence for
@@ -287,6 +287,15 @@ User Goal
   schema-compatible binding change away from the required visual path
   (fails), and runtime-only evidence surviving the removal of non-visual
   primitives (passes).
+- PR E closure aligns the failure capability with runtime evidence:
+  `show_failure_case` currently targets the **learning-rate-too-high**
+  stopped regime only, because that regime provides inspectable loss and
+  gradient evidence (loss.measured + gradient.computed +
+  training.parameterHistory). The raw early non-finite `diverged` stop reason
+  remains valid runtime behavior but is not advertised by the current
+  capability until a future visualization/fidelity contract can explain that
+  path truthfully; a `diverged` execution therefore fails
+  `show_failure_case` fidelity (documented by an explicit negative fixture).
 
 ## Layers
 

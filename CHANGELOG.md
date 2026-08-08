@@ -262,3 +262,11 @@
 - 回归保持：E.2 全部行为（有界 taxonomy、归一化 objective、inspectContext teaching 支持、mode:'composed'、静态+运行时 fidelity、compare k=1 vs k=15、completed captures、KNN explain prediction、不支持目标拒绝、TEACHING_GOAL_FIDELITY_FAILED、E.1 契约/资源防护、既有 presets）全部保持；仅 parser 候选断言与 evidence 命名按新语义更新。
 - 文档：`playgrounds.md` 与 `agent-canvas-api.md` 更新 PR E.2.1 语义；append-only `CHANGELOG.md` 新增本条。
 - 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过。已知限制：show_failure_case 的 loss/gradient trace 以当前确定性探针（有限值域 learning-rate-too-high）为真；`diverged` 路径由谓词接受但 loss/gradient 事件不会在非有限分支发出。
+
+## 2026-08-08 — Align Failure Teaching Capability with Runtime Evidence（PR E 收口）
+
+- 契约对齐：`show_failure_case` 的失败谓词从 `stoppedReason: ['learning-rate-too-high', 'diverged']` 收窄为 `['learning-rate-too-high']`，与运行时实际可检查的证据一致——该分支会发出 `loss.measured` + `gradient.computed` 并保留 `training.parameterHistory`；早期非有限 `diverged` 分支不会发出这两个事件，因此不再被当前教学能力宣称支持（保留 `loss.measured` / `gradient.computed` / `training.parameterHistory` / `training.lossHistory` 作为必需证据）。
+- 语义精确定义：`show_failure_case = 演示可检查的 learning-rate-too-high 停止机制（loss 与 gradient 证据存在）`；原始的 `stoppedReason: 'diverged'` 仍是合法运行时行为，但保留给未来的教学能力契约，不在此刻宣称可教学。
+- 测试：谓词期望更新为 `['learning-rate-too-high']`；保留真实运行正例与「正常成功训练」负例；新增显式负例——`training.completed{stoppedReason:'diverged'}` 且无 `loss.measured`/`gradient.computed` → `show_failure_case` fidelity = false（记录缺失谓词与缺失 loss/gradient 证据）。未新增泛型 OR/条件 trace 需求机制。
+- 文档：`playgrounds.md` 与 `agent-canvas-api.md` 更新为「show_failure_case 当前仅面向 learning-rate-too-high 停止机制」；本条目按 append-only 规则对 E.2.1 条目的 `diverged` 表述作出更正说明。
+- 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；E.2.1 全部行为回归保持（方向探针、state/schema 推导数值、visual/runtime/trace 证据分离、具体 primitive 绑定 fidelity、adapter 声明 teachingCapabilities、正常成功拒绝、KNN explain_prediction、compare fidelity、mode:'composed'、E.1 安全/资源契约、既有 presets）。合并后 PR E = FINAL PASS，进入 PR F。
