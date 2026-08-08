@@ -23,8 +23,11 @@ function findControlSchema(context, key) {
 }
 
 // Generic semantic evidence for teaching phases: the stage primitives that
-// are materializable in this context define which model fields carry the
-// story, plus metrics/observation which every adapter declares.
+// are materializable in this context define which semantic paths carry the
+// story, plus metrics/observation. Each prop picks the first available
+// compatible binding - exactly like the Composer - so the plan evidence is
+// the set of paths the composed Script actually binds (full paths, e.g.
+// 'training.lossHistory', never speculative alternatives).
 function evidenceForContext(context) {
   const fields = new Set(['metrics', 'observation']);
   const semanticFields = new Set(context?.model?.semanticFields ?? []);
@@ -33,8 +36,14 @@ function evidenceForContext(context) {
     for (const candidates of Object.values(schema.compatibleBindings ?? {})) {
       for (const binding of candidates) {
         if (binding.startsWith('$model.')) {
-          const first = binding.slice('$model.'.length).split('.')[0];
-          if (semanticFields.has(first)) fields.add(first);
+          const path = binding.slice('$model.'.length);
+          if (semanticFields.has(path.split('.')[0])) {
+            fields.add(path);
+            break;
+          }
+        } else if (binding === '$metrics') {
+          fields.add('metrics');
+          break;
         }
       }
     }
@@ -219,6 +228,12 @@ function planForStructuredGoal({ goal, context, playgroundId }) {
   const objective = resolveObjective(goal, context);
   assertObjectiveSupported(context, objective);
   const resolvedGoal = { ...goal, objective };
+  if (objective === 'show_failure_case' && goal.direction !== undefined && goal.direction !== 'increase') {
+    throw teachingError('TEACHING_PLAN_INVALID', {
+      reason: 'unsupported probe direction',
+      direction: goal.direction,
+    });
+  }
   if (objective === 'show_failure_case' && goal.type === 'what-if' && goal.value === undefined) {
     resolvedGoal.value = deriveHighValue(context, goal.control);
   }
@@ -228,7 +243,13 @@ function planForStructuredGoal({ goal, context, playgroundId }) {
       version: 1,
       id: `compare-${goal.control}`,
       playgroundId,
-      goal: { type: 'compare-control', objective, control: goal.control, values },
+      goal: {
+        type: 'compare-control',
+        objective,
+        control: goal.control,
+        values,
+        ...(resolvedGoal.direction ? { direction: resolvedGoal.direction } : {}),
+      },
       phases,
     });
     return validatePlanAgainstContext(plan, context);
@@ -239,7 +260,13 @@ function planForStructuredGoal({ goal, context, playgroundId }) {
       version: 1,
       id: `what-if-${goal.control}`,
       playgroundId,
-      goal: { type: 'what-if', objective, control: goal.control, value },
+      goal: {
+        type: 'what-if',
+        objective,
+        control: goal.control,
+        value,
+        ...(resolvedGoal.direction ? { direction: resolvedGoal.direction } : {}),
+      },
       phases,
     });
     return validatePlanAgainstContext(plan, context);

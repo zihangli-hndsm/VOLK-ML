@@ -4120,8 +4120,8 @@ assert.throws(
         );
         assert.deepEqual(
           parseTeachingGoalText('学习率太高'),
-          { type: 'what-if', objective: 'show_failure_case', control: 'learningRate', value: 2 },
-          'learning-rate aliases live in the text parser',
+          { type: 'what-if', objective: 'show_failure_case', control: 'learningRate', direction: 'increase' },
+          'learning-rate aliases produce a semantic probe, not a numeric constant',
         );
         assert.equal(parseTeachingGoalText('解释这个模型如何工作'), null, 'generic text stays generic');
         assert.throws(() => parseTeachingGoalText(''), (error) => error.code === 'TEACHING_GOAL_UNSUPPORTED', 'empty text is rejected');
@@ -4647,7 +4647,7 @@ assert.throws(
               mutated.layout.stage = mutated.layout.stage.filter((id) => id !== 'vote-bars');
               return mutated;
             })(),
-            missing: 'evidence:voting',
+            missing: 'visual:voting',
           },
         ];
         for (const fixture of e2MutatedFixtures) {
@@ -4734,6 +4734,184 @@ assert.throws(
           'a plan whose script cannot satisfy its objective is rejected',
         );
         await e2Host.close();
+      }
+
+      // PR E.2.1: outcome-truthful fidelity.
+      {
+        const e21Host = createPlaygroundHost({ getDataset: () => null });
+        await e21Host.open({ playgroundId: 'linear-regression' });
+        const e21LrContext = e21Host.inspectContext();
+        await e21Host.close();
+        await e21Host.open({ playgroundId: 'knn-classification' });
+        const e21KnnContext = e21Host.inspectContext();
+
+        // 1. show_failure_case must prove an actual failure outcome. The
+        // declared capability carries a training.completed stoppedReason
+        // predicate; a completed run without one fails fidelity.
+        const e21FailurePlan = planTeachingGoal({ goal: '学习率太高会发生什么', context: e21LrContext });
+        assert.equal(e21FailurePlan.goal.objective, 'show_failure_case');
+        const e21FailureScript = composeScriptFromPlan({ plan: e21FailurePlan, context: e21LrContext });
+        const e21LrSession = createPlaygroundSession(lrPlayground, { source: lrSource, seed: 3, sessionId: 'e21-lr' });
+        const e21Execution = replayScriptForFidelity({ script: e21FailureScript, session: e21LrSession });
+        const e21Fidelity = evaluateGoalFidelity({ plan: e21FailurePlan, script: e21FailureScript, context: e21LrContext, execution: e21Execution });
+        assert.equal(e21Fidelity.valid, true, 'the real failure run passes fidelity');
+        const predicateRequirement = 'trace:training.completed{"stoppedReason":["learning-rate-too-high","diverged"]}';
+        assert.ok(
+          e21Fidelity.checks.some((check) => check.requirement === predicateRequirement && check.satisfied),
+          'fidelity proves the stoppedReason predicate',
+        );
+        // Mutation: same plan/script, but the runtime reports ordinary
+        // successful completion (training happened, failure did not).
+        const successExecution = {
+          captures: {
+            result: {
+              semantic: {
+                scene: { training: { lossHistory: [1, 2], parameterHistory: [{ weight: 1, bias: 1 }] } },
+                metrics: { mse: 1 },
+                observation: { titleKey: 'x', bodyKey: 'y', params: {} },
+                formula: null,
+              },
+            },
+          },
+          traces: [
+            { type: 'loss.measured', payload: { step: 1, loss: 1 } },
+            { type: 'gradient.computed', payload: { step: 1, magnitude: 1 } },
+            { type: 'training.completed', payload: { steps: 20, requestedSteps: 20 } },
+          ],
+          finalSnapshot: null,
+        };
+        const successReport = evaluateGoalFidelity({
+          plan: e21FailurePlan,
+          script: e21FailureScript,
+          context: e21LrContext,
+          execution: successExecution,
+        });
+        assert.equal(successReport.valid, false, 'ordinary successful training fails the failure-case goal');
+        assert.ok(
+          successReport.missing.includes(predicateRequirement),
+          'the missing stoppedReason predicate is reported',
+        );
+
+        // 2. The text parser emits a semantic probe, never a numeric
+        // constant; the Planner derives the probe from current state + schema.
+        const e21Parsed = parseTeachingGoalText('学习率太高');
+        assert.equal(e21Parsed.value, undefined, 'the parser emits no numeric value');
+        assert.equal(e21Parsed.direction, 'increase', 'the parser emits a directional probe');
+        const e21LrSchema = e21LrContext.controlSchemas.find((schema) => schema.key === 'learningRate');
+        const withBaseline = (baseline) => {
+          const context = structuredClone(e21LrContext);
+          context.controls = { ...context.controls, learningRate: baseline };
+          return context;
+        };
+        const derivedPlans = [0.05, 1.5, 3].map((baseline) => ({
+          baseline,
+          plan: planTeachingGoal({ goal: { type: 'what-if', objective: 'show_failure_case', control: 'learningRate' }, context: withBaseline(baseline) }),
+        }));
+        for (const { baseline, plan } of derivedPlans) {
+          assert.ok(
+            plan.goal.value > baseline && plan.goal.value <= e21LrSchema.max,
+            `baseline ${baseline} derives a higher legal probe (${plan.goal.value})`,
+          );
+        }
+        assert.notEqual(derivedPlans[0].plan.goal.value, derivedPlans[1].plan.goal.value, 'the same goal derives different values under different states');
+        assert.throws(
+          () => planTeachingGoal({ goal: { type: 'what-if', objective: 'show_failure_case', control: 'learningRate' }, context: withBaseline(5) }),
+          (error) => error.code === 'TEACHING_PLAN_INVALID',
+          'baseline at schema max rejects (no higher legal probe)',
+        );
+        assert.throws(
+          () => planTeachingGoal({ goal: { type: 'what-if', objective: 'show_failure_case', control: 'learningRate', direction: 'decrease' }, context: e21LrContext }),
+          (error) => error.code === 'TEACHING_PLAN_INVALID',
+          'unsupported probe directions are rejected',
+        );
+
+        // 3. Evidence classes are explicit and non-conflated. visualEvidence
+        // checks concrete primitive.props bindings.
+        const e21ShowTrainingPlan = planTeachingGoal({ goal: '解释这个模型如何工作', context: e21LrContext });
+        assert.equal(e21ShowTrainingPlan.goal.objective, 'show_training');
+        const e21ShowTrainingScript = composeScriptFromPlan({ plan: e21ShowTrainingPlan, context: e21LrContext });
+        const e21VisualMutation = structuredClone(e21ShowTrainingScript);
+        e21VisualMutation.primitives = e21VisualMutation.primitives.map((primitive) => (
+          (primitive.type === 'regression-line' || primitive.type === 'reference-line')
+            ? { ...primitive, props: { ...primitive.props, line: '$model.bestFitLine' } }
+            : primitive
+        ));
+        assert.doesNotThrow(() => validateScript(e21VisualMutation), 'the visual-binding mutation stays structurally valid');
+        const e21VisualReport = evaluateGoalFidelity({ plan: e21ShowTrainingPlan, script: e21VisualMutation, context: e21LrContext });
+        assert.equal(e21VisualReport.valid, false, 'changing a binding away from the required path fails visual fidelity');
+        assert.ok(e21VisualReport.missing.includes('visual:line'), 'visual:line is reported as missing');
+
+        // Runtime-only evidence is not tied to a visualization primitive.
+        const e21ExplainPlan = planTeachingGoal({ goal: 'Explain this KNN prediction', context: e21KnnContext });
+        const e21ExplainScript = composeScriptFromPlan({ plan: e21ExplainPlan, context: e21KnnContext });
+        const e21NoMetricCard = structuredClone(e21ExplainScript);
+        e21NoMetricCard.primitives = e21NoMetricCard.primitives.filter((primitive) => primitive.type !== 'metric-card');
+        e21NoMetricCard.layout.side = e21NoMetricCard.layout.side.filter((id) => id !== 'metric-card');
+        assert.doesNotThrow(() => validateScript(e21NoMetricCard), 'removing metric-card stays structurally valid');
+        const e21KnnSession = createPlaygroundSession(knnPlayground, { source: knnSource2, seed: 11, sessionId: 'e21-knn' });
+        const e21NoMetricReport = evaluateGoalFidelity({
+          plan: e21ExplainPlan,
+          script: e21NoMetricCard,
+          context: e21KnnContext,
+          execution: replayScriptForFidelity({ script: e21ExplainScript, session: e21KnnSession }),
+        });
+        assert.equal(e21NoMetricReport.valid, true, 'removing a non-visual primitive does not fail runtime-only evidence');
+        // But if the same field were declared visualEvidence, the Script would
+        // fail - proving the classes are not conflated.
+        const e21VisualDeclaredContext = structuredClone(e21KnnContext);
+        e21VisualDeclaredContext.teachingCapabilities.explain_prediction.visualEvidence = ['metrics.predictedLabel'];
+        const e21VisualDeclaredReport = evaluateGoalFidelity({
+          plan: e21ExplainPlan,
+          script: e21NoMetricCard,
+          context: e21VisualDeclaredContext,
+          execution: replayScriptForFidelity({ script: e21ExplainScript, session: e21KnnSession }),
+        });
+        assert.equal(e21VisualDeclaredReport.valid, false, 'a declared visual field must actually be bound');
+        assert.ok(e21VisualDeclaredReport.missing.includes('visual:metrics.predictedLabel'), 'visual:metrics.predictedLabel is reported');
+        // Removing loss-curve fails visual:training.lossHistory while the
+        // runtime parameter-movement evidence still passes.
+        const e21NoLossCurve = structuredClone(e21ShowTrainingScript);
+        e21NoLossCurve.primitives = e21NoLossCurve.primitives.filter((primitive) => primitive.type !== 'loss-curve');
+        e21NoLossCurve.layout.stage = e21NoLossCurve.layout.stage.filter((id) => id !== 'loss-curve');
+        const e21NoLossReport = evaluateGoalFidelity({
+          plan: e21ShowTrainingPlan,
+          script: e21NoLossCurve,
+          context: e21LrContext,
+          execution: replayScriptForFidelity({ script: e21ShowTrainingScript, session: e21LrSession }),
+        });
+        assert.ok(e21NoLossReport.missing.includes('visual:training.lossHistory'), 'loss-curve removal fails visual evidence');
+        assert.ok(
+          !e21NoLossReport.missing.some((item) => item.startsWith('runtimeEvidence:final:training.parameterHistory')),
+          'runtime parameter-movement evidence survives loss-curve removal',
+        );
+
+        // 4. Capability declarations are the source of support truth.
+        assert.ok(
+          e21KnnContext.teaching.capabilities.explain_prediction
+          && e21LrContext.teaching.capabilities.show_failure_case?.traceEvidence.some((entry) => (
+            entry && entry.trace === 'training.completed' && entry.where?.stoppedReason
+          )),
+          'adapters declare teaching capabilities including the failure signal',
+        );
+        const e21NoCapLr = structuredClone(e21LrContext);
+        e21NoCapLr.teachingCapabilities = {};
+        assert.ok(
+          !getSupportedTeachingObjectives(e21NoCapLr).includes('show_failure_case')
+          && !getSupportedTeachingObjectives(e21NoCapLr).includes('show_training'),
+          'fit + training fields alone do not imply show_failure_case/show_training',
+        );
+        const e21NoCapKnn = structuredClone(e21KnnContext);
+        e21NoCapKnn.teachingCapabilities = {};
+        assert.ok(
+          !getSupportedTeachingObjectives(e21NoCapKnn).includes('explain_prediction'),
+          'predict intent alone does not imply explainable predictions',
+        );
+        const e21TaxonomySource = readFileSync(new URL('../src/core/playground/agent/teachingTaxonomy.js', import.meta.url), 'utf-8');
+        assert.ok(
+          !e21TaxonomySource.includes('neighbors') && !e21TaxonomySource.includes('voting'),
+          'the taxonomy does not hardcode KNN field names',
+        );
+        await e21Host.close();
       }
 
       // LR and KNN existing presets remain unchanged.

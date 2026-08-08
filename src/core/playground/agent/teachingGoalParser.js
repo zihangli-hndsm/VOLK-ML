@@ -68,12 +68,12 @@ export function parseTeachingGoalText(text) {
     return { type: 'what-if', objective: 'show_parameter_effect', control, value: values[0] };
   }
 
-  // Lexical aliases: "learning rate too high / diverges" maps to a high
-  // what-if probe. The control key and probe value are still validated
-  // against controlSchemas by the planner (KNN rejects learningRate, LR
-  // rejects values outside 0.001..5).
+  // Lexical aliases: "learning rate too high / diverges" maps to a semantic
+  // probe specification (direction only). The Planner owns the numeric
+  // choice, derived from the current controls + controlSchemas, so the same
+  // text produces different legal probes under different current states.
   if (LEARNING_RATE_ALIASES.test(goalText) && TOO_HIGH.test(goalText)) {
-    return { type: 'what-if', objective: 'show_failure_case', control: 'learningRate', value: 2 };
+    return { type: 'what-if', objective: 'show_failure_case', control: 'learningRate', direction: 'increase' };
   }
 
   // "Explain this KNN prediction" style requests normalize to the
