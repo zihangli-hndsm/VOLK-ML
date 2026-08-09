@@ -1,7 +1,9 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import PlaygroundStage from './PlaygroundStage.jsx';
 import AnnotationRenderer from './renderers/AnnotationRenderer.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
+import { getVisiblePrimitives, resolveMotionConfig } from './motion.js';
+import { usePrimitiveMotion, useReducedMotionPreference } from './usePrimitiveMotion.js';
 import {
   fitPresentationStage,
   getPresentationPlaybackAction,
@@ -22,6 +24,23 @@ export default function PresentationMode({ playground, snapshot, onDispatch, onE
   const formulaPrimitive = snapshot.primitives.find((primitive) => primitive.type === 'formula');
   const hasFormula = Boolean(formulaPrimitive && snapshot.script?.layout?.side?.includes(formulaPrimitive.id));
   const hasTeachingContent = Boolean(annotationPrimitive || hasFormula);
+  const stageTarget = useMemo(() => getVisiblePrimitives(snapshot, 'stage'), [snapshot]);
+  const teachingTarget = useMemo(() => snapshot.primitives.filter((primitive) => (
+    (primitive.type === 'annotation'
+      || (primitive.type === 'formula' && snapshot.script?.layout?.side?.includes(primitive.id)))
+    && snapshot.visualState[primitive.id] !== false
+  )), [snapshot]);
+  const motionTargets = useMemo(() => [
+    ...stageTarget.map((primitive) => ({ ...primitive, motionSlot: 'stage' })),
+    ...teachingTarget.map((primitive) => ({ ...primitive, motionSlot: 'teaching' })),
+  ], [stageTarget, teachingTarget]);
+  const reducedMotion = useReducedMotionPreference();
+  const motionConfig = resolveMotionConfig(snapshot, reducedMotion);
+  const motionFrame = usePrimitiveMotion(motionTargets, motionConfig);
+  const teachingPrimitives = motionFrame.primitives.filter((primitive) => primitive.motionSlot === 'teaching');
+  const animatedAnnotation = teachingPrimitives.find((primitive) => primitive.type === 'annotation');
+  const animatedFormula = teachingPrimitives.find((primitive) => primitive.type === 'formula');
+  const hasAnimatedTeachingContent = teachingPrimitives.length > 0;
 
   useEffect(() => {
     rootRef.current?.focus();
@@ -100,13 +119,13 @@ export default function PresentationMode({ playground, snapshot, onDispatch, onE
         className="aspect-video w-full max-w-[1280px] max-h-full shrink-0 overflow-hidden rounded-2xl bg-white shadow-2xl"
         aria-label={t('playground.presentation.teachingStage')}
       >
-        <PlaygroundStage snapshot={snapshot} t={t} />
+        <PlaygroundStage snapshot={snapshot} motionFrame={motionFrame} t={t} />
       </section>
-      {hasTeachingContent && <section ref={contentRef} className="grid max-h-[40%] w-full max-w-[1280px] shrink-0 gap-3 overflow-auto md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" aria-label={t('playground.presentation.teachingContent')}>
-        {annotationPrimitive && <AnnotationRenderer props={annotationPrimitive.props} t={t} />}
-        {hasFormula && <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
+      {(hasTeachingContent || hasAnimatedTeachingContent) && <section ref={contentRef} className="grid max-h-[40%] w-full max-w-[1280px] shrink-0 gap-3 overflow-auto md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" aria-label={t('playground.presentation.teachingContent')}>
+        {animatedAnnotation && <AnnotationRenderer props={animatedAnnotation.props} t={t} />}
+        {animatedFormula && <div className="rounded-2xl border border-white/10 bg-white/5 p-3 text-center">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('playground.formulaTitle')}</p>
-          <div className="mt-2"><FormulaRenderer props={formulaPrimitive.props} t={t} /></div>
+          <div className="mt-2"><FormulaRenderer props={animatedFormula.props} t={t} /></div>
         </div>}
       </section>}
       </div>
