@@ -71,7 +71,11 @@ import { validatePrimitive } from '../src/core/playground/visualization/primitiv
 import { listPresets, getPreset } from '../src/core/playground/visualization/presetRegistry.js';
 import { validateScript } from '../src/core/playground/visualization/scriptValidator.js';
 import { createScriptRuntime } from '../src/core/playground/visualization/scriptRuntime.js';
-import { getPresentationPlaybackAction, hasScriptPlayback } from '../src/components/playground/presentationMode.js';
+import {
+  fitPresentationStage,
+  getPresentationPlaybackAction,
+  hasScriptPlayback,
+} from '../src/components/playground/presentationMode.js';
 import { dryRunScript } from '../src/core/playground/agent/dryRun.js';
 import { planTeachingGoal } from '../src/core/playground/agent/teachingPlanner.js';
 import { composeScriptFromPlan } from '../src/core/playground/agent/teachingComposer.js';
@@ -2888,6 +2892,27 @@ assert.throws(
         assert.deepEqual(secondReplay.primitives, firstReplay.primitives, 'presentation replay has identical final primitives');
         assert.deepEqual(secondReplay.traces, firstReplay.traces, 'presentation replay has identical final traces');
         await presentationAgent.close();
+      }
+
+      // PR G.1.1: the presentation stage fits the measured content area on
+      // both axes while preserving the canonical 16:9 coordinate system.
+      {
+        const heightLimited = fitPresentationStage({ areaWidth: 1200, areaHeight: 610 });
+        assert.equal(heightLimited.width, 1084.4444444444443);
+        assert.equal(heightLimited.height, 610);
+        const widthLimited = fitPresentationStage({ areaWidth: 900, areaHeight: 900 });
+        assert.equal(widthLimited.width, 900);
+        assert.equal(widthLimited.height, 506.25);
+        const maxWidthLimited = fitPresentationStage({ areaWidth: 1920, areaHeight: 1080 });
+        assert.equal(maxWidthLimited.width, 1280);
+        assert.equal(maxWidthLimited.height, 720);
+        const contentAware = fitPresentationStage({ areaWidth: 1200, areaHeight: 610, contentHeight: 120, gap: 16 });
+        assert.equal(contentAware.width, 842.6666666666666);
+        assert.equal(contentAware.height, 474);
+        assert.equal(contentAware.height + 120 + 16, 610);
+        const narrow = fitPresentationStage({ areaWidth: 500, areaHeight: 500 });
+        assert.equal(narrow.width, 500);
+        assert.equal(narrow.height, 281.25);
       }
     }
 

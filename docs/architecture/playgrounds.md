@@ -643,7 +643,7 @@ Animation expresses semantic change (neighbor reveal, gradient steps) rather tha
 
 ### Presentation Mode (Phase G.1)
 
-Presentation Mode is a local UI view over the same playground snapshot and Script Runtime. It hides authoring/debug surfaces, preserves the canonical `640×360` stage aspect ratio, and exposes only Restart, Play/Pause and Exit Presentation controls plus the optional script-declared annotation/formula content. Entering or exiting the mode never dispatches a runtime action and never persists state into the Visualization Script. Keyboard handling is scoped to the focused presentation root: Space toggles playback, `R` restarts, and Escape exits; editable controls are not intercepted.
+Presentation Mode is a local UI view over the same playground snapshot and Script Runtime. It hides authoring/debug surfaces, preserves the canonical `640×360` stage aspect ratio, and exposes only Restart, Play/Pause and Exit Presentation controls plus the optional script-declared annotation/formula content. The stage uses the measured presentation content area and is fitted as the largest 16:9 rectangle that satisfies available width, available height after teaching content, and the `1280px` maximum width; the SVG itself is never stretched or cropped. Entering or exiting the mode never dispatches a runtime action and never persists state into the Visualization Script. Keyboard handling is scoped to the focused presentation root: Space toggles playback, `R` restarts, and Escape exits; editable controls are not intercepted.
 
 ## Adding a third playground
 
