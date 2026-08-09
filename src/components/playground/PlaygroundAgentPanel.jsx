@@ -1,10 +1,21 @@
 import { useRef, useState } from 'react';
+import {
+  compositionPreview,
+  importedPreview,
+  previewFidelityStatus,
+  previewProvenance,
+  previewRunnable,
+  revisionErrorPreview,
+  revisionPreview,
+} from './agentPreviewState.js';
 
-// User-facing Agent surface (PR F.2): Ask Agent -> plan -> compose -> preview
-// -> inspect -> run -> revise -> export/import. Nothing runs unseen: the
-// generated TeachingPlan / Script enters a preview state first and is only
-// loaded into the runtime when the user clicks Run. All execution goes
-// through the existing Playground Host / Agent / Script Runtime APIs.
+// User-facing Agent surface (PR F.2 / F.2.1). The loop is:
+//   Ask -> Plan -> Compose -> Preview -> Run -> Revise -> Preview revised ->
+//   Run revised -> Export / Import.
+// There are two separate sources of truth: the script being PREVIEWED and the
+// script LOADED in the runtime (snapshot.provenance). Nothing runs unseen:
+// previews never auto-load, imports never auto-replace the active script, and
+// revisions replace the preview only - Run always stays explicit.
 
 const TAB_KEYS = ['overview', 'plan', 'script', 'fidelity'];
 
@@ -23,6 +34,10 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
   const [busy, setBusy] = useState(false);
   const [tab, setTab] = useState('overview');
   const [loadError, setLoadError] = useState(null);
+  const [shortenSteps, setShortenSteps] = useState(3);
+  const [selectedTypes, setSelectedTypes] = useState([]);
+  const [leftValue, setLeftValue] = useState('');
+  const [rightValue, setRightValue] = useState('');
   const fileRef = useRef(null);
 
   const generate = async () => {
@@ -32,31 +47,48 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     try {
       const plan = await agent.plan(goal);
       const composed = await agent.composeScript(plan);
-      setPreview({
-        mode: composed.mode,
-        plan,
-        script: composed.script,
-        fidelity: composed.fidelity,
-        dryRun: composed.dryRun,
-        error: null,
-      });
+      setPreview(compositionPreview(composed));
       setTab('overview');
+      setSelectedTypes(composed.script.primitives.map((primitive) => primitive.type));
+      if (plan.goal.type === 'compare-control') {
+        setLeftValue(String(plan.goal.values[0]));
+        setRightValue(String(plan.goal.values[1]));
+      }
     } catch (error) {
-      setPreview({
-        error: {
-          code: error?.code ?? 'OPERATION_FAILED',
-          message: error?.message ?? String(error),
-          details: error?.details ?? {},
-        },
-      });
+      setPreview({ error: { code: error?.code ?? 'OPERATION_FAILED', message: error?.message ?? String(error), details: error?.details ?? {} } });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const applyRevision = async (request) => {
+    if (!preview?.script || busy) return;
+    setBusy(true);
+    try {
+      const revised = await agent.reviseScript({ plan: preview.plan, script: preview.script, request });
+      setPreview(revisionPreview(preview, revised));
+      setTab('overview');
+      setSelectedTypes(revised.script.primitives.map((primitive) => primitive.type));
+      if (revised.plan?.goal?.type === 'compare-control') {
+        setLeftValue(String(revised.plan.goal.values[0]));
+        setRightValue(String(revised.plan.goal.values[1]));
+      }
+    } catch (error) {
+      // A failed revision keeps the previous valid preview intact and the
+      // error is surfaced separately.
+      setPreview(revisionErrorPreview(preview, {
+        code: error?.code ?? 'OPERATION_FAILED',
+        message: error?.message ?? String(error),
+        details: error?.details ?? {},
+      }));
     } finally {
       setBusy(false);
     }
   };
 
   const runPreview = async () => {
-    if (!preview?.script) return;
-    const provenance = preview.mode === 'revised' ? 'revised' : 'composed';
+    if (!preview?.script || !previewRunnable(preview)) return;
+    const provenance = previewProvenance(preview) ?? 'imported';
     await host.loadScript(structuredClone(preview.script), { provenance });
     await host.dispatch({ type: 'SCRIPT_PLAY' });
     setLoadError(null);
@@ -93,7 +125,11 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
       if (!dry.valid) {
         throw Object.assign(new Error(dry.code), { code: dry.code, details: dry.details });
       }
-      await host.loadScript(script, { provenance: 'imported' });
+      // Import means: validate -> preview the imported declaration. The user
+      // still presses Run to load it, so preview and runtime never disagree.
+      setPreview(importedPreview({ script, dryRun: dry }));
+      setTab('overview');
+      setSelectedTypes(script.primitives.map((primitive) => primitive.type));
       setLoadError(null);
     } catch (error) {
       setLoadError({
@@ -106,7 +142,13 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     }
   };
 
-  const provenance = snapshot?.provenance ?? 'preset';
+  const availableTypes = preview?.script?.primitives?.map((primitive) => primitive.type) ?? [];
+  const toggleType = (type) => {
+    setSelectedTypes((current) => (
+      current.includes(type) ? current.filter((item) => item !== type) : [...current, type]
+    ));
+  };
+
   const steps = preview?.script?.steps ?? [];
   const controlsChanged = [...new Set(steps.flatMap((step) => Object.keys(step.setControl ?? {})))];
   const operations = [...new Set(steps.filter((step) => step.invoke).map((step) => step.invoke.operation))];
@@ -117,6 +159,12 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     const group = fidelityGroup(check.requirement);
     (groups[group] ??= []).push(check);
   }
+
+  const previewBadge = previewProvenance(preview);
+  const activeBadge = snapshot?.provenance ?? 'preset';
+  const runnable = previewRunnable(preview);
+  const fidelityStatus = previewFidelityStatus(preview);
+  const isComparison = preview?.plan?.goal?.type === 'compare-control';
 
   return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
     <div className="flex flex-wrap items-center gap-2">
@@ -145,9 +193,23 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
         && <pre className="mt-2 overflow-auto font-mono text-[10px]">{JSON.stringify(preview.error.details, null, 2)}</pre>}
     </div>}
 
+    {preview?.revisionError && <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
+      <p className="font-black">{t('playground.agent.revisionFailed')}: {preview.revisionError.code}</p>
+      <p className="mt-1">{preview.revisionError.message}</p>
+      <p className="mt-1 text-[10px]">{t('playground.agent.revisionKeptPreview')}</p>
+    </div>}
+
     {preview?.script && <div className="mt-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className="text-xs font-black uppercase tracking-wider text-slate-600">{t('playground.agent.preview')}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <p className="text-xs font-black uppercase tracking-wider text-slate-600">{t('playground.agent.preview')}</p>
+          {previewBadge && <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[10px] font-bold text-violet-700">
+            {t(`playground.agent.provenance.${previewBadge}`)}
+          </span>}
+          <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+            {t('playground.agent.active')}: {t(`playground.agent.provenance.${activeBadge}`)}
+          </span>
+        </div>
         <div className="flex items-center gap-1 rounded-xl bg-white p-1">
           {TAB_KEYS.map((key) => (
             <button key={key} onClick={() => setTab(key)}
@@ -159,26 +221,30 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
       </div>
 
       {tab === 'overview' && <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
-        <p><span className="font-bold text-slate-500">{t('playground.agent.objective')}:</span> {preview.plan?.goal?.objective}</p>
+        <p><span className="font-bold text-slate-500">{t('playground.agent.objective')}:</span> {preview.plan?.goal?.objective ?? t('playground.agent.notApplicable')}</p>
         <p><span className="font-bold text-slate-500">{t('playground.agent.steps')}:</span> {steps.length}</p>
         <p><span className="font-bold text-slate-500">{t('playground.agent.controls')}:</span> {controlsChanged.join(', ') || '—'}</p>
         <p><span className="font-bold text-slate-500">{t('playground.agent.operations')}:</span> {operations.join(', ') || '—'}</p>
         <p><span className="font-bold text-slate-500">{t('playground.agent.captures')}:</span> {captures.join(', ') || '—'}</p>
         <p><span className="font-bold text-slate-500">{t('playground.agent.primitives')}:</span> {preview.script.primitives.map((primitive) => primitive.type).join(', ')}</p>
-        <p className={preview.fidelity?.valid ? 'text-emerald-700' : 'text-red-700'}>
-          {preview.fidelity?.valid ? t('playground.agent.fidelityPassed') : t('playground.agent.fidelityFailed')}
+        <p className={fidelityStatus === 'passed' ? 'text-emerald-700' : fidelityStatus === 'failed' ? 'text-red-700' : 'text-slate-500'}>
+          {fidelityStatus === 'passed' ? t('playground.agent.fidelityPassed')
+            : fidelityStatus === 'failed' ? t('playground.agent.fidelityFailed')
+              : t('playground.agent.fidelityNotAvailable')}
         </p>
       </div>}
 
       {tab === 'plan' && <div className="mt-3 max-h-64 overflow-auto rounded-xl bg-white p-3 font-mono text-[11px]">
-        {preview.plan?.phases?.map((phase, index) => (
-          <p key={`${phase.id}-${index}`}>
-            {phase.id}: {phase.kind}
-            {phase.control !== undefined ? ` ${phase.control}=${JSON.stringify(phase.value)}` : ''}
-            {phase.count !== undefined ? ` x${phase.count}` : ''}
-            {phase.captureId ? ` -> ${phase.captureId}` : ''}
-          </p>
-        ))}
+        {preview.plan
+          ? preview.plan.phases.map((phase, index) => (
+            <p key={`${phase.id}-${index}`}>
+              {phase.id}: {phase.kind}
+              {phase.control !== undefined ? ` ${phase.control}=${JSON.stringify(phase.value)}` : ''}
+              {phase.count !== undefined ? ` x${phase.count}` : ''}
+              {phase.captureId ? ` -> ${phase.captureId}` : ''}
+            </p>
+          ))
+          : <p>{t('playground.agent.planNotAvailable')}</p>}
       </div>}
 
       {tab === 'script' && <pre className="mt-3 max-h-80 overflow-auto rounded-xl bg-slate-950 p-3 font-mono text-[10px] leading-relaxed text-slate-200">
@@ -186,6 +252,11 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
       </pre>}
 
       {tab === 'fidelity' && <div className="mt-3 space-y-2">
+        {preview.mode === 'imported' && <div className="rounded-xl bg-white p-3 text-xs text-slate-600">
+          <p className="font-bold text-emerald-700">✓ {t('playground.agent.validationPassed')}</p>
+          <p className="mt-1 font-bold text-emerald-700">✓ {t('playground.agent.dryRunPassed')}</p>
+          <p className="mt-1">{t('playground.agent.fidelityNotAvailable')}</p>
+        </div>}
         {Object.entries(groups).map(([group, checks]) => (
           <div key={group} className="rounded-xl bg-white p-3">
             <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">{group}</p>
@@ -199,23 +270,72 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
             </div>
           </div>
         ))}
-        {!preview.fidelity?.valid && preview.fidelity?.missing?.length > 0 && (
+        {fidelityStatus === 'failed' && preview?.fidelity?.missing?.length > 0 && (
           <p className="text-xs font-bold text-red-700">{t('playground.agent.missing')}: {preview.fidelity.missing.join(', ')}</p>
         )}
       </div>}
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <button disabled={!preview.fidelity?.valid} onClick={runPreview}
-          className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
-          {t('playground.agent.run')}
-        </button>
-        <button onClick={copyJson} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.agent.copyJson')}</button>
-        <button onClick={downloadJson} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.agent.downloadJson')}</button>
-        <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.agent.loadJson')}</button>
-        <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onLoadFile} />
-        <span className="rounded-full bg-sky-100 px-2 py-0.5 text-[10px] font-bold text-sky-700">
-          {t(`playground.agent.provenance.${provenance}`) ?? provenance}
-        </span>
+      <div className="mt-4 space-y-3">
+        <div className="rounded-xl bg-white p-3">
+          <p className="text-[10px] font-black uppercase tracking-wider text-violet-600">{t('playground.agent.reviseTitle')}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <button onClick={() => applyRevision({ type: 'focus_result' })} disabled={busy}
+              className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-40">
+              {t('playground.agent.focusResult')}
+            </button>
+            <span className="text-xs font-bold text-slate-600">{t('playground.agent.maxSteps')}</span>
+            <input type="number" min="1" value={shortenSteps}
+              onChange={(event) => setShortenSteps(Number(event.target.value))}
+              className="w-16 rounded-lg border border-slate-200 px-2 py-1 text-xs" />
+            <button onClick={() => applyRevision({ type: 'shorten', maxSteps: shortenSteps })} disabled={busy || !Number.isInteger(shortenSteps) || shortenSteps < 1}
+              className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-40">
+              {t('playground.agent.shorten')}
+            </button>
+          </div>
+          {availableTypes.length > 0 && <div className="mt-2">
+            <div className="flex flex-wrap gap-2">
+              {availableTypes.map((type) => (
+                <label key={type} className="flex items-center gap-1 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-bold text-slate-600">
+                  <input type="checkbox" checked={selectedTypes.includes(type)} onChange={() => toggleType(type)} className="h-3 w-3 accent-violet-600" />
+                  {type}
+                </label>
+              ))}
+            </div>
+            <div className="mt-2 flex gap-2">
+              <button onClick={() => applyRevision({ type: 'keep_visuals', primitiveTypes: selectedTypes })} disabled={busy || !selectedTypes.length}
+                className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-40">
+                {t('playground.agent.keepVisuals')}
+              </button>
+              <button onClick={() => applyRevision({ type: 'remove_visual', primitiveTypes: selectedTypes })} disabled={busy || !selectedTypes.length}
+                className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-40">
+                {t('playground.agent.removeVisual')}
+              </button>
+            </div>
+          </div>}
+          {isComparison && <div className="mt-2 flex flex-wrap items-center gap-2">
+            <span className="text-xs font-bold text-slate-600">{t('playground.agent.compareValues', { control: preview.plan.goal.control })}</span>
+            <input type="number" value={leftValue} onChange={(event) => setLeftValue(event.target.value)}
+              className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-xs" />
+            <input type="number" value={rightValue} onChange={(event) => setRightValue(event.target.value)}
+              className="w-20 rounded-lg border border-slate-200 px-2 py-1 text-xs" />
+            <button onClick={() => applyRevision({ type: 'change_comparison_values', control: preview.plan.goal.control, values: [Number(leftValue), Number(rightValue)] })}
+              disabled={busy || !leftValue || !rightValue}
+              className="rounded-lg bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700 disabled:opacity-40">
+              {t('playground.agent.changeValues')}
+            </button>
+          </div>}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-2">
+          <button disabled={!runnable || busy} onClick={runPreview}
+            className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">
+            {t('playground.agent.run')}
+          </button>
+          <button onClick={copyJson} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.agent.copyJson')}</button>
+          <button onClick={downloadJson} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.agent.downloadJson')}</button>
+          <button onClick={() => fileRef.current?.click()} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.agent.loadJson')}</button>
+          <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={onLoadFile} />
+        </div>
       </div>
     </div>}
   </div>;

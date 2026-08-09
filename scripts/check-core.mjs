@@ -85,6 +85,15 @@ import {
 import { parseTeachingGoalText } from '../src/core/playground/agent/teachingGoalParser.js';
 import { materializePrimitives } from '../src/core/playground/visualization/primitiveMaterializer.js';
 import {
+  compositionPreview,
+  importedPreview,
+  previewFidelityStatus,
+  previewProvenance,
+  previewRunnable,
+  revisionErrorPreview,
+  revisionPreview,
+} from '../src/components/playground/agentPreviewState.js';
+import {
   evaluateGoalFidelity,
   replayScriptForFidelity,
 } from '../src/core/playground/agent/teachingFidelity.js';
@@ -5494,6 +5503,105 @@ assert.throws(
           && !f2PanelSource.includes("from '../../core/playground/model/"),
           'the Agent panel imports no model mathematics',
         );
+      }
+
+      // PR F.2.1: Agent preview/revision state machine.
+      {
+        const f21Host = createPlaygroundHost({ getDataset: () => null });
+        const f21Agent = createPlaygroundAgentApi(f21Host);
+
+        // 1. Pure state helpers: preview provenance, run eligibility and
+        // fidelity status are derived per preview type.
+        assert.equal(previewProvenance(null), null, 'no preview has no provenance');
+        assert.equal(previewProvenance(compositionPreview({ mode: 'composed' })), 'composed', 'composed preview provenance');
+        assert.equal(
+          previewProvenance(revisionPreview(null, { plan: null, script: {}, fidelity: {}, dryRun: {} })),
+          'revised',
+          'revised preview provenance',
+        );
+        assert.equal(previewProvenance(importedPreview({ script: {}, dryRun: { valid: true } })), 'imported', 'imported preview provenance');
+        assert.equal(
+          previewRunnable(compositionPreview({ mode: 'composed', fidelity: { valid: true } })),
+          true,
+          'a composed preview with valid fidelity is runnable',
+        );
+        assert.equal(
+          previewRunnable(compositionPreview({ mode: 'composed', fidelity: { valid: false } })),
+          false,
+          'a composed preview with failed fidelity is not runnable',
+        );
+        assert.equal(
+          previewRunnable(importedPreview({ script: {}, dryRun: { valid: true } })),
+          true,
+          'an imported preview is runnable on validation + dry run, without fidelity',
+        );
+        assert.equal(
+          previewRunnable(importedPreview({ script: {}, dryRun: { valid: false } })),
+          false,
+          'an imported preview failing the dry run is not runnable',
+        );
+        assert.equal(previewFidelityStatus(importedPreview({ script: {}, dryRun: { valid: true } })), 'not-available', 'imported fidelity status');
+        assert.equal(previewFidelityStatus(compositionPreview({ mode: 'composed', fidelity: { valid: true } })), 'passed', 'composed fidelity passed');
+
+        // 2. Compose: active stays preset while the preview becomes composed.
+        await f21Agent.open({ playgroundId: 'knn-classification' });
+        assert.equal(f21Agent.getState().provenance, 'preset', 'active starts as preset');
+        const f21Plan = await f21Agent.plan('Explain this KNN prediction');
+        const f21Composed = await f21Agent.composeScript(f21Plan);
+        let f21Preview = compositionPreview(f21Composed);
+        assert.equal(previewProvenance(f21Preview), 'composed', 'after compose, preview is composed');
+        assert.equal(f21Agent.getState().provenance, 'preset', 'compose never touches the active runtime');
+
+        // 3. Run: active becomes composed only after an explicit load.
+        await f21Host.loadScript(structuredClone(f21Preview.script), { provenance: 'composed' });
+        assert.equal(f21Agent.getState().provenance, 'composed', 'Run loads the composed script');
+
+        // 4. Revise: preview becomes revised while active stays composed.
+        const f21Revised = await f21Agent.reviseScript({
+          plan: f21Preview.plan,
+          script: f21Preview.script,
+          request: { type: 'remove_visual', primitiveTypes: ['decision-region'] },
+        });
+        f21Preview = revisionPreview(f21Preview, f21Revised);
+        assert.equal(previewProvenance(f21Preview), 'revised', 'after revise, preview is revised');
+        assert.equal(f21Agent.getState().provenance, 'composed', 'revise never touches the active runtime');
+        assert.equal(f21Preview.fidelity.valid, true, 'a permitted revision keeps fidelity');
+
+        // 5. Run revised: active becomes revised only after an explicit load.
+        await f21Host.loadScript(structuredClone(f21Preview.script), { provenance: 'revised' });
+        assert.equal(f21Agent.getState().provenance, 'revised', 'Run loads the revised script');
+
+        // 6. Import: preview becomes imported B while active stays as it was.
+        // There is never a state where the preview shows A, the badge says
+        // imported, and the runtime contains B.
+        const f21ComposedA = structuredClone(f21Preview.script);
+        const f21ImportedB = structuredClone(getPreset('knn.intro'));
+        const f21Validation = f21Agent.validateScript(f21ImportedB);
+        const f21Dry = f21Agent.dryRunScript(f21ImportedB);
+        assert.equal(f21Validation.valid && f21Dry.valid, true, 'imported B validates and dry-runs');
+        f21Preview = importedPreview({ script: f21ImportedB, dryRun: f21Dry });
+        assert.equal(previewProvenance(f21Preview), 'imported', 'after import, preview is imported');
+        assert.equal(f21Preview.script, f21ImportedB, 'the preview shows the imported script B');
+        assert.notEqual(f21Preview.script, f21ComposedA, 'the preview no longer shows A');
+        assert.equal(f21Agent.getState().provenance, 'revised', 'import does not auto-replace the active runtime');
+        assert.equal(previewRunnable(f21Preview), true, 'the imported preview is runnable without fidelity');
+
+        // 7. Failed revision keeps the previous valid preview intact.
+        const f21GoodPreview = compositionPreview(f21Composed);
+        await assert.rejects(
+          f21Agent.reviseScript({
+            plan: f21Plan,
+            script: f21Composed.script,
+            request: { type: 'remove_visual', primitiveTypes: ['vote-bars'] },
+          }),
+          (error) => error.code === 'TEACHING_GOAL_FIDELITY_FAILED',
+          'removing required visual evidence rejects',
+        );
+        f21Preview = revisionErrorPreview(f21GoodPreview, { code: 'TEACHING_GOAL_FIDELITY_FAILED', message: 'missing', details: {} });
+        assert.equal(f21Preview.script, f21GoodPreview.script, 'a failed revision keeps the old valid preview');
+        assert.equal(previewProvenance(f21Preview), 'composed', 'the preview provenance is unchanged after a failed revision');
+        assert.equal(f21Preview.revisionError.code, 'TEACHING_GOAL_FIDELITY_FAILED', 'the revision error is surfaced separately');
+        await f21Agent.close();
       }
 
       // LR and KNN existing presets remain unchanged.
