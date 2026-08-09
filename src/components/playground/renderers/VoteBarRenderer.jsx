@@ -1,7 +1,7 @@
 export default function VoteBarRenderer({ props, t, colorByLabel }) {
   const voting = props?.voting ?? { counts: {}, predictedLabel: null, tie: false };
   const counts = voting?.counts && typeof voting.counts === 'object' ? voting.counts : {};
-  return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+  return <div className="rounded-xl border border-slate-200 bg-slate-50 p-3" style={{ opacity: props.motionOpacity ?? 1 }}>
     <p className="text-xs font-black uppercase tracking-wider text-slate-500">{t('playground.votes')}</p>
     <div className="mt-2 space-y-1">
       {Object.entries(counts).map(([label, count]) => {

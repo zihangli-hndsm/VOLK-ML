@@ -1,17 +1,24 @@
+import { useMemo } from 'react';
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
+import { resolveMotionConfig } from './motion.js';
+import { usePrimitiveMotion, useReducedMotionPreference } from './usePrimitiveMotion.js';
 import { buildLabelColorMap } from './visualEncoding.js';
 
 const PLOT = { left: 58, right: 620, top: 20, bottom: 320 };
+const EMPTY_STAGE_LAYOUT = [];
 
 // The unified stage only knows primitives. It never imports model math and
 // never special-cases a model; every drawing decision comes from the JSON
 // primitive props in the snapshot.
 export default function PlaygroundStage({ snapshot, t }) {
   const { primitives, script, visualState } = snapshot;
-  const layout = script?.layout?.stage ?? [];
-  const visible = primitives.filter((primitive) => (
+  const layout = script?.layout?.stage ?? EMPTY_STAGE_LAYOUT;
+  const visible = useMemo(() => primitives.filter((primitive) => (
     layout.includes(primitive.id) && visualState[primitive.id] !== false
-  ));
+  )), [layout, primitives, visualState]);
+  const reducedMotion = useReducedMotionPreference();
+  const motionConfig = resolveMotionConfig(snapshot, reducedMotion);
+  const { primitives: renderedPrimitives, motion } = usePrimitiveMotion(visible, motionConfig);
   const scatter = visible.find((primitive) => primitive.type === 'scatter');
   const points = scatter?.props?.points ?? [];
   const axes = scatter?.props?.axes ?? { x: 'x', y: 'y' };
@@ -35,11 +42,11 @@ export default function PlaygroundStage({ snapshot, t }) {
       <line x1={PLOT.left + ratio * (PLOT.right - PLOT.left)} y1={PLOT.top} x2={PLOT.left + ratio * (PLOT.right - PLOT.left)} y2={PLOT.bottom} stroke="#e2e8f0" />
     </g>)}
     <path d={`M${PLOT.left} ${PLOT.top} V${PLOT.bottom} H${PLOT.right}`} fill="none" stroke="#475569" strokeWidth="2" />
-    {visible.map((primitive) => {
+    {renderedPrimitives.map((primitive) => {
       const Renderer = rendererByPrimitiveType[primitive.type];
       if (!Renderer) return null;
       return <Renderer key={primitive.id} props={primitive.props} variant={primitive.type}
-        xToSvg={xToSvg} yToSvg={yToSvg} colorByLabel={colorByLabel} plot={PLOT} t={t} />;
+        xToSvg={xToSvg} yToSvg={yToSvg} colorByLabel={colorByLabel} plot={PLOT} motion={motion} t={t} />;
     })}
     <text x="334" y="358" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">{axes.x}</text>
     <text x="15" y="170" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 15 170)">{axes.y}</text>

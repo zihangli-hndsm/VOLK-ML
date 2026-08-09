@@ -1,7 +1,7 @@
 // Model-independent parameter trajectory: draws {step, value} points as a
 // line plus dots in a fixed mini-plot inside the stage SVG. Degrades to null
 // when there is nothing to draw.
-export default function ParameterTrajectoryRenderer({ props, t }) {
+export default function ParameterTrajectoryRenderer({ props, motion, t }) {
   const points = props?.points ?? [];
   if (!points.length) return null;
   const left = 340;
@@ -20,8 +20,9 @@ export default function ParameterTrajectoryRenderer({ props, t }) {
   return <g>
     <rect x={left} y={top} width={width} height={height} fill="#f8fafc" stroke="#cbd5e1" rx="6" />
     <text x={left + 8} y={top + 14} fontSize="10" fontWeight="800" fill="#475569">{t('playground.parameterTrajectoryTitle')}</text>
-    <path d={path} fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-    {points.map((point) => <circle key={`traj-${point.step}`} cx={xAt(point)} cy={yAt(point.value)} r="3" fill="#7c3aed" />)}
+    <path d={path} fill="none" stroke="#7c3aed" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+      pathLength="1" strokeDasharray="1" strokeDashoffset={motion?.isAnimating ? 1 - motion.progress : 0} opacity={props.motionOpacity ?? 1} />
+    {points.map((point) => <circle key={`traj-${point.step}`} cx={xAt(point)} cy={yAt(point.value)} r="3" fill="#7c3aed" opacity={(props.motionOpacity ?? 1) * (point.motionOpacity ?? 1)} />)}
     <text x={left + 8} y={bottom + 12} fontSize="9" fill="#64748b">{t('playground.parameterTrajectoryX')}</text>
     <text x={left + 8} y={top + 24} fontSize="9" fill="#64748b">{t('playground.parameterTrajectoryY')}</text>
   </g>;

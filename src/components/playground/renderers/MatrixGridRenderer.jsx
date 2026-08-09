@@ -22,9 +22,9 @@ export default function MatrixGridRenderer({ props, t }) {
       const fill = value >= 0 ? 'rgba(37, 99, 235, 0.75)' : 'rgba(245, 158, 11, 0.75)';
       return <g key={`cell-${row}-${column}`}>
         <rect x={left + column * cell} y={top + row * cellHeight} width={cell - 2} height={cellHeight - 2}
-          rx="3" fill={fill} opacity={Math.min(1, 0.35 + Math.abs(value) * 2)} />
+          rx="3" fill={fill} opacity={Math.min(1, 0.35 + Math.abs(value) * 2) * (props.motionOpacity ?? 1) * (item?.motionOpacity ?? 1)} />
         {cell >= 18 ? <text x={left + column * cell + (cell - 2) / 2} y={top + row * cellHeight + (cellHeight - 2) / 2 + 3}
-          textAnchor="middle" fontSize="8" fontWeight="700" fill="white">{item?.label ?? Number(value).toFixed(1)}</text> : null}
+          textAnchor="middle" fontSize="8" fontWeight="700" fill="white" opacity={(props.motionOpacity ?? 1) * (item?.motionOpacity ?? 1)}>{item?.label ?? Number(value).toFixed(1)}</text> : null}
       </g>;
     }))}
   </g>;

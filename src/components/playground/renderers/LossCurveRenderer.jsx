@@ -1,6 +1,6 @@
-export default function LossCurveRenderer({ props, t }) {
+export default function LossCurveRenderer({ props, motion, t }) {
   const { lossHistory, currentStep } = props;
-  const values = lossHistory.slice(0, Math.max(1, currentStep));
+  const values = lossHistory.slice(0, Math.max(1, Math.ceil(currentStep)));
   if (!values.length) return null;
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -13,8 +13,9 @@ export default function LossCurveRenderer({ props, t }) {
   return <div className="rounded-xl border border-slate-200 bg-white p-3">
     <p className="text-xs font-black uppercase tracking-wider text-slate-500">{t('playground.lossCurveTitle')}</p>
     <svg viewBox={`0 0 ${width} ${height}`} className="mt-2 block h-auto w-full">
-      <path d={path} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-      <circle cx={xAt(values.length - 1)} cy={yAt(values.at(-1))} r="4" fill="#2563eb" />
+      <path d={path} fill="none" stroke="#2563eb" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+        pathLength="1" strokeDasharray="1" strokeDashoffset={motion?.isAnimating ? 1 - motion.progress : 0} opacity={props.motionOpacity ?? 1} />
+      <circle cx={xAt(values.length - 1)} cy={yAt(values.at(-1))} r="4" fill="#2563eb" opacity={props.motionOpacity ?? 1} />
     </svg>
   </div>;
 }
