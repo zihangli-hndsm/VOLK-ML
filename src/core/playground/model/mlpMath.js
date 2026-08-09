@@ -87,11 +87,18 @@ export function forwardMlp(params, x) {
   return { z1, a1, z2, probability };
 }
 
-export function predictMlp(params, x) {
+// Decodes a probability into the dataset's original label space (PR F.3.1).
+// The default `['a', 'b']` preserves the deterministic XOR example; the
+// adapter passes modelState.labelMapping.labels for workspace datasets. There
+// is exactly one binary decision: probability < 0.5 -> class 0,
+// probability >= 0.5 -> class 1.
+export function predictMlp(params, x, labels = ['a', 'b']) {
   const { probability } = forwardMlp(params, x);
+  const classIndex = probability >= 0.5 ? 1 : 0;
   return {
     probability,
-    label: probability >= 0.5 ? 'b' : 'a',
+    classIndex,
+    label: labels[classIndex] ?? labels[0],
   };
 }
 
@@ -226,6 +233,7 @@ export function computeMlpDecisionRegions({
   xFeature = 'x1',
   yFeature = 'x2',
   normalization = null,
+  labels = ['a', 'b'],
   resolution = 48,
 }) {
   const xi = featureColumns.indexOf(xFeature);
@@ -251,7 +259,7 @@ export function computeMlpDecisionRegions({
       const vector = featureColumns.map(() => 0);
       vector[xi] = x;
       vector[yi] = y;
-      cells.push({ x, y, label: predictMlp(params, vector).label });
+      cells.push({ x, y, label: predictMlp(params, vector, labels).label });
     }
   }
   return { resolution, cells, xMin, xMax, yMin, yMax };
