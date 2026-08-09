@@ -645,6 +645,11 @@ Animation expresses semantic change (neighbor reveal, gradient steps) rather tha
 
 Presentation Mode is a local UI view over the same playground snapshot and Script Runtime. It hides authoring/debug surfaces, preserves the canonical `640×360` stage aspect ratio, and exposes only Restart, Play/Pause and Exit Presentation controls plus the optional script-declared annotation/formula content. The stage uses the measured presentation content area and is fitted as the largest 16:9 rectangle that satisfies available width, available height after teaching content, and the `1280px` maximum width; the SVG itself is never stretched or cropped. Entering or exiting the mode never dispatches a runtime action and never persists state into the Visualization Script. Keyboard handling is scoped to the focused presentation root: Space toggles playback, `R` restarts, and Escape exits; editable controls are not intercepted.
 
+### Generic Motion System (Phase G.2)
+
+The Stage owns a model-independent visual motion layer. It keeps the previous and current already-valid primitive snapshots, interpolates visual props between them, and passes the current frame to the existing primitive renderer registry. Runtime state changes immediately and remains authoritative; motion never dispatches actions or creates semantic intermediate model states. Motion durations come from one centralized policy and are clamped to the active script step duration after playback speed, with `prefers-reduced-motion` producing an immediate visual settle. Stable semantic identities (`id`, `pointId`, `step`, matrix coordinates, and edge endpoints) control array matching so enter/exit fades and numeric interpolation do not depend on array order.
+
+
 ## Adding a third playground
 
 1. Create a model adapter in `src/core/playground/model/<name>Adapter.js` (initialize, applyModelAction, deriveScene, buildPrimitives) and register it in `modelRegistry.js`.

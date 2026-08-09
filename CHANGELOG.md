@@ -356,3 +356,4 @@
 - Updated `docs/architecture/playgrounds.md` and localized UI strings in `src/locales/ui.js`.
 - Acceptance: `npm run check`, `npm run check:compiler`, `npm run build`, and `git diff --check` passed. G.2 is intentionally not started.
 - 2026-08-09 — PR G.1.1: Presentation Mode now observes its available content area and fits the teaching stage to the limiting width or height while preserving 16:9; annotation/formula content is reserved before sizing the stage.
+- 2026-08-09 — PR G.2: added a model-independent primitive motion layer with centralized duration policy, script-step clamping, stable semantic identity matching, enter/exit opacity, numeric interpolation, progressive history/trajectory paths, and reduced-motion support. Runtime semantics remain unchanged.

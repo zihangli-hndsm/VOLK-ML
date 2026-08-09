@@ -33,18 +33,19 @@ export default function NetworkGraphRenderer({ props, t }) {
       const target = positions.get(String(edge.target));
       if (!source || !target) return null;
       const weight = typeof edge.weight === 'number' ? edge.weight : 0;
-      return <line key={`edge-${index}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y}
-        stroke={weight >= 0 ? '#60a5fa' : '#fbbf24'} strokeWidth={Math.max(0.5, Math.min(4, Math.abs(weight) * 6))} opacity="0.75" />;
+      return <line key={`edge-${edge.source}-${edge.target}-${index}`} x1={source.x} y1={source.y} x2={target.x} y2={target.y}
+        stroke={weight >= 0 ? '#60a5fa' : '#fbbf24'} strokeWidth={Math.max(0.5, Math.min(4, Math.abs(weight) * 6))}
+        opacity={0.75 * (props.motionOpacity ?? 1) * (edge.motionOpacity ?? 1)} />;
     })}
     {nodes.map((node) => {
       const position = positions.get(String(node.id));
       if (!position) return null;
       const value = nodeById.get(String(node.id))?.value;
       return <g key={String(node.id)}>
-        <circle cx={position.x} cy={position.y} r="11" fill={colorOf(value)} stroke="white" strokeWidth="2" opacity={value === null ? 0.45 : 1} />
-        <text x={position.x} y={position.y + 3} textAnchor="middle" fontSize="8" fontWeight="800" fill="white">{node.label ?? ''}</text>
+        <circle cx={position.x} cy={position.y} r="11" fill={colorOf(value)} stroke="white" strokeWidth="2" opacity={(value === null ? 0.45 : 1) * (props.motionOpacity ?? 1) * (node.motionOpacity ?? 1)} />
+        <text x={position.x} y={position.y + 3} textAnchor="middle" fontSize="8" fontWeight="800" fill="white" opacity={(props.motionOpacity ?? 1) * (node.motionOpacity ?? 1)}>{node.label ?? ''}</text>
         {value !== null && value !== undefined
-          ? <text x={position.x} y={position.y - 15} textAnchor="middle" fontSize="8" fill="#475569">{Number(value).toFixed(2)}</text>
+          ? <text x={position.x} y={position.y - 15} textAnchor="middle" fontSize="8" fill="#475569" opacity={(props.motionOpacity ?? 1) * (node.motionOpacity ?? 1)}>{Number(value).toFixed(2)}</text>
           : null}
       </g>;
     })}

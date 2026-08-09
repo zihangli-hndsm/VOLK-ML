@@ -15,7 +15,7 @@ export default function HistogramRenderer({ props, t }) {
         const barWidth = Math.max(4, width / bins.length - 4);
         const barHeight = maxCount ? (bin.count / maxCount) * (height - 20) : 0;
         return <rect key={`bin-${index}`} x={xAt(index) - barWidth / 2} y={height - barHeight - 10}
-          width={barWidth} height={barHeight} rx="3" fill="#6366f1" />;
+          width={barWidth} height={barHeight} rx="3" fill="#6366f1" opacity={(props.motionOpacity ?? 1) * (bin.motionOpacity ?? 1)} />;
       })}
     </svg>
   </div>;

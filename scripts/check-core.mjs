@@ -76,6 +76,13 @@ import {
   getPresentationPlaybackAction,
   hasScriptPlayback,
 } from '../src/components/playground/presentationMode.js';
+import {
+  clampMotionDuration,
+  DEFAULT_MOTION_POLICY,
+  interpolatePrimitiveList,
+  resolveMotionConfig,
+  stableMotionIdentity,
+} from '../src/components/playground/motion.js';
 import { dryRunScript } from '../src/core/playground/agent/dryRun.js';
 import { planTeachingGoal } from '../src/core/playground/agent/teachingPlanner.js';
 import { composeScriptFromPlan } from '../src/core/playground/agent/teachingComposer.js';
@@ -2913,6 +2920,34 @@ assert.throws(
         const narrow = fitPresentationStage({ areaWidth: 500, areaHeight: 500 });
         assert.equal(narrow.width, 500);
         assert.equal(narrow.height, 281.25);
+      }
+
+      // PR G.2: motion interpolates only between semantic primitive
+      // snapshots; runtime state and final rendered props remain exact.
+      {
+        assert.equal(DEFAULT_MOTION_POLICY.update, 320);
+        assert.equal(clampMotionDuration(320, 300), 300, 'motion duration fits inside the active script step');
+        assert.equal(clampMotionDuration(320, 300, { reducedMotion: true }), 0, 'reduced motion disables interpolation');
+        const from = [{
+          id: 'scatter',
+          type: 'scatter',
+          props: { points: [{ id: 'a', x: 0, y: 0 }] },
+        }];
+        const to = [{
+          id: 'scatter',
+          type: 'scatter',
+          props: { points: [{ id: 'a', x: 10, y: 20 }, { id: 'b', x: 5, y: 5 }] },
+        }];
+        const middle = interpolatePrimitiveList(from, to, 0.5);
+        assert.equal(middle[0].props.points.find((point) => point.id === 'a').x, 5, 'stable point identity interpolates numeric position');
+        assert.equal(middle[0].props.points.find((point) => point.id === 'b').motionOpacity, 0.5, 'new stable points fade in');
+        assert.deepEqual(interpolatePrimitiveList(from, to, 1), to, 'motion settles to exact semantic target props');
+        assert.equal(stableMotionIdentity({ source: 'a', target: 'b' }), 'edge:a:b');
+        assert.equal(resolveMotionConfig({
+          scriptState: { step: 0 },
+          script: { steps: [{ durationMs: 300 }] },
+          timeline: { speed: 2 },
+        }).durationMs, 150, 'motion duration respects playback speed');
       }
     }
 
