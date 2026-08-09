@@ -79,6 +79,8 @@ import {
 import {
   clampMotionDuration,
   DEFAULT_MOTION_POLICY,
+  easeMotionProgress,
+  getVisiblePrimitives,
   interpolatePrimitiveList,
   resolveMotionConfig,
   stableMotionIdentity,
@@ -2948,6 +2950,64 @@ assert.throws(
           script: { steps: [{ durationMs: 300 }] },
           timeline: { speed: 2 },
         }).durationMs, 150, 'motion duration respects playback speed');
+        assert.equal(DEFAULT_MOTION_POLICY.easing, 'ease-out-cubic');
+        assert.equal(easeMotionProgress(0.5, 'linear'), 0.5, 'linear easing remains truthful');
+        assert.equal(easeMotionProgress(0.5, DEFAULT_MOTION_POLICY.easing), 0.875, 'central easing policy controls interpolation');
+        const annotationFrom = {
+          id: 'annotation',
+          type: 'annotation',
+          motionSlot: 'teaching',
+          props: { observation: { titleKey: 'old.title', bodyKey: 'old.body', params: {} } },
+        };
+        const formulaFrom = {
+          id: 'formula',
+          type: 'formula',
+          motionSlot: 'teaching',
+          props: { formula: { key: 'old.formula', params: { weight: 1 } } },
+        };
+        const annotationTo = {
+          ...annotationFrom,
+          props: { observation: { titleKey: 'new.title', bodyKey: 'new.body', params: {} } },
+        };
+        const formulaTo = {
+          ...formulaFrom,
+          props: { formula: { key: 'new.formula', params: { weight: 3 } } },
+        };
+        const sharedFrameMiddle = interpolatePrimitiveList(
+          [{ ...from[0], motionSlot: 'stage' }, annotationFrom, formulaFrom],
+          [{ ...to[0], motionSlot: 'stage' }, annotationTo, formulaTo],
+          0.5,
+        );
+        assert.equal(sharedFrameMiddle.find((primitive) => primitive.id === 'annotation').props.motionProgress, 0.5, 'annotation receives intermediate motion state');
+        assert.equal(sharedFrameMiddle.find((primitive) => primitive.id === 'formula').props.motionProgress, 0.5, 'formula receives intermediate motion state');
+        assert.deepEqual(
+          interpolatePrimitiveList([annotationFrom, formulaFrom], [annotationTo, formulaTo], 1),
+          [annotationTo, formulaTo],
+          'teaching primitives settle to exact semantic target props',
+        );
+        const reducedMotionConfig = resolveMotionConfig({ scriptState: { step: 0 }, script: { steps: [{ durationMs: 300 }] } }, true);
+        assert.equal(reducedMotionConfig.durationMs, 0, 'reduced motion settles immediately');
+        assert.deepEqual(
+          interpolatePrimitiveList([annotationFrom, formulaFrom], [annotationTo, formulaTo], 1),
+          [annotationTo, formulaTo],
+          'reduced motion renders target teaching props immediately',
+        );
+        const presentationSnapshot = {
+          primitives: [{ id: 'stage', type: 'scatter', props: {} }, annotationFrom, formulaFrom],
+          visualState: { stage: true, annotation: true, formula: true },
+          script: { layout: { stage: ['stage'], side: ['formula'] } },
+        };
+        assert.deepEqual(getVisiblePrimitives(presentationSnapshot, 'stage').map((primitive) => primitive.id), ['stage'], 'stage layout remains independent of teaching layout');
+        assert.equal(resolveMotionConfig(presentationSnapshot).durationMs, resolveMotionConfig(presentationSnapshot).durationMs, 'stage and teaching content share one timing policy');
+        for (const file of ['motion.js', 'usePrimitiveMotion.js']) {
+          const motionSource = readFileSync(new URL(`../src/components/playground/${file}`, import.meta.url), 'utf8');
+          assert.ok(!/KNN|Linear Regression|MLP|model-specific/i.test(motionSource), `${file} has no model-specific motion branch`);
+        }
+        const presentationSource = readFileSync(new URL('../src/components/playground/PresentationMode.jsx', import.meta.url), 'utf8');
+        assert.equal((presentationSource.match(/usePrimitiveMotion\(/g) ?? []).length, 1, 'presentation owns one coherent motion frame');
+        assert.ok(presentationSource.includes('motionFrame={motionFrame}'), 'stage consumes the shared presentation motion frame');
+        assert.ok(presentationSource.includes('animatedAnnotation.props'), 'annotation consumes motion-interpolated props');
+        assert.ok(presentationSource.includes('animatedFormula.props'), 'formula consumes motion-interpolated props');
       }
     }
 
