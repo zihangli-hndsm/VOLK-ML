@@ -13,9 +13,13 @@ export const mlpPlayground = {
   descriptionKey: 'playground.mlp.description',
   supportedOps: ['mlp_classifier'],
   supportedTasks: ['classification'],
-  sourceKinds: ['example'],
+  sourceKinds: ['example', 'workspace-dataset'],
 
   controls: [
+    // 2D view feature selection (dynamic options from the dataset columns;
+    // select-without-options stays not safely plannable, like KNN).
+    { key: 'xFeature', type: 'select' },
+    { key: 'yFeature', type: 'select' },
     // runObjective declares which model operation a what-if/compare on this
     // control should run; it is declarative metadata, not a model-id switch.
     { key: 'hiddenUnits', type: 'number', min: 1, max: 8, step: 1, runObjective: 'predict' },
@@ -46,20 +50,19 @@ export const mlpPlayground = {
 
   validateSource(source) {
     if (!source || typeof source !== 'object') throw playgroundError('INVALID_PLAYGROUND_SOURCE');
-    if (source.kind !== 'example') throw playgroundError('INVALID_PLAYGROUND_SOURCE', { kind: source.kind });
-    // F.1 intentionally supports only the deterministic XOR example source;
-    // the adapter/math read the x1/x2 features directly. Do not advertise a
-    // broader source contract than the implementation supports. Generic
-    // workspace-dataset feature mapping is later dataset-integration work.
-    const featureColumns = Array.isArray(source.featureColumns)
-      && source.featureColumns.length === 2
-      && source.featureColumns.includes('x1')
-      && source.featureColumns.includes('x2')
+    if (!['example', 'workspace-dataset'].includes(source.kind)) {
+      throw playgroundError('INVALID_PLAYGROUND_SOURCE', { kind: source.kind });
+    }
+    const featureColumns = Array.isArray(source.featureColumns) && source.featureColumns.length >= 2
       ? source.featureColumns
       : null;
     if (!featureColumns) {
+      throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least two numeric features' });
+    }
+    if (source.kind === 'example'
+      && !(featureColumns.includes('x1') && featureColumns.includes('x2'))) {
       throw playgroundError('INVALID_PLAYGROUND_SOURCE', {
-        reason: 'MLP F.1 requires the deterministic x1/x2 example representation',
+        reason: 'the deterministic example representation requires x1/x2',
         featureColumns: source.featureColumns,
       });
     }
@@ -78,6 +81,13 @@ export const mlpPlayground = {
       ))
       : [];
     if (points.length < 2) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least two labeled points' });
+    const labels = [...new Set(points.map((point) => point.label))];
+    if (labels.length !== 2) {
+      throw playgroundError('INVALID_PLAYGROUND_SOURCE', {
+        reason: 'MLP requires binary classification',
+        labels: labels.length,
+      });
+    }
     return {
       kind: source.kind,
       name: source.name ?? 'Example data',
@@ -85,7 +95,8 @@ export const mlpPlayground = {
       points,
       featureColumns,
       total: source.total ?? points.length,
-      usingDataset: false,
+      trainRatio: source.trainRatio ?? 0.8,
+      usingDataset: source.kind === 'workspace-dataset',
     };
   },
 };

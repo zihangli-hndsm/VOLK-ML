@@ -7,20 +7,72 @@ import {
   predictMlp,
   trainMlp,
 } from './mlpMath.js';
+import { createSplit, featureStats } from '../data/datasetAdapter.js';
 import { playgroundError } from '../../playgrounds/session.js';
 
 const DECISION_RESOLUTION = 48;
 const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
 
+// PR F.3: the MLP is feature-name agnostic. Samples are full feature vectors
+// in featureColumns order; the 2D view projects xFeature/yFeature (normalized
+// for workspace datasets, identity for the deterministic XOR example) and
+// fixes hidden features at the normalized mean (0).
+function identityNormalization(featureCount) {
+  return { means: Array(featureCount).fill(0), stds: Array(featureCount).fill(1) };
+}
+
+function buildLabelMapping(samples) {
+  const labels = [...new Set(samples.map((sample) => sample.label))].sort();
+  const toIndex = Object.fromEntries(labels.map((label, index) => [label, index]));
+  return { labels, toIndex };
+}
+
+function viewVector(modelState, x, y) {
+  const { featureColumns, xFeature, yFeature, normalization } = modelState;
+  const xi = featureColumns.indexOf(xFeature);
+  const yi = featureColumns.indexOf(yFeature);
+  const vector = featureColumns.map(() => 0);
+  vector[xi] = (x - normalization.means[xi]) / normalization.stds[xi];
+  vector[yi] = (y - normalization.means[yi]) / normalization.stds[yi];
+  return vector;
+}
+
+function normalizedSample(modelState, sample) {
+  return sample.x.map((value, index) => (
+    (value - modelState.normalization.means[index]) / modelState.normalization.stds[index]
+  ));
+}
+
+function viewRange(modelState) {
+  const { points, featureColumns, xFeature, yFeature } = modelState;
+  const xi = featureColumns.indexOf(xFeature);
+  const yi = featureColumns.indexOf(yFeature);
+  const xs = points.map((point) => point.features[xFeature]);
+  const ys = points.map((point) => point.features[yFeature]);
+  const xSpan = Math.max(1, Math.max(...xs) - Math.min(...xs));
+  const ySpan = Math.max(1, Math.max(...ys) - Math.min(...ys));
+  return {
+    xMin: Math.min(...xs) - xSpan * 0.08,
+    xMax: Math.max(...xs) + xSpan * 0.08,
+    yMin: Math.min(...ys) - ySpan * 0.08,
+    yMax: Math.max(...ys) + ySpan * 0.08,
+  };
+}
+
 function networkState(modelState, query) {
   const { params, hiddenSize } = modelState;
   const revealMode = modelState.mode === 'prediction';
   const revealed = revealMode ? modelState.revealed : hiddenSize;
-  const forward = forwardMlp(params, [query.x, query.y]);
+  const vector = viewVector(modelState, query.x, query.y);
+  const forward = forwardMlp(params, vector);
   const outputVisible = !revealMode || revealed >= hiddenSize;
   const nodes = [
-    { id: 'in-0', layer: 0, label: 'x1', value: query.x },
-    { id: 'in-1', layer: 0, label: 'x2', value: query.y },
+    ...modelState.featureColumns.map((column, index) => ({
+      id: `in-${index}`,
+      layer: 0,
+      label: column,
+      value: vector[index],
+    })),
     ...forward.a1.map((activation, index) => ({
       id: `h-${index}`,
       layer: 1,
@@ -74,8 +126,10 @@ function histogramState(params) {
   return { bins };
 }
 
-function trainAccuracy(params, samples) {
-  const correct = samples.filter((sample) => predictMlp(params, sample.x).label === sample.label).length;
+function trainAccuracy(modelState, params, samples) {
+  const correct = samples.filter((sample) => (
+    predictMlp(params, normalizedSample(modelState, sample)).label === sample.label
+  )).length;
   return correct / Math.max(1, samples.length);
 }
 
@@ -84,6 +138,10 @@ function refreshProjection(modelState, controls) {
     ? computeMlpDecisionRegions({
       params: modelState.params,
       points: modelState.points,
+      featureColumns: modelState.featureColumns,
+      xFeature: modelState.xFeature,
+      yFeature: modelState.yFeature,
+      normalization: modelState.normalization,
       resolution: DECISION_RESOLUTION,
     })
     : null;
@@ -94,7 +152,7 @@ function emitQueryTrace(recorder, modelState, controls) {
   const query = modelState.query;
   recorder.emit('query.received', { x: query.x, y: query.y });
   if (modelState.mode === 'prediction' && modelState.revealed >= modelState.hiddenSize) {
-    const prediction = predictMlp(modelState.params, [query.x, query.y]);
+    const prediction = predictMlp(modelState.params, viewVector(modelState, query.x, query.y));
     recorder.emit('prediction.emitted', { label: prediction.label, hiddenUnits: modelState.hiddenSize });
   }
 }
@@ -136,6 +194,8 @@ export const mlpAdapter = {
     histogram: { type: 'histogramState', description: 'Weight magnitude histogram' },
     metrics: { type: 'metrics', description: 'Loss, accuracy and prediction metrics' },
     observation: { type: 'observation', description: 'Teaching observation' },
+    featureOptions: { type: 'array<string>', description: 'Available feature columns for the 2D view' },
+    projection: { type: 'projection', description: '2D slice projection metadata' },
   },
   scriptOperations: {
     traceFit: {
@@ -173,33 +233,43 @@ export const mlpAdapter = {
       features: { ...point.features },
       label: point.label,
     }));
-    const samples = points.map((point) => ({
-      id: point.id,
-      x: [point.features.x1, point.features.x2],
+    const featureColumns = source.featureColumns;
+    const samples = points.map((point, index) => ({
+      id: point.id ?? index,
+      x: featureColumns.map((column) => point.features[column]),
       label: point.label,
+      y: point.label,
     }));
-    const merged = {
-      hiddenUnits: 3,
-      learningRate: 0.5,
-      trainingSteps: 50,
-      queryX: 1,
-      queryY: -1,
-      showDecisionRegions: false,
-      ...controls,
-    };
-    const hiddenSize = Math.max(1, Math.round(merged.hiddenUnits));
-    const params = initMlpParameters({ hiddenSize, seed: seed ?? DEFAULT_MLP_SEED });
-    const query = {
-      x: finiteOrNull(merged.queryX) ?? 1,
-      y: finiteOrNull(merged.queryY) ?? -1,
-    };
+    const labelMapping = buildLabelMapping(samples);
+    const workspace = source.kind === 'workspace-dataset';
+    const split = workspace
+      ? createSplit({ samples, trainRatio: source.trainRatio ?? 0.8, seed: seed ?? DEFAULT_MLP_SEED })
+      : null;
+    const trainSamples = split ? split.train : samples;
+    const testSamples = split ? split.test : [];
+    const normalization = workspace
+      ? featureStats(trainSamples, featureColumns)
+      : identityNormalization(featureColumns.length);
+    const xFeature = featureColumns.includes(controls.xFeature) ? controls.xFeature : featureColumns[0];
+    const yFeature = featureColumns.includes(controls.yFeature)
+      ? controls.yFeature
+      : featureColumns.find((column) => column !== xFeature) ?? featureColumns[0];
+    const hiddenSize = Math.max(1, Math.round(controls.hiddenUnits ?? 3));
+    const params = initMlpParameters({ hiddenSize, inputSize: featureColumns.length, seed: seed ?? DEFAULT_MLP_SEED });
     const state = {
       points,
       samples,
+      trainSamples,
+      testSamples,
+      featureColumns,
+      labelMapping,
+      normalization,
+      xFeature,
+      yFeature,
       seed: seed ?? DEFAULT_MLP_SEED,
       params,
       hiddenSize,
-      query,
+      query: { x: 0, y: 0 },
       mode: null,
       revealed: 0,
       training: {
@@ -211,28 +281,76 @@ export const mlpAdapter = {
       },
       decisionRegions: null,
     };
-    recorder.emit('data.loaded', { points: points.length, features: ['x1', 'x2'] });
-    recorder.emit('mlp.initialized', { hiddenSize, inputSize: 2, outputSize: 1 });
+    const ranges = viewRange(state);
+    state.query = {
+      x: finiteOrNull(controls.queryX) ?? (ranges.xMin + ranges.xMax) / 2,
+      y: finiteOrNull(controls.queryY) ?? (ranges.yMin + ranges.yMax) / 2,
+    };
+    recorder.emit('data.loaded', { points: points.length, features: featureColumns });
+    if (workspace) {
+      recorder.emit('split.created', {
+        trainRows: trainSamples.length,
+        testRows: testSamples.length,
+        trainIds: trainSamples.map((sample) => sample.id),
+        testIds: testSamples.map((sample) => sample.id),
+      });
+      recorder.emit('normalization.fitted', {
+        means: normalization.means,
+        stds: normalization.stds,
+      });
+    }
+    recorder.emit('mlp.initialized', {
+      hiddenSize,
+      inputSize: featureColumns.length,
+      outputSize: 1,
+    });
     return {
       controls: {
+        xFeature,
+        yFeature,
         hiddenUnits: hiddenSize,
-        learningRate: merged.learningRate,
-        trainingSteps: merged.trainingSteps,
-        queryX: query.x,
-        queryY: query.y,
-        showDecisionRegions: Boolean(merged.showDecisionRegions),
+        learningRate: controls.learningRate ?? 0.5,
+        trainingSteps: controls.trainingSteps ?? 50,
+        queryX: state.query.x,
+        queryY: state.query.y,
+        showDecisionRegions: Boolean(controls.showDecisionRegions),
       },
-      modelState: refreshProjection(state, merged),
+      modelState: refreshProjection(state, controls),
       totalSteps: 0,
     };
   },
 
   applyModelAction(modelState, action, { controls, recorder }) {
     if (action.type === 'SET_CONTROL') {
+      if (action.key === 'xFeature' || action.key === 'yFeature') {
+        const nextFeature = action.value;
+        if (!modelState.featureColumns.includes(nextFeature)) {
+          throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key, value: nextFeature });
+        }
+        if (nextFeature === modelState[action.key]) return {};
+        const next = { ...modelState, [action.key]: nextFeature };
+        if (next.xFeature === next.yFeature) {
+          next.yFeature = modelState.featureColumns.find((column) => column !== next.xFeature) ?? next.xFeature;
+        }
+        const ranges = viewRange(next);
+        const query = { x: (ranges.xMin + ranges.xMax) / 2, y: (ranges.yMin + ranges.yMax) / 2 };
+        return {
+          controls: { xFeature: next.xFeature, yFeature: next.yFeature, queryX: query.x, queryY: query.y },
+          modelState: refreshProjection({ ...next, query }, controls),
+        };
+      }
       if (action.key === 'hiddenUnits') {
         const hiddenSize = Math.max(1, Math.round(finiteOrNull(action.value) ?? modelState.hiddenSize));
-        const params = initMlpParameters({ hiddenSize, seed: modelState.seed ?? DEFAULT_MLP_SEED });
-        recorder.emit('mlp.initialized', { hiddenSize, inputSize: 2, outputSize: 1 });
+        const params = initMlpParameters({
+          hiddenSize,
+          inputSize: modelState.featureColumns.length,
+          seed: modelState.seed ?? DEFAULT_MLP_SEED,
+        });
+        recorder.emit('mlp.initialized', {
+          hiddenSize,
+          inputSize: modelState.featureColumns.length,
+          outputSize: 1,
+        });
         return {
           controls: { hiddenUnits: hiddenSize },
           modelState: refreshProjection({
@@ -275,13 +393,13 @@ export const mlpAdapter = {
     if (action.type === 'START_TRAINING') {
       const steps = Math.max(1, Math.round(controls.trainingSteps));
       const learningRate = Number(controls.learningRate);
-      const samples = modelState.samples.map((sample) => ({
-        x: [sample.x[0], sample.x[1]],
-        y: sample.label === 'b' ? 1 : 0,
+      const samples = modelState.trainSamples.map((sample) => ({
+        x: normalizedSample(modelState, sample),
+        y: modelState.labelMapping.toIndex[sample.label],
       }));
       recorder.emit('mlp.initialized', {
         hiddenSize: modelState.hiddenSize,
-        inputSize: 2,
+        inputSize: modelState.featureColumns.length,
         outputSize: 1,
       });
       const result = trainMlp({
@@ -362,7 +480,7 @@ export const mlpAdapter = {
           });
         }
         if (revealed >= modelState.hiddenSize) {
-          const prediction = predictMlp(modelState.params, [modelState.query.x, modelState.query.y]);
+          const prediction = predictMlp(modelState.params, viewVector(modelState, modelState.query.x, modelState.query.y));
           recorder.emit('prediction.emitted', { label: prediction.label, hiddenUnits: modelState.hiddenSize });
         }
         return { modelState: next, timeline: { step: revealed } };
@@ -373,34 +491,56 @@ export const mlpAdapter = {
   },
 
   deriveScene(modelState, { controls }) {
-    const { points, params, query, training, mode, revealed, hiddenSize } = modelState;
+    const {
+      points, params, query, training, mode, revealed, hiddenSize,
+      featureColumns, xFeature, yFeature, trainSamples, testSamples, normalization,
+    } = modelState;
+    const xi = featureColumns.indexOf(xFeature);
+    const yi = featureColumns.indexOf(yFeature);
     const historySlice = training.history.slice(0, training.currentStep);
+    const trainingSamples = trainSamples.map((sample) => ({
+      x: normalizedSample(modelState, sample),
+      y: modelState.labelMapping.toIndex[sample.label],
+    }));
     const currentLoss = historySlice.length
       ? historySlice.at(-1).loss
-      : mlpLossForSamples(params, modelState.samples.map((sample) => ({
-        x: [sample.x[0], sample.x[1]],
-        y: sample.label === 'b' ? 1 : 0,
-      })));
-    const accuracy = trainAccuracy(params, modelState.samples);
-    const prediction = predictMlp(params, [query.x, query.y]);
+      : mlpLossForSamples(params, trainingSamples);
+    const accuracy = trainAccuracy(modelState, params, trainSamples);
+    const testAccuracy = testSamples.length
+      ? trainAccuracy(modelState, params, testSamples)
+      : null;
+    const prediction = predictMlp(params, viewVector(modelState, query.x, query.y));
     const predictedLabel = mode === 'prediction' && revealed >= hiddenSize
       ? prediction.label
       : null;
+    const ranges = viewRange(modelState);
+    const trainIds = new Set(trainSamples.map((sample) => sample.id));
+    const hiddenFeatures = featureColumns.filter((column) => column !== xFeature && column !== yFeature);
+    const viewPoint = (point) => ({
+      x: (point.features[xFeature] - normalization.means[xi]) / normalization.stds[xi],
+      y: (point.features[yFeature] - normalization.means[yi]) / normalization.stds[yi],
+    });
     const scene = {
       points: points.map((point) => ({
         id: point.id,
-        x: point.features.x1,
-        y: point.features.x2,
+        ...viewPoint(point),
         label: point.label,
-        subset: 'train',
+        subset: trainIds.has(point.id) ? 'train' : 'test',
       })),
       scatterPoints: points.map((point) => ({
         id: point.id,
-        x: point.features.x1,
-        y: point.features.x2,
+        ...viewPoint(point),
         label: point.label,
       })),
-      axes: { x: 'x1', y: 'x2' },
+      axes: { x: xFeature, y: yFeature },
+      featureOptions: featureColumns,
+      projection: {
+        enabled: hiddenFeatures.length > 0,
+        xFeature,
+        yFeature,
+        fixedFeatures: Object.fromEntries(hiddenFeatures.map((feature) => [feature, 0])),
+      },
+      ranges,
       decisionRegions: {
         enabled: Boolean(controls.showDecisionRegions),
         resolution: DECISION_RESOLUTION,
@@ -419,6 +559,7 @@ export const mlpAdapter = {
       metrics: {
         loss: currentLoss,
         accuracy,
+        ...(testAccuracy !== null ? { testAccuracy } : {}),
         revealed: mode === 'prediction' ? revealed : training.currentStep,
         predictedLabel,
       },
