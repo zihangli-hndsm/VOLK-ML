@@ -1,4 +1,4 @@
-export default function PlaygroundToolbar({ playground, snapshot, onDispatch, onClose, t }) {
+export default function PlaygroundToolbar({ playground, snapshot, onDispatch, onPresent, onClose, t }) {
   const sourceLabel = snapshot.source.kind === 'workspace-dataset'
     ? t('playground.source.workspace', { name: snapshot.source.name })
     : t('playground.source.example');
@@ -15,6 +15,7 @@ export default function PlaygroundToolbar({ playground, snapshot, onDispatch, on
     </div>
     <div className="flex items-center gap-2">
       <button onClick={() => onDispatch({ type: 'RESET' })} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.timeline.reset')}</button>
+      <button onClick={onPresent} className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white">{t('playground.presentation.enter')}</button>
       <button aria-label={t('common.close')} onClick={onClose} className="rounded-full bg-slate-100 px-3 py-2 font-bold text-slate-700">✕</button>
     </div>
   </div>;

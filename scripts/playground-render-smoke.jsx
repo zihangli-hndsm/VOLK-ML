@@ -8,6 +8,7 @@ import { getPreset } from '../src/core/playground/visualization/presetRegistry.j
 import { fallbackRegressionPoints } from '../src/core/linearRegressionPlayground.js';
 import PlaygroundStage from '../src/components/playground/PlaygroundStage.jsx';
 import PlaygroundInspector from '../src/components/playground/PlaygroundInspector.jsx';
+import PresentationMode from '../src/components/playground/PresentationMode.jsx';
 import VoteBarRenderer from '../src/components/playground/renderers/VoteBarRenderer.jsx';
 import ParameterTrajectoryRenderer from '../src/components/playground/renderers/ParameterTrajectoryRenderer.jsx';
 import NetworkGraphRenderer from '../src/components/playground/renderers/NetworkGraphRenderer.jsx';
@@ -44,6 +45,7 @@ const snapshotsForPreset = (playground, source, presetId, seed) => {
 const renderStageAndInspector = (playground, snapshot) => {
   renderToStaticMarkup(React.createElement(PlaygroundStage, { snapshot, t }));
   renderToStaticMarkup(React.createElement(PlaygroundInspector, { playground, snapshot, onDispatch: noopDispatch, t }));
+  renderToStaticMarkup(React.createElement(PresentationMode, { playground, snapshot, onDispatch: noopDispatch, onExit: noopDispatch, t }));
 };
 
 // The smoke entry is bundled and executed by scripts/check-playground-render.mjs.
