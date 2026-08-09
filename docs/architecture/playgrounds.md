@@ -467,6 +467,32 @@ pure helpers `src/components/playground/agentPreviewState.js`
 `compositionPreview` / `revisionPreview` / `importedPreview` /
 `revisionErrorPreview`) and is contract-tested in check-core.
 
+### MLP workspace dataset integration (PR F.3)
+
+PR F.3 wires MLP to compatible workspace datasets through the existing
+Dataset Adapter / source contract, without hardcoding column names:
+
+- The MLP adapter is feature-name agnostic: samples are full feature vectors
+  in `featureColumns` order (`inputSize = featureColumns.length`), and binary
+  labels get a deterministic sorted mapping (e.g. `['setosa',
+  'versicolor']` -> 0/1) stored in the model state. No `x1`/`x2` or label
+  literal remains in `mlpAdapter.js` (source-level assertion).
+- Compatible workspace datasets (binary classification, at least two numeric
+  features) flow through `resolveSource` and the shared dataset layer:
+  stratified train/test split, training-set z-score normalization, explicit
+  `xFeature`/`yFeature` selection (dynamic options from
+  `scene.featureOptions`), and a 2D projection that fixes hidden features at
+  the normalized mean (0) - mirroring KNN. Incompatible multi-class datasets
+  reject with `INVALID_PLAYGROUND_SOURCE`; regression/non-numeric datasets
+  fall back to the deterministic XOR example.
+- `computeMlpDecisionRegions` is generic over feature columns and
+  normalization; its defaults keep the XOR example byte-compatible, and the
+  workspace view computes cells in normalized space.
+- The XOR example path is unchanged: all-data training (no split), identity
+  normalization (view == raw features), `x1`/`x2` axes - every F.1/F.1.1 test
+  stays green. The scene additionally exposes `featureOptions`,
+  `projection` and `ranges` for the 2D view and query sliders.
+
 ## Layers
 
 ### Model adapters

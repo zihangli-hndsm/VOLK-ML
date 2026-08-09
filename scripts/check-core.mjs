@@ -5604,6 +5604,152 @@ assert.throws(
         await f21Agent.close();
       }
 
+      // PR F.3: MLP workspace dataset integration.
+      {
+        const f3WorkspaceRows = [];
+        for (let index = 0; index < 40; index += 1) {
+          const group = index % 2;
+          f3WorkspaceRows.push({
+            sepal_length: Number((group === 0 ? 2 : 6) + Math.sin(index * 1.3) * 0.4),
+            sepal_width: Number((group === 0 ? 2 : 6) + Math.cos(index * 0.9) * 0.4),
+            petal_length: Number((group === 0 ? 1 : 3) + Math.sin(index * 0.7) * 0.3),
+            petal_width: Number((group === 0 ? 0.5 : 2) + Math.cos(index * 1.1) * 0.3),
+            species: group === 0 ? 'setosa' : 'versicolor',
+          });
+        }
+        const f3WorkspaceDataset = {
+          name: 'two-clusters',
+          task: 'classification',
+          rows: f3WorkspaceRows,
+          columns: ['sepal_length', 'sepal_width', 'petal_length', 'petal_width']
+            .map((name) => ({ name, type: 'number', missing: 0 }))
+            .concat([{ name: 'species', type: 'string', missing: 0 }]),
+          featureColumns: ['sepal_length', 'sepal_width', 'petal_length', 'petal_width'],
+          targetColumn: 'species',
+          trainRatio: 0.8,
+        };
+        const f3WorkspaceSource = {
+          kind: 'workspace-dataset',
+          name: 'two-clusters',
+          fingerprint: 'f3-ws',
+          points: f3WorkspaceRows.map((row, index) => ({
+            id: `d${index}`,
+            features: Object.fromEntries(f3WorkspaceDataset.featureColumns.map((name) => [name, row[name]])),
+            label: row.species,
+          })),
+          featureColumns: f3WorkspaceDataset.featureColumns,
+          trainRatio: 0.8,
+        };
+
+        // 1. The MLP adapter is feature-name agnostic: no x1/x2 or label
+        // hardcodes remain.
+        const f3AdapterSource = readFileSync(new URL('../src/core/playground/model/mlpAdapter.js', import.meta.url), 'utf-8');
+        assert.ok(
+          !f3AdapterSource.includes("'x1'") && !f3AdapterSource.includes("'b'")
+          && !f3AdapterSource.includes('=== 1 ?'),
+          'mlpAdapter contains no hardcoded feature or label names',
+        );
+
+        // 2. Workspace datasets flow through the shared dataset contract:
+        // stratified split, real normalization, feature options, projection.
+        let f3Workspace = createPlaygroundSession(getPlayground('mlp-classification'), {
+          source: f3WorkspaceSource,
+          seed: 3,
+          sessionId: 'f3-ws',
+        });
+        assert.equal(f3Workspace.modelState.trainSamples.length, 32, 'workspace data uses an 80/20 split');
+        assert.equal(f3Workspace.modelState.testSamples.length, 8, 'workspace data keeps a test set');
+        assert.ok(
+          f3Workspace.modelState.normalization.means.some((mean) => mean !== 0),
+          'workspace normalization is derived from training statistics',
+        );
+        assert.deepEqual(
+          f3Workspace.modelState.labelMapping,
+          { labels: ['setosa', 'versicolor'], toIndex: { setosa: 0, versicolor: 1 } },
+          'binary labels get a stable sorted mapping',
+        );
+        const f3WorkspaceScene = derivePlaygroundSnapshot(f3Workspace).scene;
+        assert.equal(f3WorkspaceScene.featureOptions.length, 4, 'scene exposes every numeric feature');
+        assert.equal(f3WorkspaceScene.projection.enabled, true, 'multi-feature data enables the 2D projection');
+        assert.equal(f3WorkspaceScene.axes.x, 'sepal_length', 'view axes use the dataset column names');
+        f3Workspace = dispatchPlaygroundAction(f3Workspace, { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true });
+        f3Workspace = dispatchPlaygroundAction(f3Workspace, { type: 'START_TRAINING' });
+        const f3WorkspaceHistory = f3Workspace.modelState.training.history;
+        for (let index = 0; index < f3WorkspaceHistory.length; index += 1) {
+          f3Workspace = dispatchPlaygroundAction(f3Workspace, { type: 'STEP' });
+        }
+        const f3TrainedScene = derivePlaygroundSnapshot(f3Workspace).scene;
+        assert.ok(f3TrainedScene.training.lossHistory.length > 0, 'workspace training produces a loss history');
+        assert.equal(typeof f3TrainedScene.metrics.testAccuracy, 'number', 'workspace training reports test accuracy');
+        assert.deepEqual(
+          f3Workspace.modelState.decisionRegions.cells,
+          computeMlpDecisionRegions({
+            params: f3Workspace.modelState.params,
+            points: f3Workspace.modelState.points,
+            featureColumns: f3Workspace.modelState.featureColumns,
+            xFeature: f3Workspace.modelState.xFeature,
+            yFeature: f3Workspace.modelState.yFeature,
+            normalization: f3Workspace.modelState.normalization,
+            resolution: 48,
+          }).cells,
+          'workspace decision regions are computed in the normalized view',
+        );
+
+        // 3. XOR example keeps its exact F.1/F.1.1 semantics: all-data
+        // training, identity normalization, x1/x2 view, default-compatible
+        // decision regions.
+        const f3XorSource = {
+          kind: 'example', name: 'XOR', fingerprint: 'f3-xor',
+          points: generateXorDataset({ seed: 3 }),
+          featureColumns: ['x1', 'x2'],
+        };
+        let f3Xor = createPlaygroundSession(getPlayground('mlp-classification'), { source: f3XorSource, seed: 3, sessionId: 'f3-xor' });
+        assert.equal(f3Xor.modelState.trainSamples.length, f3XorSource.points.length, 'XOR trains on all data without a split');
+        assert.equal(f3Xor.modelState.testSamples.length, 0, 'XOR has no test set');
+        assert.ok(
+          f3Xor.modelState.normalization.means.every((mean) => mean === 0)
+          && f3Xor.modelState.normalization.stds.every((std) => std === 1),
+          'XOR uses identity normalization so its view equals the raw features',
+        );
+        f3Xor = dispatchPlaygroundAction(f3Xor, { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true });
+        f3Xor = dispatchPlaygroundAction(f3Xor, { type: 'START_TRAINING' });
+        const f3XorHistory = f3Xor.modelState.training.history;
+        for (let index = 0; index < f3XorHistory.length; index += 1) f3Xor = dispatchPlaygroundAction(f3Xor, { type: 'STEP' });
+        assert.deepEqual(
+          f3Xor.modelState.decisionRegions.cells,
+          computeMlpDecisionRegions({ params: f3Xor.modelState.params, points: f3XorSource.points, resolution: 48 }).cells,
+          'XOR decision regions stay byte-compatible with the default helper',
+        );
+
+        // 4. The registry-driven host integration resolves a compatible
+        // workspace dataset and rejects multi-class datasets explicitly.
+        const f3Host = createPlaygroundHost({ getDataset: () => f3WorkspaceDataset });
+        const f3Agent = createPlaygroundAgentApi(f3Host);
+        const f3Opened = await f3Agent.open({ playgroundId: 'mlp-classification' });
+        assert.equal(f3Opened.source.kind, 'workspace-dataset', 'the host resolves the workspace dataset');
+        const f3Explain = await f3Agent.plan('Explain this MLP prediction');
+        const f3Composed = await f3Agent.composeScript(f3Explain);
+        assert.equal(f3Composed.fidelity.valid, true, 'workspace explain_prediction passes goal fidelity');
+        await f3Agent.close();
+        const f3MultiClass = {
+          name: 'three', task: 'classification',
+          rows: Array.from({ length: 30 }, (_, index) => ({ a: index % 3, b: index % 2, species: `class${index % 3}` })),
+          columns: [
+            { name: 'a', type: 'number', missing: 0 },
+            { name: 'b', type: 'number', missing: 0 },
+          ],
+          featureColumns: ['a', 'b'],
+          targetColumn: 'species',
+        };
+        const f3MultiHost = createPlaygroundHost({ getDataset: () => f3MultiClass });
+        const f3MultiAgent = createPlaygroundAgentApi(f3MultiHost);
+        await assert.rejects(
+          f3MultiAgent.open({ playgroundId: 'mlp-classification' }),
+          (error) => error.code === 'INVALID_PLAYGROUND_SOURCE',
+          'multi-class datasets are rejected for the binary MLP',
+        );
+      }
+
       // LR and KNN existing presets remain unchanged.
       assert.doesNotThrow(() => validateScript(getPreset('knn.intro')), 'knn.intro still validates');
       assert.doesNotThrow(() => validateScript(getPreset('linear-regression.intuition')), 'LR intuition preset still validates');

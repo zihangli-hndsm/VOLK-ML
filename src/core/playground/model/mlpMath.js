@@ -214,9 +214,29 @@ export function trainMlp({ samples, params, learningRate, steps, seed = DEFAULT_
 
 // Computes a 2D decision-region grid (cells with predicted labels) over a
 // padded feature range, using the same resolution convention as KNN.
-export function computeMlpDecisionRegions({ params, points, resolution = 48 }) {
-  const xs = points.map((point) => point.features.x1);
-  const ys = points.map((point) => point.features.x2);
+//
+// PR F.3 made this generic over feature columns: the grid is laid out in
+// VIEW space (xFeature/yFeature, optionally normalized), hidden features are
+// fixed at the normalized mean (0), and the defaults keep the deterministic
+// XOR behavior (x1/x2, identity normalization) byte-for-byte compatible.
+export function computeMlpDecisionRegions({
+  params,
+  points,
+  featureColumns = ['x1', 'x2'],
+  xFeature = 'x1',
+  yFeature = 'x2',
+  normalization = null,
+  resolution = 48,
+}) {
+  const xi = featureColumns.indexOf(xFeature);
+  const yi = featureColumns.indexOf(yFeature);
+  const view = (point) => featureColumns.map((column, index) => {
+    const raw = Number(point.features?.[column] ?? point[column]);
+    return normalization ? (raw - normalization.means[index]) / normalization.stds[index] : raw;
+  });
+  const viewPoints = points.map(view);
+  const xs = viewPoints.map((vector) => vector[xi]);
+  const ys = viewPoints.map((vector) => vector[yi]);
   const xSpan = Math.max(1, Math.max(...xs) - Math.min(...xs));
   const ySpan = Math.max(1, Math.max(...ys) - Math.min(...ys));
   const xMin = Math.min(...xs) - xSpan * 0.08;
@@ -228,7 +248,10 @@ export function computeMlpDecisionRegions({ params, points, resolution = 48 }) {
     const y = yMin + ((row + 0.5) / resolution) * (yMax - yMin);
     for (let column = 0; column < resolution; column += 1) {
       const x = xMin + ((column + 0.5) / resolution) * (xMax - xMin);
-      cells.push({ x, y, label: predictMlp(params, [x, y]).label });
+      const vector = featureColumns.map(() => 0);
+      vector[xi] = x;
+      vector[yi] = y;
+      cells.push({ x, y, label: predictMlp(params, vector).label });
     }
   }
   return { resolution, cells, xMin, xMax, yMin, yMax };

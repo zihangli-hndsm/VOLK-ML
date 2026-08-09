@@ -323,6 +323,16 @@
 - 文档：`playgrounds.md` 更新 PR F.2.1 状态机语义；append-only `CHANGELOG.md` 新增本条。
 - 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–F.2 全部回归保持。合并后 PR F.2 = FINAL PASS，进入 F.3。
 
+## 2026-08-09 — MLP Workspace Dataset Integration（PR F.3）
+
+- MLP adapter 特征名无关化：样本为按 `featureColumns` 顺序的完整特征向量（`inputSize = featureColumns.length`），二元标签采用确定性排序映射（如 `['setosa','versicolor']` → 0/1）存入模型状态；`mlpAdapter.js` 不再包含任何 `x1`/`x2` 或标签字面量（源码级断言）。
+- 兼容 workspace 数据集（二元分类、≥2 个 numeric 特征）经 `resolveSource` 与共享数据集层接入：分层 train/test 划分、训练集 z-score 归一化、显式 `xFeature`/`yFeature` 选择（选项来自 `scene.featureOptions` 动态填充）、2D 投影把隐藏特征固定在归一化均值 0（与 KNN 一致）。多分类数据集以 `INVALID_PLAYGROUND_SOURCE` 显式拒绝；回归/特征不足的数据集回退到确定性 XOR 示例。
+- `computeMlpDecisionRegions` 泛型化（featureColumns + xFeature/yFeature + normalization，隐藏特征固定为归一化均值 0）；默认参数保持 XOR 行为逐字节兼容（F.1.1 测试直接通过），workspace 视图在归一化空间计算网格。
+- XOR 示例路径不变：全量训练（无划分）、恒等归一化（视图==原始特征）、x1/x2 轴——F.1/F.1.1 全部测试保持绿色；scene 新增 `featureOptions` / `projection` / `ranges` 支撑 2D 视图与查询滑块。
+- 测试（check-core 新增 PR F.3 块）：workspace 数据集端到端（32/8 划分、真实归一化、稳定标签映射、loss/测试准确率、归一化视图决策区域、explain_prediction fidelity）、XOR 回归（无划分、恒等归一化、默认 compute 兼容）、多分类拒绝、adapter 无硬编码列名源码断言。
+- 文档：`playgrounds.md` 更新 PR F.3 语义；append-only `CHANGELOG.md` 新增本条。
+- 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–F.2.1 全部回归保持。
+
 ## 2026-08-08 — Reverse Right Panel Width Slider Direction
 
 - 修复右参数面板宽度滑块的方向反馈问题：右面板锚定在视口右侧，其宽度滑块改为反转视觉方向（向左拖 = 更宽，向右拖 = 更窄），消除「滑块左移 → 面板变窄 → 左边缘右移 → 滑块远离指针 → 快速 snap 到最小值」的 moving-control 问题。

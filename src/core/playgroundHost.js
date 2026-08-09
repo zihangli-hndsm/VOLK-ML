@@ -131,6 +131,44 @@ function resolveSource(playground, dataset) {
     };
   }
   if (playground.id === 'mlp-classification') {
+    // PR F.3: compatible workspace datasets (binary classification, at least
+    // two numeric features) are wired through the shared dataset contract.
+    // The adapter is feature-name agnostic; no column names are hardcoded.
+    if (dataset?.task === 'classification') {
+      const numeric = (dataset.columns ?? [])
+        .filter((column) => column.type === 'number')
+        .map((column) => column.name);
+      if (numeric.length >= 2) {
+        const rows = dataset.rows.filter((row) => (
+          numeric.every((name) => Number.isFinite(Number(row?.[name])))
+          && typeof row?.[dataset.targetColumn] === 'string'
+          && row[dataset.targetColumn]
+        ));
+        const labels = [...new Set(rows.map((row) => row[dataset.targetColumn]))];
+        if (rows.length >= 2 && labels.length === 2) {
+          return {
+            kind: 'workspace-dataset',
+            name: dataset.name,
+            fingerprint: fingerprintOf([dataset.name, dataset.task, numeric, dataset.targetColumn, rows.length, labels.sort().join('|')]),
+            points: rows.map((row, index) => ({
+              id: `d${index}`,
+              features: Object.fromEntries(numeric.map((name) => [name, Number(row[name])])),
+              label: row[dataset.targetColumn],
+            })),
+            featureColumns: numeric,
+            trainRatio: dataset.trainRatio ?? 0.8,
+            total: rows.length,
+            usingDataset: true,
+          };
+        }
+        if (rows.length >= 2 && labels.length > 2) {
+          throw playgroundError('INVALID_PLAYGROUND_SOURCE', {
+            reason: 'MLP requires binary classification',
+            labels: labels.length,
+          });
+        }
+      }
+    }
     const points = generateXorDataset({ seed: 2026 });
     return {
       kind: 'example',
