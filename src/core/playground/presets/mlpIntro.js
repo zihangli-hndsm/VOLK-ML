@@ -23,10 +23,11 @@ export const mlpIntro = {
   ],
   steps: [
     { id: 'regions', setControl: { showDecisionRegions: true }, narrationKey: 'playground.mlp.scenario.regions', durationMs: 400 },
-    // The scenario reveals exactly the configured training steps before
-    // prediction, so the playback boundary is honest (no 50-step fit that
-    // only plays 12 epochs).
-    { id: 'config', setControl: { trainingSteps: 12 }, narrationKey: 'playground.mlp.scenario.epoch', durationMs: 200 },
+    // The scenario is self-contained: it configures its own training steps
+    // and hidden units (the preset contains exactly three hidden reveal
+    // steps), so a user who changed controls before RUN_SCENARIO cannot make
+    // the intro incomplete.
+    { id: 'config', setControl: { trainingSteps: 12, hiddenUnits: 3 }, narrationKey: 'playground.mlp.scenario.epoch', durationMs: 200 },
     { id: 'train', invoke: { operation: 'traceFit', args: {} }, narrationKey: 'playground.mlp.scenario.train', durationMs: 500 },
     ...Array.from({ length: 12 }, (_, index) => ({
       id: `epoch-${index + 1}`,

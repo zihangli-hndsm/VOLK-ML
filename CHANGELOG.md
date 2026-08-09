@@ -300,6 +300,18 @@
 - 文档：`playgrounds.md` 更新 PR F.1.1 语义；append-only `CHANGELOG.md` 新增本条。
 - 验收：`npm run check`（含 render smoke 12 KNN + 8 LR + MLP 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–F.1 全部回归保持。合并后 PR F.1 = FINAL PASS，进入 PR F.2（Agent UI / script preview / JSON 导入导出 / reviseScript / workspace dataset）。
 
+## 2026-08-09 — Agent Playground UI + Script Tooling（PR F.2）
+
+- Agent 面板（`src/components/playground/PlaygroundAgentPanel.jsx`）：用户输入教学请求 → `agent.plan` → `agent.composeScript` → 预览，未运行前不加载任何脚本；预览含 Overview / Teaching Plan / Visualization Script / Fidelity 四个标签（原始 JSON 只读、无任何可执行内容），Run 按钮才通过既有 Script Runtime 加载并播放。预览展示 goal/objective/phases/改动控件/操作/快照/图元/步数与保真度证据（按 controls/operations/visual/runtime/trace 分组勾选）。
+- 脚本工具：Copy JSON（精确声明）、Download JSON（`volk-ml-playground-script.json`）、Load JSON（导入必须过 `validateScript` → 模型/playground 兼容 → 严格 dry run 才能替换活动脚本；失败展示稳定 `SCRIPT_*` 错误码 + 人读信息）。
+- 脚本来源追踪：host 快照新增 `provenance`（`preset/generated/composed/revised/imported`），UI 明确区分「预设 / Agent 合成 / 导入脚本」；Agent 合成保留 `mode: 'composed'` 与保真度状态。
+- `reviseScript`（`src/core/playground/agent/scriptRevision.js`，Agent API `reviseScript({ plan, script, request })`）：有界修订词汇 `shorten / remove_visual / keep_visuals / focus_result / change_comparison_values`；每次修订都过 validate → 严格 dry run → goal fidelity，破坏教学目标（如删除必需可视化证据、只保留 loss+轨迹却缺 line/metrics/formula）以 `TEACHING_GOAL_FIDELITY_FAILED` 拒绝，绝不静默产出误导脚本；无自由文本任意变更。
+- Playground 选择器：头部新增注册表驱动的下拉（`listPlaygrounds()`），KNN / 线性回归 / MLP 均从正常 UI 打开，无硬编码模型页面；新注册 playground 自动可发现。
+- `mlp.intro` 自包含：训练前显式配置 `hiddenUnits = 3`（与 `trainingSteps = 12`），用户先改 hiddenUnits 再 RUN_SCENARIO 也不会让 intro 不完整（回归测试：hiddenUnits=6 → 场景运行后恢复 3 且发出 `prediction.emitted`）。
+- 测试（check-core 新增 PR F.2 块）：五条 composition→preview→run 链路（KNN explain_prediction、LR show_training/show_failure_case、MLP explain_prediction/show_training）、脚本工具（copy/download 序列化、合法加载、malformed/wrong-model/bad-binding 拒绝）、修订（shorten(3) 通过、keep_visuals 通过、移除必需证据拒绝、change_comparison_values 重规划、未知修订类型拒绝）、scenario 稳健性、provenance 全路径、Agent 面板不导入模型数学的源码断言。
+- 文档：`playgrounds.md` 与 `agent-canvas-api.md` 更新 PR F.2 语义；append-only `CHANGELOG.md` 新增本条。
+- 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`（696 modules）、`git diff --check` 全部通过；PR A–F.1.1 全部回归保持。已知限制：MLP workspace dataset 输入按方案延后到 F.3（F.2 保持 F.1 的干净 adapter 架构）；粘贴/导入超大脚本仍受既有资源限制约束。
+
 ## 2026-08-08 — Reverse Right Panel Width Slider Direction
 
 - 修复右参数面板宽度滑块的方向反馈问题：右面板锚定在视口右侧，其宽度滑块改为反转视觉方向（向左拖 = 更宽，向右拖 = 更窄），消除「滑块左移 → 面板变窄 → 左边缘右移 → 滑块远离指针 → 快速 snap 到最小值」的 moving-control 问题。
