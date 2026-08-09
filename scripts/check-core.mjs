@@ -71,6 +71,7 @@ import { validatePrimitive } from '../src/core/playground/visualization/primitiv
 import { listPresets, getPreset } from '../src/core/playground/visualization/presetRegistry.js';
 import { validateScript } from '../src/core/playground/visualization/scriptValidator.js';
 import { createScriptRuntime } from '../src/core/playground/visualization/scriptRuntime.js';
+import { getPresentationPlaybackAction, hasScriptPlayback } from '../src/components/playground/presentationMode.js';
 import { dryRunScript } from '../src/core/playground/agent/dryRun.js';
 import { planTeachingGoal } from '../src/core/playground/agent/teachingPlanner.js';
 import { composeScriptFromPlan } from '../src/core/playground/agent/teachingComposer.js';
@@ -2854,9 +2855,39 @@ assert.throws(
       // UI must never special-case a model.
       for (const file of uiFiles) {
         const source = readFileSync(new URL(`../src/components/playground/${file}`, import.meta.url), 'utf-8');
-        for (const forbidden of ['linear-regression', 'knn', 'START_TRAINING', 'START_NEIGHBOR_REVEAL']) {
+        for (const forbidden of ['linear-regression', 'knn', 'mlp', 'START_TRAINING', 'START_NEIGHBOR_REVEAL']) {
           assert.ok(!source.includes(forbidden), `${file} must not contain model-specific "${forbidden}"`);
         }
+      }
+
+      // PR G.1: entering Presentation Mode is a UI-only view change; playback
+      // still routes through the same script runtime actions.
+      {
+        const presentationHost = createPlaygroundHost({ getDataset: () => null });
+        const presentationAgent = createPlaygroundAgentApi(presentationHost);
+        await presentationAgent.open({ playgroundId: 'knn-classification' });
+        const beforePresentation = presentationAgent.getState();
+        assert.equal(getPresentationPlaybackAction(beforePresentation, 'enter'), null, 'entering presentation has no runtime action');
+        assert.equal(hasScriptPlayback(beforePresentation), true, 'the active preset uses script playback');
+        assert.deepEqual(presentationAgent.getState(), beforePresentation, 'presentation entry does not change the semantic snapshot');
+        await presentationHost.dispatch(getPresentationPlaybackAction(beforePresentation, 'play-pause'));
+        await presentationHost.dispatch({ type: 'SCRIPT_STEP' });
+        await presentationHost.dispatch(getPresentationPlaybackAction(presentationAgent.getState(), 'restart'));
+        assert.equal(presentationAgent.getState().scriptState.step, 0, 'presentation restart returns script step to zero');
+
+        const runToEnd = async () => {
+          await presentationHost.dispatch(getPresentationPlaybackAction(presentationAgent.getState(), 'restart'));
+          await presentationHost.dispatch(getPresentationPlaybackAction(presentationAgent.getState(), 'play-pause'));
+          while (presentationAgent.getState().scriptState.status !== 'completed') {
+            await presentationHost.dispatch({ type: 'SCRIPT_STEP' });
+          }
+          return presentationAgent.getState();
+        };
+        const firstReplay = await runToEnd();
+        const secondReplay = await runToEnd();
+        assert.deepEqual(secondReplay.primitives, firstReplay.primitives, 'presentation replay has identical final primitives');
+        assert.deepEqual(secondReplay.traces, firstReplay.traces, 'presentation replay has identical final traces');
+        await presentationAgent.close();
       }
     }
 

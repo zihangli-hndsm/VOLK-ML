@@ -511,4 +511,12 @@ export const messages = {
   'error.customLossFunction': { en: 'Custom Loss does not support the function {token}.', zh: '自定义损失函数不支持函数 {token}。' },
   'error.customLossArguments': { en: 'Custom Loss function {token} has the wrong number of arguments.', zh: '自定义损失函数 {token} 的参数数量不正确。' },
   'error.customLossPrediction': { en: 'Custom Loss must depend on prediction.', zh: '自定义损失函数必须依赖 prediction。' },
+  'playground.presentation.enter': { en: 'Present', zh: '进入演示' },
+  'playground.presentation.exit': { en: 'Exit Presentation', zh: '退出演示' },
+  'playground.presentation.restart': { en: 'Restart', zh: '重新开始' },
+  'playground.presentation.mode': { en: 'Presentation mode', zh: '演示模式' },
+  'playground.presentation.stageLabel': { en: 'Teaching presentation', zh: '教学演示' },
+  'playground.presentation.teachingStage': { en: 'Teaching stage', zh: '教学舞台' },
+  'playground.presentation.teachingContent': { en: 'Teaching annotations and formula', zh: '教学注释与公式' },
+  'playground.presentation.keyboardHint': { en: 'Space play/pause · R restart · Esc exit', zh: '空格播放/暂停 · R 重新开始 · Esc 退出' },
 };

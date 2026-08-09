@@ -641,6 +641,10 @@ The UI animates through steps at `durationMs / speed`; the Agent `runScenario()`
 
 Animation expresses semantic change (neighbor reveal, gradient steps) rather than decoration, respects `prefers-reduced-motion` via the playback model, and all controls are keyboard-accessible. Canvas nodes stay static; only playgrounds animate.
 
+### Presentation Mode (Phase G.1)
+
+Presentation Mode is a local UI view over the same playground snapshot and Script Runtime. It hides authoring/debug surfaces, preserves the canonical `640×360` stage aspect ratio, and exposes only Restart, Play/Pause and Exit Presentation controls plus the optional script-declared annotation/formula content. Entering or exiting the mode never dispatches a runtime action and never persists state into the Visualization Script. Keyboard handling is scoped to the focused presentation root: Space toggles playback, `R` restarts, and Escape exits; editable controls are not intercepted.
+
 ## Adding a third playground
 
 1. Create a model adapter in `src/core/playground/model/<name>Adapter.js` (initialize, applyModelAction, deriveScene, buildPrimitives) and register it in `modelRegistry.js`.

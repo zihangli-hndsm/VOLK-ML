@@ -6,9 +6,11 @@ import PlaygroundInspector from './PlaygroundInspector.jsx';
 import PlaygroundTimeline from './PlaygroundTimeline.jsx';
 import PlaygroundAgentPanel from './PlaygroundAgentPanel.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
+import PresentationMode from './PresentationMode.jsx';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t }) {
   const [snapshot, setSnapshot] = useState(null);
+  const [presentationMode, setPresentationMode] = useState(false);
   const playground = useMemo(() => (playgroundId ? getPlayground(playgroundId) : null), [playgroundId]);
 
   useEffect(() => {
@@ -16,6 +18,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     let active = true;
     let unsubscribe = () => {};
     setSnapshot(null);
+    setPresentationMode(false);
     host.ensureOpen(playgroundId).then(() => {
       if (!active) return;
       try {
@@ -49,11 +52,20 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   }, [snapshot, host]);
 
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;
+  if (presentationMode) {
+    return <PresentationMode
+      playground={playground}
+      snapshot={snapshot}
+      onDispatch={(action) => host.dispatch(action)}
+      onExit={() => setPresentationMode(false)}
+      t={t}
+    />;
+  }
   const formulaPrimitive = snapshot.primitives.find((primitive) => primitive.type === 'formula');
   return <div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-3 sm:p-5" onMouseDown={onClose}>
     <section className="max-h-[94vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
       <div className="space-y-4">
-        <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} onClose={onClose} t={t} />
+        <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} />
         {agent && <PlaygroundAgentPanel host={host} agent={agent} snapshot={snapshot} t={t} />}
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

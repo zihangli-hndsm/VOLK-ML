@@ -349,3 +349,9 @@
 - divider 拖拽语义保持不变（`next = initial + (side === 'left' ? delta : -delta)`：右面板向左拖变宽、向右拖变窄）；左侧组件库宽度滑块保持不变（左=窄、右=宽）。
 - 测试：check-core 新增源码级断言——右面板滑块反转 + aria-valuetext 真实宽度、左面板滑块与 divider 语义原样。
 - 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–E 全部回归保持。
+## 2026-08-09 — Presentation / Recording Mode (PR G.1)
+
+- Added a local Presentation Mode entry from the Playground toolbar with a clean responsive 16:9 teaching stage, minimal Restart / Play-Pause / Exit controls, Space/R/Escape keyboard handling, and optional script-declared annotation/formula content.
+- Kept presentation state outside the Visualization Script and reused the existing `SCRIPT_*` runtime actions; added deterministic restart/replay and KNN/LR/MLP rendering coverage plus a no-model-branches source assertion.
+- Updated `docs/architecture/playgrounds.md` and localized UI strings in `src/locales/ui.js`.
+- Acceptance: `npm run check`, `npm run check:compiler`, `npm run build`, and `git diff --check` passed. G.2 is intentionally not started.
