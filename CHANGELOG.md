@@ -333,6 +333,15 @@
 - 文档：`playgrounds.md` 更新 PR F.3 语义；append-only `CHANGELOG.md` 新增本条。
 - 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–F.2.1 全部回归保持。
 
+## 2026-08-09 — Preserve Workspace Label and Feature Semantics in MLP（PR F.3.1）
+
+- 外部预测标签空间统一为数据集原始二元标签：`predictMlp(params, x, labels = ['a','b'])` 返回 `classIndex` + 解码后的 `label`（默认保持 XOR a/b）；adapter 在所有位置（训练/测试准确率、`metrics.predictedLabel`、`prediction.emitted`、预测 observation、决策区域 cells）统一传入 `modelState.labelMapping.labels`。唯一二元决策（probability < 0.5 → class 0）与唯一标签映射，不再六处各自实现。
+- `computeMlpDecisionRegions` 增加可选 `labels` 契约（workspace 传 `labelMapping.labels`），默认仍为 XOR a/b（逐字节兼容）。
+- workspace 输入经既有 Dataset Adapter 语义解析：声明式 `featureColumns` 为权威（与有效 numeric 列求交、排除 target 列），无关 numeric 列（id/timestamp/metadata 等）不再自动进入模型；分类目标先归一化为稳定语义字符串（0 → "0"、true → "true"）再进二元映射——数值型二元目标不再静默回退到 XOR。>2 类仍以 `INVALID_PLAYGROUND_SOURCE` 拒绝。
+- 测试（check-core 新增 PR F.3.1 块）：setosa/versicolor 高分离 fixture 训练/test 准确率 > 0.8、完整预测 reveal 后 `predictedLabel` 与 `prediction.emitted.payload.label` 均 ∈ 原始标签且 ≠ a/b、决策区域 cells 全部 ∈ 原始标签（语义断言 + 带 labels 的 helper 相等断言）、数值 0/1 目标 → workspace 源 + `{'0':0,'1':1}` 映射、featureColumns 权威（id/unused_numeric 排除、inputSize=2）、XOR 默认 predictMlp/决策区域仍为 a/b。
+- 文档：`playgrounds.md` 更新 PR F.3.1 语义；append-only `CHANGELOG.md` 新增本条。
+- 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–F.3 全部回归保持。
+
 ## 2026-08-08 — Reverse Right Panel Width Slider Direction
 
 - 修复右参数面板宽度滑块的方向反馈问题：右面板锚定在视口右侧，其宽度滑块改为反转视觉方向（向左拖 = 更宽，向右拖 = 更窄），消除「滑块左移 → 面板变窄 → 左边缘右移 → 滑块远离指针 → 快速 snap 到最小值」的 moving-control 问题。

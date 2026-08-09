@@ -128,7 +128,7 @@ function histogramState(params) {
 
 function trainAccuracy(modelState, params, samples) {
   const correct = samples.filter((sample) => (
-    predictMlp(params, normalizedSample(modelState, sample)).label === sample.label
+    predictMlp(params, normalizedSample(modelState, sample), modelState.labelMapping.labels).label === sample.label
   )).length;
   return correct / Math.max(1, samples.length);
 }
@@ -142,6 +142,7 @@ function refreshProjection(modelState, controls) {
       xFeature: modelState.xFeature,
       yFeature: modelState.yFeature,
       normalization: modelState.normalization,
+      labels: modelState.labelMapping.labels,
       resolution: DECISION_RESOLUTION,
     })
     : null;
@@ -152,7 +153,7 @@ function emitQueryTrace(recorder, modelState, controls) {
   const query = modelState.query;
   recorder.emit('query.received', { x: query.x, y: query.y });
   if (modelState.mode === 'prediction' && modelState.revealed >= modelState.hiddenSize) {
-    const prediction = predictMlp(modelState.params, viewVector(modelState, query.x, query.y));
+    const prediction = predictMlp(modelState.params, viewVector(modelState, query.x, query.y), modelState.labelMapping.labels);
     recorder.emit('prediction.emitted', { label: prediction.label, hiddenUnits: modelState.hiddenSize });
   }
 }
@@ -480,7 +481,11 @@ export const mlpAdapter = {
           });
         }
         if (revealed >= modelState.hiddenSize) {
-          const prediction = predictMlp(modelState.params, viewVector(modelState, modelState.query.x, modelState.query.y));
+          const prediction = predictMlp(
+            modelState.params,
+            viewVector(modelState, modelState.query.x, modelState.query.y),
+            modelState.labelMapping.labels,
+          );
           recorder.emit('prediction.emitted', { label: prediction.label, hiddenUnits: modelState.hiddenSize });
         }
         return { modelState: next, timeline: { step: revealed } };
@@ -509,7 +514,7 @@ export const mlpAdapter = {
     const testAccuracy = testSamples.length
       ? trainAccuracy(modelState, params, testSamples)
       : null;
-    const prediction = predictMlp(params, viewVector(modelState, query.x, query.y));
+    const prediction = predictMlp(params, viewVector(modelState, query.x, query.y), modelState.labelMapping.labels);
     const predictedLabel = mode === 'prediction' && revealed >= hiddenSize
       ? prediction.label
       : null;

@@ -5690,6 +5690,7 @@ assert.throws(
             xFeature: f3Workspace.modelState.xFeature,
             yFeature: f3Workspace.modelState.yFeature,
             normalization: f3Workspace.modelState.normalization,
+            labels: f3Workspace.modelState.labelMapping.labels,
             resolution: 48,
           }).cells,
           'workspace decision regions are computed in the normalized view',
@@ -5747,6 +5748,188 @@ assert.throws(
           f3MultiAgent.open({ playgroundId: 'mlp-classification' }),
           (error) => error.code === 'INVALID_PLAYGROUND_SOURCE',
           'multi-class datasets are rejected for the binary MLP',
+        );
+      }
+
+      // PR F.3.1: workspace label and feature semantics.
+      {
+        const f31Rows = [];
+        for (let index = 0; index < 40; index += 1) {
+          const group = index % 2;
+          f31Rows.push({
+            sepal_length: Number((group === 0 ? 2 : 6) + Math.sin(index * 1.3) * 0.4),
+            sepal_width: Number((group === 0 ? 2 : 6) + Math.cos(index * 0.9) * 0.4),
+            petal_length: Number((group === 0 ? 1 : 3) + Math.sin(index * 0.7) * 0.3),
+            petal_width: Number((group === 0 ? 0.5 : 2) + Math.cos(index * 1.1) * 0.3),
+            species: group === 0 ? 'setosa' : 'versicolor',
+          });
+        }
+        const f31WorkspaceSource = {
+          kind: 'workspace-dataset',
+          name: 'two-clusters',
+          fingerprint: 'f31-ws',
+          points: f31Rows.map((row, index) => ({
+            id: `d${index}`,
+            features: Object.fromEntries(['sepal_length', 'sepal_width', 'petal_length', 'petal_width'].map((name) => [name, row[name]])),
+            label: row.species,
+          })),
+          featureColumns: ['sepal_length', 'sepal_width', 'petal_length', 'petal_width'],
+          trainRatio: 0.8,
+        };
+
+        // 1. External predictions stay in the original workspace label space.
+        let f31Workspace = createPlaygroundSession(getPlayground('mlp-classification'), {
+          source: f31WorkspaceSource,
+          seed: 3,
+          sessionId: 'f31-ws',
+        });
+        f31Workspace = dispatchPlaygroundAction(f31Workspace, { type: 'SET_CONTROL', key: 'showDecisionRegions', value: true });
+        f31Workspace = dispatchPlaygroundAction(f31Workspace, { type: 'START_TRAINING' });
+        const f31History = f31Workspace.modelState.training.history;
+        for (let index = 0; index < f31History.length; index += 1) {
+          f31Workspace = dispatchPlaygroundAction(f31Workspace, { type: 'STEP' });
+        }
+        const f31Trained = derivePlaygroundSnapshot(f31Workspace).scene;
+        assert.ok(f31Trained.metrics.accuracy > 0.8, 'workspace training accuracy is materially above chance');
+        assert.ok(f31Trained.metrics.testAccuracy > 0.8, 'workspace test accuracy is materially above chance');
+        f31Workspace = dispatchPlaygroundAction(f31Workspace, { type: 'START_PREDICT' });
+        for (let index = 0; index < f31Workspace.modelState.hiddenSize; index += 1) {
+          f31Workspace = dispatchPlaygroundAction(f31Workspace, { type: 'STEP' });
+        }
+        const f31Predicted = derivePlaygroundSnapshot(f31Workspace).scene.metrics.predictedLabel;
+        assert.ok(
+          ['setosa', 'versicolor'].includes(f31Predicted),
+          'metrics.predictedLabel is one of the original workspace labels',
+        );
+        const f31Emitted = f31Workspace.traces.find((trace) => trace.type === 'prediction.emitted');
+        assert.ok(
+          ['setosa', 'versicolor'].includes(f31Emitted.payload.label)
+          && f31Emitted.payload.label !== 'a'
+          && f31Emitted.payload.label !== 'b',
+          'prediction.emitted carries the workspace label, never XOR a/b',
+        );
+
+        // 2. Decision-region cells use the workspace label space (semantic
+        // assertion, not just helper equality).
+        const f31RegionLabels = new Set(f31Workspace.modelState.decisionRegions.cells.map((cell) => cell.label));
+        assert.ok(
+          [...f31RegionLabels].every((label) => ['setosa', 'versicolor'].includes(label)),
+          'every decision-region cell belongs to the workspace label space',
+        );
+        assert.deepEqual(
+          f31Workspace.modelState.decisionRegions.cells,
+          computeMlpDecisionRegions({
+            params: f31Workspace.modelState.params,
+            points: f31Workspace.modelState.points,
+            featureColumns: f31Workspace.modelState.featureColumns,
+            xFeature: f31Workspace.modelState.xFeature,
+            yFeature: f31Workspace.modelState.yFeature,
+            normalization: f31Workspace.modelState.normalization,
+            labels: f31Workspace.modelState.labelMapping.labels,
+            resolution: 48,
+          }).cells,
+          'runtime decision cells equal the labeled helper output',
+        );
+
+        // 3. Numeric binary targets (0/1) use the workspace source and get the
+        // stable string mapping '0' -> 0, '1' -> 1.
+        const f31NumericRows = Array.from({ length: 30 }, (_, index) => {
+          const group = index % 2;
+          return { a: Number(group === 0 ? 1 : 5 + Math.sin(index) * 0.2), b: Number(group === 0 ? 1 : 5 + Math.cos(index) * 0.2), target: group };
+        });
+        const f31NumericHost = createPlaygroundHost({ getDataset: () => ({
+          name: 'numeric', task: 'classification', rows: f31NumericRows,
+          columns: [
+            { name: 'a', type: 'number', missing: 0 },
+            { name: 'b', type: 'number', missing: 0 },
+            { name: 'target', type: 'number', missing: 0 },
+          ],
+          featureColumns: ['a', 'b'],
+          targetColumn: 'target',
+        }) });
+        const f31NumericAgent = createPlaygroundAgentApi(f31NumericHost);
+        const f31NumericOpened = await f31NumericAgent.open({ playgroundId: 'mlp-classification' });
+        assert.equal(f31NumericOpened.source.kind, 'workspace-dataset', 'numeric binary targets do not fall back to XOR');
+        const f31NumericSession = createPlaygroundSession(getPlayground('mlp-classification'), {
+          source: {
+            kind: 'workspace-dataset', name: 'numeric', fingerprint: 'f31-num',
+            points: f31NumericRows.map((row, index) => ({
+              id: `d${index}`,
+              features: { a: row.a, b: row.b },
+              label: String(row.target),
+            })),
+            featureColumns: ['a', 'b'],
+            trainRatio: 0.8,
+          },
+          seed: 3,
+          sessionId: 'f31-num',
+        });
+        assert.deepEqual(
+          f31NumericSession.modelState.labelMapping,
+          { labels: ['0', '1'], toIndex: { '0': 0, '1': 1 } },
+          'numeric targets normalize to stable semantic strings',
+        );
+        await f31NumericAgent.close();
+
+        // 4. Declared featureColumns are authoritative: unrelated numeric
+        // columns (id, unused_numeric) never enter the model.
+        const f31AuthorityRows = Array.from({ length: 30 }, (_, index) => {
+          const group = index % 2;
+          return {
+            id: index,
+            feature_a: Number(group === 0 ? 1 : 5 + Math.sin(index) * 0.2),
+            feature_b: Number(group === 0 ? 1 : 5 + Math.cos(index) * 0.2),
+            unused_numeric: 999 + index,
+            target: group,
+          };
+        });
+        const f31AuthorityHost = createPlaygroundHost({ getDataset: () => ({
+          name: 'authority', task: 'classification', rows: f31AuthorityRows,
+          columns: ['id', 'feature_a', 'feature_b', 'unused_numeric']
+            .map((name) => ({ name, type: 'number', missing: 0 }))
+            .concat([{ name: 'target', type: 'number', missing: 0 }]),
+          featureColumns: ['feature_a', 'feature_b'],
+          targetColumn: 'target',
+        }) });
+        const f31AuthorityAgent = createPlaygroundAgentApi(f31AuthorityHost);
+        const f31AuthorityOpened = await f31AuthorityAgent.open({ playgroundId: 'mlp-classification' });
+        assert.equal(f31AuthorityOpened.source.kind, 'workspace-dataset', 'authoritative feature dataset is used');
+        const f31AuthoritySession = createPlaygroundSession(getPlayground('mlp-classification'), {
+          source: {
+            kind: 'workspace-dataset', name: 'authority', fingerprint: 'f31-auth',
+            points: f31AuthorityRows.map((row, index) => ({
+              id: `d${index}`,
+              features: { feature_a: row.feature_a, feature_b: row.feature_b },
+              label: String(row.target),
+            })),
+            featureColumns: ['feature_a', 'feature_b'],
+            trainRatio: 0.8,
+          },
+          seed: 3,
+          sessionId: 'f31-auth',
+        });
+        assert.deepEqual(
+          f31AuthoritySession.modelState.featureColumns,
+          ['feature_a', 'feature_b'],
+          'MLP input uses exactly the declared featureColumns',
+        );
+        assert.equal(f31AuthoritySession.modelState.params.W1[0].length, 2, 'inputSize matches the declared features');
+        await f31AuthorityAgent.close();
+
+        // 5. XOR defaults stay byte-compatible: predictMlp -> a/b and the
+        // default decision-region helper -> a/b.
+        const f31XorPoints = generateXorDataset({ seed: 3 });
+        const f31XorSession = createPlaygroundSession(getPlayground('mlp-classification'), {
+          source: { kind: 'example', name: 'XOR', fingerprint: 'f31-xor', points: f31XorPoints, featureColumns: ['x1', 'x2'] },
+          seed: 3,
+          sessionId: 'f31-xor',
+        });
+        const f31XorPrediction = predictMlp(f31XorSession.modelState.params, [1, -1]);
+        assert.ok(['a', 'b'].includes(f31XorPrediction.label), 'default predictMlp keeps XOR a/b labels');
+        const f31XorCells = computeMlpDecisionRegions({ params: f31XorSession.modelState.params, points: f31XorPoints }).cells;
+        assert.ok(
+          f31XorCells.every((cell) => ['a', 'b'].includes(cell.label)),
+          'default decision-region helper keeps XOR a/b labels',
         );
       }
 

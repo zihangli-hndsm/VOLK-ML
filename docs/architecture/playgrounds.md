@@ -493,6 +493,28 @@ Dataset Adapter / source contract, without hardcoding column names:
   stays green. The scene additionally exposes `featureOptions`,
   `projection` and `ranges` for the 2D view and query sliders.
 
+### Workspace label and feature semantics (PR F.3.1)
+
+PR F.3.1 closes workspace-data semantic correctness:
+
+- The external prediction label space is always the dataset's original binary
+  labels: `predictMlp(params, x, labels = ['a', 'b'])` returns a
+  `classIndex` plus the decoded `label` (default keeps XOR `a`/`b`), and the
+  adapter passes `modelState.labelMapping.labels` everywhere - training/test
+  accuracy, `metrics.predictedLabel`, `prediction.emitted`, prediction
+  observations and decision-region cells. There is exactly one binary
+  decision (`probability < 0.5 -> class 0`) and one label mapping.
+- `computeMlpDecisionRegions` accepts the same optional `labels` contract;
+  its default remains XOR `a`/`b`.
+- Workspace inputs resolve through the existing Dataset Adapter semantics:
+  declared `featureColumns` are authoritative (`featureColumns` intersect
+  valid numeric columns, the target column is excluded - unrelated numeric
+  columns like id/timestamp never enter the model), and classification
+  targets are normalized to stable semantic strings before the binary
+  mapping (`0` -> `"0"`, `true` -> `"true"`). Numeric binary targets no
+  longer fall back to the XOR example. More than two distinct classes still
+  reject with `INVALID_PLAYGROUND_SOURCE`.
+
 ## Layers
 
 ### Model adapters

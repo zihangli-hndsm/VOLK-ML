@@ -131,31 +131,40 @@ function resolveSource(playground, dataset) {
     };
   }
   if (playground.id === 'mlp-classification') {
-    // PR F.3: compatible workspace datasets (binary classification, at least
-    // two numeric features) are wired through the shared dataset contract.
-    // The adapter is feature-name agnostic; no column names are hardcoded.
+    // PR F.3 / F.3.1: compatible workspace datasets (binary classification,
+    // at least two declared numeric features) are wired through the shared
+    // dataset contract. The declared `featureColumns` are authoritative: only
+    // numeric declared features enter the model (never unrelated numeric
+    // columns like id/timestamp). Classification targets are normalized to
+    // stable semantic strings (0 -> "0", true -> "true") before the binary
+    // label mapping. The adapter is feature-name agnostic.
     if (dataset?.task === 'classification') {
-      const numeric = (dataset.columns ?? [])
-        .filter((column) => column.type === 'number')
-        .map((column) => column.name);
-      if (numeric.length >= 2) {
+      const numericColumns = new Set(
+        (dataset.columns ?? [])
+          .filter((column) => column.type === 'number')
+          .map((column) => column.name),
+      );
+      const features = (dataset.featureColumns ?? [])
+        .filter((name) => name !== dataset.targetColumn && numericColumns.has(name));
+      if (features.length >= 2) {
         const rows = dataset.rows.filter((row) => (
-          numeric.every((name) => Number.isFinite(Number(row?.[name])))
-          && typeof row?.[dataset.targetColumn] === 'string'
-          && row[dataset.targetColumn]
+          features.every((name) => Number.isFinite(Number(row?.[name])))
+          && row?.[dataset.targetColumn] !== undefined
+          && row?.[dataset.targetColumn] !== null
+          && String(row[dataset.targetColumn]) !== ''
         ));
-        const labels = [...new Set(rows.map((row) => row[dataset.targetColumn]))];
+        const labels = [...new Set(rows.map((row) => String(row[dataset.targetColumn])))];
         if (rows.length >= 2 && labels.length === 2) {
           return {
             kind: 'workspace-dataset',
             name: dataset.name,
-            fingerprint: fingerprintOf([dataset.name, dataset.task, numeric, dataset.targetColumn, rows.length, labels.sort().join('|')]),
+            fingerprint: fingerprintOf([dataset.name, dataset.task, features, dataset.targetColumn, rows.length, labels.sort().join('|')]),
             points: rows.map((row, index) => ({
               id: `d${index}`,
-              features: Object.fromEntries(numeric.map((name) => [name, Number(row[name])])),
-              label: row[dataset.targetColumn],
+              features: Object.fromEntries(features.map((name) => [name, Number(row[name])])),
+              label: String(row[dataset.targetColumn]),
             })),
-            featureColumns: numeric,
+            featureColumns: features,
             trainRatio: dataset.trainRatio ?? 0.8,
             total: rows.length,
             usingDataset: true,
