@@ -442,6 +442,31 @@ User teaching request
   F.2 keeps the clean F.1 adapter architecture rather than bolting on a new
   abstraction.
 
+### Preview / active state machine (PR F.2.1)
+
+The Agent panel now exposes the bounded revision vocabulary in the UI
+(`shorten` with a max-steps input, `focus_result`, `keep_visuals` /
+`remove_visual` over the primitive types present in the preview, and
+`change_comparison_values` for compare-control plans only - all driven by
+`preview.script.primitives` / `preview.plan.goal`, never a hardcoded list).
+A revision replaces the **preview** only; the runtime is untouched until the
+user explicitly presses Run (provenance `revised`). Failed revisions surface
+the error separately and keep the previous valid preview intact.
+
+The panel keeps two explicit badges: **Preview** (composed / revised /
+imported) and **Active** (`snapshot.provenance`), so the UI always
+distinguishes what is being inspected from what is loaded in the runtime.
+Import means validate -> strict dry run -> **preview the imported
+declaration**; the user still presses Run to load it, so the preview and the
+runtime can never disagree. Imported previews have no TeachingPlan and show
+"Goal fidelity: not available" (structural validation + strict dry run +
+model compatibility decide run eligibility), while composed/revised teaching
+scripts additionally require goal fidelity. The state machine lives in the
+pure helpers `src/components/playground/agentPreviewState.js`
+(`previewProvenance` / `previewRunnable` / `previewFidelityStatus` /
+`compositionPreview` / `revisionPreview` / `importedPreview` /
+`revisionErrorPreview`) and is contract-tested in check-core.
+
 ## Layers
 
 ### Model adapters

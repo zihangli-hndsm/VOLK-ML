@@ -312,6 +312,17 @@
 - 文档：`playgrounds.md` 与 `agent-canvas-api.md` 更新 PR F.2 语义；append-only `CHANGELOG.md` 新增本条。
 - 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`（696 modules）、`git diff --check` 全部通过；PR A–F.1.1 全部回归保持。已知限制：MLP workspace dataset 输入按方案延后到 F.3（F.2 保持 F.1 的干净 adapter 架构）；粘贴/导入超大脚本仍受既有资源限制约束。
 
+## 2026-08-09 — Complete Agent Revision and Preview State UX（PR F.2.1）
+
+- Agent 面板补齐修订 UI（不引入任意自然语言改写）：`shorten`（最大步数输入）、`focus_result`、`keep_visuals` / `remove_visual`（选项来自 `preview.script.primitives`，非硬编码模型列表）、`change_comparison_values`（仅 compare-control 计划显示，接受恰好两个取值，交给既有 Planner 做 schema/范围校验）。
+- 修订只替换预览、不触碰运行态：`reviseScript` 成功后 `preview` 变为 `revised`（mode/plan/script/fidelity/dryRun），用户必须显式按 Run 才以 `provenance='revised'` 加载；严格保持 revise → inspect → explicit execution。
+- 修订失败保留旧有效预览：`TEACHING_GOAL_FIDELITY_FAILED` / `TEACHING_PLAN_INVALID` 等错误单独展示（revisionError），Run 仍指向旧有效预览；绝不把不可用脚本替换进预览。
+- 预览与运行态双徽章：新增纯状态 helper `src/components/playground/agentPreviewState.js`（`previewProvenance` / `previewRunnable` / `previewFidelityStatus` / `compositionPreview` / `revisionPreview` / `importedPreview` / `revisionErrorPreview`），UI 同时展示「Preview: composed/revised/imported」与「Active: snapshot.provenance」，不再复用单个 `snapshot.provenance` 徽章。
+- 导入即预览：导入脚本通过 validate → 兼容 → 严格 dry run 后先进入 imported 预览（无 TeachingPlan，显示「结构校验通过 / 严格试运行通过 / 目标保真度不适用」），用户按 Run 才加载；运行资格按类型区分——composed/revised 必须 fidelity 通过，imported 只需校验+dry run+模型兼容，绝不再出现「预览 A、徽章 imported、运行态 B」的错位。
+- 测试（check-core 新增 PR F.2.1 块）：纯 helper 的 provenance/runnable/fidelity-status 断言 + 概念状态机转移（compose 后 active 仍 preset、Run 后 active=composed、revise 后 preview=revised 而 active 仍 composed、Run revised 后 active=revised、import B 后 preview=imported B 而 active 不变、失败修订保留旧预览）；F.2 后端修订引擎未改动。
+- 文档：`playgrounds.md` 更新 PR F.2.1 状态机语义；append-only `CHANGELOG.md` 新增本条。
+- 验收：`npm run check`（含 render smoke 与 examples check）、`npm run check:compiler`、`npm run build`、`git diff --check` 全部通过；PR A–F.2 全部回归保持。合并后 PR F.2 = FINAL PASS，进入 F.3。
+
 ## 2026-08-08 — Reverse Right Panel Width Slider Direction
 
 - 修复右参数面板宽度滑块的方向反馈问题：右面板锚定在视口右侧，其宽度滑块改为反转视觉方向（向左拖 = 更宽，向右拖 = 更窄），消除「滑块左移 → 面板变窄 → 左边缘右移 → 滑块远离指针 → 快速 snap 到最小值」的 moving-control 问题。
