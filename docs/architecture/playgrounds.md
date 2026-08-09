@@ -650,6 +650,10 @@ Presentation Mode is a local UI view over the same playground snapshot and Scrip
 The Stage owns a model-independent visual motion layer. It keeps the previous and current already-valid primitive snapshots, interpolates visual props between them, and passes the current frame to the existing primitive renderer registry. Runtime state changes immediately and remains authoritative; motion never dispatches actions or creates semantic intermediate model states. Motion durations come from one centralized policy and are clamped to the active script step duration after playback speed, with `prefers-reduced-motion` producing an immediate visual settle. Stable semantic identities (`id`, `pointId`, `step`, matrix coordinates, and edge endpoints) control array matching so enter/exit fades and numeric interpolation do not depend on array order.
 
 
+### Presentation Motion Coverage (Phase G.2.1)
+
+Presentation Mode creates one motion frame from the semantic primitive snapshot, then routes its `stage` and `teaching` slots to the Stage and annotation/formula surfaces. The same duration, easing policy, and reduced-motion behavior apply to both surfaces; final frames return exact semantic props. The motion layer remains generic and does not alter Script Runtime semantics, model adapters, or the Visualization Script schema.
+
 ## Adding a third playground
 
 1. Create a model adapter in `src/core/playground/model/<name>Adapter.js` (initialize, applyModelAction, deriveScene, buildPrimitives) and register it in `modelRegistry.js`.

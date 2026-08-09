@@ -1,24 +1,26 @@
 import { useMemo } from 'react';
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
-import { resolveMotionConfig } from './motion.js';
+import { getVisiblePrimitives, resolveMotionConfig } from './motion.js';
 import { usePrimitiveMotion, useReducedMotionPreference } from './usePrimitiveMotion.js';
 import { buildLabelColorMap } from './visualEncoding.js';
 
 const PLOT = { left: 58, right: 620, top: 20, bottom: 320 };
-const EMPTY_STAGE_LAYOUT = [];
 
 // The unified stage only knows primitives. It never imports model math and
 // never special-cases a model; every drawing decision comes from the JSON
 // primitive props in the snapshot.
-export default function PlaygroundStage({ snapshot, t }) {
-  const { primitives, script, visualState } = snapshot;
-  const layout = script?.layout?.stage ?? EMPTY_STAGE_LAYOUT;
-  const visible = useMemo(() => primitives.filter((primitive) => (
-    layout.includes(primitive.id) && visualState[primitive.id] !== false
-  )), [layout, primitives, visualState]);
+export default function PlaygroundStage({ snapshot, motionFrame, t }) {
+  const visible = useMemo(() => getVisiblePrimitives(snapshot, 'stage'), [snapshot]);
   const reducedMotion = useReducedMotionPreference();
   const motionConfig = resolveMotionConfig(snapshot, reducedMotion);
-  const { primitives: renderedPrimitives, motion } = usePrimitiveMotion(visible, motionConfig);
+  const fallbackFrame = usePrimitiveMotion(visible, {
+    ...motionConfig,
+    enabled: motionFrame ? false : motionConfig.enabled,
+  });
+  const renderedPrimitives = motionFrame
+    ? motionFrame.primitives.filter((primitive) => primitive.motionSlot === 'stage')
+    : fallbackFrame.primitives;
+  const motion = motionFrame?.motion ?? fallbackFrame.motion;
   const scatter = visible.find((primitive) => primitive.type === 'scatter');
   const points = scatter?.props?.points ?? [];
   const axes = scatter?.props?.axes ?? { x: 'x', y: 'y' };

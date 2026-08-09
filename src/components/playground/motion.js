@@ -3,7 +3,7 @@ export const DEFAULT_MOTION_POLICY = Object.freeze({
   update: 320,
   exit: 180,
   highlight: 280,
-  easing: 'cubic-bezier(0.22, 1, 0.36, 1)',
+  easing: 'ease-out-cubic',
 });
 
 const isObject = (value) => value !== null && typeof value === 'object';
@@ -29,6 +29,26 @@ export function resolveMotionConfig(snapshot, reducedMotion = false) {
     easing: DEFAULT_MOTION_POLICY.easing,
     reducedMotion,
   };
+}
+
+export function easeMotionProgress(progress, easing = DEFAULT_MOTION_POLICY.easing) {
+  const clamped = Math.min(1, Math.max(0, progress));
+  if (easing === 'linear') return clamped;
+  if (easing === 'ease-in-out-cubic') {
+    return clamped < 0.5
+      ? 4 * clamped ** 3
+      : 1 - ((-2 * clamped + 2) ** 3) / 2;
+  }
+  if (easing === 'ease-out-cubic') return 1 - ((1 - clamped) ** 3);
+  return clamped;
+}
+
+export function getVisiblePrimitives(snapshot, placement = 'stage') {
+  const layout = snapshot?.script?.layout?.[placement] ?? [];
+  const visualState = snapshot?.visualState ?? {};
+  return (snapshot?.primitives ?? []).filter((primitive) => (
+    layout.includes(primitive.id) && visualState[primitive.id] !== false
+  ));
 }
 
 export function stableMotionIdentity(value, index = 0) {
@@ -84,10 +104,10 @@ export function interpolateValue(from, to, progress) {
   return to === undefined ? from : to;
 }
 
-function withPrimitiveMotionOpacity(primitive, opacity) {
+function withPrimitiveMotionOpacity(primitive, opacity, progress) {
   return {
     ...primitive,
-    props: { ...(primitive.props ?? {}), motionOpacity: opacity },
+    props: { ...(primitive.props ?? {}), motionOpacity: opacity, motionProgress: progress },
   };
 }
 
@@ -100,11 +120,11 @@ export function interpolatePrimitiveList(from = [], to = [], progress = 1) {
   return orderedIds.map((id) => {
     const previous = fromById.get(id);
     const current = toById.get(id);
-    if (!previous) return withPrimitiveMotionOpacity(current, progress);
-    if (!current) return withPrimitiveMotionOpacity(previous, 1 - progress);
+    if (!previous) return withPrimitiveMotionOpacity(current, progress, progress);
+    if (!current) return withPrimitiveMotionOpacity(previous, 1 - progress, progress);
     return withPrimitiveMotionOpacity({
       ...current,
       props: interpolateValue(previous.props ?? {}, current.props ?? {}, progress),
-    }, 1);
+    }, 1, progress);
   });
 }

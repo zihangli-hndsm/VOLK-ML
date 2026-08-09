@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { interpolatePrimitiveList } from './motion.js';
+import { easeMotionProgress, interpolatePrimitiveList } from './motion.js';
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
-const easeOut = (progress) => 1 - ((1 - progress) ** 3);
 
 const scheduleFrame = (callback) => {
   if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
@@ -34,7 +33,7 @@ export function useReducedMotionPreference() {
 export function usePrimitiveMotion(targetPrimitives, {
   enabled = true,
   durationMs = 320,
-  easing = 'cubic-bezier(0.22, 1, 0.36, 1)',
+  easing = 'ease-out-cubic',
   reducedMotion = false,
 } = {}) {
   const [frame, setFrame] = useState({ primitives: targetPrimitives, progress: 1, isAnimating: false });
@@ -58,7 +57,7 @@ export function usePrimitiveMotion(targetPrimitives, {
     const animate = (timestamp) => {
       const progress = Math.min(1, Math.max(0, (timestamp - start) / durationMs));
       const next = {
-        primitives: interpolatePrimitiveList(previous, targetPrimitives, easeOut(progress)),
+        primitives: interpolatePrimitiveList(previous, targetPrimitives, easeMotionProgress(progress, easing)),
         progress,
         isAnimating: progress < 1,
       };
