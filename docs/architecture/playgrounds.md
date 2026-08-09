@@ -250,7 +250,186 @@ User Goal
     result (e.g. `metrics.predictedLabel`, `training.parameterHistory`),
     checked on required captures or the final snapshot.
   - `traceEvidence` - the required semantic event actually occurred, with
-    optio…2762 tokens truncated…ing script).
+    optional payload predicates: `{ trace: 'training.completed', where:
+    { stoppedReason: ['learning-rate-too-high'] } }`. Runtime fidelity for
+    `show_failure_case` fails when `training.completed` exists but
+    `stoppedReason` is absent or reports ordinary success - "training
+    happened" is not "failure happened".
+  `evaluateGoalFidelity({ plan, script, context, execution })` returns
+  `{ valid, checks, missing }`. Requirement evidence for
+  explain_prediction/show_training/show_failure_case comes from the model's
+  declared `teachingCapabilities`; compare/show_parameter_effect use generic
+  structural rules.
+- `composeScript(plan)` now runs validate TeachingPlan -> compose -> validate
+  Script -> strict dry run -> goal fidelity, and returns
+  `{ mode: 'composed', plan, script, fidelity, dryRun }`. If fidelity fails,
+  it throws `TEACHING_GOAL_FIDELITY_FAILED` with the structured missing
+  requirements. `mode: 'composed'` distinguishes the real Composer path from
+  preset fallback/generation paths.
+- Acceptance cases: compare k=1 vs k=15 proves set k=1, set k=15, predict
+  branch A/B, completed left/right captures (mutation negatives fail while
+  staying syntactically valid); learning rate too high derives a value above
+  the baseline inside `controlSchemas` and proves fit invocation, training
+  playback, loss evidence and parameter-movement evidence (a residuals-only
+  script fails); explain KNN prediction normalizes to `explain_prediction`
+  and proves query, neighbor ranking, reveal, voting and predicted-label
+  evidence through the context-advertised predict operation and semantic
+  fields.
+- PR E.2.1 makes the fidelity outcome-truthful: the lexical parser emits a
+  semantic probe (`direction: 'increase'`) for qualitative "learning rate too
+  high" requests - never a numeric constant - and the Planner derives the
+  probe from current controls + controlSchemas (baseline 0.05 -> >0.05, 1.5
+  -> >1.5, 3 -> >3, 5 -> reject when no higher legal value exists).
+  Parameter movement is verified through real runtime/trace evidence
+  (`training.parameterHistory` / `gradient.computed`), not by pretending
+  `loss-curve` visualizes parameter history. Mutation tests cover a
+  successfully-completed training run with no stoppedReason (fails), a
+  schema-compatible binding change away from the required visual path
+  (fails), and runtime-only evidence surviving the removal of non-visual
+  primitives (passes).
+- PR E closure aligns the failure capability with runtime evidence:
+  `show_failure_case` currently targets the **learning-rate-too-high**
+  stopped regime only, because that regime provides inspectable loss and
+  gradient evidence (loss.measured + gradient.computed +
+  training.parameterHistory). The raw early non-finite `diverged` stop reason
+  remains valid runtime behavior but is not advertised by the current
+  capability until a future visualization/fidelity contract can explain that
+  path truthfully; a `diverged` execution therefore fails
+  `show_failure_case` fidelity (documented by an explicit negative fixture).
+
+## Toolkit expansion + MLP playground (PR F.1)
+
+PR F.1 adds the first general-neural-visualization primitives and an MLP
+playground as the decisive test that the unified architecture holds without
+model branches.
+
+- Four model-independent primitives joined the toolkit
+  (`src/core/playground/visualization/primitives.js` + `schemas.js` +
+  `typeContracts.js`):
+  - `parameter-trajectory` (stage): draws `{step, value}` points; binds
+    `$model.training.parameterTrajectory` (LR and MLP scenes expose the
+    derived field).
+  - `network-graph` (stage): layered graph of `{id, layer, label?, value?}`
+    nodes and `{source, target, weight?}` edges; binds
+    `$model.network.nodes` / `$model.network.edges`.
+  - `matrix-grid` (stage): weight matrix of `{row, column, value, label?}`
+    cells; binds `$model.matrix.rows/columns/cells`.
+  - `histogram` (side): bins of `{start, end, count}`; binds
+    `$model.histogram.bins`.
+  Every primitive is typed (deep contract validation), placement-declared,
+  SSR-smoke-tested and degrades gracefully with empty props.
+- `src/core/playground/model/mlpMath.js` is the pure deterministic MLP
+  mathematics: seeded XOR data generation, seeded parameter initialization
+  (weights in [-1, 1] so full-batch gradients stay learnable), tanh hidden
+  layer with sigmoid output and binary cross-entropy, full-batch
+  backpropagation, and the same honest failure semantics as LR
+  (`learning-rate-too-high` / `diverged`).
+- `src/core/playground/model/mlpAdapter.js` registers the `mlp` adapter:
+  semantic schema (`scatterPoints`, `axes`, `decisionRegions`, `training`
+  with `lossHistory`/`parameterHistory`/`parameterTrajectory`, `network`,
+  `matrix`, `histogram`, `metrics`, `observation`), script operations
+  `traceFit` (intent `fit`, reveal count = trainingSteps) and `tracePredict`
+  (intent `predict`, hidden-unit reveal count = hiddenUnits), trace events
+  with payload schemas, and declarative teaching capabilities
+  (`show_training` + `explain_prediction`). `show_failure_case` is honestly
+  unsupported on MLP and rejected with `TEACHING_GOAL_UNSUPPORTED`.
+- `mlp-classification` playground: deterministic XOR source, controls
+  (`hiddenUnits`, `learningRate`, `trainingSteps`, `queryX`, `queryY`,
+  `showDecisionRegions`) and the `mlp.intro` preset. The preset trains,
+  reveals loss/parameter trajectory epochs, then reveals hidden activations
+  for a prediction.
+- The unified layers stay model-agnostic: `playgroundRuntime.js`,
+  `primitiveMaterializer.js`, `teachingComposer.js`, `teachingFidelity.js`,
+  `PlaygroundStage.jsx` and `rendererRegistry.jsx` contain no `mlp` branch
+  (source-level contract test). The generic goal -> plan -> compose ->
+  fidelity pipeline serves MLP `explain_prediction`, `show_training`,
+  `compare hiddenUnits` and `what-if learningRate` unchanged.
+- The MLP learns XOR to 100% accuracy deterministically (same seed +
+  controls -> identical replay); the render smoke replays the MLP preset
+  (20 snapshots) and SSR-renders all four new primitives.
+
+## MLP playback consistency (PR F.1.1)
+
+PR F.1.1 makes every MLP replay step semantically time-consistent. At any
+playback step the timeline, active parameters, loss/metrics, network graph,
+matrix, histogram, decision region and prediction behavior all describe the
+same neural-network parameter state; the UI never combines evidence from
+different training epochs.
+
+- `trainMlp()` history entries now carry a JSON-safe detached snapshot of the
+  full `params` each state adopts. Normal completion keeps
+  `history[last].params === result.params`; the finite loss-increasing update
+  of the `learning-rate-too-high` policy is recorded **and adopted** as the
+  final visible parameters (consistent with the LR teaching behavior), so
+  `parameters.updated` always describes a state the model actually adopts;
+  the non-finite `diverged` path retains the last finite parameters.
+- Training playback is real: `START_TRAINING` keeps the active model at the
+  baseline parameters at timeline step 0, and every `STEP`/`SEEK` updates
+  `modelState.params`, `training.currentStep` and `timeline.step` from the
+  same trajectory. Seeking to zero restores the baseline. Decision regions
+  are refreshed from the active parameters whenever they change, so a stale
+  initial grid can never sit next to a trained network.
+- Prediction explanation never leaks the final output: input nodes are
+  visible immediately, hidden nodes only as they are revealed, and the output
+  node stays `null` (with `metrics.predictedLabel` hidden) until the final
+  hidden activation is revealed. The teaching sequence is genuinely
+  input -> hidden activations -> output.
+- `prediction.emitted` is model-neutral: its payload schema gained an
+  optional `hiddenUnits`; KNN emits `{ label, k }` and MLP emits
+  `{ label, hiddenUnits }` - no adapter branch in trace validation.
+- The MLP source contract matches F.1 capability: `validateSource` requires
+  the deterministic two-dimensional `x1`/`x2` example representation and
+  rejects incompatible feature names with `INVALID_PLAYGROUND_SOURCE`
+  (generic workspace-dataset feature mapping is later dataset work).
+- `mlp.intro` is internally consistent: it configures `trainingSteps = 12`
+  before training and reveals exactly those 12 epochs before prediction.
+
+## Agent playground UI + script tooling (PR F.2)
+
+PR F.2 exposes the Agent-Customizable Playground architecture to users. The
+user-facing loop is complete:
+
+```text
+User teaching request
+-> Agent plan
+-> TeachingPlan
+-> Composer
+-> Visualization Script
+-> preview / inspect
+-> run
+-> revise
+-> export / import
+```
+
+- **Agent panel** (`src/components/playground/PlaygroundAgentPanel.jsx`):
+  "Ask Agent" input -> `agent.plan(goal)` -> `agent.composeScript(plan)` ->
+  preview. Nothing runs unseen: the generated TeachingPlan / Script enters a
+  preview state first with tabs **Overview / Teaching Plan / Visualization
+  Script / Fidelity** (raw JSON read-only; no executable content), and only
+  the explicit **Run** button loads and plays it through the existing Script
+  Runtime. The preview shows goal, objective, phases, controls changed,
+  operations, captures, primitives, step count and fidelity evidence
+  (grouped: controls / operations / visual / runtime / trace, each
+  checked).
+- **Script tooling**: **Copy JSON** (exact declaration), **Download JSON**
+  (`volk-ml-playground-script.json`), **Load JSON** (file input goes through
+  `validateScript` -> model/playground compatibility -> strict dry run before
+  it can replace the active script; failures surface the stable `SCRIPT_*`
+  code plus a message).
+- **Script provenance**: the host tracks where the active script came from -
+  `preset` / `generated` / `composed` / `revised` / `imported` - and exposes
+  it on every host-derived snapshot (`snapshot.provenance`). The toolbar UI
+  visibly distinguishes Preset / Composed by Agent / Imported Script, and
+  `mode: 'composed'` (plus goal-fidelity status) is preserved for Agent
+  compositions.
+- **`reviseScript`** (`src/core/playground/agent/scriptRevision.js`, exposed
+  as `agent.reviseScript({ plan, script, request })`): a bounded, typed
+  revision vocabulary - `shorten {maxSteps}`, `remove_visual
+  {primitiveTypes}`, `keep_visuals {primitiveTypes}`, `focus_result`,
+  `change_comparison_values {control, values}`. Every revision goes through
+  validate -> strict dry run -> goal fidelity; a revision that would destroy
+  the requested teaching goal is rejected with
+  `TEACHING_GOAL_FIDELITY_FAILED` (never a silently misleading script).
   There is no free-form natural-language mutation.
 - **Playground picker**: the header offers a registry-driven selector
   (`listPlaygrounds()`), so KNN / Linear Regression / MLP all open from the
@@ -469,6 +648,7 @@ Presentation Mode is a local UI view over the same playground snapshot and Scrip
 ### Generic Motion System (Phase G.2)
 
 The Stage owns a model-independent visual motion layer. It keeps the previous and current already-valid primitive snapshots, interpolates visual props between them, and passes the current frame to the existing primitive renderer registry. Runtime state changes immediately and remains authoritative; motion never dispatches actions or creates semantic intermediate model states. Motion durations come from one centralized policy and are clamped to the active script step duration after playback speed, with `prefers-reduced-motion` producing an immediate visual settle. Stable semantic identities (`id`, `pointId`, `step`, matrix coordinates, and edge endpoints) control array matching so enter/exit fades and numeric interpolation do not depend on array order.
+
 
 ## Adding a third playground
 
