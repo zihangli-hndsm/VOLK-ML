@@ -230,7 +230,7 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     <div className="mt-3 rounded-xl border border-slate-200 bg-white">
       <button onClick={() => setAiOpen((value) => !value)} aria-expanded={aiOpen} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
         <span className="text-xs font-black uppercase tracking-wider text-slate-700">{t('playground.agent.aiTitle')}</span>
-        <span className="text-[10px] font-bold text-slate-500">{aiStatus === 'ai' ? t('playground.agent.aiMode') : t('playground.agent.localMode')} / {aiOpen ? '-' : '+'}</span>
+        <span className="text-[10px] font-bold text-slate-500">{aiStatus === 'ai' ? t('playground.agent.aiMode') : t('playground.agent.localMode')} · {aiOpen ? '−' : '+'}</span>
       </button>
       {aiOpen && <div className="border-t border-slate-100 p-3">
         <p className="text-xs leading-5 text-amber-800">{t('playground.agent.aiWarning')}</p>
@@ -262,7 +262,7 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     </div>
 
     {loadError && <p className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs font-bold text-red-700">
-      {t('playground.agent.loadError')}: {loadError.code} 鈥?{loadError.message}
+      {t('playground.agent.loadError')}: {loadError.code} — {loadError.message}
     </p>}
 
     {preview?.error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
@@ -302,9 +302,9 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
       {tab === 'overview' && <div className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
         <p><span className="font-bold text-slate-500">{t('playground.agent.objective')}:</span> {preview.plan?.goal?.objective ?? t('playground.agent.notApplicable')}</p>
         <p><span className="font-bold text-slate-500">{t('playground.agent.steps')}:</span> {steps.length}</p>
-        <p><span className="font-bold text-slate-500">{t('playground.agent.controls')}:</span> {controlsChanged.join(', ') || '鈥?}</p>
-        <p><span className="font-bold text-slate-500">{t('playground.agent.operations')}:</span> {operations.join(', ') || '鈥?}</p>
-        <p><span className="font-bold text-slate-500">{t('playground.agent.captures')}:</span> {captures.join(', ') || '鈥?}</p>
+        <p><span className="font-bold text-slate-500">{t('playground.agent.controls')}:</span> {controlsChanged.join(', ') || '—'}</p>
+        <p><span className="font-bold text-slate-500">{t('playground.agent.operations')}:</span> {operations.join(', ') || '—'}</p>
+        <p><span className="font-bold text-slate-500">{t('playground.agent.captures')}:</span> {captures.join(', ') || '—'}</p>
         <p><span className="font-bold text-slate-500">{t('playground.agent.primitives')}:</span> {preview.script.primitives.map((primitive) => primitive.type).join(', ')}</p>
         <p className={fidelityStatus === 'passed' ? 'text-emerald-700' : fidelityStatus === 'failed' ? 'text-red-700' : 'text-slate-500'}>
           {fidelityStatus === 'passed' ? t('playground.agent.fidelityPassed')
@@ -332,8 +332,8 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
 
       {tab === 'fidelity' && <div className="mt-3 space-y-2">
         {preview.mode === 'imported' && <div className="rounded-xl bg-white p-3 text-xs text-slate-600">
-          <p className="font-bold text-emerald-700">鉁?{t('playground.agent.validationPassed')}</p>
-          <p className="mt-1 font-bold text-emerald-700">鉁?{t('playground.agent.dryRunPassed')}</p>
+          <p className="font-bold text-emerald-700">✓ {t('playground.agent.validationPassed')}</p>
+          <p className="mt-1 font-bold text-emerald-700">✓ {t('playground.agent.dryRunPassed')}</p>
           <p className="mt-1">{t('playground.agent.fidelityNotAvailable')}</p>
         </div>}
         {Object.entries(groups).map(([group, checks]) => (
@@ -343,7 +343,7 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
               {checks.map((check) => (
                 <span key={check.requirement}
                   className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${check.satisfied ? 'bg-emerald-100 text-emerald-700' : 'bg-red-100 text-red-700'}`}>
-                  {check.satisfied ? '鉁? : '鉁?} {check.requirement}
+                  {check.satisfied ? '✓' : '✗'} {check.requirement}
                 </span>
               ))}
             </div>
@@ -419,4 +419,3 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     </div>}
   </div>;
 }
-
