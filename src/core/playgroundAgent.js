@@ -1,5 +1,7 @@
 import { PLAYGROUND_ERROR_CODES } from './playgrounds/session.js';
 import { SCRIPT_ERROR_CODES } from './playground/visualization/scriptErrors.js';
+export { getAgentExamples, listAgentExamplePlaygroundIds } from './playground/agent/agentExamples.js';
+export { buildTeachingInterpretationContext, createLlmGoalInterpreter, LLM_PROVIDERS } from './playground/agent/llmGoalInterpreter.js';
 
 const copy = (value) => structuredClone(value);
 
