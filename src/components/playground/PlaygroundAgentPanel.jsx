@@ -1,6 +1,3 @@
-Exit code: 0
-Wall time: 0.5 seconds
-Output:
 import { useRef, useState } from 'react';
 import { createLlmGoalInterpreter, getAgentExamples, LLM_PROVIDERS } from '../../core/playgroundAgent.js';
 import {
