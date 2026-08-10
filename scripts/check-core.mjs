@@ -65,6 +65,9 @@ import {
 } from '../src/core/playgrounds/session.js';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
+import { getAgentExamples, listAgentExamplePlaygroundIds } from '../src/core/playground/agent/agentExamples.js';
+import { buildTeachingInterpretationContext, createLlmGoalInterpreter } from '../src/core/playground/agent/llmGoalInterpreter.js';
+import { createDeletionRequest, deletionSummary } from '../src/core/deletionConfirmation.js';
 import { listModelAdapters } from '../src/core/playground/model/modelRegistry.js';
 import { validateTraceEvent } from '../src/core/playground/trace/traceTypes.js';
 import { validatePrimitive } from '../src/core/playground/visualization/primitives.js';
@@ -3011,6 +3014,119 @@ assert.throws(
       }
     }
 
+Exit code: 0
+Wall time: 0.5 seconds
+Output:
+    // PR H: temporary AI goal interpretation, declarative examples and
+    // human deletion confirmation contracts.
+    {
+      const boundedHost = createPlaygroundHost({ getDataset: () => null });
+      const boundedAgent = createPlaygroundAgentApi(boundedHost);
+      await boundedAgent.open({ playgroundId: 'linear-regression' });
+      const bounded = buildTeachingInterpretationContext(boundedAgent.inspectContext());
+      assert.ok(bounded.controlSchemas.some((schema) => schema.key === 'learningRate'), 'AI context includes legal controls');
+      assert.ok(bounded.modelOperations && bounded.playground.id === 'linear-regression', 'AI context includes bounded playground operations');
+      assert.equal(bounded.model, undefined, 'AI context does not include full model schema');
+      assert.equal(bounded.primitives, undefined, 'AI context does not include primitive schemas');
+      assert.equal(bounded.data.rows, undefined, 'AI context does not include complete dataset rows');
+
+      let providerCalls = 0;
+      const mockFetch = async (_url, options) => {
+        providerCalls += 1;
+        const requestBody = JSON.parse(options.body);
+        assert.ok(!JSON.stringify(requestBody).includes('sk-test'), 'API key is not placed in the provider body');
+        return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({
+          type: 'compare-control', objective: 'compare', control: 'learningRate', values: [0.01, 1],
+        }) } }] }) };
+      };
+      const interpreter = createLlmGoalInterpreter({ fetchImpl: mockFetch });
+      const interpreted = await interpreter.interpret({
+        request: 'compare learning rates',
+        context: boundedAgent.inspectContext(),
+        providerId: 'openai-compatible',
+        apiKey: 'sk-test',
+        model: 'test-model',
+      });
+      assert.deepEqual(interpreted.goal.values, [0.01, 1], 'mock provider returns a typed goal');
+      assert.equal(providerCalls, 1, 'valid AI interpretation uses one provider call');
+      const interpretedPlan = planTeachingGoal({ goal: interpreted.goal, context: boundedAgent.inspectContext() });
+      assert.equal(interpretedPlan.goal.control, 'learningRate', 'existing Planner remains the goal authority');
+
+      const contextFor = async (playgroundId) => {
+        const hostForContext = createPlaygroundHost({ getDataset: () => null });
+        const agentForContext = createPlaygroundAgentApi(hostForContext);
+        await agentForContext.open({ playgroundId });
+        return { agent: agentForContext, context: agentForContext.inspectContext() };
+      };
+      const [knnContext, mlpContext] = await Promise.all([
+        contextFor('knn-classification'),
+        contextFor('mlp-classification'),
+      ]);
+      const allContexts = [boundedAgent.inspectContext(), knnContext.context, mlpContext.context];
+      assert.deepEqual(allContexts.map((context) => context.playground.id), ['linear-regression', 'knn-classification', 'mlp-classification'], 'AI interpreter contexts cover all playgrounds');
+
+      let repairCalls = 0;
+      const repairFetch = async () => {
+        repairCalls += 1;
+        return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify(repairCalls === 1
+          ? { type: 'what-if', objective: 'show_parameter_effect', control: 'temperature', value: 1 }
+          : { type: 'what-if', objective: 'show_parameter_effect', control: 'learningRate', value: 1 }) } }] }) };
+      };
+      const repaired = await createLlmGoalInterpreter({ fetchImpl: repairFetch }).interpret({
+        request: 'show a parameter effect', context: boundedAgent.inspectContext(), apiKey: 'sk-test', model: 'test-model',
+      });
+      assert.equal(repaired.goal.control, 'learningRate', 'one bounded repair can correct an unsupported control');
+      assert.equal(repairCalls, 2, 'repair is limited to one retry');
+      let failedCalls = 0;
+      await assert.rejects(
+        createLlmGoalInterpreter({ fetchImpl: async () => {
+          failedCalls += 1;
+          return { ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({ type: 'what-if', control: 'temperature', value: 1 }) } }] }) };
+        } }).interpret({ request: 'invalid control', context: boundedAgent.inspectContext(), apiKey: 'sk-test', model: 'test-model' }),
+        (error) => error.code === 'AI_INVALID_GOAL',
+        'invalid AI goals fail after one repair attempt',
+      );
+      assert.equal(failedCalls, 2, 'invalid output never starts an unbounded Agent loop');
+      await boundedAgent.close();
+      await knnContext.agent.close();
+      await mlpContext.agent.close();
+
+      for (const playgroundId of listAgentExamplePlaygroundIds()) {
+        const examples = getAgentExamples(playgroundId);
+        assert.ok(examples.items.length >= 3, `${playgroundId} has multiple Agent examples`);
+        assert.notEqual(examples.placeholderKey, 'playground.agent.placeholder', `${playgroundId} has a specific placeholder`);
+      }
+      assert.ok(!JSON.stringify(getAgentExamples('linear-regression')).toLowerCase().includes('knn'), 'LR examples do not contain KNN-specific prompts');
+      assert.ok(!JSON.stringify(getAgentExamples('mlp-classification')).toLowerCase().includes('knn'), 'MLP examples do not contain KNN-specific prompts');
+
+      const graphNodes = [
+        { id: 'n1', data: { label: 'Linear Regression' } },
+        { id: 'n2', data: { label: 'Evaluate' } },
+        { id: 'n3', data: { label: 'Unrelated' } },
+      ];
+      const graphEdges = [
+        { id: 'e1', source: 'n1', target: 'n2' },
+        { id: 'e2', source: 'n3', target: 'n1' },
+        { id: 'e3', source: 'n2', target: 'n3' },
+      ];
+      const nodeRequest = createDeletionRequest({ nodes: graphNodes, edges: graphEdges, nodeIds: ['n1'] });
+      assert.deepEqual(nodeRequest, { nodeIds: ['n1'], edgeIds: ['e1', 'e2'] }, 'node deletion request includes connected edges');
+      assert.deepEqual(deletionSummary({ nodes: graphNodes, edges: graphEdges, pendingDeletion: nodeRequest }), {
+        nodeCount: 1, edgeCount: 2, nodeNames: ['Linear Regression'], nodes: [graphNodes[0]], edges: [graphEdges[0], graphEdges[1]],
+      }, 'deletion summary explains node consequences');
+      assert.deepEqual(graphNodes.map((node) => node.id), ['n1', 'n2', 'n3'], 'requesting deletion does not mutate nodes');
+      assert.deepEqual(createDeletionRequest({ nodes: graphNodes, edges: graphEdges, edgeIds: ['e3'] }), { nodeIds: [], edgeIds: ['e3'] }, 'edge deletion stays scoped to the selected edge');
+
+      const panelSource = readFileSync(new URL('../src/components/playground/PlaygroundAgentPanel.jsx', import.meta.url), 'utf8');
+      const providerSource = readFileSync(new URL('../src/core/playground/agent/llmGoalInterpreter.js', import.meta.url), 'utf8');
+      const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
+      assert.ok(!/localStorage|sessionStorage|indexedDB|URLSearchParams|location\.search/i.test(panelSource), 'Agent panel never persists the API key');
+      assert.ok(!/workspaceStateRef|projectFromWorkspace|localStorage|sessionStorage|indexedDB/i.test(providerSource), 'provider boundary cannot enter project persistence');
+      assert.ok(!/apiKey/.test(mainSource), 'workspace state and project serialization do not know the API key');
+      assert.ok(mainSource.includes('deleteKeyCode={null}') && mainSource.includes('isEditableCanvasTarget'), 'React Flow keyboard deletion is routed through the guarded UI handler');
+    }
+
+    
     // PR B final follow-up: render contracts, visibility, visual semantics,
     // $data parity, model mismatch, script capabilities and restart.
     {
