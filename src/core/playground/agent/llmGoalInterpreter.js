@@ -1,14 +1,11 @@
 import { planTeachingGoal } from './teachingPlanner.js';
+import { normalizeAiConfig } from '../../ai/aiSettings.js';
+import { createProviderGateway, listProviderProtocols } from '../../ai/providerRegistry.js';
 
-const DEFAULT_ENDPOINTS = Object.freeze({
-  'openai-compatible': 'https://api.openai.com/v1/chat/completions',
-  anthropic: 'https://api.anthropic.com/v1/messages',
-});
-
-export const LLM_PROVIDERS = Object.freeze([
-  Object.freeze({ id: 'openai-compatible', labelKey: 'playground.agent.provider.openaiCompatible', defaultModel: 'gpt-4o-mini' }),
-  Object.freeze({ id: 'anthropic', labelKey: 'playground.agent.provider.anthropic', defaultModel: 'claude-3-5-haiku-latest' }),
-]);
+export const LLM_PROVIDERS = Object.freeze(listProviderProtocols().map((protocol) => Object.freeze({
+  ...protocol,
+  providerId: protocol.id,
+})));
 
 const GOAL_SCHEMA = Object.freeze({
   type: ['explain-process', 'compare-control', 'what-if'],
@@ -111,63 +108,25 @@ function promptFor({ request, context, repairProblem }) {
   ].filter(Boolean).join('\n\n');
 }
 
-async function readProviderResponse(response) {
-  if (!response?.ok) throw sanitizedError('AI_PROVIDER_REQUEST_FAILED', 'The AI provider request failed.');
-  let payload;
-  try { payload = await response.json(); } catch { throw sanitizedError('AI_PROVIDER_RESPONSE_INVALID', 'The AI provider response was not valid JSON.'); }
-  return payload;
-}
-
-const providerAdapters = Object.freeze({
-  'openai-compatible': {
-    async request({ fetchImpl, endpoint, apiKey, model, system, user }) {
-      const response = await fetchImpl(endpoint || DEFAULT_ENDPOINTS['openai-compatible'], {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model, temperature: 0, response_format: { type: 'json_object' }, messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ] }),
-      });
-      const payload = await readProviderResponse(response);
-      return payload?.choices?.[0]?.message?.content ?? '';
-    },
-  },
-  anthropic: {
-    async request({ fetchImpl, endpoint, apiKey, model, system, user }) {
-      const response = await fetchImpl(endpoint || DEFAULT_ENDPOINTS.anthropic, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 500, temperature: 0, system, messages: [{ role: 'user', content: user }] }),
-      });
-      const payload = await readProviderResponse(response);
-      return payload?.content?.find((item) => item?.type === 'text')?.text ?? '';
-    },
-  },
-});
-
-export function createLlmGoalInterpreter({ fetchImpl = globalThis.fetch } = {}) {
+export function createLlmGoalInterpreter({ gateway, fetchImpl = globalThis.fetch } = {}) {
+  const providerGateway = gateway ?? createProviderGateway({ fetchImpl });
   return Object.freeze({
-    async interpret({ request, context, providerId = 'openai-compatible', apiKey, model, endpoint }) {
-      if (typeof fetchImpl !== 'function') throw sanitizedError('AI_PROVIDER_UNAVAILABLE', 'No browser fetch implementation is available.');
-      if (typeof apiKey !== 'string' || !apiKey.trim()) throw sanitizedError('AI_KEY_REQUIRED', 'Enter an API key to use the AI interpreter.');
-      const provider = providerAdapters[providerId];
-      if (!provider) throw sanitizedError('AI_PROVIDER_UNSUPPORTED', 'The selected AI provider is not supported.');
+    async interpret({ request, context, config, providerId = 'openai-compatible', apiKey, model, endpoint }) {
+      const resolvedConfig = normalizeAiConfig(config ?? { protocol: providerId, apiKey, model, endpoint });
+      if (!resolvedConfig) throw sanitizedError('AI_PROVIDER_UNSUPPORTED', 'The selected AI protocol is not supported.');
       const boundedContext = buildTeachingInterpretationContext(context);
       let repairProblem = '';
       for (let attempt = 0; attempt < 2; attempt += 1) {
         try {
-          const text = await provider.request({
-            fetchImpl,
-            endpoint,
-            apiKey: apiKey.trim(),
-            model: String(model ?? '').trim(),
+          const response = await providerGateway.complete({
+            config: resolvedConfig,
             system: 'You are VOLK-ML\'s temporary semantic goal interpreter. Deterministic VOLK-ML code remains authoritative.',
-            user: promptFor({ request, context: boundedContext, repairProblem }),
+            messages: [{ role: 'user', content: promptFor({ request, context: boundedContext, repairProblem }) }],
+            responseMode: 'json',
           });
-          return { goal: validateCandidate(parseJsonText(text), context), attempts: attempt + 1, providerId };
+          return { goal: validateCandidate(parseJsonText(response.text), context), attempts: attempt + 1, providerId: response.protocol };
         } catch (error) {
-          if (error?.code?.startsWith('AI_PROVIDER_') || error?.code === 'AI_KEY_REQUIRED' || error?.code === 'AI_PROVIDER_UNSUPPORTED' || error?.code === 'AI_PROVIDER_UNAVAILABLE') {
+          if (error?.code?.startsWith('AI_PROVIDER_') || error?.code === 'AI_KEY_REQUIRED' || error?.code === 'AI_MODEL_REQUIRED' || error?.code === 'AI_PROVIDER_UNSUPPORTED' || error?.code === 'AI_PROVIDER_UNAVAILABLE') {
             throw sanitizeInterpreterError(error);
           }
           if (attempt === 1) throw sanitizeInterpreterError(error);

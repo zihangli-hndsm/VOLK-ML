@@ -1,19 +1,18 @@
 import React, { useMemo, useState } from 'react';
 import { analyzeProject, askExplanationAgent } from '../core/explanation.js';
 import { stageStyles } from '../core/visualLanguage.js';
+import { useAiProvider } from './ai/AiProviderContext.jsx';
 
 export default function ExplanationDialog({ open, nodes, edges, language, onClose, t }) {
+  const { config, gateway, isConfigured, openSettings } = useAiProvider();
   const analysis = useMemo(() => analyzeProject(nodes, edges), [nodes, edges]);
   const [question, setQuestion] = useState('');
   const [history, setHistory] = useState([]);
-  const [endpoint, setEndpoint] = useState('https://api.openai.com/v1/chat/completions');
-  const [model, setModel] = useState('');
-  const [apiKey, setApiKey] = useState('');
   const [loading, setLoading] = useState(false);
   if (!open) return null;
   const ask = async () => {
     if (!question.trim()) return;
-    if (!apiKey || !model) {
+    if (!isConfigured) {
       const localAnswer = t('agent.localAnswer', {
         nodes: analysis.nodeCount,
         edges: analysis.edgeCount,
@@ -28,11 +27,10 @@ export default function ExplanationDialog({ open, nodes, edges, language, onClos
       const answer = await askExplanationAgent({
         analysis,
         question,
-        endpoint,
-        apiKey,
-        model,
         language,
         history,
+        config,
+        gateway,
       });
       setHistory((current) => [...current, { role: 'user', content: question }, { role: 'assistant', content: answer }]);
       setQuestion('');
@@ -52,7 +50,7 @@ export default function ExplanationDialog({ open, nodes, edges, language, onClos
       </div>
       <div className="rounded-3xl bg-slate-950 p-5 text-white">
         <h3 className="text-lg font-black">{t('agent.askTitle')}</h3><p className="mt-1 text-xs leading-5 text-slate-400">{t('agent.privacy')}</p>
-        <details className="mt-4 rounded-2xl bg-white/5 p-3"><summary className="cursor-pointer text-sm font-bold">{t('agent.apiSettings')}</summary><div className="mt-3 space-y-2"><input value={endpoint} onChange={(event) => setEndpoint(event.target.value)} placeholder={t('agent.endpoint')} className="w-full rounded-xl border border-white/10 bg-white/10 p-2 text-sm outline-none" /><input value={model} onChange={(event) => setModel(event.target.value)} placeholder={t('agent.model')} className="w-full rounded-xl border border-white/10 bg-white/10 p-2 text-sm outline-none" /><input type="password" value={apiKey} onChange={(event) => setApiKey(event.target.value)} placeholder={t('agent.apiKey')} className="w-full rounded-xl border border-white/10 bg-white/10 p-2 text-sm outline-none" /></div></details>
+        <div className="mt-4 flex items-center justify-between gap-2 rounded-2xl bg-white/5 p-3"><span className="text-xs font-bold text-slate-300">{isConfigured ? t('ai.statusConfigured') : t('ai.statusLocalFallback')}</span><button onClick={openSettings} className="rounded-xl bg-white/10 px-3 py-2 text-xs font-bold text-white hover:bg-white/20">{t('ai.configure')}</button></div>
         {history.length > 0 && <div className="mt-4 max-h-64 space-y-2 overflow-auto">{history.map((message, index) => <div key={index} className={`whitespace-pre-wrap rounded-2xl p-3 text-sm leading-6 ${message.role === 'user' ? 'ml-8 bg-blue-500 text-white' : 'mr-8 bg-white text-slate-800'}`}>{message.content}</div>)}</div>}
         <textarea value={question} onChange={(event) => setQuestion(event.target.value)} placeholder={t('agent.questionPlaceholder')} className="mt-4 min-h-28 w-full rounded-2xl border border-white/10 bg-white/10 p-3 text-sm outline-none" />
         <button disabled={loading || !question.trim()} onClick={ask} className="mt-3 w-full rounded-2xl bg-blue-500 px-4 py-3 font-bold disabled:opacity-40">{loading ? t('agent.thinking') : t('agent.ask')}</button>

@@ -34,7 +34,9 @@ import {
   updateAgentNode,
   validateAgentDataset,
 } from '../src/core/canvasAgent.js';
-import { analyzeProject } from '../src/core/explanation.js';
+import { analyzeProject, askExplanationAgent } from '../src/core/explanation.js';
+import { changeAiProtocol, endpointSafety } from '../src/core/ai/aiSettings.js';
+import { createProviderGateway, listProviderProtocols } from '../src/core/ai/providerRegistry.js';
 import { safeProjectFilename } from '../src/core/localProjects.js';
 import {
   compileLossExpression,
@@ -3049,6 +3051,35 @@ assert.throws(
       const interpretedPlan = planTeachingGoal({ goal: interpreted.goal, context: boundedAgent.inspectContext() });
       assert.equal(interpretedPlan.goal.control, 'learningRate', 'existing Planner remains the goal authority');
 
+      for (const protocol of listProviderProtocols()) {
+        let requestedUrl = '';
+        let requestedOptions;
+        const protocolGateway = createProviderGateway({ fetchImpl: async (url, options) => {
+          requestedUrl = url;
+          requestedOptions = options;
+          if (protocol.id === 'openai-compatible') return { ok: true, json: async () => ({ choices: [{ message: { content: 'openai text' } }] }) };
+          if (protocol.id === 'anthropic-compatible') return { ok: true, json: async () => ({ content: [{ type: 'text', text: 'anthropic text' }] }) };
+          return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'gemini text' }] } }] }) };
+        } });
+        const adapterResult = await protocolGateway.complete({
+          config: { protocol: protocol.id, endpoint: `https://custom.example/${protocol.id}`, model: 'test-model', apiKey: 'secret-key', displayName: 'Test provider' },
+          system: 'system', messages: [{ role: 'user', content: 'hello' }], responseMode: 'text',
+        });
+        assert.equal(requestedUrl, `https://custom.example/${protocol.id}`, `${protocol.id} honors a custom endpoint`);
+        assert.ok(!String(requestedOptions.body).includes('secret-key'), `${protocol.id} never puts the key in the request body`);
+        assert.deepEqual({ text: adapterResult.text, provider: adapterResult.provider, model: adapterResult.model }, { text: `${protocol.id === 'openai-compatible' ? 'openai' : protocol.id === 'anthropic-compatible' ? 'anthropic' : 'gemini'} text`, provider: 'Test provider', model: 'test-model' }, `${protocol.id} normalizes the gateway result`);
+      }
+      assert.equal(changeAiProtocol({ protocol: 'openai-compatible', apiKey: 'old-key', model: 'old' }, 'gemini-compatible').apiKey, '', 'changing protocol clears the previous key');
+      assert.equal(endpointSafety('http://localhost:8787/v1').safe, true, 'local HTTP endpoints are explicitly allowed');
+      assert.equal(endpointSafety('http://example.com/v1').safe, false, 'remote HTTP endpoints require HTTPS');
+      const explanation = await askExplanationAgent({
+        analysis: { nodeCount: 1, edgeCount: 0, missingInputs: [], stages: {}, steps: [], edges: [] },
+        question: 'What is this?', language: 'en',
+        config: { protocol: 'openai-compatible', model: 'test-model', apiKey: 'secret-key' },
+        gateway: createProviderGateway({ fetchImpl: async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: 'shared explanation' } }] }) }) }),
+      });
+      assert.equal(explanation, 'shared explanation', 'Explanation consumes the shared provider gateway');
+
       const contextFor = async (playgroundId) => {
         const hostForContext = createPlaygroundHost({ getDataset: () => null });
         const agentForContext = createPlaygroundAgentApi(hostForContext);
@@ -3116,9 +3147,18 @@ assert.throws(
 
       const panelSource = readFileSync(new URL('../src/components/playground/PlaygroundAgentPanel.jsx', import.meta.url), 'utf8');
       const providerSource = readFileSync(new URL('../src/core/playground/agent/llmGoalInterpreter.js', import.meta.url), 'utf8');
+      const explanationSource = readFileSync(new URL('../src/core/explanation.js', import.meta.url), 'utf8');
+      const gatewaySource = readFileSync(new URL('../src/core/ai/providerRegistry.js', import.meta.url), 'utf8');
+      const settingsSource = readFileSync(new URL('../src/components/ai/AiProviderContext.jsx', import.meta.url), 'utf8');
       const mainSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
       assert.ok(!/localStorage|sessionStorage|indexedDB|URLSearchParams|location\.search/i.test(panelSource), 'Agent panel never persists the API key');
       assert.ok(!/workspaceStateRef|projectFromWorkspace|localStorage|sessionStorage|indexedDB/i.test(providerSource), 'provider boundary cannot enter project persistence');
+      assert.ok(!/fetch\(|Authorization|x-api-key/i.test(explanationSource), 'Explanation feature does not own provider transport');
+      assert.ok(gatewaySource.includes('openai-compatible') && gatewaySource.includes('anthropic-compatible') && gatewaySource.includes('gemini-compatible'), 'gateway registry covers all supported protocols');
+      assert.ok(!/LLM_PROVIDERS|providerAdapters|KNN|Linear Regression|MLP/i.test(panelSource), 'Agent panel has no provider or model-specific branches');
+      assert.ok(!/aiConfig|setAiConfig|apiKey|endpoint/i.test(panelSource), 'Agent panel does not duplicate provider settings');
+      assert.ok(panelSource.includes('useAiProvider') && explanationSource.includes('gateway'), 'Agent and Explanation use the shared provider boundary');
+      assert.ok(!/localStorage|sessionStorage|indexedDB|workspaceStateRef|projectFromWorkspace/i.test(settingsSource), 'AI settings remain volatile and outside project persistence');
       assert.ok(!/apiKey/.test(mainSource), 'workspace state and project serialization do not know the API key');
       assert.ok(mainSource.includes('deleteKeyCode={null}') && mainSource.includes('isEditableCanvasTarget'), 'React Flow keyboard deletion is routed through the guarded UI handler');
     }
