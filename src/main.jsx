@@ -45,6 +45,8 @@ import ExamplesDialog from './components/ExamplesDialog';
 import { resolveLanguagePreference } from './core/languagePolicy.js';
 import PlaygroundDialog from './components/playgrounds/PlaygroundDialog';
 import VisualGlyph from './components/VisualGlyph';
+import AiSettingsDialog from './components/AiSettingsDialog.jsx';
+import { AiProvider, useAiProvider } from './components/ai/AiProviderContext.jsx';
 
 const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
 const ExplanationDialog = lazy(() => import('./components/ExplanationDialog'));
@@ -462,6 +464,7 @@ const isEditableCanvasTarget = (target) => {
 };
 function Workspace() {
   const { primary, secondary, setLanguages, t } = useVividTranslation();
+  const { openSettings } = useAiProvider();
   const initialGraph = useMemo(() => makeDefaultGraph(), []);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialGraph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialGraph.edges);
@@ -1378,6 +1381,7 @@ function Workspace() {
     <header className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
       <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><label className="hidden min-w-0 md:block"><span className="sr-only">{t('project.name')}</span><input value={projectName} onChange={(event) => setProjectName(event.target.value)} className="w-44 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 lg:w-56" /><span className="mt-0.5 block text-[10px] text-slate-400">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span></label></div>
       <nav className="flex items-center gap-1.5 overflow-x-auto text-sm">
+        <button className="rounded-xl bg-indigo-100 px-3 py-2 font-bold text-indigo-700" onClick={openSettings}>⚙<span className="hidden xl:inline">{t('nav.aiSettings')}</span></button>
         <label className="flex items-center rounded-xl bg-slate-100 px-2 py-2">
           <span className="sr-only">{t('nav.playground')}</span>
           <select aria-label={t('nav.playground')} value="" onChange={(event) => {
@@ -1441,10 +1445,11 @@ function Workspace() {
     <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
     <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project, { languagePolicy: 'preserve-current' }); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
+    <AiSettingsDialog t={t} />
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => { setPlaygroundId(id); setPlaygroundOpen(true); }} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} host={playgroundHostRef.current} agent={playgroundAgentRef.current} onClose={() => setPlaygroundOpen(false)} t={t} />
   </div>;
 }
 
-createRoot(document.getElementById('root')).render(<LanguageProvider><Workspace /></LanguageProvider>);
+createRoot(document.getElementById('root')).render(<LanguageProvider><AiProvider><Workspace /></AiProvider></LanguageProvider>);
 

@@ -1,5 +1,6 @@
-import { useRef, useState } from 'react';
-import { createLlmGoalInterpreter, getAgentExamples, LLM_PROVIDERS } from '../../core/playgroundAgent.js';
+import { useMemo, useRef, useState } from 'react';
+import { createLlmGoalInterpreter, getAgentExamples } from '../../core/playgroundAgent.js';
+import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import {
   compositionPreview,
   importedPreview,
@@ -30,6 +31,7 @@ function fidelityGroup(requirement) {
 }
 
 export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
+  const { config, gateway, isConfigured, openSettings, clearKey } = useAiProvider();
   const [goal, setGoal] = useState('');
   const [preview, setPreview] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -41,15 +43,12 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
   const [rightValue, setRightValue] = useState('');
   const [aiOpen, setAiOpen] = useState(false);
   const [aiMode, setAiMode] = useState('local');
-  const [aiConfig, setAiConfig] = useState({ providerId: 'openai-compatible', apiKey: '', model: 'gpt-4o-mini', endpoint: '' });
   const [aiStatus, setAiStatus] = useState('local');
   const [aiError, setAiError] = useState(null);
   const fileRef = useRef(null);
-  const interpreterRef = useRef(null);
-  if (!interpreterRef.current) interpreterRef.current = createLlmGoalInterpreter();
+  const interpreter = useMemo(() => createLlmGoalInterpreter({ gateway }), [gateway]);
 
   const examples = getAgentExamples(snapshot?.playgroundId);
-  const selectedProvider = LLM_PROVIDERS.find((provider) => provider.id === aiConfig.providerId) ?? LLM_PROVIDERS[0];
 
   const generate = async () => {
     if (!goal.trim() || busy) return;
@@ -58,13 +57,10 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     try {
       let plan;
       if (aiMode === 'ai') {
-        const interpreted = await interpreterRef.current.interpret({
+        const interpreted = await interpreter.interpret({
           request: goal,
           context: agent.inspectContext(),
-          providerId: aiConfig.providerId,
-          apiKey: aiConfig.apiKey,
-          model: aiConfig.model,
-          endpoint: aiConfig.endpoint,
+          config,
         });
         plan = await agent.plan(interpreted.goal);
         setAiStatus('ai');
@@ -198,13 +194,6 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     setAiStatus('local');
     setAiError(null);
   };
-  const configureProvider = (providerId) => {
-    const provider = LLM_PROVIDERS.find((item) => item.id === providerId) ?? LLM_PROVIDERS[0];
-    setAiConfig((current) => ({ ...current, providerId, model: provider.defaultModel, endpoint: '' }));
-    setAiMode('local');
-    setAiStatus('local');
-  };
-
   return <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
     <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs font-black uppercase tracking-wider text-violet-600">{t('playground.agent.ask')}</span>
@@ -235,27 +224,17 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
       {aiOpen && <div className="border-t border-slate-100 p-3">
         <p className="text-xs leading-5 text-amber-800">{t('playground.agent.aiWarning')}</p>
         <p className="mt-2 text-[11px] leading-5 text-slate-500">{t('playground.agent.aiDisclosure')}</p>
-        <div className="mt-3 grid gap-2 sm:grid-cols-2">
-          <label className="text-xs font-bold text-slate-600">{t('playground.agent.provider')}
-            <select value={aiConfig.providerId} onChange={(event) => configureProvider(event.target.value)} className="mt-1 w-full rounded-lg border border-slate-200 bg-white px-2 py-2 text-xs">
-              {LLM_PROVIDERS.map((provider) => <option key={provider.id} value={provider.id}>{t(provider.labelKey)}</option>)}
-            </select>
-          </label>
-          <label className="text-xs font-bold text-slate-600">{t('playground.agent.model')}
-            <input value={aiConfig.model} onChange={(event) => setAiConfig((current) => ({ ...current, model: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-xs" />
-          </label>
-          <label className="text-xs font-bold text-slate-600 sm:col-span-2">{t('playground.agent.apiKey')}
-            <input type="password" autoComplete="off" value={aiConfig.apiKey} onChange={(event) => { setAiConfig((current) => ({ ...current, apiKey: event.target.value })); setAiError(null); }} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 font-mono text-xs" />
-          </label>
-          {aiConfig.providerId === 'openai-compatible' && <label className="text-xs font-bold text-slate-600 sm:col-span-2">{t('playground.agent.endpoint')}
-            <input value={aiConfig.endpoint} placeholder={t('playground.agent.endpointPlaceholder')} onChange={(event) => setAiConfig((current) => ({ ...current, endpoint: event.target.value }))} className="mt-1 w-full rounded-lg border border-slate-200 px-2 py-2 text-xs" />
-          </label>}
+        <div className="mt-3 rounded-xl bg-slate-50 p-3 text-xs leading-5 text-slate-600">
+          <p className="font-bold">{isConfigured ? t('ai.statusConfigured') : t('ai.statusLocalFallback')}</p>
+          <p className="mt-1">{t('ai.memoryBoundary')}</p>
+          {config?.displayName && <p className="mt-1">{config.displayName} · {config.model}</p>}
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-2">
-          <button disabled={!aiConfig.apiKey.trim() || !aiConfig.model.trim()} onClick={() => { setAiMode('ai'); setAiStatus('ai'); setAiError(null); }} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">{t('playground.agent.useAi')}</button>
-          <button onClick={() => { setAiConfig((current) => ({ ...current, apiKey: '' })); useLocalParser(); }} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.agent.clearKey')}</button>
+          <button disabled={!isConfigured} onClick={() => { setAiMode('ai'); setAiStatus('ai'); setAiError(null); }} className="rounded-lg bg-violet-600 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">{t('playground.agent.useAi')}</button>
+          <button onClick={() => { clearKey(); useLocalParser(); }} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('ai.clearKey')}</button>
+          <button onClick={openSettings} className="rounded-lg bg-violet-100 px-3 py-2 text-xs font-bold text-violet-700">{t('ai.configure')}</button>
           <button onClick={useLocalParser} className="rounded-lg bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.agent.useLocal')}</button>
-          <span className="text-[11px] font-bold text-slate-500">{t('playground.agent.providerStatus', { provider: t(selectedProvider.labelKey), status: aiStatus === 'ai' ? t('playground.agent.aiMode') : t('playground.agent.localMode') })}</span>
+          <span className="text-[11px] font-bold text-slate-500">{t('playground.agent.providerStatus', { provider: config?.displayName || config?.protocol || t('ai.notConfigured'), status: aiStatus === 'ai' ? t('playground.agent.aiMode') : t('playground.agent.localMode') })}</span>
         </div>
         {aiError && <p className="mt-2 rounded-lg bg-red-50 p-2 text-xs font-bold text-red-700">{aiError}</p>}
       </div>}

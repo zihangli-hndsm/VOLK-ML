@@ -1,4 +1,5 @@
 import { architectureLayout, stageForManifest } from './visualLanguage.js';
+import { createProviderGateway } from './ai/providerRegistry.js';
 
 export const EXPLANATION_SKILLS = Object.freeze([
   'trace-data-flow',
@@ -62,28 +63,16 @@ export function buildAgentPrompt(analysis, language = 'en') {
 export async function askExplanationAgent({
   analysis,
   question,
-  endpoint,
-  apiKey,
-  model,
   language,
   history = [],
+  config,
+  gateway = createProviderGateway(),
 }) {
-  const response = await fetch(endpoint, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model,
-      messages: [
-        { role: 'system', content: buildAgentPrompt(analysis, language) },
-        ...history,
-        { role: 'user', content: question },
-      ],
-    }),
+  const response = await gateway.complete({
+    config,
+    system: buildAgentPrompt(analysis, language),
+    messages: [...history, { role: 'user', content: question }],
+    responseMode: 'text',
   });
-  if (!response.ok) throw new Error(`HTTP ${response.status}`);
-  const payload = await response.json();
-  return payload.choices?.[0]?.message?.content ?? payload.output_text ?? '';
+  return response.text;
 }
