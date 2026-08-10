@@ -1,6 +1,3 @@
-Exit code: 0
-Wall time: 0.5 seconds
-Output:
 export function createDeletionRequest({ nodes = [], edges = [], nodeIds = [], edgeIds = [] } = {}) {
   const nodeSet = new Set(nodeIds.filter((id) => nodes.some((node) => node.id === id)));
   const connectedEdgeIds = edges
