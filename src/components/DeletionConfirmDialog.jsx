@@ -1,6 +1,3 @@
-Exit code: 0
-Wall time: 0.5 seconds
-Output:
 import { useEffect, useRef } from 'react';
 
 export default function DeletionConfirmDialog({ summary, onCancel, onConfirm, t }) {

@@ -1,6 +1,3 @@
-Exit code: 0
-Wall time: 0.5 seconds
-Output:
 import { planTeachingGoal } from './teachingPlanner.js';
 
 const DEFAULT_ENDPOINTS = Object.freeze({
