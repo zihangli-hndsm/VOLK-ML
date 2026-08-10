@@ -108,7 +108,7 @@ TensorFlow generation creates:
 - `keras.Model`;
 - `model.compile`.
 
-A connected Supervised Trainer additionally generates deterministic train/test binding from `load_tabular_data()`, batch and epoch configuration, and either a PyTorch optimization loop or TensorFlow `model.fit`. TensorFlow exports apply the same seeded Fisher鈥揧ates index shuffle used by the browser split before slicing, rather than assigning leading rows to training. The data loader remains an explicit replacement point because exported code does not embed project rows.
+A connected Supervised Trainer additionally generates deterministic train/test binding from `load_tabular_data()`, batch and epoch configuration, and either a PyTorch optimization loop or TensorFlow `model.fit`. TensorFlow exports apply the same seeded Fisher–Yates index shuffle used by the browser split before slicing, rather than assigning leading rows to training. The data loader remains an explicit replacement point because exported code does not embed project rows.
 
 Custom Loss source is never interpolated directly. `src/core/lossExpression.js` tokenizes and parses the framework-neutral expression before mapping each allowed tensor operation to `torch` or `tf`. A valid expression must reference `prediction`, follows standard exponentiation precedence (`-x ** 2` means `-(x ** 2)`), and receives a final mean reduction before backward propagation.
 
@@ -124,14 +124,14 @@ Tensor input shape strings are converted to Python tuples. Node IDs are sanitize
 
 Binary cross entropy has an output-sensitive rule:
 
-- a `Sigmoid 鈫?Model Output` path emits `nn.BCELoss()` and `BinaryCrossentropy(from_logits=False)`;
+- a `Sigmoid → Model Output` path emits `nn.BCELoss()` and `BinaryCrossentropy(from_logits=False)`;
 - a logits output emits `nn.BCEWithLogitsLoss()` and `BinaryCrossentropy(from_logits=True)`.
 
 Keep loss/activation combinations semantically aligned in both backends.
 
 Multiclass cross entropy has the same output-sensitive rule:
 
-- a final `Softmax 鈫?Model Output` path emits probability-aware cross entropy (`log` probabilities plus `NLLLoss` in PyTorch and `from_logits=False` in Keras);
+- a final `Softmax → Model Output` path emits probability-aware cross entropy (`log` probabilities plus `NLLLoss` in PyTorch and `from_logits=False` in Keras);
 - a logits output emits `CrossEntropyLoss()` and `SparseCategoricalCrossentropy(from_logits=True)`.
 
 ## Tabular compatibility path
