@@ -230,7 +230,7 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     <div className="mt-3 rounded-xl border border-slate-200 bg-white">
       <button onClick={() => setAiOpen((value) => !value)} aria-expanded={aiOpen} className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
         <span className="text-xs font-black uppercase tracking-wider text-slate-700">{t('playground.agent.aiTitle')}</span>
-        <span className="text-[10px] font-bold text-slate-500">{aiStatus === 'ai' ? t('playground.agent.aiMode') : t('playground.agent.localMode')} 路 {aiOpen ? '鈭? : '+'}</span>
+        <span className="text-[10px] font-bold text-slate-500">{aiStatus === 'ai' ? t('playground.agent.aiMode') : t('playground.agent.localMode')} / {aiOpen ? '-' : '+'}</span>
       </button>
       {aiOpen && <div className="border-t border-slate-100 p-3">
         <p className="text-xs leading-5 text-amber-800">{t('playground.agent.aiWarning')}</p>
