@@ -3014,9 +3014,6 @@ assert.throws(
       }
     }
 
-Exit code: 0
-Wall time: 0.5 seconds
-Output:
     // PR H: temporary AI goal interpretation, declarative examples and
     // human deletion confirmation contracts.
     {
