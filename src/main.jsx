@@ -36,9 +36,11 @@ import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
 import { listPlaygrounds } from './core/playgrounds/registry.js';
+import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
+import DeletionConfirmDialog from './components/DeletionConfirmDialog.jsx';
 import ExamplesDialog from './components/ExamplesDialog';
 import { resolveLanguagePreference } from './core/languagePolicy.js';
 import PlaygroundDialog from './components/playgrounds/PlaygroundDialog';
@@ -454,6 +456,10 @@ const LEFT_PANEL_MIN = 220;
 const LEFT_PANEL_MAX = 520;
 const RIGHT_PANEL_MIN = 260;
 const RIGHT_PANEL_MAX = 640;
+const isEditableCanvasTarget = (target) => {
+  const element = typeof Element !== 'undefined' && target instanceof Element ? target : null;
+  return Boolean(element?.closest('input, textarea, select, [contenteditable="true"]'));
+};
 function Workspace() {
   const { primary, secondary, setLanguages, t } = useVividTranslation();
   const initialGraph = useMemo(() => makeDefaultGraph(), []);
@@ -487,6 +493,7 @@ function Workspace() {
   const [model, setModel] = useState(null);
   const [runtime, setRuntime] = useState(idleRuntimeState);
   const [pendingConnection, setPendingConnection] = useState(null);
+  const [pendingDeletion, setPendingDeletion] = useState(null);
   const [notice, setNotice] = useState('');
   const instanceIdRef = useRef(`workspace-${crypto.randomUUID()}`);
   const agentSubscribersRef = useRef(new Set());
@@ -697,32 +704,45 @@ function Workspace() {
     }).valid;
   }, [pendingConnection, assess]);
   const handleEdgesChange = useCallback((changes) => {
-    if (changes.some((change) => change.type === 'remove' || change.type === 'add')) setModel(null);
-    onEdgesChange(changes);
-  }, [onEdgesChange]);
+    const removed = changes.filter((change) => change.type === 'remove').map((change) => change.id);
+    if (removed.length) setPendingDeletion(createDeletionRequest({ nodes, edges, edgeIds: removed }));
+    const safeChanges = changes.filter((change) => change.type !== 'remove');
+    if (safeChanges.some((change) => change.type === 'add')) setModel(null);
+    if (safeChanges.length) onEdgesChange(safeChanges);
+  }, [edges, nodes, onEdgesChange]);
   const handleNodesChange = useCallback((changes) => {
-    const removed = new Set(changes.filter((change) => change.type === 'remove').map((change) => change.id));
-    if (removed.size) {
-      setEdges((current) => current.filter((edge) => !removed.has(edge.source) && !removed.has(edge.target)));
-      setSelectedId((current) => removed.has(current) ? null : current);
-      setPendingConnection((current) => current && removed.has(current.nodeId) ? null : current);
-    }
-    if (removed.size || changes.some((change) => change.type === 'add')) setModel(null);
-    onNodesChange(changes);
-  }, [onNodesChange, setEdges]);
-  const deleteNode = useCallback((nodeId) => {
-    setNodes((current) => current.filter((node) => node.id !== nodeId));
-    setEdges((current) => current.filter((edge) => edge.source !== nodeId && edge.target !== nodeId));
-    setSelectedId((current) => current === nodeId ? null : current);
-    setPendingConnection((current) => current?.nodeId === nodeId ? null : current);
+    const removed = changes.filter((change) => change.type === 'remove').map((change) => change.id);
+    if (removed.length) setPendingDeletion(createDeletionRequest({ nodes, edges, nodeIds: removed }));
+    const safeChanges = changes.filter((change) => change.type !== 'remove');
+    if (safeChanges.some((change) => change.type === 'add')) setModel(null);
+    if (safeChanges.length) onNodesChange(safeChanges);
+  }, [edges, nodes, onNodesChange]);
+  const requestDeletion = useCallback(({ nodeIds = [], edgeIds = [] } = {}) => {
+    const request = createDeletionRequest({ nodes, edges, nodeIds, edgeIds });
+    if (request.nodeIds.length || request.edgeIds.length) setPendingDeletion(request);
+  }, [edges, nodes]);
+  const deleteNode = useCallback((nodeId) => requestDeletion({ nodeIds: [nodeId] }), [requestDeletion]);
+  const deleteEdge = useCallback((edgeId) => requestDeletion({ edgeIds: [edgeId] }), [requestDeletion]);
+  const confirmDeletion = useCallback(() => {
+    if (!pendingDeletion) return;
+    const nodeIds = new Set(pendingDeletion.nodeIds);
+    const edgeIds = new Set(pendingDeletion.edgeIds);
+    setNodes((current) => current.filter((node) => !nodeIds.has(node.id)));
+    setEdges((current) => current.filter((edge) => !edgeIds.has(edge.id)));
+    setSelectedId((current) => nodeIds.has(current) ? null : current);
+    setPendingConnection((current) => current && nodeIds.has(current.nodeId) ? null : current);
     setModel(null);
+    setPendingDeletion(null);
     setNotice(t('component.deleted'));
-  }, [setNodes, setEdges, t]);
-  const deleteEdge = useCallback((edgeId) => {
-    setEdges((current) => current.filter((edge) => edge.id !== edgeId));
-    setModel(null);
-    setNotice(t('connection.deleted'));
-  }, [setEdges, t]);
+  }, [pendingDeletion, setEdges, setNodes, t]);
+  const handleCanvasKeyDown = useCallback((event) => {
+    if (!['Delete', 'Backspace'].includes(event.key) || isEditableCanvasTarget(event.target)) return;
+    const nodeIds = nodes.filter((node) => node.selected).map((node) => node.id);
+    const edgeIds = edges.filter((edge) => edge.selected).map((edge) => edge.id);
+    if (!nodeIds.length && !edgeIds.length) return;
+    event.preventDefault();
+    requestDeletion({ nodeIds, edgeIds });
+  }, [edges, nodes, requestDeletion]);
   const handleCanvasNodeClick = useCallback((event, node) => {
     const multi = multiSelectMode || event.shiftKey || event.metaKey || event.ctrlKey;
     const selectedIds = new Set(nodes.filter((item) => item.selected).map((item) => item.id));
@@ -1399,9 +1419,9 @@ function Workspace() {
         <div className="absolute bottom-8 right-0 top-8 hidden w-2 cursor-col-resize touch-none lg:block" onPointerDown={(event) => startResize('left', event)} />
       </motion.aside>
 
-      <section ref={flowWrapperRef} className="relative col-start-2 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-xl">
+      <section ref={flowWrapperRef} tabIndex={0} onKeyDown={handleCanvasKeyDown} className="relative col-start-2 overflow-hidden rounded-3xl border border-white/80 bg-white shadow-xl outline-none">
         {pendingConnection && <div className="absolute left-1/2 top-3 z-20 flex max-w-[calc(100%_-_24px)] -translate-x-1/2 items-center gap-2 rounded-full bg-slate-950 px-4 py-2 text-xs font-bold text-white shadow-xl"><span className="truncate">{pendingConnection.port.name} · {readablePortType(pendingConnection.type, t)} → {t('connection.tapMatching')}</span><button aria-label={t('common.close')} className="nodrag rounded-full bg-white/20 px-2 py-1" onClick={() => setPendingConnection(null)}>✕</button></div>}
-        {viewMode === 'canvas' ? <ConnectionContext.Provider value={{ pendingConnection, onPortTap, onDeleteNode: deleteNode, onDeleteEdge: deleteEdge, onOpenTutorial: setTutorialManifest, canConnectToInput }}><ReactFlow nodes={nodes} edges={edges} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onInit={(instance) => { reactFlowInstanceRef.current = instance; fitCanvasWithResettle(); }} onNodeClick={handleCanvasNodeClick} onPaneClick={handleCanvasPaneClick} nodeTypes={{ pipelineNode: PipelineNode }} edgeTypes={edgeTypes}><Background /><MiniMap pannable zoomable nodeColor={(node) => stageStyles[stageForManifest(node.data.manifest)].hex} /><Controls /></ReactFlow></ConnectionContext.Provider> : <ArchitectureView nodes={nodes} edges={edges} onSelect={setSelectedId} t={t} />}
+        {viewMode === 'canvas' ? <ConnectionContext.Provider value={{ pendingConnection, onPortTap, onDeleteNode: deleteNode, onDeleteEdge: deleteEdge, onOpenTutorial: setTutorialManifest, canConnectToInput }}><ReactFlow nodes={nodes} edges={edges} deleteKeyCode={null} onNodesChange={handleNodesChange} onEdgesChange={handleEdgesChange} onConnect={onConnect} isValidConnection={isValidConnection} onInit={(instance) => { reactFlowInstanceRef.current = instance; fitCanvasWithResettle(); }} onNodeClick={handleCanvasNodeClick} onPaneClick={handleCanvasPaneClick} nodeTypes={{ pipelineNode: PipelineNode }} edgeTypes={edgeTypes}><Background /><MiniMap pannable zoomable nodeColor={(node) => stageStyles[stageForManifest(node.data.manifest)].hex} /><Controls /></ReactFlow></ConnectionContext.Provider> : <ArchitectureView nodes={nodes} edges={edges} onSelect={setSelectedId} t={t} />}
       </section>
 
       <motion.aside initial={false} animate={{ x: rightOpen ? 0 : '110%' }} style={{ width: `min(${rightWidth}px, calc(100vw - 24px))` }} className={`${asideBase} right-3 lg:transform-none ${rightOpen ? 'lg:block' : 'lg:hidden'}`}>
@@ -1414,6 +1434,7 @@ function Workspace() {
     </main>
     {notice && <button onClick={() => setNotice('')} className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice} · ✕</button>}
     {restoreCandidate && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/60 p-4"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 className="text-xl font-black">{t('project.restoreTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('project.restoreDescription')}</p><p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">{restoreCandidate.name || t('project.sampleName')}</p><div className="mt-5 grid grid-cols-2 gap-2"><button onClick={() => { applyProject(restoreCandidate); setRestoreCandidate(null); setLocalReady(true); }} className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white">{t('project.restore')}</button><button onClick={() => { platformServices.projects.remove().finally(() => { setRestoreCandidate(null); setLocalReady(true); }); }} className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700">{t('project.startFresh')}</button></div></section></div>}
+    {pendingDeletion && <DeletionConfirmDialog summary={deletionSummary({ nodes, edges, pendingDeletion })} onCancel={() => setPendingDeletion(null)} onConfirm={confirmDeletion} t={t} />}
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
     <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} runtime={runtime} onRun={runBrowserGraph} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
