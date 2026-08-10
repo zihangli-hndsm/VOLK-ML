@@ -677,9 +677,6 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
 - Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
 - The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.
 
-Exit code: 0
-Wall time: 0.5 seconds
-Output:
 ### Experimental browser AI goal interpretation
 
 The Playground Agent keeps its deterministic path authoritative: user language is optionally interpreted by a replaceable provider adapter into a typed `TeachingGoal`, then the existing schema-grounded Planner, TeachingPlan, Composer, validation, strict dry run, and Goal Fidelity pipeline produces the preview. The LLM never generates a Visualization Script or mutates the active runtime. The current browser provider path is for private experimentation only: credentials live only in volatile page memory and are sent directly to the selected provider when a request is made. VOLK-ML does not intentionally persist them to browser storage, project files, exports, URLs, or application logs; production deployment will move credential handling behind a server-side proxy. A single bounded repair call is allowed for invalid typed output, and the local lexical parser remains available.
