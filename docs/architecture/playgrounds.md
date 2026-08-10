@@ -676,3 +676,39 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
 - Editing training points is a what-if operation: the raw train set is refitted with `refitKnnFromSplit()`, normalization and normalized train samples are rebuilt, and the unchanged test set is re-evaluated. Test points are not editable.
 - Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
 - The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.
+
+Exit code: 0
+Wall time: 0.5 seconds
+Output:
+### Experimental browser AI goal interpretation
+
+The Playground Agent keeps its deterministic path authoritative: user language is optionally interpreted by a replaceable provider adapter into a typed `TeachingGoal`, then the existing schema-grounded Planner, TeachingPlan, Composer, validation, strict dry run, and Goal Fidelity pipeline produces the preview. The LLM never generates a Visualization Script or mutates the active runtime. The current browser provider path is for private experimentation only: credentials live only in volatile page memory and are sent directly to the selected provider when a request is made. VOLK-ML does not intentionally persist them to browser storage, project files, exports, URLs, or application logs; production deployment will move credential handling behind a server-side proxy. A single bounded repair call is allowed for invalid typed output, and the local lexical parser remains available.
+
+Agent examples are declarative metadata keyed by the playground descriptor, so KNN, Linear Regression, and MLP expose task-appropriate prompts without model-specific branches in the generic Agent panel.
+
+### Human deletion confirmation
+
+Canvas deletion from node/edge buttons and Delete/Backspace requests a centralized pending deletion model before graph state changes. React Flow's default delete key is disabled, editable fields are ignored, and the confirmation modal reports connected-edge consequences with i18n text. Programmatic Canvas Agent `removeNode()` / `disconnect()` operations remain immediate API calls and do not open the human confirmation modal.
+
+## Adding a third playground
+
+1. Create a model adapter in `src/core/playground/model/<name>Adapter.js` (initialize, applyModelAction, deriveScene, buildPrimitives) and register it in `modelRegistry.js`.
+2. Create a metadata descriptor in `src/core/playgrounds/<name>.js` (id, titleKey, controls, actions, scenarios, validateSource, `adapterId`) and register it in `src/core/playgrounds/registry.js`.
+3. Add a JSON preset in `src/core/playground/presets/` and register it in `visualization/presetRegistry.js`.
+4. Add primitive renderers in `src/components/playground/renderers/` and map them in `rendererRegistry.jsx`.
+5. Add localized keys in `src/locales/ui.js` and focused assertions in `scripts/check-core.mjs`.
+
+No changes to `TutorialDialog` or the unified stage are needed: the tutorial queries `playgroundsFor()` generically and the stage only consumes primitives.
+
+## Shared math
+
+- Linear regression math lives in `src/core/linearRegressionPlayground.js` (sampling, ranges, MSE, least squares, gradient) and `src/core/linearRegressionMath.js` (standardized z-score trainer). The browser runtime and the playground both train through `createLinearRegressionTrainer()` / `stepLinearRegressionTrainer()`, so their traces cannot drift apart. Training always happens in standardized feature/target space and parameters are converted back to raw coordinates for display; a fixed learning rate therefore cannot diverge on large-magnitude data.
+- KNN math lives in `src/core/knnMath.js` (normalization, distance, neighbor ranking, voting, prediction, `refitKnnFromSplit`, `computeTestAccuracy`, `buildProjectionVector`) and is shared verbatim with the browser runtime. The distance metric is squared Euclidean to preserve runtime ranking semantics; do not change it without updating both consumers and tests.
+
+## KNN playground semantics
+
+- On open, the KNN playground builds its fit through the same shared `fitKnn()` in `src/core/knnMath.js` that the browser runtime uses: stratified train/test split (`deterministicShuffle` + `stratifiedSplit`, default seed `DEFAULT_KNN_SEED = 2026`), normalization from the train set only, and `k` clamped to the training size. The split uses the session seed when one is provided, otherwise the shared default, so the same dataset/k/trainRatio produces identical train/test/normalization/accuracy in the runtime and the playground.
+- `trainRatio` comes from the source (`source.trainRatio`, default 0.8). `playgroundHost` records it for workspace datasets (`dataset.trainRatio ?? 0.8`) and teaching datasets (`teaching.trainRatio ?? 0.8`).
+- Editing training points is a what-if operation: the raw train set is refitted with `refitKnnFromSplit()`, normalization and normalized train samples are rebuilt, and the unchanged test set is re-evaluated. Test points are not editable.
+- Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
+- The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.
