@@ -99,3 +99,12 @@
   - the validation and acceptance evidence;
   - known limitations or follow-ups, if any.
 - Record the entry immediately after Acceptance passes. A cycle is not ready for a pull request until its changelog entry exists.
+
+## Encoding and connector transport
+
+- Repository text files are UTF-8. Preserve the original bytes when moving content between PowerShell, GitHub connectors, `gh`, and Git.
+- Never write command-result envelopes into source files. Strings such as `Exit code: 0`, `Wall time:`, and `Output:` are tool metadata, not repository content.
+- When a shell or connector may transcode non-ASCII text, use a byte-preserving transport such as base64, decode it, and validate the decoded text before publishing.
+- Before publishing changed text files, scan them for command-envelope markers, the Unicode replacement character, and common mojibake markers such as `鈥`, `鈫`, `鈭`, `鉁`, `鍒`, and `锛`.
+- After any UI or executable-source change, run `npm run build` and inspect the full changed file if esbuild reports an unterminated string. Run `git diff --check` before publishing.
+- Prefer ASCII punctuation in generated transport-sensitive JSX when equivalent localized text is not required; user-visible copy still belongs in `src/locales/ui.js`.
