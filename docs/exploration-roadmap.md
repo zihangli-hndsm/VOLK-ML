@@ -23,17 +23,19 @@ A canonical north-star request is:
 
 > "I want to see how linear regression behaves under different data distributions."
 
-A learner who has never read the internal documentation should be able to express that curiosity, create or modify data visually, compare controlled experiments, inspect what changed, and continue from the result without learning VOLK-ML's internal script/planner abstractions first.
+A learner who has never read the internal documentation should be able to create or modify data visually, preserve and compare experiments, inspect what changed, and continue from the result without first learning VOLK-ML's internal planner/script abstractions.
 
-This roadmap should guide future Codex work whenever a task touches interactive data worlds, playground exploration, experiment comparison, agent-guided exploration, or learning journeys.
+The Agent may accelerate this journey, but it must not be required for the core journey to work.
+
+This roadmap should guide future Codex work whenever a task touches interactive data worlds, playground exploration, experiment comparison, manual or guided exploration, agent-guided exploration, or learning journeys.
 
 ---
 
-## Product thesis
+# Product thesis
 
 VOLK-ML should combine three complementary surfaces.
 
-### 1. Video: ways of seeing
+## 1. Video: ways of seeing
 
 Videos provide compact intuitions and broad mental models rather than complete syllabus coverage.
 
@@ -47,7 +49,7 @@ Examples:
 
 A video should often end with an unresolved or partially resolved question that can be explored in VOLK-ML.
 
-### 2. VOLK-ML: worlds to explore
+## 2. VOLK-ML Lab: worlds to explore
 
 The platform provides manipulable environments where learners can change data, models, learning rules, and evaluation conditions and directly observe the consequences.
 
@@ -55,9 +57,11 @@ The learner should not need to start from an algorithm name. A valid entry point
 
 > "What pattern would a linear model see here?"
 
-### 3. Agent: an exploration companion
+The Lab must remain a complete product even when AI features are disabled, unavailable, unconfigured, or deliberately ignored by the learner.
 
-The Agent should primarily help transform curiosity into experiments. Its default behavior should be closer to a Socratic lab partner than an encyclopedia.
+## 3. Agent: an exploration companion
+
+The Agent helps transform vague curiosity into concrete, inspectable experiments. Its default behavior should be closer to a Socratic lab partner than an encyclopedia.
 
 Preferred interaction order:
 
@@ -65,7 +69,7 @@ Preferred interaction order:
 Observe
   -> ask or clarify
   -> propose an experiment
-  -> ask for a prediction
+  -> ask for a prediction when useful
   -> run or modify the world
   -> point to evidence
   -> explain only as needed
@@ -74,15 +78,83 @@ Observe
 
 The Agent may still explain concepts directly when requested, but explanation should not replace experimentation when the user's question is experimentally testable.
 
+The guiding principle is:
+
+> **The Agent should accelerate exploration, not make exploration possible.**
+
 ---
 
-## Product principles
+# Exploration modes
 
-### Exploration before instruction
+VOLK-ML should support three levels of guidance over the same underlying semantic system. These are not three separate products.
+
+```text
+                    ┌─ Free Explore
+                    │
+Video -> VOLK-ML Lab ┼─ Guided Explore
+                    │
+                    └─ Agent Explore
+```
+
+## Free Explore
+
+For learners who already know what they want to try.
+
+Primary surfaces:
+
+- 2D Data Workspace;
+- model controls;
+- Experiment Bar;
+- Duplicate;
+- Compare;
+- Repeat;
+- Undo/Reset;
+- metrics and visual evidence.
+
+The system should stay mostly quiet and let perception and manipulation drive the next action.
+
+## Guided Explore
+
+For learners who want to explore an idea but do not yet know how to turn it into an experiment.
+
+Guidance is deterministic and does not require an Agent or external AI provider.
+
+Possible guidance:
+
+- a starting World;
+- an open question;
+- a suggested manipulation;
+- Changed / Unchanged summaries;
+- Comparison Clarity;
+- factual Observation notices;
+- optional "things to try" cards;
+- reusable experiment recipes.
+
+Guided Explore must not become a locked step-by-step course. The learner may diverge immediately.
+
+## Agent Explore
+
+For learners who have a vague or natural-language question and want help translating it into experiments.
+
+The Agent adds:
+
+- natural-language interpretation;
+- dynamic experiment planning;
+- semantic World manipulation;
+- context-sensitive follow-up suggestions;
+- evidence-grounded explanation.
+
+Agent Explore should build on the same Worlds, Experiments, domain operations, comparison system, and evidence that Free and Guided Explore use.
+
+---
+
+# Product principles
+
+## Exploration before instruction
 
 Do not require a learner to complete a lesson before using the system. Concepts may be discovered through free exploration and revisited from multiple directions.
 
-### Questions before terminology
+## Questions before terminology
 
 Whenever practical, let the learner encounter a phenomenon before naming it.
 
@@ -92,7 +164,7 @@ For example:
 - Let one outlier pull a fitted line before introducing robustness.
 - Let a model fit training points and fail elsewhere before introducing overfitting or extrapolation.
 
-### Worlds and models are equally important
+## Worlds and models are equally important
 
 Current ML tools often make the model the first-class object. Exploration requires the data-generating world to be equally manipulable.
 
@@ -112,27 +184,76 @@ EVALUATION
 Where and how is the learned rule tested?
 ```
 
-### Controlled comparison is a core learning primitive
+## Human interaction and Agent interaction are different
+
+Humans naturally explore through a tight perceptual loop:
+
+```text
+perceive
+  -> manipulate
+  -> observe
+  -> manipulate again
+```
+
+Agents naturally work more declaratively:
+
+```text
+goal
+  -> plan
+  -> semantic operations
+  -> inspect result
+```
+
+Do not force humans to use planner-like abstractions merely because they are convenient for the Agent. Do not force the Agent to manipulate DOM/UI gestures merely because they are convenient for humans.
+
+Both interaction styles should share the same domain semantics underneath.
+
+## Manual parity for core exploration
+
+Every core experiment that the Agent can create should have a reasonable manual path through the product.
+
+Examples:
+
+- Agent can add outliers -> learner can add points or spray them.
+- Agent can create train/test shift -> learner can switch layers and move/edit the test World.
+- Agent can compare two distributions -> learner can Duplicate and Compare.
+- Agent can repeat an experiment -> learner can use Repeat.
+
+If an Agent capability has no practical manual path, treat that as a design warning. Bulk or convenience operations may remain easier through the Agent, but their resulting state must remain visible, editable, reproducible, and understandable without the Agent.
+
+## Controlled comparison is a core learning primitive
 
 A learner should be able to duplicate an experiment, change one factor, and see exactly what was held constant.
 
-### Important hidden mechanisms should become inspectable
+## Important hidden mechanisms should become inspectable
 
 Normalization, splitting, shuffling, initialization, augmentation, regularization, class weighting, and similar mechanisms should not silently invalidate a learner's interpretation of an experiment.
 
 They do not all need to be exposed as default controls, but important transformations should be inspectable and, when pedagogically safe, toggleable.
 
-### The same world should serve humans, videos, and agents
+## The same world should serve humans, videos, and agents
 
 Do not create separate fake teaching logic for screenshots or the Agent. Reuse the existing unified playground/runtime direction: the human UI, presentation/video scripts, and Canvas Agent should operate on the same semantic state and actions wherever possible.
 
-### Determinism matters
+## Determinism matters
 
-Exploration should support reproducible comparisons. Generated samples, Agent-created worlds, duplicate experiments, and teaching presets must use explicit seeds where randomness is involved.
+Exploration should support reproducible comparisons. Generated samples, Agent-created Worlds, duplicate experiments, repeated trials, and teaching presets must use explicit seed semantics where randomness is involved.
 
-### Honest semantics over impressive visuals
+## Honest semantics over impressive visuals
 
 Never imply that a hand-drawn finite sample is a probability distribution unless a separate generator has actually been defined or inferred. Never label an architecture sketch as a trained result. Never hide a meaningful approximation.
+
+## Factual guidance before causal claims
+
+The system may deterministically point out observable changes such as:
+
+> "Test error changed much more than training error."
+
+It should not automatically turn correlation into explanation:
+
+> "The distribution shift caused the error increase."
+
+Causal interpretation should be supported by controlled comparison or explicitly framed as a hypothesis to test.
 
 ---
 
@@ -142,7 +263,7 @@ Never imply that a hand-drawn finite sample is a probability distribution unless
 
 A `World` describes the environment that produces or contains observations used by an experiment.
 
-The first implementation should focus on small two-dimensional supervised-learning worlds because they are highly visual, cheap to run, and useful across regression, KNN, MLPs, classification, clustering, generalization, and distribution-shift examples.
+The first implementation should focus on small two-dimensional supervised-learning Worlds because they are highly visual, cheap to run, and useful across regression, KNN, MLPs, classification, clustering, generalization, and distribution-shift examples.
 
 A World may initially be one of two semantic modes.
 
@@ -203,12 +324,12 @@ World / Dataset
 Model
 Learning settings
 Evaluation settings
-Seed(s)
+Seed policy
 Result / metrics
 Relevant traces
 ```
 
-An experiment is not merely the current mutable project state. It should be possible to capture, duplicate, compare, and restore experimental states without manually reconstructing them.
+An Experiment is not merely the current mutable project state. It should be possible to capture, duplicate, compare, repeat, and restore experimental states without manually reconstructing them.
 
 ---
 
@@ -227,6 +348,189 @@ New question
 ```
 
 This should be lightweight and optional. It is intended to preserve reasoning, not turn the app into a notebook product.
+
+---
+
+# Human-first experiment interaction
+
+The product should provide a small, learnable experiment grammar that matches normal human behavior.
+
+A useful manual loop is:
+
+```text
+Make / Change
+  -> Duplicate
+  -> Change one branch
+  -> Compare
+  -> Repeat if needed
+  -> Undo / refine
+```
+
+The learner should not need to think in terms of snapshots, captures, branches, planners, or scripts even if those concepts exist internally.
+
+## Make / Change
+
+Directly manipulate the current World, model, learning settings, or evaluation conditions.
+
+Examples:
+
+- draw data;
+- move a cluster;
+- add an outlier;
+- change learning rate;
+- switch the active train/test layer.
+
+## Duplicate
+
+A first-class action for the thought:
+
+> "Keep this version. I want to try something else."
+
+Duplicate should preserve the full experimental state by default so the learner begins from a controlled baseline.
+
+## Compare
+
+Bring two experiments into a common view and make differences explicit.
+
+## Repeat
+
+Run the same experimental conditions again under an explicit randomness policy.
+
+Repeat is important because a single sample/run should not silently teach that one observed number is the underlying rule.
+
+## Undo / Reset
+
+Exploration depends on cheap reversible mistakes.
+
+Undo should follow **human action boundaries**, not implementation-level mutations. One brush stroke that creates 80 points should normally be one undoable action, not 80 separate steps. One Agent request that adds three outliers should also be one inspectable/reversible mutation when practical.
+
+---
+
+# Experiment Bar
+
+The **Experiment Bar** is a P0 human-facing design surface and should become the primary navigation model for active experimentation.
+
+Its purpose is to answer, at a glance:
+
+- Which experiment am I looking at?
+- What other experiment am I comparing against?
+- How do I preserve this state and try a variation?
+- What changed between the two?
+- Is comparison currently active?
+
+A conceptual first version:
+
+```text
+A: Original          B: Test shift
+
+[ A ] [ B ]   [+ Duplicate]   Compare: ON
+
+Changed from A:
+Test World
+```
+
+The exact visual design may evolve, but the human mental model should remain simple:
+
+> **Keep one version, copy it, change something, compare.**
+
+## Experiment Bar requirements
+
+- clearly show the active Experiment;
+- make Duplicate prominent;
+- allow quick switching between A/B or the small supported number of branches;
+- expose Compare without requiring a separate project/version workflow;
+- show a compact Changed summary when a comparison baseline exists;
+- preserve the distinction between an Experiment and a saved project;
+- remain usable without the Agent;
+- remain accessible by keyboard and touch;
+- avoid becoming a full Git-like history UI.
+
+## Initial scope
+
+The first version should optimize for two experiments rather than prematurely building an arbitrary experiment tree.
+
+A/B is enough to teach the core behavior:
+
+```text
+baseline
+  -> duplicate
+  -> modify B
+  -> compare A vs B
+```
+
+Multi-branch exploration can be added only after the A/B interaction is proven understandable.
+
+---
+
+# Changed / Unchanged and Comparison Clarity
+
+The system itself should make experimental structure visible, without requiring Agent reasoning.
+
+## Changed / Unchanged
+
+When B is duplicated from A, VOLK-ML should be able to summarize semantic differences.
+
+Example:
+
+```text
+Changed
+- Test distribution
+
+Held constant
+- Train data
+- Model
+- Learning rate
+- Training steps
+- Noise
+```
+
+If the learner later changes learning rate as well:
+
+```text
+Changed
+- Test distribution
+- Learning rate
+```
+
+This is not merely UI convenience. It teaches experimental control.
+
+## Comparison Clarity
+
+A lightweight deterministic indicator can communicate how isolated a comparison is.
+
+Example:
+
+```text
+Comparison clarity: High
+Only one experimental factor differs.
+```
+
+or:
+
+```text
+Comparison clarity: Mixed
+Three factors differ:
+- distribution
+- sample count
+- learning rate
+```
+
+Do not label a mixed experiment as "wrong". It may be a perfectly valid exploratory state. The system should only communicate that the observed difference cannot be cleanly attributed to one factor yet.
+
+## Semantic diff, not raw JSON diff
+
+Comparison must operate on domain meaning where possible.
+
+Useful categories include:
+
+- World/data;
+- train/test relationship;
+- model;
+- learning configuration;
+- evaluation configuration;
+- randomness policy.
+
+Do not expose internal field noise as the primary learner-facing diff.
 
 ---
 
@@ -311,7 +615,7 @@ Initial candidates:
 
 - spread / jitter;
 - generation density;
-- active class for classification worlds;
+- active class for classification Worlds;
 - active layer: train, test, or view both;
 - clear/reset;
 - deterministic seed / regenerate where generation is stochastic.
@@ -326,7 +630,7 @@ The Workspace should eventually support:
 [Train] [Test] [Both]
 ```
 
-A learner may draw or manipulate the train and test worlds separately.
+A learner may draw or manipulate the train and test Worlds separately.
 
 This allows direct experiments such as:
 
@@ -340,7 +644,7 @@ The visual encoding must make layer membership clear without depending only on c
 
 ## Classification support
 
-The same 2D workspace should support labeled points for KNN and small MLP experiments.
+The same 2D Workspace should support labeled points for KNN and small MLP experiments.
 
 Examples:
 
@@ -349,7 +653,7 @@ Examples:
 - introduce mislabeled points;
 - move a class cluster;
 - change overlap;
-- compare KNN and MLP decision boundaries on the same world.
+- compare KNN and MLP decision boundaries on the same World.
 
 ## Regression support
 
@@ -365,9 +669,21 @@ A powerful basic interaction is:
 4. watch the fit change;
 5. ask why.
 
+## Live fit versus training
+
+Do not blur an analytic or instantly recomputed best fit with iterative learning.
+
+For simple Linear Regression, an immediate fitted-line preview can be useful. The UI should still distinguish concepts such as:
+
+- current manually chosen parameters;
+- analytic/best fit;
+- parameters learned through gradient descent.
+
+This distinction becomes essential when moving to models such as MLPs that cannot truthfully behave as if they instantly retrain after every pointer movement.
+
 ## Pattern mode
 
-Pattern mode is a later extension of the same workspace, not a replacement for direct drawing.
+Pattern mode is a later extension of the same Workspace, not a replacement for direct drawing.
 
 A learner might draw or configure an underlying relation and then sample from it with controls such as:
 
@@ -379,6 +695,14 @@ A learner might draw or configure an underlying relation and then sample from it
 - seed.
 
 The UI must always state whether the learner is editing explicit samples or a generator.
+
+## View transform versus data transform
+
+Zooming, panning, and auto-fit are view operations. Moving or rescaling data is a World mutation.
+
+The UI and semantic state must keep these separate. An auto-fit axis must not visually erase the meaning of a distribution shift by making two distant Worlds appear identically centered without an obvious common reference.
+
+Comparisons should use synchronized or otherwise explicitly comparable axes where the phenomenon depends on spatial position.
 
 ## Accessibility
 
@@ -395,7 +719,7 @@ Touch interaction must remain usable on mobile/tablet, consistent with VOLK-ML's
 
 ## Performance bounds
 
-The browser workspace is pedagogical, not a large-data plotting engine.
+The browser Workspace is pedagogical, not a large-data plotting engine.
 
 Define explicit limits for:
 
@@ -411,7 +735,7 @@ Do not allow an Agent or brush gesture to generate unbounded work.
 
 # World Builder
 
-The 2D workspace is the most direct World Builder. Parameterized generators are a complementary layer, especially useful for reproducible Agent-created experiments.
+The 2D Workspace is the most direct World Builder. Parameterized generators are a complementary layer, especially useful for reproducible comparisons and Agent-created experiments.
 
 ## First generator vocabulary
 
@@ -439,29 +763,26 @@ For anomalies:
 - outlier count or rate;
 - direct manual placement should remain available.
 
-## Agent and World Builder
+## Manual and generated Worlds must meet
 
-The Agent should be able to create or modify the same semantic World that the learner can inspect and edit.
+A learner should be able to inspect and continue manipulating generated data. A parameterized World should not become a sealed Agent artifact.
 
-Examples:
+Where semantics allow, the learner should be able to:
 
-> "Add a few outliers."
+- regenerate from the same seed;
+- change generator parameters;
+- convert/freeze generated observations into explicit samples;
+- manually edit the resulting samples with clear provenance.
 
-> "Make the test data appear farther to the right."
-
-> "Create two clusters but keep the same linear model."
-
-> "Make this problem harder without changing the model."
-
-Every Agent mutation must be inspectable. The UI should be able to state what changed.
+Do not silently pretend that manual edits still came from the unchanged generator specification.
 
 ---
 
-# Experiment snapshots and controlled comparison
+# Experiment comparison, randomness, and repeat
 
 ## Duplicate Experiment
 
-A first-class action should duplicate the current experiment while keeping everything identical by default.
+A first-class action should duplicate the current Experiment while keeping everything identical by default.
 
 ```text
 Experiment A
@@ -477,7 +798,7 @@ A/B comparison is a P0 exploration capability.
 
 The comparison should show:
 
-- the two worlds or relevant visual states;
+- the two Worlds or relevant visual states;
 - metrics appropriate to the model;
 - the factor(s) changed;
 - the conditions held constant;
@@ -509,15 +830,147 @@ Held constant:
 
 The system must distinguish:
 
-- changing one control in the same world;
-- changing the dataset/world;
+- changing one control in the same World;
+- changing the Dataset/World;
 - changing the train/test relationship;
 - changing the model;
-- changing learning configuration.
+- changing learning configuration;
+- changing evaluation configuration;
+- changing randomness policy.
 
 Do not reduce every comparison to a generic control-value pair if that loses important meaning.
 
 Reuse existing capture/restore semantics and TeachingPlan comparison infrastructure where appropriate, but extend the semantic model rather than forcing World changes into unrelated model controls.
+
+## Seed policy
+
+Randomness must be explicit enough that learners can interpret comparisons.
+
+The UI/model should eventually distinguish at least:
+
+### Matched randomness where meaningful
+
+Use corresponding randomness to isolate a changed factor when the generator semantics support it.
+
+### Independent samples
+
+Draw independent samples from each experimental condition.
+
+### Repeat N times
+
+Estimate how stable the observed effect is across repeated samples/runs.
+
+Do not imply that one seed is definitive evidence about a stochastic system.
+
+## Repeat
+
+Repeat should be a manual first-class action, not an Agent-only operation.
+
+A lightweight regression example may show multiple fitted slopes/lines across repeated datasets and summarize their spread.
+
+This creates a natural path toward:
+
+- variance;
+- stability;
+- sample size;
+- uncertainty;
+- the distinction between one observation and a repeatable pattern.
+
+The first Repeat implementation should remain visually simple and bounded.
+
+---
+
+# Guidance without an Agent
+
+VOLK-ML should help users form experiments even when no Agent is present.
+
+The system can provide structure without pretending to reason like an AI tutor.
+
+## Things to try
+
+A playground or Big-Idea entry may show optional prompts such as:
+
+- What if one point is far away from all the others?
+- What if training covers only half of the x-axis?
+- What if the noise increases?
+- Does adding more data stabilize the fitted line?
+
+These prompts should be ignorable and should not lock the learner into a sequence.
+
+## Experiment recipes
+
+A recipe is a lightweight curated starting state, not a lesson.
+
+A recipe may contain:
+
+```text
+Question
+Initial World
+Optional suggested manipulation
+Relevant visible controls
+```
+
+Example:
+
+```text
+Question:
+What happens when test data appears outside the training region?
+
+Starting state:
+Train and test initially overlap.
+
+Suggested action:
+Move the test points somewhere the model has never seen.
+```
+
+The learner should be free to change a different factor instead.
+
+## Affordance guidance
+
+When a learner chooses a question/prompt, the UI may highlight useful controls rather than performing the experiment automatically.
+
+For example:
+
+> "Try separating train and test."
+
+may highlight:
+
+- Train/Test layer selector;
+- Duplicate;
+- Compare.
+
+This teaches how to use the Lab while preserving learner agency.
+
+## Deterministic Observation Detection
+
+Important observable patterns should not require an LLM to notice them.
+
+A domain-specific observation layer may surface facts such as:
+
+- test error changed much more than train error;
+- train/test gap increased;
+- slope moved strongly after a point was added;
+- repeated runs show high variation;
+- learning stopped because the learning rate was too high;
+- one experiment differs from another in multiple causal factors.
+
+Observation detectors should be based on explicit semantic state/metrics and conservative thresholds, not visual guessing.
+
+They should describe evidence, not silently assert causes.
+
+Example:
+
+> **Notice:** Test error increased 3.2x while training error changed only slightly.
+
+Not:
+
+> **Explanation:** Distribution shift caused failure.
+
+## System guidance should remain quiet by default
+
+Free Explore should not constantly interrupt manipulation.
+
+Observation notices should be subtle and dismissible. Guided Explore may surface them more prominently. Agent Explore may use them as evidence for a conversation.
 
 ---
 
@@ -525,7 +978,7 @@ Reuse existing capture/restore semantics and TeachingPlan comparison infrastruct
 
 ## Learner-facing surface
 
-The default learner surface should begin with a single simple prompt such as:
+The default learner surface should begin with a simple prompt such as:
 
 > **What are you curious about?**
 
@@ -544,7 +997,7 @@ Those are valuable developer/advanced inspection surfaces and may remain availab
 
 For experimentally testable questions, the Agent should attempt to:
 
-1. identify the ambiguity that materially changes the experiment;
+1. identify ambiguity that materially changes the experiment;
 2. choose or offer a small number of meaningful interpretations;
 3. propose a controlled experiment;
 4. show exactly what it will change;
@@ -571,13 +1024,49 @@ Then offer concrete actions such as:
 
 The Agent should create experiments rather than only explain the definitions.
 
+## Agent action diff
+
+Every Agent mutation should leave a concise inspectable record of what changed.
+
+Example:
+
+```text
+Changed by Agent
+- Test x-range: [-1, 1] -> [2, 4]
+
+Unchanged
+- Train World
+- Model
+- Learning rate
+- Noise
+```
+
+The learner should be able to inspect and, where practical, undo the mutation without asking the Agent to reverse-engineer its own action.
+
+## Agent initiative
+
+The Agent should be quiet enough that the learner remains the explorer.
+
+Default principle:
+
+- do not comment on every gesture;
+- do not turn every observation into a lecture;
+- do not automatically change the World because a potentially interesting phenomenon appeared.
+
+More active intervention is appropriate when:
+
+- the learner explicitly enters Agent Explore;
+- the learner asks for help;
+- a requested goal cannot be completed without clarifying a material ambiguity;
+- a clearly surprising/failure event is detected and the learner has opted into guidance.
+
 ## Ask less, infer more when safe
 
 Do not turn every curiosity into a questionnaire. If a simple, reversible, clearly labeled experiment is available, the Agent may propose it directly and let the learner revise it.
 
 ## Evidence-grounded explanations
 
-When the Agent explains a phenomenon, it should cite or point to current experiment evidence whenever possible:
+When the Agent explains a phenomenon, it should point to current experiment evidence whenever possible:
 
 - training/test metrics;
 - visible coverage gaps;
@@ -585,9 +1074,72 @@ When the Agent explains a phenomenon, it should cite or point to current experim
 - residuals;
 - decision boundaries;
 - trace events;
-- hidden preprocessing steps.
+- hidden preprocessing steps;
+- deterministic Observation Detection output.
 
 Avoid claiming a cause solely because two values changed together.
+
+---
+
+# Shared domain operations
+
+Human and Agent interaction should converge on a stable set of semantic domain operations.
+
+Illustrative operations include:
+
+```text
+addPoints
+movePoints
+removePoints
+setTrainTestMembership
+setWorldGenerator
+regenerateWorld
+duplicateExperiment
+activateExperiment
+restoreExperiment
+fitModel
+runExperiment
+repeatExperiment
+compareExperiments
+setModelControl
+setEvaluationCondition
+```
+
+The exact API should follow existing architecture conventions and may use different names. The important design rule is that domain semantics are shared.
+
+## Human mapping
+
+Humans invoke domain operations through direct manipulation and visible controls:
+
+```text
+click / tap
+brush
+spray
+drag
+slider
+layer switcher
+Duplicate button
+Compare button
+Repeat button
+Undo
+```
+
+## Agent mapping
+
+The Agent invokes domain operations through semantic commands/plans:
+
+```text
+"Add three outliers."
+"Move the test distribution to the right."
+"Duplicate this and increase noise."
+"Repeat this experiment five times."
+```
+
+## Do not let the Agent operate the DOM as the core contract
+
+The Agent should not need to synthesize pointer movements or click coordinates to perform core experiment operations.
+
+Conversely, the human UI should not need to expose TeachingPlan or script JSON to perform those same operations.
 
 ---
 
@@ -653,19 +1205,19 @@ Useful models: KNN, embeddings later.
 
 What happens when observations become uncertain, messy, or anomalous?
 
-Useful worlds: regression noise, label noise, outliers.
+Useful Worlds: regression noise, label noise, outliers.
 
 ## Generalization
 
 Why is fitting observed examples not enough?
 
-Useful worlds: train/test layers, gaps, extrapolation, sample-size changes.
+Useful Worlds: train/test layers, gaps, extrapolation, sample-size changes.
 
 ## Distribution Shift
 
 What happens when future observations do not look like training observations?
 
-Useful worlds: moved test support, changed class balance, changed noise.
+Useful Worlds: moved test support, changed class balance, changed noise.
 
 ## Representation
 
@@ -771,7 +1323,9 @@ Create the semantic and architectural base for Worlds and Experiments without du
 - define the minimum World contract for 2D sample data;
 - define how train/test membership is represented;
 - define Experiment snapshot/restore semantics;
-- define how World state is inspected and mutated through the Agent boundary;
+- define Experiment semantic diff categories;
+- define shared domain operations for UI and Agent use;
+- define undoable human action boundaries;
 - decide persistence/versioning impact before changing project JSON;
 - keep UI strings localized;
 - define resource limits and deterministic seed behavior;
@@ -779,7 +1333,7 @@ Create the semantic and architectural base for Worlds and Experiments without du
 
 ### Acceptance scenario
 
-A programmatic test can create a small 2D World, mutate points, snapshot an experiment, restore it deterministically, and expose the same semantic state to the UI/runtime and Agent-facing inspection APIs.
+A programmatic test can create a small 2D World, mutate points, snapshot an Experiment, restore it deterministically, compare semantic state, and expose the same domain state to the UI/runtime and Agent-facing inspection APIs.
 
 ### Non-goal
 
@@ -791,7 +1345,7 @@ Do not build the full drawing UI in this phase unless the accepted design explic
 
 ### Goal
 
-Let a learner directly create and reshape a finite 2D dataset without importing files.
+Let a learner directly create and reshape a finite 2D dataset without importing files or using the Agent.
 
 ### Minimum scope
 
@@ -805,7 +1359,9 @@ Let a learner directly create and reshape a finite 2D dataset without importing 
 - regression mode;
 - classification labels if the architecture can support them cleanly in the same slice;
 - deterministic bounded point generation;
-- undo/reset only if it can be delivered reliably without destabilizing project history.
+- practical Undo/Reset with gesture-level action grouping;
+- view/data transform separation;
+- non-drag precise-edit alternative.
 
 ### Acceptance scenarios
 
@@ -815,31 +1371,39 @@ Let a learner directly create and reshape a finite 2D dataset without importing 
 4. A learner can draw train points in one x-region and test points in another.
 5. Touch interaction works on a tablet-sized viewport.
 6. A non-drag alternative exists for adding/editing at least one precise point.
-7. No gesture can exceed the documented point-generation limit.
+7. One brush gesture is one understandable Undo action.
+8. No gesture can exceed the documented point-generation limit.
+9. The learner can complete these tasks without enabling or configuring an Agent.
 
 ---
 
-## Phase 2 - Experiment snapshots and A/B Compare
+## Phase 2 - Experiment Bar, snapshots, and A/B Compare
 
 ### Goal
 
-Turn ad-hoc manipulation into controlled experimentation.
+Turn ad-hoc manipulation into a human-friendly controlled experiment workflow.
 
 ### Scope
 
-- capture current experiment;
-- duplicate experiment;
+- Experiment Bar;
+- capture current Experiment;
+- Duplicate;
+- switch active A/B Experiment;
 - modify one branch independently;
 - restore either branch;
-- run both under clear seed policy;
-- side-by-side or otherwise simultaneous comparison;
-- changed-vs-held-constant summary;
+- Compare toggle/view;
+- Changed / Unchanged semantic summary;
+- Comparison Clarity;
 - key metric difference summary;
-- comparison state available to Agent inspection.
+- explicit seed relationship;
+- comparison state available to Agent inspection;
+- manual Repeat entry point, even if repeated-trial visualization remains minimal initially.
 
 ### Acceptance scenario
 
-Starting from one linear-regression world, duplicate it, change only the x-location pattern in B, run both, and produce a comparison that explicitly reports the changed factor and held-constant conditions.
+Starting from one linear-regression World, a learner can use only visible UI to Duplicate it, change only the x-location pattern in B, switch between A and B, Compare them, and see exactly what changed and what remained constant.
+
+The same semantic comparison is inspectable by the Agent, but no Agent is required to create it.
 
 ---
 
@@ -847,7 +1411,7 @@ Starting from one linear-regression world, duplicate it, change only the x-locat
 
 ### Goal
 
-Complement freehand data drawing with reproducible, Agent-friendly parameterized worlds.
+Complement freehand data drawing with reproducible parameterized Worlds.
 
 ### Initial scope
 
@@ -859,32 +1423,68 @@ Complement freehand data drawing with reproducible, Agent-friendly parameterized
 - noise amount;
 - outlier injection;
 - seed/regenerate;
-- separate train/test World configuration.
+- separate train/test World configuration;
+- clear generated-vs-manual provenance;
+- generated samples remain inspectable/editable.
 
 ### Acceptance scenarios
 
 1. Re-running the same World specification and seed reproduces identical points.
 2. Changing only x sampling while holding relation/noise fixed is visible in Compare View.
-3. Agent-created parameterized Worlds remain editable/inspectable by the learner.
-4. The UI clearly distinguishes generated samples from manually drawn samples and from the generator specification.
+3. A manually created user can build the same class of comparison the Agent can request.
+4. Agent-created parameterized Worlds remain editable/inspectable by the learner.
+5. The UI clearly distinguishes generated samples from manually drawn samples and from the generator specification.
 
 ---
 
-## Phase 4 - Exploration Agent learner mode
+## Phase 4 - Manual and Guided Exploration UX
 
 ### Goal
 
-Make natural-language curiosity a first-class entry point into experiments.
+Make VOLK-ML a complete exploration environment without Agent assistance.
+
+### Scope
+
+- Free Explore surface remains uncluttered;
+- deterministic Observation Detection;
+- optional Things to Try prompts;
+- experiment recipes;
+- affordance guidance/highlighting;
+- Comparison Clarity feedback;
+- Repeat workflow with bounded repeated-trial evidence;
+- lightweight factual notices;
+- no external AI requirement.
+
+### Acceptance scenarios
+
+A learner can, without an Agent:
+
+- discover how to add an outlier and compare its effect;
+- create train/test shift;
+- compare two data distributions;
+- repeat a stochastic experiment;
+- notice when a comparison changes multiple factors;
+- follow an optional recipe and then diverge from it freely.
+
+---
+
+## Phase 5 - Exploration Agent learner mode
+
+### Goal
+
+Make natural-language curiosity an optional accelerator for the existing manual experiment system.
 
 ### Scope
 
 - simplified learner-facing prompt;
 - hide plan/script/fidelity internals by default;
-- interpret common exploration goals into World/Experiment operations;
+- interpret common exploration goals into shared World/Experiment operations;
 - experiment proposals with visible change summaries;
+- Agent mutation diff;
 - optional prediction prompt;
 - run and evidence highlight;
 - grounded follow-up experiment suggestions;
+- restrained initiative rules;
 - retain advanced inspection mode for developers and power users.
 
 ### Acceptance scenarios
@@ -899,9 +1499,11 @@ The following requests should lead to useful, inspectable experiments rather tha
 
 The Agent must not silently change multiple causal factors when proposing a one-factor comparison.
 
+Every resulting Experiment must remain manually inspectable, editable, comparable, and reversible through the normal product UI where practical.
+
 ---
 
-## Phase 5 - Hypothesis, observation, and exploration threads
+## Phase 6 - Hypothesis, observation, and exploration threads
 
 ### Goal
 
@@ -910,7 +1512,7 @@ Preserve the learner's reasoning path without imposing a rigid course.
 ### Scope
 
 - optional hypothesis/prediction;
-- experiment link(s);
+- Experiment link(s);
 - concise observation capture;
 - follow-up question;
 - lightweight thread/history view;
@@ -918,11 +1520,11 @@ Preserve the learner's reasoning path without imposing a rigid course.
 
 ### Acceptance scenario
 
-A learner can return to an exploration and understand what question they asked, what two experiments were compared, what they predicted, what evidence appeared, and what question came next.
+A learner can return to an exploration and understand what question they asked, what two Experiments were compared, what they predicted, what evidence appeared, and what question came next.
 
 ---
 
-## Phase 6 - Big-Idea exploration entrances
+## Phase 7 - Big-Idea exploration entrances
 
 ### Goal
 
@@ -942,11 +1544,11 @@ Each entrance should load a useful initial World/Experiment and pose a question,
 
 ### Acceptance scenario
 
-A learner can enter "Distribution Shift" without first selecting an algorithm chapter and immediately manipulate train/test worlds in a meaningful experiment.
+A learner can enter "Distribution Shift" without first selecting an algorithm chapter and immediately manipulate train/test Worlds in a meaningful experiment, with or without an Agent.
 
 ---
 
-## Phase 7 - Training Microscope
+## Phase 8 - Training Microscope
 
 ### Goal
 
@@ -963,17 +1565,17 @@ Allow exploration to descend from behavior into mechanism.
 
 ### Acceptance scenario
 
-A learner who sees an unexpected training behavior can inspect the actual runtime trace and understand which parameter update or preprocessing step produced the visible change.
+A learner who sees unexpected training behavior can inspect the actual runtime trace and understand which parameter update or preprocessing step produced the visible change.
 
 ---
 
-## Phase 8 - Extend the exploration model beyond 2D tabular worlds
+## Phase 9 - Extend the exploration model beyond 2D tabular Worlds
 
 Only after the core loop works well should VOLK-ML aggressively expand the same exploration grammar to:
 
-- CNN/image worlds;
-- sequence worlds;
-- attention/Transformer worlds;
+- CNN/image Worlds;
+- sequence Worlds;
+- attention/Transformer Worlds;
 - embeddings/vector search;
 - RAG;
 - agent planning/tool-use.
@@ -982,41 +1584,57 @@ The goal is not merely to add new components. Each new domain should answer:
 
 1. What is the manipulable World?
 2. What is the Model's inductive bias?
-3. What can the learner change?
+3. What can the learner change manually?
 4. What evidence becomes visible?
 5. What controlled comparisons become possible?
-6. What can the Agent safely manipulate and explain?
+6. What can Guided Explore scaffold without AI?
+7. What can the Agent safely accelerate?
 
 ---
 
 # Priority summary
 
-## P0 - Complete the exploration loop
+## P0 - Complete the human exploration loop
 
 1. World semantic contract.
-2. 2D Data Workspace.
-3. Train/Test World layers.
-4. Experiment snapshot/duplicate.
-5. A/B Compare.
-6. Agent-readable/mutable World and Experiment state.
-7. Simplified learner-facing Agent flow.
+2. Shared domain operations.
+3. 2D Data Workspace.
+4. Train/Test World layers.
+5. Undo/Reset action semantics.
+6. Experiment Bar.
+7. Experiment snapshot/Duplicate.
+8. A/B Compare.
+9. Changed / Unchanged semantic diff.
+10. Comparison Clarity.
+11. Manual Repeat entry point.
+12. Agent-readable/mutable World and Experiment state through the same semantics.
 
-## P1 - Make exploration pedagogically durable
+The Agent learner experience is **not** a prerequisite for P0 success.
 
-1. Hypothesis/prediction.
-2. Observation.
-3. New-question branching.
-4. Exploration history.
-5. Big-Idea entrances.
-6. Hidden-mechanism inspection.
+## P1 - Make exploration self-guiding and durable
 
-## P2 - Explain internal learning mechanics
+1. Deterministic Observation Detection.
+2. Things to Try prompts.
+3. Experiment recipes.
+4. Guided Explore affordance highlighting.
+5. Repeat evidence/uncertainty visualization.
+6. Hypothesis/prediction.
+7. Observation.
+8. New-question branching.
+9. Exploration history.
+10. Big-Idea entrances.
+11. Hidden-mechanism inspection.
 
-1. Training Microscope.
-2. Parameter trajectory.
-3. Gradient visualization.
-4. Loss landscape where truthful and useful.
-5. Neural node/activation probes.
+## P2 - Add Agent acceleration and internal-learning explanation
+
+1. Learner-facing Agent exploration flow.
+2. Agent semantic mutation diff.
+3. Agent initiative rules.
+4. Training Microscope.
+5. Parameter trajectory.
+6. Gradient visualization.
+7. Loss landscape where truthful and useful.
+8. Neural node/activation probes.
 
 ## P3 - Expand domains
 
@@ -1026,7 +1644,26 @@ The goal is not merely to add new components. Each new domain should answer:
 4. vector search/RAG;
 5. agent planning.
 
-Do not allow P3 breadth to displace P0 exploration foundations unless a separate user-approved priority change is made.
+Do not allow P3 breadth or Agent polish to displace P0 human exploration foundations unless a separate user-approved priority change is made.
+
+---
+
+# Product evaluation questions
+
+Feature acceptance is necessary but not sufficient. Periodically evaluate whether the product actually encourages exploration.
+
+Useful qualitative/product questions include:
+
+- Can a first-time learner create a custom Experiment quickly without documentation?
+- Can they preserve a state and try a variation without understanding snapshot/version terminology?
+- Do they notice what changed between A and B?
+- Do they run a second Experiment after seeing the first result?
+- Can they complete the north-star distribution experiment with Agent features disabled?
+- Does Guided Explore help without feeling like a mandatory lesson?
+- Does the Agent produce more experimentation rather than more passive reading?
+- Can a learner inspect and manually modify everything important the Agent changed?
+
+Avoid optimizing only for lesson completion or number of Agent messages.
 
 ---
 
@@ -1041,7 +1678,9 @@ The exploration roadmap does **not** aim to turn VOLK-ML into:
 - a large-scale data visualization product;
 - a no-code AutoML service;
 - an Agent that primarily lectures in chat;
-- a hidden system where Agent-generated changes cannot be inspected or reproduced.
+- an Agent-dependent application that becomes incomplete without an AI provider;
+- a hidden system where Agent-generated changes cannot be inspected or reproduced;
+- a Git-like experiment version-control interface for beginners.
 
 ---
 
@@ -1055,15 +1694,55 @@ Do not create a second independent state machine for the 2D Workspace if the exi
 
 Do not force World semantics into unrelated model controls merely to reuse `compare-control` machinery. Extend the abstraction when the domain concept is genuinely different.
 
+## Domain operations first, adapters second
+
+Design the semantic capability before designing separate Agent and UI shortcuts.
+
+A healthy direction is:
+
+```text
+Domain operation
+  -> human interaction adapter
+  -> Agent interaction adapter
+  -> deterministic validation / trace
+```
+
+Do not make DOM manipulation the Agent API. Do not make TeachingPlan the human UI model.
+
 ## Keep UI and Agent operations aligned
 
 A point added by the Agent and a point added by the user should pass through the same semantic mutation rules.
 
 A World generated through an Agent request should be inspectable, editable, serializable, and testable through the same public contracts as a manually created World.
 
+## Manual parity is an acceptance check
+
+For every new core Agent experiment operation, answer:
+
+> **Can a learner perform the same meaningful experiment without the Agent?**
+
+If not, document why. Prefer adding or improving the manual domain affordance before expanding Agent-only behavior.
+
+Do not interpret this as a requirement that every bulk Agent command needs an equally fast manual gesture. The requirement is semantic accessibility, not identical interaction cost.
+
+## Experiment Bar is a product surface, not an internal debug view
+
+Do not expose capture IDs, raw snapshots, planner state, or script provenance as the default Experiment Bar vocabulary.
+
+The Experiment Bar should speak in human concepts:
+
+- Original;
+- Copy / Duplicate;
+- active Experiment;
+- Compare;
+- Changed;
+- Repeat.
+
+Advanced/internal metadata may remain inspectable elsewhere.
+
 ## Persistence requires deliberate versioning
 
-If World, Experiment, or Exploration Thread state enters project JSON:
+If World, Experiment, Experiment Bar state, or Exploration Thread state enters project JSON:
 
 - inspect the current project contract;
 - decide whether `PROJECT_VERSION` must change;
@@ -1082,11 +1761,15 @@ When an interaction teaches a semantic claim, add a pure or focused contract ass
 Examples:
 
 - same seed + same generator -> same points;
-- duplicate experiment before mutation -> semantically equal conditions;
+- duplicate Experiment before mutation -> semantically equal conditions;
 - one-factor comparison -> exactly the declared factor differs;
 - train/test point membership survives snapshot/restore;
+- a brush gesture groups its point mutations into one human action;
 - Agent mutation respects point/resource caps;
-- Sample World never acquires generator claims without an explicit conversion.
+- Agent and manual mutations pass through the same semantic validation;
+- Sample World never acquires generator claims without an explicit conversion;
+- Comparison Clarity reflects semantic differences rather than raw incidental state;
+- view transforms do not mutate World coordinates.
 
 ## Resource safety
 
@@ -1094,7 +1777,7 @@ Agent and UI generation paths must share hard limits. Validate limits before exp
 
 ## Accessibility is part of acceptance
 
-Do not treat keyboard/touch/non-drag access as a final polish phase for the Data Workspace. Primary exploration must remain possible without precise mouse-only dragging.
+Do not treat keyboard/touch/non-drag access as a final polish phase for the Data Workspace or Experiment Bar. Primary exploration must remain possible without precise mouse-only dragging.
 
 ---
 
@@ -1106,41 +1789,62 @@ For each implementation cycle:
 
 1. **Read only the relevant architecture docs and current code.** Code remains the source of truth.
 2. **State the selected roadmap slice.** Do not silently combine multiple phases.
-3. **Design before development.** Define goal, scope, data/semantic contract, UX behavior, acceptance criteria, and exact tests.
-4. **Get user agreement before executable-code changes**, as required by the repository workflow.
-5. **Implement one coherent vertical slice.** Prefer a small end-to-end learner capability over broad scaffolding with no usable surface.
-6. **Keep Agent, UI, and runtime semantics aligned.** Avoid temporary duplicate behavior unless explicitly accepted.
-7. **Run focused tests plus applicable `npm run check`, `npm run build`, and `git diff --check`.**
-8. **Report acceptance criterion by criterion.** Include limitations and deferred items.
-9. **Update relevant architecture documentation when contracts change.**
-10. **Append the accepted change set to `CHANGELOG.md` before opening a pull request.**
+3. **Design before development.** Define goal, scope, data/semantic contract, human UX behavior, Agent implications if any, acceptance criteria, and exact tests.
+4. **Check the no-Agent journey.** For a core exploration feature, state how a learner uses it manually before adding Agent shortcuts.
+5. **Get user agreement before executable-code changes**, as required by the repository workflow.
+6. **Implement one coherent vertical slice.** Prefer a small end-to-end learner capability over broad scaffolding with no usable surface.
+7. **Keep Agent, UI, and runtime semantics aligned.** Avoid temporary duplicate behavior unless explicitly accepted.
+8. **Run focused tests plus applicable `npm run check`, `npm run build`, and `git diff --check`.**
+9. **Report acceptance criterion by criterion.** Include limitations and deferred items.
+10. **Update relevant architecture documentation when contracts change.**
+11. **Append the accepted change set to `CHANGELOG.md` before opening a pull request.**
 
 When a proposed task conflicts with this roadmap, do not automatically reject it. Identify the conflict explicitly and ask whether priorities have changed when that difference is material.
 
 ---
 
-# North-star acceptance journey
+# North-star acceptance journeys
 
-The long-term exploration layer is successful when the following journey feels natural without documentation:
+The exploration layer should have both a complete manual journey and an Agent-accelerated journey.
+
+## Manual north-star journey
+
+The manual Lab is successful when the following feels natural without documentation or Agent configuration:
 
 1. The learner watches a short video framing a model as a way to search for patterns.
 2. They open VOLK-ML and draw an approximately linear set of points.
 3. They fit Linear Regression and see the model's interpretation.
-4. They spray a second cluster and observe the fit change.
-5. They ask the Agent: "What if the data distribution changes?"
-6. The Agent distinguishes a few meaningful interpretations and proposes one controlled experiment.
-7. The learner duplicates the experiment.
-8. A keeps the original World; B changes only the x distribution.
-9. The learner predicts the outcome.
-10. Both experiments run under an explicit comparable seed policy.
-11. Compare View shows the two Worlds, metrics, what changed, and what stayed constant.
-12. The Agent points to an evidence difference rather than immediately delivering a lecture.
-13. The learner notices that test behavior differs and asks why.
-14. The Agent highlights training coverage or another relevant mechanism and proposes a follow-up.
-15. The learner changes the test World directly and continues.
-16. The Exploration Thread preserves the question, prediction, evidence, and new question.
+4. They add or spray a second cluster and observe the fit change.
+5. They use the Experiment Bar to preserve the original state.
+6. They Duplicate A into B.
+7. They change B's input distribution while keeping the model the same.
+8. Changed / Unchanged shows what differs.
+9. Comparison Clarity indicates whether the comparison isolates one factor.
+10. They predict what will happen if they choose to record a hypothesis.
+11. They run/fit both Experiments.
+12. Compare View shows the two Worlds, metrics, what changed, and what stayed constant.
+13. A deterministic Observation notice points out a meaningful evidence difference without asserting a cause.
+14. The learner decides what to change next.
+15. They optionally Repeat to see whether the result is stable across randomness.
+16. They can undo a manipulation and continue exploring.
 
-At no point should the learner need to understand internal planner/script/fidelity terminology in order to complete this journey.
+No Agent, API key, TeachingPlan, Visualization Script, fidelity panel, or internal provenance vocabulary is required.
+
+## Agent-accelerated north-star journey
+
+The optional Agent adds a natural-language path on top of the same Lab:
+
+1. The learner asks: "What if the data distribution changes?"
+2. The Agent distinguishes a few meaningful interpretations and proposes one controlled Experiment.
+3. The proposal is expressed as the same A/B structure used by the Experiment Bar.
+4. The Agent shows exactly what it intends to change.
+5. The learner runs or accepts the experiment.
+6. The Agent mutation appears in Changed / Unchanged and can be manually inspected.
+7. Compare View and deterministic evidence are the same evidence available without the Agent.
+8. The Agent points to that evidence and suggests a follow-up rather than replacing the experiment with a lecture.
+9. The learner can ignore the Agent and continue manually at any point.
+
+At no point should the learner need to understand internal planner/script/fidelity terminology in order to complete either journey.
 
 ---
 
@@ -1150,6 +1854,6 @@ The intended direction can be summarized as:
 
 > **VOLK-ML is a visual experiment lab for building machine-learning intuition.**
 >
-> Videos provide ways of seeing. The platform provides worlds to manipulate. The Agent helps turn curiosity into experiments.
+> Videos provide ways of seeing. The Lab provides Worlds to manipulate and experiments to compare. Guided Explore helps learners discover useful actions without AI. The Agent optionally helps turn curiosity into experiments.
 
 The long-term differentiator is not the number of supported layers or frameworks. It is the ability to make abstract ML ideas physically explorable while preserving enough semantic rigor that the learner's conclusions remain trustworthy.
