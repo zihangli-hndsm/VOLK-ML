@@ -18,16 +18,16 @@ export const mlpPlayground = {
   controls: [
     // 2D view feature selection (dynamic options from the dataset columns;
     // select-without-options stays not safely plannable, like KNN).
-    { key: 'xFeature', type: 'select' },
-    { key: 'yFeature', type: 'select' },
+    { key: 'xFeature', type: 'select', domain: 'evaluation' },
+    { key: 'yFeature', type: 'select', domain: 'evaluation' },
     // runObjective declares which model operation a what-if/compare on this
     // control should run; it is declarative metadata, not a model-id switch.
-    { key: 'hiddenUnits', type: 'number', min: 1, max: 8, step: 1, runObjective: 'predict' },
-    { key: 'learningRate', type: 'number', min: 0.001, max: 2, step: 0.001, runObjective: 'fit' },
-    { key: 'trainingSteps', type: 'number', min: 1, max: 50, step: 1, runObjective: 'fit' },
-    { key: 'queryX', type: 'number' },
-    { key: 'queryY', type: 'number' },
-    { key: 'showDecisionRegions', type: 'boolean' },
+    { key: 'hiddenUnits', type: 'number', min: 1, max: 8, step: 1, runObjective: 'predict', domain: 'model' },
+    { key: 'learningRate', type: 'number', min: 0.001, max: 2, step: 0.001, runObjective: 'fit', domain: 'learning' },
+    { key: 'trainingSteps', type: 'number', min: 1, max: 50, step: 1, runObjective: 'fit', domain: 'learning' },
+    { key: 'queryX', type: 'number', domain: 'evaluation' },
+    { key: 'queryY', type: 'number', domain: 'evaluation' },
+    { key: 'showDecisionRegions', type: 'boolean', domain: 'view' },
   ],
 
   actions: [

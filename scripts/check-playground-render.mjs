@@ -10,9 +10,10 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const dir = mkdtempSync(path.join(tmpdir(), 'volk-playground-render-'));
 const outfile = path.join(dir, 'smoke.cjs');
 const entry = fileURLToPath(new URL('./playground-render-smoke.jsx', import.meta.url));
+const entryPoint = path.relative(process.cwd(), entry).split(path.sep).join('/');
 try {
   buildSync({
-    entryPoints: [entry],
+    entryPoints: [`./${entryPoint}`],
     bundle: true,
     format: 'cjs',
     platform: 'node',

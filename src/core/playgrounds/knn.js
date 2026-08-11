@@ -16,17 +16,17 @@ export const knnPlayground = {
   sourceKinds: ['example', 'workspace-dataset'],
 
   controls: [
-    { key: 'xFeature', type: 'select' },
-    { key: 'yFeature', type: 'select' },
+    { key: 'xFeature', type: 'select', domain: 'evaluation' },
+    { key: 'yFeature', type: 'select', domain: 'evaluation' },
     // runObjective declares which model operation a what-if/compare on this
     // control should run; it is declarative metadata, not a model-id switch.
-    { key: 'k', type: 'number', min: 1, max: MAX_K, step: 1, runObjective: 'predict' },
-    { key: 'queryX', type: 'number' },
-    { key: 'queryY', type: 'number' },
-    { key: 'showNeighborOrder', type: 'boolean' },
-    { key: 'showDecisionRegions', type: 'boolean' },
-    { key: 'normalize', type: 'boolean' },
-    { key: 'distanceMetric', type: 'select', options: ['euclidean'] },
+    { key: 'k', type: 'number', min: 1, max: MAX_K, step: 1, runObjective: 'predict', domain: 'model' },
+    { key: 'queryX', type: 'number', domain: 'evaluation' },
+    { key: 'queryY', type: 'number', domain: 'evaluation' },
+    { key: 'showNeighborOrder', type: 'boolean', domain: 'view' },
+    { key: 'showDecisionRegions', type: 'boolean', domain: 'view' },
+    { key: 'normalize', type: 'boolean', domain: 'learning' },
+    { key: 'distanceMetric', type: 'select', options: ['euclidean'], domain: 'model' },
   ],
 
   actions: [

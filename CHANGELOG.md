@@ -360,3 +360,12 @@
 - 2026-08-09 — PR G.2.1: Presentation Mode now consumes one coherent motion frame for Stage, annotation, and formula teaching content; centralized easing is executed truthfully, reduced motion settles immediately, and intermediate teaching frames settle back to exact semantic props.
 - 2026-08-10 — Agent usability iteration: added an ephemeral browser-side LLM goal interpreter with bounded context, typed TeachingGoal validation, one repair attempt, local-parser fallback, playground-specific Agent examples, and centralized human deletion confirmation. API credentials remain memory-only and are excluded from project/autosave/export paths.
 - 2026-08-10 — Encoding audit: repaired remaining mojibake in the Agent panel and compiler documentation, and documented UTF-8/connector transport validation in `AGENTS.md`.
+
+## 2026-08-11 - Phase 0 Exploration Semantic Foundation
+
+- Added versioned, JSON-safe `World` and `Experiment` contracts for finite 2D sample observations, stable IDs, train/test membership, provenance, seed policy, duplication, restore, serialization, and semantic comparison.
+- Added model-independent World operations and mutation boundaries, then synchronized the same semantic state from the existing unified Playground runtime into runtime snapshots and Agent `inspectContext()` without creating a second reducer.
+- Declared model/learning/evaluation/view control domains for LR, KNN, and MLP; preserved script capture/restore semantic state and current project persistence/version behavior.
+- Updated `docs/architecture/exploration-semantics.md`, `docs/architecture/playgrounds.md`, and made the JSX smoke entry cross-platform on Windows.
+- Validation: `npm run check`, `npm run check:compiler`, `npm run build`, and `git diff --check` passed. KNN/LR/MLP render smoke and 12 example checks passed.
+- Deferred: full 2D drawing workspace, learner-facing Experiment Bar, compare UI, persistent experiment history, generators, and undo UI remain Phase 1/2/3 scope.
