@@ -7,6 +7,9 @@ import { validateScript } from './visualization/scriptValidator.js';
 import { scriptError } from './visualization/scriptErrors.js';
 import { buildDataState } from './data/datasetAdapter.js';
 import { getPlayground } from '../playgrounds/registry.js';
+import { createExperiment } from '../exploration/experiment.js';
+import { synchronizeExperiment } from '../exploration/operations.js';
+import { worldFromPlaygroundSource } from '../exploration/world.js';
 import {
   playgroundError,
   validateActionShape,
@@ -60,9 +63,27 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
   });
   const preset = getPreset(adapter.defaultVisualizationPreset);
   const dataState = buildDataState({ source: normalizedSource, workspaceDataset: dataset });
+  const resolvedSessionId = sessionId ?? `playground-${crypto.randomUUID()}`;
+  const semanticId = `${adapter.id}-${normalizedSource.fingerprint ?? normalizedSource.name ?? 'source'}`
+    .replace(/[^A-Za-z0-9_-]+/g, '-')
+    .slice(0, 120);
+  const experiment = synchronizeExperiment(createExperiment({
+    id: `experiment-${semanticId}`,
+    world: worldFromPlaygroundSource(normalizedSource, { id: `world-${semanticId}`, seed }),
+    adapterId: adapter.id,
+    seed,
+  }), {
+    source: normalizedSource,
+    points: initialized.modelState.points,
+    controls: initialized.controls,
+    controlDescriptors: playground.controls,
+    adapterId: adapter.id,
+    seed,
+    traces: recorder.list(),
+  });
   return {
     apiVersion: 1,
-    sessionId: sessionId ?? `playground-${crypto.randomUUID()}`,
+    sessionId: resolvedSessionId,
     playgroundId: playground.id,
     adapterId: adapter.id,
     status: 'ready',
@@ -83,6 +104,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     controls: initialized.controls,
     modelState: initialized.modelState,
     dataState,
+    experiment,
     timeline: { step: 0, totalSteps: initialized.totalSteps ?? 0, speed: 1 },
     scenario: null,
     script: preset ? structuredClone(preset) : null,
@@ -117,8 +139,23 @@ function applyModelAction(session, action) {
     recorder,
     source: session.sourceData,
   });
+  const merged = mergePatches(session, patch);
+  const points = Array.isArray(merged.modelState?.points) ? merged.modelState.points : undefined;
+  const next = {
+    ...merged,
+    experiment: synchronizeExperiment(session.experiment, {
+      source: session.sourceData,
+      points,
+      controls: merged.controls,
+      controlDescriptors: getPlayground(session.playgroundId)?.controls ?? [],
+      adapterId: session.adapterId,
+      seed: session.seed,
+      action,
+      traces: recorder.list(),
+    }),
+  };
   return {
-    next: mergePatches(session, patch),
+    next,
     recorder,
   };
 }
@@ -271,6 +308,7 @@ export function dispatchRuntimeAction(session, action) {
         controls: structuredClone(session.controls),
         modelState: structuredClone(session.modelState),
         dataState: session.dataState ? structuredClone(session.dataState) : {},
+        experiment: structuredClone(session.experiment),
         source: structuredClone(session.sourceData ?? session.source),
         seed: session.seed,
         traces: structuredClone(session.traces),
@@ -323,6 +361,7 @@ export function dispatchRuntimeAction(session, action) {
           ...shell,
           modelState: structuredClone(baseline.modelState),
           dataState: baseline.dataState ? structuredClone(baseline.dataState) : {},
+          experiment: baseline.experiment ? structuredClone(baseline.experiment) : shell.experiment,
           traces: baseline.traces ? structuredClone(baseline.traces) : shell.traces,
           baseline: structuredClone(session.baseline ?? shell.baseline),
           scriptBaseline: structuredClone(session.scriptBaseline),
@@ -349,6 +388,7 @@ export function dispatchRuntimeAction(session, action) {
           controls: structuredClone(session.controls),
           modelState: structuredClone(session.modelState),
           dataState: session.dataState ? structuredClone(session.dataState) : {},
+          experiment: structuredClone(session.experiment),
           timeline: structuredClone(session.timeline),
           traceCount: session.traces.length,
           scene: jsonSafe(semantic.scene),
@@ -372,6 +412,7 @@ export function dispatchRuntimeAction(session, action) {
       controls: structuredClone(captured.controls),
       modelState: structuredClone(captured.modelState),
       dataState: captured.dataState ? structuredClone(captured.dataState) : {},
+      experiment: captured.experiment ? structuredClone(captured.experiment) : session.experiment,
       timeline: captured.timeline ? structuredClone(captured.timeline) : session.timeline,
       // Branch isolation: the trace history returns to the baseline
       // checkpoint so branch B emits exactly the same evidence as a fresh
@@ -449,6 +490,8 @@ export function deriveRuntimeSnapshot(session) {
     scriptState: jsonSafe(session.scriptState),
     visualState: jsonSafe(session.visualState),
     dataState: jsonSafe(session.dataState),
+    experiment: jsonSafe(session.experiment),
+    world: jsonSafe(session.experiment?.world),
     primitives: primitives.map((primitive) => jsonSafe(primitive)),
   };
 }

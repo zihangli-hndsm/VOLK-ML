@@ -601,7 +601,7 @@ Each playground is a descriptor in `src/core/playgrounds/`. The registry (`regis
 
 ## Session lifecycle
 
-`src/core/playgrounds/session.js` exposes `createPlaygroundSession` / `dispatchPlaygroundAction` / `derivePlaygroundSnapshot`, delegating to the unified runtime. Actions are plain JSON objects; `RESET` rebuilds from the captured source snapshot; dispatch never mutates its input session; sessions are temporary UI/agent state (never written to project JSON, never change `PROJECT_VERSION`).
+`src/core/playgrounds/session.js` exposes `createPlaygroundSession` / `dispatchPlaygroundAction` / `derivePlaygroundSnapshot`, delegating to the unified runtime. Actions are plain JSON objects; `RESET` rebuilds from the captured source snapshot; dispatch never mutates its input session. Phase 0 additionally exposes a detached semantic `world`/`experiment` snapshot in the runtime and Agent inspection context. These snapshots are still temporary UI/agent state (never written to project JSON, never change `PROJECT_VERSION`); see `docs/architecture/exploration-semantics.md` for the World/Experiment contract.
 
 The snapshot is a detached semantic object that keeps the historical scene/metrics/observation/formula/capabilities fields and adds `traces`, `script`, `visualState` and `primitives`.
 
