@@ -240,6 +240,14 @@ assert.deepEqual(
   applyWorldTransaction(multiFeatureWorld, { ...noiseTransaction, id: 'feature-noise-repeat' }).world,
   'same feature noise seed produces deterministic values',
 );
+assert.throws(() => applyWorldTransaction(multiFeatureWorld, {
+  id: 'unknown-feature', actor: 'human', intent: 'feature-intervention',
+  operations: [{ type: 'SET_FEATURE_VALUES', feature: 'not-a-column', values: [{ pointId: 'mf1', value: 1 }] }],
+}), (error) => error.code === 'EXPLORATION_UNKNOWN_FEATURE', 'unknown feature edits are rejected explicitly');
+assert.throws(() => applyWorldTransaction(multiFeatureWorld, {
+  id: 'unknown-transform-feature', actor: 'human', intent: 'feature-intervention',
+  operations: [{ type: 'TRANSFORM_FEATURE_VALUES', feature: 'not-a-column', kind: 'shift', amount: 1, pointIds: ['mf1'] }],
+}), (error) => error.code === 'EXPLORATION_UNKNOWN_FEATURE', 'unknown feature transforms are rejected explicitly');
 
 const phase11Host = createPlaygroundHost({ getDataset: () => null });
 await phase11Host.open({ playgroundId: 'linear-regression', seed: 404 });
@@ -346,10 +354,54 @@ const editedInScript = scriptHistoryHost.getState();
 assert.equal(editedInScript.actionHistory.past.length, scriptBaseline.actionHistory.past.length + 1);
 await scriptHistoryHost.dispatch({ type: 'SCRIPT_RESET' });
 const resetScript = scriptHistoryHost.getState();
-assert.deepEqual(resetScript.world, scriptBaseline.world, 'SCRIPT_RESET restores the World captured at SCRIPT_LOAD');
-assert.deepEqual(resetScript.actionHistory, scriptBaseline.actionHistory, 'SCRIPT_RESET restores World history without branch leakage');
+assert.deepEqual(resetScript.world, editedInScript.world, 'SCRIPT_RESET preserves the current learner-edited World');
+assert.deepEqual(resetScript.actionHistory, editedInScript.actionHistory, 'SCRIPT_RESET preserves World history');
 assert.notDeepEqual(resetScript.world, beforeScriptEdit.world, 'SCRIPT_RESET does not jump to the open-time session baseline');
 await scriptHistoryHost.close();
+
+const dataLabDataset = {
+  name: 'Data Lab multi-feature regression',
+  task: 'regression',
+  featureColumns: ['area', 'age'],
+  targetColumn: 'price',
+  columns: [
+    { name: 'area', type: 'number' },
+    { name: 'age', type: 'number' },
+    { name: 'price', type: 'number' },
+  ],
+  rows: [
+    { area: 10, age: 4, price: 100 },
+    { area: 20, age: 8, price: 200 },
+    { area: 30, age: 12, price: 300 },
+    { area: 40, age: 16, price: 400 },
+  ],
+};
+const dataLabHost = createPlaygroundHost({ getDataset: () => dataLabDataset });
+const baselineModelHost = createPlaygroundHost({ getDataset: () => dataLabDataset });
+await dataLabHost.open({ playgroundId: 'data-lab', seed: 808 });
+await baselineModelHost.open({ playgroundId: 'data-lab', seed: 808 });
+const dataLabInitial = dataLabHost.getState();
+assert.equal(dataLabInitial.model, null, 'Data Lab opens without an attached model');
+assert.deepEqual(dataLabInitial.world.featureNames, ['area', 'age', 'price'], 'Data Lab preserves all declared numeric features and target');
+const ageEdit = await dataLabHost.dispatch({
+  type: 'APPLY_WORLD_TRANSACTION',
+  transaction: {
+    id: 'data-lab-age-edit', actor: 'human', intent: 'feature-intervention',
+    operations: [{ type: 'TRANSFORM_FEATURE_VALUES', feature: 'age', kind: 'shift', amount: 5, pointIds: ['d0', 'd1', 'd2', 'd3'] }],
+  },
+});
+assert.equal(ageEdit.world.observations[0].features.age, 9, 'Data Lab edits the selected named feature');
+const ageEditedWorld = structuredClone(ageEdit.world);
+const baselineAttached = await baselineModelHost.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: 'linear-regression' });
+const editedAttached = await dataLabHost.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: 'linear-regression' });
+assert.deepEqual(editedAttached.world, ageEditedWorld, 'attaching a model preserves the edited World exactly');
+assert.deepEqual(
+  { weight: editedAttached.scene.bestFitLine.weight, bias: editedAttached.scene.bestFitLine.bias },
+  { weight: baselineAttached.scene.bestFitLine.weight, bias: baselineAttached.scene.bestFitLine.bias },
+  'changing an unrelated feature does not change the selected linear model projection',
+);
+await dataLabHost.close();
+await baselineModelHost.close();
 
 const agentParityHost = createPlaygroundHost({ getDataset: () => null });
 const agentParityApi = createPlaygroundAgentApi(agentParityHost);

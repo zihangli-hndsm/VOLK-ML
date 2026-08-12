@@ -53,14 +53,30 @@ export const linearRegressionPlayground = {
   validateSource(source) {
     if (!source || typeof source !== 'object') throw playgroundError('INVALID_PLAYGROUND_SOURCE');
     if (!['example', 'workspace-dataset'].includes(source.kind)) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { kind: source.kind });
+    const featureColumns = Array.isArray(source.featureColumns) && source.featureColumns.length
+      ? [...source.featureColumns]
+      : [source.feature ?? 'x'];
+    const feature = source.feature ?? featureColumns[0];
+    const target = source.target ?? 'y';
     const points = Array.isArray(source.points)
-      ? source.points.map((point, index) => ({
-        id: point.id ?? index,
-        x: finiteOrNull(point.x),
-        y: finiteOrNull(point.y),
-        membership: point.membership ?? point.split ?? 'unspecified',
-        provenance: point.provenance,
-      })).filter((point) => point.x !== null && point.y !== null)
+      ? source.points.map((point, index) => {
+        const features = Object.fromEntries(featureColumns.map((column) => [
+          column,
+          finiteOrNull(point.features?.[column] ?? point[column] ?? (column === feature ? point.x : undefined)),
+        ]));
+        const targetValue = finiteOrNull(point.features?.[target] ?? point[target] ?? point.target ?? point.y);
+        return {
+          ...point,
+          id: point.id ?? index,
+          x: finiteOrNull(features[feature]),
+          y: targetValue,
+          target: targetValue,
+          features: { ...features, [target]: targetValue },
+          membership: point.membership ?? point.split ?? 'unspecified',
+          provenance: point.provenance,
+        };
+      }).filter((point) => point.x !== null && point.y !== null
+        && featureColumns.every((column) => point.features[column] !== null))
       : [];
     if (points.length < 2) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least two finite points' });
     return {
@@ -68,8 +84,10 @@ export const linearRegressionPlayground = {
       name: source.name ?? 'Example data',
       fingerprint: source.fingerprint ?? String(points.length),
       points,
-      feature: source.feature ?? 'x',
-      target: source.target ?? 'y',
+      task: 'regression',
+      feature,
+      target,
+      featureColumns,
       total: source.total ?? points.length,
       usingDataset: source.usingDataset ?? false,
     };

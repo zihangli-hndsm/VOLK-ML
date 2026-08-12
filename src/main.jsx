@@ -1399,7 +1399,7 @@ function Workspace() {
             ))}
           </select>
         </label>
-        <button className="rounded-xl bg-emerald-100 px-3 py-2 font-bold text-emerald-700" onClick={() => { setPlaygroundInitialTab('data'); setPlaygroundId('linear-regression'); setPlaygroundOpen(true); }}>{t('nav.exploreData')}</button>
+        <button className="rounded-xl bg-emerald-100 px-3 py-2 font-bold text-emerald-700" onClick={() => { setPlaygroundInitialTab('data'); setPlaygroundId('data-lab'); setPlaygroundOpen(true); }}>{t('nav.exploreData')}</button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setLeftOpen((value) => !value)}>☰ <span className="hidden sm:inline">{t('nav.blocks')}</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setRightOpen((value) => !value)}>⚙ <span className="hidden sm:inline">{t('nav.parameters')}</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setViewMode((value) => value === 'canvas' ? 'architecture' : 'canvas')}>{viewMode === 'canvas' ? '⌘' : '⌁'} <span className="hidden lg:inline">{t(`nav.${viewMode === 'canvas' ? 'architecture' : 'canvas'}`)}</span></button>

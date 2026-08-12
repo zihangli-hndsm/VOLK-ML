@@ -1,4 +1,4 @@
-import { requireModelAdapter } from './model/modelRegistry.js';
+import { getModelAdapter, requireModelAdapter } from './model/modelRegistry.js';
 import { createTraceRecorder } from './trace/traceBuilder.js';
 import { getPreset } from './visualization/presetRegistry.js';
 import { materializePrimitives } from './visualization/primitiveMaterializer.js';
@@ -6,7 +6,7 @@ import { createBindingContext, resolveValue } from './visualization/bindings.js'
 import { validateScript } from './visualization/scriptValidator.js';
 import { scriptError } from './visualization/scriptErrors.js';
 import { buildDataState } from './data/datasetAdapter.js';
-import { getPlayground } from '../playgrounds/registry.js';
+import { getPlayground, listPlaygroundDescriptors } from '../playgrounds/registry.js';
 import { createExperiment } from '../exploration/experiment.js';
 import {
   applyWorldTransaction,
@@ -14,6 +14,7 @@ import {
   synchronizeExperiment,
 } from '../exploration/operations.js';
 import { worldFromPlaygroundSource } from '../exploration/world.js';
+import { canCreateObservationFromProjection } from '../exploration/projection.js';
 import { isPublicWorldOperation, listWorldOperations } from '../exploration/operationRegistry.js';
 import {
   playgroundError,
@@ -38,6 +39,7 @@ const GENERIC_ACTIONS = [
   'RESET_LEARNING',
   'RUN',
   'RESTORE_ORIGINAL_DATA',
+  'ATTACH_MODEL',
   'RUN_SCENARIO',
   'SCENARIO_NEXT',
   'SET_VISUAL',
@@ -103,7 +105,7 @@ function validateViewPatch(current, patch = {}, featureNames = []) {
 }
 
 export function createRuntimeSession(playground, { source, controls = {}, seed, sessionId, dataset }) {
-  const adapter = requireModelAdapter(playground.adapterId ?? playground.id);
+  const adapter = playground.adapterId ? requireModelAdapter(playground.adapterId) : null;
   const normalizedSource = playground.validateSource(source);
   const validatedControls = {};
   for (const [key, value] of Object.entries(controls)) {
@@ -112,29 +114,33 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     validatedControls[key] = validateControlValue(control, value);
   }
   const recorder = createTraceRecorder();
-  const initialized = adapter.initialize({
-    source: normalizedSource,
-    controls: validatedControls,
-    seed,
-    recorder,
-  });
-  const preset = getPreset(adapter.defaultVisualizationPreset);
+  const initialized = adapter
+    ? adapter.initialize({
+      source: normalizedSource,
+      controls: validatedControls,
+      seed,
+      recorder,
+    })
+    : { controls: {}, modelState: null, totalSteps: 0 };
+  const preset = adapter?.defaultVisualizationPreset
+    ? getPreset(adapter.defaultVisualizationPreset)
+    : null;
   const dataState = buildDataState({ source: normalizedSource, workspaceDataset: dataset });
   const resolvedSessionId = sessionId ?? `playground-${crypto.randomUUID()}`;
-  const semanticId = `${adapter.id}-${normalizedSource.fingerprint ?? normalizedSource.name ?? 'source'}`
+  const semanticId = `${adapter?.id ?? playground.id}-${normalizedSource.fingerprint ?? normalizedSource.name ?? 'source'}`
     .replace(/[^A-Za-z0-9_-]+/g, '-')
     .slice(0, 120);
   const experiment = synchronizeExperiment(createExperiment({
     id: `experiment-${semanticId}`,
     world: worldFromPlaygroundSource(normalizedSource, { id: `world-${semanticId}`, seed }),
-    adapterId: adapter.id,
+    adapterId: adapter?.id ?? null,
     seed,
   }), {
     source: normalizedSource,
-    points: initialized.modelState.points,
+    points: initialized.modelState?.points,
     controls: initialized.controls,
     controlDescriptors: playground.controls,
-    adapterId: adapter.id,
+    adapterId: adapter?.id ?? null,
     seed,
     traces: recorder.list(),
   });
@@ -142,12 +148,18 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     apiVersion: 1,
     sessionId: resolvedSessionId,
     playgroundId: playground.id,
-    adapterId: adapter.id,
+    modelPlaygroundId: adapter ? playground.id : null,
+    adapterId: adapter?.id ?? null,
     status: 'ready',
     seed,
     baseline: {
       controls: structuredClone(initialized.controls),
+      modelState: structuredClone(initialized.modelState),
       source: structuredClone(normalizedSource),
+      dataState: structuredClone(dataState),
+      experiment: structuredClone(experiment),
+      traces: structuredClone(recorder.list()),
+      worldHistory: { past: [], future: [] },
       seed,
     },
     scriptBaseline: null,
@@ -159,7 +171,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
       stale: false,
     },
     controls: initialized.controls,
-    modelState: initialized.modelState,
+    modelState: initialized.modelState ?? null,
     dataState,
     experiment,
     worldHistory: { past: [], future: [] },
@@ -192,7 +204,8 @@ function mergePatches(session, patch) {
 }
 
 function applyModelAction(session, action) {
-  const adapter = requireModelAdapter(session.adapterId);
+  const adapter = modelAdapterFor(session);
+  if (!adapter) throw playgroundError('PLAYGROUND_MODEL_REQUIRED', { action: action.type });
   const recorder = createTraceRecorder(session.traces);
   const patch = adapter.applyModelAction(session.modelState, action, {
     controls: session.controls,
@@ -207,7 +220,7 @@ function applyModelAction(session, action) {
       source: session.sourceData,
       points,
       controls: merged.controls,
-      controlDescriptors: getPlayground(session.playgroundId)?.controls ?? [],
+      controlDescriptors: modelControlsFor(session),
       adapterId: session.adapterId,
       seed: session.seed,
       action,
@@ -221,27 +234,157 @@ function applyModelAction(session, action) {
 }
 
 function sourceFromWorld(source, world) {
+  const inputFeatures = world.task === 'regression'
+    ? world.featureNames.filter((feature) => feature !== world.metadata?.targetFeature)
+    : [...world.featureNames];
+  const targetFeature = world.metadata?.targetFeature ?? source.target ?? source.targetColumn;
+  const modelFeature = world.metadata?.modelFeature ?? source.feature ?? inputFeatures[0];
   return {
     ...source,
+    task: world.task ?? source.task,
     points: world.observations.map((point) => ({
       ...point,
       id: point.id,
+      features: point.features ? structuredClone(point.features) : undefined,
       x: point.x,
       y: point.target ?? point.y,
       target: point.target ?? point.y,
+      label: point.label,
       membership: point.membership,
       provenance: point.provenance,
     })),
-    featureColumns: source.featureColumns ?? world.featureNames.filter((feature) => feature !== world.metadata?.targetFeature),
-    feature: source.feature ?? world.metadata?.modelFeature,
-    target: source.target ?? world.metadata?.targetFeature,
+    featureColumns: inputFeatures,
+    feature: modelFeature,
+    target: targetFeature,
+    targetColumn: targetFeature,
     total: world.observations.length,
   };
 }
 
+function modelPlaygroundFor(session) {
+  return session.modelPlaygroundId
+    ? getPlayground(session.modelPlaygroundId)
+    : session.adapterId
+      ? getPlayground(session.playgroundId)
+      : null;
+}
+
+function modelAdapterFor(session) {
+  return session.adapterId ? getModelAdapter(session.adapterId) : null;
+}
+
+function modelControlsFor(session) {
+  return modelPlaygroundFor(session)?.controls ?? [];
+}
+
+function emptySemanticContext(session) {
+  return {
+    scene: { axes: {}, ranges: session.viewState?.bounds ?? null },
+    metrics: {},
+    observation: null,
+    formula: null,
+    capabilities: {},
+    modelContext: { axes: {}, ranges: session.viewState?.bounds ?? null },
+    context: createBindingContext({
+      model: { axes: {}, ranges: session.viewState?.bounds ?? null },
+      data: session.dataState ?? {},
+      controls: {},
+      trace: session.traces,
+      metrics: {},
+    }),
+  };
+}
+
+function compatibleModelPlaygrounds(session) {
+  const worldTask = session.experiment?.world?.task;
+  return listPlaygroundDescriptors()
+    .filter((playground) => playground.kind !== 'session')
+    .filter((playground) => playground?.supportedTasks?.includes(worldTask))
+    .filter((playground) => {
+      try {
+        playground.validateSource(session.sourceData);
+        return Boolean(playground.adapterId);
+      } catch {
+        return false;
+      }
+    });
+}
+
+function attachModelSession(session, modelPlaygroundId) {
+  if (session.playgroundId !== 'data-lab') {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'ATTACH_MODEL', reason: 'Data Lab session required' });
+  }
+  const playground = getPlayground(modelPlaygroundId);
+  if (!playground?.adapterId || !compatibleModelPlaygrounds(session).some((item) => item.id === modelPlaygroundId)) {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'ATTACH_MODEL', modelPlaygroundId });
+  }
+  const adapter = requireModelAdapter(playground.adapterId);
+  const source = playground.validateSource(session.sourceData);
+  const recorder = createTraceRecorder();
+  const initialized = adapter.initialize({ source, controls: {}, seed: session.seed, recorder });
+  const experiment = synchronizeExperiment(session.experiment, {
+    world: session.experiment.world,
+    source,
+    points: initialized.modelState.points,
+    controls: initialized.controls,
+    controlDescriptors: playground.controls,
+    adapterId: adapter.id,
+    seed: session.seed,
+    traces: recorder.list(),
+  });
+  const preset = getPreset(adapter.defaultVisualizationPreset);
+  return {
+    ...session,
+    modelPlaygroundId,
+    adapterId: adapter.id,
+    sourceData: source,
+    source: { ...session.source, name: source.name, fingerprint: source.fingerprint, stale: false },
+    controls: initialized.controls,
+    modelState: initialized.modelState,
+    dataState: buildDataState({ source, workspaceDataset: null }),
+    experiment,
+    script: preset ? structuredClone(preset) : null,
+    scriptState: preset ? { status: 'ready', step: 0, totalSteps: preset.steps.length } : { status: 'idle', step: 0, totalSteps: 0 },
+    scriptBaseline: null,
+    timeline: { step: 0, totalSteps: initialized.totalSteps ?? 0, speed: session.timeline.speed ?? 1 },
+    traces: recorder.list(),
+    visualState: {},
+    status: 'ready',
+  };
+}
+
+function restoreOriginalDataSession(session) {
+  const baselineSource = structuredClone(session.baseline?.source ?? session.sourceData);
+  const world = worldFromPlaygroundSource(baselineSource, {
+    id: session.experiment.world.id,
+    seed: session.seed,
+  });
+  const restored = synchronizeWorldSession(
+    { ...session, sourceData: baselineSource },
+    { world },
+    {
+      history: { past: [], future: [] },
+      mutationRecord: {
+        id: `${session.sessionId}-restore-original-data`,
+        actor: 'human',
+        domain: 'world',
+        intent: 'restore-original-data',
+        mutationSummary: { explicitDestructiveAction: true },
+      },
+    },
+  );
+  return {
+    ...restored,
+    baseline: session.baseline,
+    sourceData: baselineSource,
+    source: { ...session.source, name: baselineSource.name, fingerprint: baselineSource.fingerprint, stale: false },
+    worldHistory: { past: [], future: [] },
+  };
+}
+
 function synchronizeWorldSession(session, transactionResult, { history, mutationRecord }) {
-  const adapter = requireModelAdapter(session.adapterId);
-  if (typeof adapter.applyWorld !== 'function') {
+  const adapter = modelAdapterFor(session);
+  if (adapter && typeof adapter.applyWorld !== 'function') {
     throw playgroundError('INVALID_PLAYGROUND_ACTION', {
       type: 'APPLY_WORLD_TRANSACTION',
       reason: 'adapter does not support World editing',
@@ -250,20 +393,23 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
   }
   const recorder = createTraceRecorder(session.traces);
   const sourceData = sourceFromWorld(session.sourceData, transactionResult.world);
-  if (typeof adapter.validateWorld === 'function') {
+  if (adapter?.validateWorld) {
     adapter.validateWorld(transactionResult.world);
   }
-  const patch = adapter.applyWorld(session.modelState, transactionResult.world, {
-    controls: session.controls,
-    recorder,
-    source: sourceData,
-  });
+  const patch = adapter
+    ? adapter.applyWorld(session.modelState, transactionResult.world, {
+      controls: session.controls,
+      recorder,
+      source: sourceData,
+    })
+    : { modelState: null, timeline: { step: 0, totalSteps: 0 } };
   const merged = mergePatches(session, patch);
+  const dataState = buildDataState({ source: sourceData, workspaceDataset: null });
   const synced = synchronizeExperiment(session.experiment, {
     world: transactionResult.world,
     source: sourceData,
     controls: merged.controls,
-    controlDescriptors: getPlayground(session.playgroundId)?.controls ?? [],
+    controlDescriptors: modelControlsFor(session),
     adapterId: session.adapterId,
     seed: session.seed,
     traces: recorder.list(),
@@ -271,6 +417,7 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
   return {
     ...merged,
     sourceData,
+    dataState,
     experiment: {
       ...synced,
       mutations: [...session.experiment.mutations, structuredClone(mutationRecord)],
@@ -317,7 +464,8 @@ function canonicalWorldTransaction(action) {
 }
 
 function semanticContext(session) {
-  const adapter = requireModelAdapter(session.adapterId);
+  const adapter = modelAdapterFor(session);
+  if (!adapter) return emptySemanticContext(session);
   const semantic = adapter.deriveScene(session.modelState, {
     controls: session.controls,
     source: session.sourceData,
@@ -393,14 +541,18 @@ function computeScriptStepActions(session) {
       });
     }
   }
-  if (stepDefinition.reset) actions.push({ type: 'RESET' });
+  // A teaching-script reset restarts the model explanation while preserving
+  // the learner's current World. The explicit Restore Original Data action is
+  // the only path that intentionally replaces World observations.
+  if (stepDefinition.reset) actions.push({ type: 'RESET_LEARNING' });
   if (stepDefinition.capture) actions.push({ type: 'SCRIPT_CAPTURE', captureId: stepDefinition.capture.id });
   if (stepDefinition.restoreCapture) actions.push({ type: 'SCRIPT_RESTORE_CAPTURE', captureId: stepDefinition.restoreCapture.id });
   return actions;
 }
 
 function resetLearningSession(session) {
-  const adapter = requireModelAdapter(session.adapterId);
+  const adapter = modelAdapterFor(session);
+  if (!adapter) return { ...session, status: 'paused' };
   const recorder = createTraceRecorder(session.traces);
   const patch = typeof adapter.resetLearning === 'function'
     ? adapter.resetLearning(session.modelState, {
@@ -421,7 +573,7 @@ function resetLearningSession(session) {
       source: session.sourceData,
       points,
       controls: merged.controls,
-      controlDescriptors: getPlayground(session.playgroundId)?.controls ?? [],
+      controlDescriptors: modelControlsFor(session),
       adapterId: session.adapterId,
       seed: session.seed,
       traces: recorder.list(),
@@ -439,6 +591,87 @@ function runCurrentWorld(session) {
     next = { ...stepped.next, traces: stepped.recorder.list() };
   }
   return { ...next, status: 'completed' };
+}
+
+function resetVisualizationScript(session) {
+  const adapter = modelAdapterFor(session);
+  if (!adapter) {
+    return {
+      ...session,
+      scriptState: { status: 'ready', step: 0, totalSteps: session.script?.steps.length ?? 0 },
+      visualState: {},
+      status: 'paused',
+    };
+  }
+  const baseline = session.scriptBaseline ?? {
+    controls: session.baseline?.controls,
+    modelState: session.baseline?.modelState,
+    dataState: session.baseline?.dataState,
+    experiment: session.baseline?.experiment,
+    traces: session.baseline?.traces,
+    worldHistory: session.baseline?.worldHistory,
+  };
+  const worldSignature = (world) => JSON.stringify({
+    task: world?.task,
+    featureNames: world?.featureNames,
+    observations: world?.observations,
+    metadata: world?.metadata,
+  });
+  const worldChanged = Boolean(
+    baseline?.experiment?.world
+    && worldSignature(baseline.experiment.world) !== worldSignature(session.experiment.world),
+  );
+  const controls = baseline?.controls ? structuredClone(baseline.controls) : structuredClone(session.controls);
+  let modelState;
+  let traces;
+  let dataState;
+  if (baseline?.modelState && !worldChanged) {
+    modelState = structuredClone(baseline.modelState);
+    traces = structuredClone(baseline.traces ?? session.traces);
+    dataState = baseline.dataState ? structuredClone(baseline.dataState) : session.dataState;
+  } else {
+    const source = sourceFromWorld(session.sourceData, session.experiment.world);
+    const recorder = createTraceRecorder();
+    const initialized = adapter.initialize({ source, controls, seed: session.seed, recorder });
+    modelState = initialized.modelState;
+    traces = recorder.list();
+    dataState = buildDataState({ source, workspaceDataset: null });
+  }
+  const source = sourceFromWorld(session.sourceData, session.experiment.world);
+  const baselineHistoryIds = new Set((baseline?.worldHistory?.past ?? []).map((entry) => entry.record.id));
+  const preservedWorldMutations = session.worldHistory.past
+    .filter((entry) => !baselineHistoryIds.has(entry.record.id))
+    .map((entry) => structuredClone(entry.record));
+  const resetBaseExperiment = baseline?.experiment ?? session.experiment;
+  const experiment = synchronizeExperiment({
+    ...resetBaseExperiment,
+    mutations: [
+      ...(baseline?.experiment?.mutations ?? resetBaseExperiment.mutations),
+      ...preservedWorldMutations,
+    ],
+  }, {
+    world: session.experiment.world,
+    source,
+    points: modelState.points,
+    controls,
+    controlDescriptors: modelControlsFor(session),
+    adapterId: session.adapterId,
+    seed: session.seed,
+    traces,
+  });
+  return {
+    ...session,
+    controls,
+    modelState,
+    sourceData: source,
+    dataState,
+    experiment,
+    traces,
+    timeline: { step: 0, totalSteps: 0, speed: session.timeline.speed ?? 1 },
+    visualState: {},
+    scriptState: { status: 'ready', step: 0, totalSteps: session.script?.steps.length ?? 0 },
+    status: 'paused',
+  };
 }
 
 export function dispatchRuntimeAction(session, action) {
@@ -462,7 +695,7 @@ export function dispatchRuntimeAction(session, action) {
     return { ...reset, dataState: session.dataState };
   }
   if (action.type === 'SET_CONTROL') {
-    const control = playground.controls.find((item) => item.key === action.key);
+    const control = modelControlsFor(session).find((item) => item.key === action.key);
     if (!control) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
     const value = validateControlValue(control, action.value);
     const { next, recorder } = applyModelAction(session, { ...action, value });
@@ -494,6 +727,9 @@ export function dispatchRuntimeAction(session, action) {
       }),
       worldActionCounter: session.worldActionCounter + 1,
     };
+  }
+  if (action.type === 'ATTACH_MODEL') {
+    return attachModelSession(session, action.modelPlaygroundId ?? action.modelId);
   }
   const compatibilityTransaction = canonicalWorldTransaction(action);
   if (compatibilityTransaction) {
@@ -541,7 +777,7 @@ export function dispatchRuntimeAction(session, action) {
   }
   if (action.type === 'RESET_LEARNING') return resetLearningSession(session);
   if (action.type === 'RUN') return runCurrentWorld(session);
-  if (action.type === 'RESTORE_ORIGINAL_DATA') return dispatchRuntimeAction(session, { type: 'RESET' });
+  if (action.type === 'RESTORE_ORIGINAL_DATA') return restoreOriginalDataSession(session);
   if (action.type === 'PLAY') {
     if (session.timeline.totalSteps > 0 && session.timeline.step >= session.timeline.totalSteps) {
       return { ...runCurrentWorld(session), status: 'playing' };
@@ -621,40 +857,7 @@ export function dispatchRuntimeAction(session, action) {
     return next;
   }
   if (action.type === 'SCRIPT_RESET') {
-    const baseline = session.scriptBaseline;
-    const reset = baseline
-      ? (() => {
-        const shell = createRuntimeSession(playground, {
-          source: baseline.source,
-          controls: baseline.controls,
-          seed: baseline.seed,
-          sessionId: session.sessionId,
-        });
-        return {
-          ...shell,
-          modelState: structuredClone(baseline.modelState),
-          dataState: baseline.dataState ? structuredClone(baseline.dataState) : {},
-          experiment: baseline.experiment ? structuredClone(baseline.experiment) : shell.experiment,
-          traces: baseline.traces ? structuredClone(baseline.traces) : shell.traces,
-          worldHistory: baseline.worldHistory ? structuredClone(baseline.worldHistory) : shell.worldHistory,
-          worldActionCounter: Number.isInteger(baseline.worldActionCounter)
-            ? baseline.worldActionCounter
-            : shell.worldActionCounter,
-          viewState: baseline.viewState ? structuredClone(baseline.viewState) : shell.viewState,
-          baseline: structuredClone(session.baseline ?? shell.baseline),
-          scriptBaseline: structuredClone(session.scriptBaseline),
-        };
-      })()
-      : dispatchRuntimeAction(session, { type: 'RESET' });
-    return {
-      ...reset,
-      script: session.script,
-      scriptState: {
-        status: 'ready',
-        step: 0,
-        totalSteps: session.script?.steps.length ?? 0,
-      },
-    };
+    return resetVisualizationScript(session);
   }
   if (action.type === 'SCRIPT_CAPTURE') {
     const semantic = semanticContext(session);
@@ -689,18 +892,31 @@ export function dispatchRuntimeAction(session, action) {
     if (!captured) {
       throw scriptError('SCRIPT_CAPTURE_MISSING', { captureId: action.captureId });
     }
+    const source = sourceFromWorld(session.sourceData, session.experiment.world);
+    const restoredExperiment = synchronizeExperiment(session.experiment, {
+      world: session.experiment.world,
+      source,
+      points: captured.modelState?.points,
+      controls: captured.controls,
+      controlDescriptors: modelControlsFor(session),
+      adapterId: session.adapterId,
+      seed: session.seed,
+      traces: Number.isInteger(captured.traceCount)
+        ? session.traces.slice(0, captured.traceCount)
+        : session.traces,
+    });
     return {
       ...session,
       controls: structuredClone(captured.controls),
       modelState: structuredClone(captured.modelState),
-      dataState: captured.dataState ? structuredClone(captured.dataState) : {},
-      experiment: captured.experiment ? structuredClone(captured.experiment) : session.experiment,
-      sourceData: captured.sourceData ? structuredClone(captured.sourceData) : session.sourceData,
-      worldHistory: captured.worldHistory ? structuredClone(captured.worldHistory) : session.worldHistory,
+      dataState: buildDataState({ source, workspaceDataset: null }),
+      experiment: restoredExperiment,
+      sourceData: source,
+      worldHistory: session.worldHistory,
       worldActionCounter: Number.isInteger(captured.worldActionCounter)
         ? captured.worldActionCounter
         : session.worldActionCounter,
-      viewState: captured.viewState ? structuredClone(captured.viewState) : session.viewState,
+      viewState: session.viewState,
       timeline: captured.timeline ? structuredClone(captured.timeline) : session.timeline,
       // Branch isolation: the trace history returns to the baseline
       // checkpoint so branch B emits exactly the same evidence as a fresh
@@ -734,9 +950,9 @@ export function dispatchRuntimeAction(session, action) {
 }
 
 export function deriveRuntimeSnapshot(session) {
-  const adapter = requireModelAdapter(session.adapterId);
+  const adapter = modelAdapterFor(session);
   const { scene, metrics, observation, formula, capabilities: semanticCapabilities, modelContext } = semanticContext(session);
-  const scriptLoaded = Boolean(session.scriptState && session.scriptState.totalSteps > 0);
+  const scriptLoaded = Boolean(adapter && session.scriptState && session.scriptState.totalSteps > 0);
   const capabilities = scriptLoaded
     ? {
       canPlay: session.scriptState.totalSteps > 0,
@@ -750,10 +966,15 @@ export function deriveRuntimeSnapshot(session) {
       ...semanticCapabilities,
       canPause: session.status === 'playing',
     };
-  capabilities.canEditWorld = typeof adapter.applyWorld === 'function';
+  capabilities.canEditWorld = !adapter || typeof adapter.applyWorld === 'function';
   capabilities.worldOperations = capabilities.canEditWorld
     ? listWorldOperations()
     : [];
+  capabilities.canCreateObservationFromProjection = canCreateObservationFromProjection(
+    session.experiment.world,
+    session.viewState.xFeature,
+    session.viewState.yFeature,
+  );
   capabilities.canUndoWorld = session.worldHistory.past.length > 0;
   capabilities.canRedoWorld = session.worldHistory.future.length > 0;
   const primitives = materializePrimitives({
@@ -769,6 +990,22 @@ export function deriveRuntimeSnapshot(session) {
     apiVersion: 1,
     sessionId: session.sessionId,
     playgroundId: session.playgroundId,
+    modelPlaygroundId: session.modelPlaygroundId ?? null,
+    model: adapter
+      ? {
+        adapterId: session.adapterId,
+        playgroundId: session.modelPlaygroundId ?? session.playgroundId,
+        titleKey: modelPlaygroundFor(session)?.titleKey ?? null,
+        descriptionKey: modelPlaygroundFor(session)?.descriptionKey ?? null,
+      }
+      : null,
+    availableModels: session.playgroundId === 'data-lab'
+      ? compatibleModelPlaygrounds(session).map((playground) => ({
+        id: playground.id,
+        titleKey: playground.titleKey,
+        descriptionKey: playground.descriptionKey,
+      }))
+      : [],
     status: session.status,
     source: jsonSafe(session.source),
     controls: jsonSafe(session.controls),

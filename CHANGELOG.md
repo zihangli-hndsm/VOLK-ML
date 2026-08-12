@@ -418,3 +418,12 @@
 - Updated exploration architecture documentation and regression coverage for lifecycle preservation, multi-feature semantics, feature interventions, projection isolation, and Brush density.
 - Validation: `npm run check`, `npm run build`, `node scripts/check-exploration.mjs`, render smoke, and `git diff --check` passed. The build retains the existing large-chunk warning.
 - Deferred: Experiment Bar/A-B Compare, generators, Scenario Engine, Guided Explore, Agent Explore redesign, Repeat/sweeps, Training Microscope, and broader model editing.
+
+## 2026-08-13 - Data Lab semantic independence and projection correctness
+
+- Added a model-optional `data-lab` session and registry-backed compatible model selector; attaching a model preserves the canonical World and its edits.
+- Centralized named-feature projection semantics for scatter, distribution, hit testing, erase, selection, axes, and fit bounds; multi-feature projections disable new-row tools when hidden values would be fabricated.
+- Hardened World feature operations against unknown and non-numeric feature values, preserved full regression feature maps, and kept unrelated feature interventions independent from a selected Linear Regression fit.
+- Renamed the ambiguous timeline reset to `Restart explanation`; visualization restart, script seek, and playback reset preserve current World observations and history, while `RESTORE_ORIGINAL_DATA` remains the explicit destructive action.
+- Added train/test-distinguished distribution rendering, localized Data Lab/model-empty/restart copy, semantic regression coverage, model-attachment coverage, and browser acceptance for model-optional entry and attachment.
+- Validation: `node scripts/check-core.mjs`, `node scripts/check-exploration.mjs`, `node scripts/check-playground-render.mjs`, `node scripts/generate-examples.mjs --check`, `npm run build`, and `git diff --check` passed. The build retains the existing large-chunk warning.

@@ -8,8 +8,8 @@ export default function PlaygroundTimeline({ snapshot, onDispatch, t }) {
   const step = script ? script.step : snapshot.timeline.step;
   const playing = script ? script.status === 'playing' : snapshot.status === 'playing';
   return <div className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
-    <button disabled={!snapshot.capabilities.canReset} onClick={() => onDispatch(script ? { type: 'SCRIPT_RESET' } : { type: 'RESET' })}
-      className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">{t('playground.timeline.reset')}</button>
+    {script && <button disabled={!snapshot.capabilities.canReset} onClick={() => onDispatch({ type: 'SCRIPT_RESET' })}
+      className="rounded-xl bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:opacity-40">{t('playground.timeline.restartExplanation')}</button>}
     <button disabled={!snapshot.capabilities.canPlay} onClick={() => onDispatch(playing ? (script ? { type: 'SCRIPT_PAUSE' } : { type: 'PAUSE' }) : (script ? { type: 'SCRIPT_PLAY' } : { type: 'PLAY' }))}
       className="rounded-xl bg-emerald-600 px-4 py-2 text-xs font-bold text-white disabled:opacity-40">{playing ? t('playground.timeline.pause') : t('playground.timeline.play')}</button>
     <button disabled={!snapshot.capabilities.canStep} onClick={() => onDispatch(script ? { type: 'SCRIPT_STEP' } : { type: 'STEP' })}

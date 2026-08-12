@@ -30,14 +30,14 @@ export function createExperiment({
   mutations = [],
 } = {}) {
   const validatedWorld = validateWorld(world);
-  if (typeof adapterId !== 'string' || !adapterId) {
+  if (adapterId !== null && adapterId !== undefined && (typeof adapterId !== 'string' || !adapterId)) {
     throw explorationError('EXPLORATION_INVALID_EXPERIMENT', { field: 'adapterId' });
   }
   return validateExperiment({
     version: EXPERIMENT_VERSION,
     id: String(id),
     world: validatedWorld,
-    model: { adapterId, ...configuration(model) },
+    model: { adapterId: adapterId ?? null, ...configuration(model) },
     learning: configuration(learning),
     evaluation: configuration(evaluation),
     randomness: { seed: seed ?? null, policy: seed === null || seed === undefined ? 'unspecified' : 'fixed-seed' },
@@ -59,7 +59,8 @@ export function validateExperiment(experiment) {
     throw explorationError('EXPLORATION_INVALID_EXPERIMENT', { field: 'version/id' });
   }
   validateWorld(experiment.world);
-  if (!experiment.model || typeof experiment.model.adapterId !== 'string' || !experiment.model.adapterId) {
+  if (!experiment.model || (experiment.model.adapterId !== null
+    && (typeof experiment.model.adapterId !== 'string' || !experiment.model.adapterId))) {
     throw explorationError('EXPLORATION_INVALID_EXPERIMENT', { field: 'model.adapterId' });
   }
   if (!experiment.randomness || !('seed' in experiment.randomness)) {

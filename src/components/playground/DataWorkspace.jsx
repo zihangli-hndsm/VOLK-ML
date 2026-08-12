@@ -3,6 +3,12 @@ import {
   materializeWorldGesture,
   MAX_GESTURE_PATH_POINTS,
 } from '../../core/exploration/gestures.js';
+import {
+  getProjectedValue,
+  observationFromProjection,
+  projectObservation,
+  projectedBounds,
+} from '../../core/exploration/projection.js';
 
 const PLOT = { left: 42, right: 620, top: 18, bottom: 320 };
 const TOOLS = ['point', 'brush', 'spray', 'select', 'erase'];
@@ -21,37 +27,30 @@ function pointInLayer(point, visibility) {
   return visibility === 'both' || visibleMembership(point) === visibility;
 }
 
-function boundsForPoints(points) {
-  const xs = points.map((point) => Number(point.x)).filter(Number.isFinite);
-  const ys = points.map((point) => Number(point.y)).filter(Number.isFinite);
-  const xMin = xs.length ? Math.min(...xs) : -1;
-  const xMax = xs.length ? Math.max(...xs) : 1;
-  const yMin = ys.length ? Math.min(...ys) : -1;
-  const yMax = ys.length ? Math.max(...ys) : 1;
-  const xSpan = Math.max(0.5, xMax - xMin);
-  const ySpan = Math.max(0.5, yMax - yMin);
-  return {
-    xMin: xMin - xSpan * 0.12,
-    xMax: xMax + xSpan * 0.12,
-    yMin: yMin - ySpan * 0.12,
-    yMax: yMax + ySpan * 0.12,
-  };
-}
-
 function DistributionView({ points, feature, t }) {
-  const values = points.map((point) => Number(point.features?.[feature] ?? point.x)).filter(Number.isFinite);
+  const values = points.map((point) => getProjectedValue(point, feature)).filter(Number.isFinite);
   const min = values.length ? Math.min(...values) : 0;
   const max = values.length ? Math.max(...values) : 1;
   const span = Math.max(1, max - min);
-  const bins = Array.from({ length: 10 }, () => 0);
-  values.forEach((value) => {
-    bins[Math.min(9, Math.floor(((value - min) / span) * 10))] += 1;
-  });
-  const peak = Math.max(1, ...bins);
+  const binsFor = (membership) => {
+    const bins = Array.from({ length: 10 }, () => 0);
+    points.filter((point) => membership === 'both' || visibleMembership(point) === membership).forEach((point) => {
+      const value = getProjectedValue(point, feature);
+      if (Number.isFinite(value)) bins[Math.min(9, Math.floor(((value - min) / span) * 10))] += 1;
+    });
+    return bins;
+  };
+  const trainBins = binsFor('train');
+  const testBins = binsFor('test');
+  const peak = Math.max(1, ...trainBins, ...testBins);
   return <svg viewBox="0 0 640 360" className="block h-auto w-full" role="img" aria-label={t('playground.workspace.distributionAria')}>
     <rect width="640" height="360" fill="white" />
-    {bins.map((count, index) => <rect key={index} x={52 + index * 55} y={320 - (count / peak) * 250} width="44" height={(count / peak) * 250} fill="#2563eb" opacity="0.78" />)}
+    <defs><pattern id="test-bars" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(45)"><line y1="0" y2="6" stroke="#7c3aed" strokeWidth="2" /></pattern></defs>
+    {trainBins.map((count, index) => <rect key={`train-${index}`} x={52 + index * 55} y={320 - (count / peak) * 250} width="44" height={(count / peak) * 250} fill="#16a34a" opacity="0.78" />)}
+    {testBins.map((count, index) => <rect key={`test-${index}`} x={52 + index * 55} y={320 - (count / peak) * 250} width="44" height={(count / peak) * 250} fill="url(#test-bars)" stroke="#7c3aed" />)}
     <path d="M42 320 H620" stroke="#475569" strokeWidth="2" />
+    <text x="52" y="22" fontSize="11" fontWeight="700" fill="#15803d">{t('playground.workspace.layer.train')}</text>
+    <text x="112" y="22" fontSize="11" fontWeight="700" fill="#6d28d9">{t('playground.workspace.layer.test')}</text>
     <text x="331" y="350" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">{feature}</text>
     <text x="18" y="180" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 18 180)">{t('playground.workspace.count')}</text>
     <text x="52" y="338" fontSize="11" fill="#64748b">{min.toFixed(2)}</text>
@@ -93,14 +92,11 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
     && operations.has('SET_TRAIN_TEST_MEMBERSHIP');
   const points = world?.observations ?? [];
   const featureNames = world?.featureNames ?? ['x', 'y'];
-  const projectedPoints = points.map((point) => ({
-    x: Number(point.features?.[xFeature] ?? point.x),
-    y: Number(point.features?.[yFeature] ?? point.y),
-  })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
-  const bounds = viewMode === 'scatter' && (xFeature !== 'x' || yFeature !== 'y')
-    ? boundsForPoints(projectedPoints)
-    : baseBounds;
-  const numericValue = (point, feature) => Number(point.features?.[feature] ?? (feature === xFeature ? point.x : point.y));
+  const projectedPoints = points.map((point) => projectObservation(point, xFeature, yFeature))
+    .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  const projectedViewBounds = projectedBounds(points, xFeature, yFeature);
+  const bounds = viewMode === 'scatter' ? projectedViewBounds : baseBounds;
+  const canCreateObservation = Boolean(snapshot.capabilities?.canCreateObservationFromProjection);
   const visiblePoints = useMemo(
     () => points.filter((point) => pointInLayer(point, snapshot.viewState?.visibility ?? 'both')),
     [points, snapshot.viewState?.visibility],
@@ -126,7 +122,11 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
   };
   const hitRadius = Math.max(bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin) * 0.035;
   const nearestPoint = (position) => visiblePoints
-    .map((point) => ({ point, distance: Math.hypot(numericValue(point, xFeature) - position.x, numericValue(point, yFeature) - position.y) }))
+    .map((point) => {
+      const projected = projectObservation(point, xFeature, yFeature);
+      return { point, distance: Math.hypot(projected.x - position.x, projected.y - position.y) };
+    })
+    .filter(({ distance }) => Number.isFinite(distance))
     .sort((a, b) => a.distance - b.distance)[0];
   const dispatchTransaction = (transaction) => {
     setError(null);
@@ -155,7 +155,10 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
         }));
       } else if (gesture.tool === 'erase') {
         const ids = new Set(points.filter((point) => path.some((sample) => (
-          Math.hypot(point.x - sample.x, point.y - sample.y) <= hitRadius
+          Math.hypot(
+            getProjectedValue(point, xFeature) - sample.x,
+            getProjectedValue(point, yFeature) - sample.y,
+          ) <= hitRadius
         ))).map((point) => point.id));
         if (ids.size) {
           dispatchTransaction({
@@ -169,13 +172,25 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
           });
         }
       } else if (gesture.tool === 'point') {
+        const point = observationFromProjection(world, {
+          xFeature,
+          yFeature,
+          x: position.x,
+          y: position.y,
+          membership: layer,
+          provenance: 'manual',
+        });
+        if (!point) {
+          setError(t('playground.workspace.drawingUnavailable'));
+          return;
+        }
         dispatchTransaction({
           id: gesture.id,
           actor: 'human',
           intent: 'point',
           operations: [{
             type: 'ADD_POINTS',
-            points: [{ x: position.x, y: position.y, target: position.y, membership: layer, provenance: 'manual' }],
+            points: [point],
           }],
         });
       }
@@ -187,6 +202,10 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
     if (event.button !== undefined && event.button !== 0) return;
     const position = svgToWorld(event);
     if (!position) return;
+    if ((tool === 'point' || tool === 'brush' || tool === 'spray') && !canCreateObservation) {
+      setError(t('playground.workspace.drawingUnavailable'));
+      return;
+    }
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setError(null);
     if (tool === 'select') {
@@ -196,8 +215,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
         return;
       }
       setSelectedId(hit.point.id);
-      setPreciseX(String(hit.point.x));
-      setPreciseY(String(hit.point.y));
+      setPreciseX(String(getProjectedValue(hit.point, xFeature)));
+      setPreciseY(String(getProjectedValue(hit.point, yFeature)));
       dragRef.current = { id: hit.point.id, start: position, current: position };
       return;
     }
@@ -279,9 +298,21 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
             : [])],
         });
       } else {
+        const point = observationFromProjection(world, {
+          xFeature,
+          yFeature,
+          x,
+          y,
+          membership: layer,
+          provenance: 'manual',
+        });
+        if (!point) {
+          setError(t('playground.workspace.drawingUnavailable'));
+          return;
+        }
         dispatchTransaction({
           id: nextGestureId('precise-point'), actor: 'human', intent: 'point',
-          operations: [{ type: 'ADD_POINTS', points: [{ x, y, target: y, membership: layer, provenance: 'manual' }] }],
+          operations: [{ type: 'ADD_POINTS', points: [point] }],
         });
       }
     } catch (nextError) {
@@ -290,7 +321,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
   };
   const fitView = () => onDispatch({
     type: 'SET_WORKSPACE_VIEW',
-    patch: { bounds: boundsForPoints(points), autoFitRevision: (snapshot.viewState?.autoFitRevision ?? 0) + 1 },
+    patch: { bounds: projectedBounds(points, xFeature, yFeature), autoFitRevision: (snapshot.viewState?.autoFitRevision ?? 0) + 1 },
   });
   const selectFeatureView = (nextX, nextY, nextMode = viewMode) => {
     setViewMode(nextMode);
@@ -327,11 +358,15 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
       <button type="button" aria-pressed={viewMode === 'distribution'} onClick={() => selectFeatureView(xFeature, null, 'distribution')} className={`rounded-xl px-3 py-2 text-xs font-bold ${viewMode === 'distribution' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}>{t('playground.workspace.distributionView')}</button>
       <label className="text-xs font-bold text-slate-500">{t('playground.workspace.xFeature')}<select value={xFeature} onChange={(event) => selectFeatureView(event.target.value, yFeature)} className="ml-1 rounded-lg border p-1"><option value="">{t('playground.workspace.chooseFeature')}</option>{featureNames.map((feature) => <option key={feature}>{feature}</option>)}</select></label>
       {viewMode === 'scatter' && <label className="text-xs font-bold text-slate-500">{t('playground.workspace.yFeature')}<select value={yFeature} onChange={(event) => selectFeatureView(xFeature, event.target.value)} className="ml-1 rounded-lg border p-1">{featureNames.map((feature) => <option key={feature}>{feature}</option>)}</select></label>}
-      {TOOLS.map((item) => <button key={item} type="button" aria-pressed={tool === item}
-        aria-label={t(`playground.workspace.tool.${item}`)} onClick={() => setTool(item)}
-        className={`rounded-xl px-3 py-2 text-xs font-bold ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+      {TOOLS.map((item) => {
+        const disabled = ['point', 'brush', 'spray'].includes(item) && !canCreateObservation;
+        return <button key={item} type="button" disabled={disabled} aria-pressed={tool === item}
+          aria-label={t(`playground.workspace.tool.${item}`)} onClick={() => setTool(item)}
+          className={`rounded-xl px-3 py-2 text-xs font-bold ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'} disabled:cursor-not-allowed disabled:opacity-40`}>
         {t(`playground.workspace.tool.${item}`)}
-      </button>)}
+        </button>;
+      })}
+      {!canCreateObservation && <span className="text-xs font-bold text-amber-700">{t('playground.workspace.drawingUnavailable')}</span>}
       <span className="mx-1 h-6 w-px bg-slate-200" aria-hidden="true" />
       <span className="text-xs font-bold text-slate-500">{t('playground.workspace.layer')}</span>
       {['train', 'test'].map((item) => <button key={item} type="button" aria-pressed={layer === item}
@@ -353,15 +388,15 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
           {visiblePoints.map((point) => {
             const selected = selectedId === point.id;
             const draft = draftPoint?.id === point.id ? draftPoint : point;
-            const cx = xToSvg(numericValue(draft, xFeature));
-            const cy = yToSvg(numericValue(draft, yFeature));
+            const cx = xToSvg(getProjectedValue(draft, xFeature));
+            const cy = yToSvg(getProjectedValue(draft, yFeature));
             return visibleMembership(point) === 'test'
               ? <rect key={point.id} x={cx - 5} y={cy - 5} width="10" height="10" transform={`rotate(45 ${cx} ${cy})`} fill="white" stroke={selected ? '#f59e0b' : '#7c3aed'} strokeWidth={selected ? 3 : 2} />
               : <circle key={point.id} cx={cx} cy={cy} r={selected ? 7 : 5} fill="#16a34a" stroke={selected ? '#f59e0b' : 'white'} strokeWidth={selected ? 3 : 1.5} />;
           })}
           {pathPreview.length > 1 && <polyline points={pathPreview.map((point) => `${xToSvg(point.x)},${yToSvg(point.y)}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth="2" strokeDasharray="5 4" opacity="0.65" />}
-          <text x="331" y="350" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">x</text>
-          <text x="14" y="170" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 14 170)">y</text>
+          <text x="331" y="350" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">{xFeature}</text>
+          <text x="14" y="170" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 14 170)">{yFeature}</text>
         </svg>}
       </div>
       <div className="space-y-3">
@@ -385,7 +420,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
         <form onSubmit={preciseSubmit} className="rounded-xl border border-slate-200 p-3">
           <p className="text-xs font-bold text-slate-700">{selectedId ? t('playground.workspace.editPoint') : t('playground.workspace.precisePoint')}</p>
           <div className="mt-2 grid grid-cols-2 gap-2"><input inputMode="decimal" aria-label={t('playground.workspace.xCoordinate')} value={preciseX} onChange={(event) => setPreciseX(event.target.value)} placeholder={t('playground.workspace.xShort')} className="w-full rounded-lg border p-2 text-sm" /><input inputMode="decimal" aria-label={t('playground.workspace.yCoordinate')} value={preciseY} onChange={(event) => setPreciseY(event.target.value)} placeholder={t('playground.workspace.yShort')} className="w-full rounded-lg border p-2 text-sm" /></div>
-          <button type="submit" className="mt-2 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">{selectedId ? t('playground.workspace.updatePoint') : t('playground.workspace.addPoint')}</button>
+          <button type="submit" disabled={!selectedId && !canCreateObservation} className="mt-2 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">{selectedId ? t('playground.workspace.updatePoint') : t('playground.workspace.addPoint')}</button>
         </form>
         <div className="flex gap-2"><button type="button" disabled={!snapshot.capabilities?.canUndoWorld} onClick={() => onDispatch({ type: 'UNDO_WORLD_ACTION' })} className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.workspace.undo')}</button><button type="button" disabled={!snapshot.capabilities?.canRedoWorld} onClick={() => onDispatch({ type: 'REDO_WORLD_ACTION' })} className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.workspace.redo')}</button></div>
         <button type="button" onClick={fitView} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.workspace.fitView')}</button>

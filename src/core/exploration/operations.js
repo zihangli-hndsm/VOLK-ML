@@ -4,6 +4,7 @@
 import { cloneWorld, createWorld, explorationError, worldFromPlaygroundSource } from './world.js';
 import { validateExperiment } from './experiment.js';
 import { isPublicWorldOperation } from './operationRegistry.js';
+import { getProjectedValue } from './projection.js';
 
 const clone = (value) => structuredClone(value);
 
@@ -135,6 +136,21 @@ function setFeatureValue(world, point, feature, value) {
   return next;
 }
 
+function requireKnownFeature(world, feature, type) {
+  if (typeof feature !== 'string' || !world.featureNames.includes(feature)) {
+    throw explorationError('EXPLORATION_UNKNOWN_FEATURE', { type, feature });
+  }
+}
+
+function featureValue(world, point, feature, type) {
+  requireKnownFeature(world, feature, type);
+  const value = getProjectedValue(point, feature);
+  if (!Number.isFinite(value)) {
+    throw explorationError('EXPLORATION_NON_NUMERIC_FEATURE', { type, feature, pointId: point.id });
+  }
+  return value;
+}
+
 function deterministicNoise(seed, pointId, feature) {
   let state = 2166136261;
   for (const character of `${seed}:${feature}:${pointId}`) {
@@ -157,6 +173,7 @@ export function setFeatureValues(world, feature, values) {
   if (typeof feature !== 'string' || !feature || !Array.isArray(values) || !values.length) {
     throw explorationError('EXPLORATION_INVALID_OPERATION', { type: 'SET_FEATURE_VALUES' });
   }
+  requireKnownFeature(world, feature, 'SET_FEATURE_VALUES');
   const valueById = new Map(values.map((entry) => [String(entry.pointId), Number(entry.value)]));
   if ([...valueById.values()].some((value) => !Number.isFinite(value))) {
     throw explorationError('EXPLORATION_INVALID_OPERATION', { type: 'SET_FEATURE_VALUES', feature });
@@ -167,6 +184,9 @@ export function setFeatureValues(world, feature, values) {
   if ([...valueById.keys()].some((id) => !world.observations.some((point) => point.id === id))) {
     throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointIds: [...valueById.keys()] });
   }
+  world.observations.forEach((point) => {
+    if (valueById.has(point.id)) featureValue(world, point, feature, 'SET_FEATURE_VALUES');
+  });
   return worldWithObservations(world, observations, {
     type: 'world.setFeatureValues',
     feature,
@@ -182,15 +202,13 @@ export function applyFeatureTransform(world, operation) {
   if (!feature || !['shift', 'scale', 'noise'].includes(kind) || !Number.isFinite(amount) || !pointIds.size) {
     throw explorationError('EXPLORATION_INVALID_OPERATION', { type: 'TRANSFORM_FEATURE_VALUES' });
   }
+  requireKnownFeature(world, feature, 'TRANSFORM_FEATURE_VALUES');
+  if ([...pointIds].some((id) => !world.observations.some((point) => point.id === id))) {
+    throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointIds: [...pointIds] });
+  }
   const observations = world.observations.map((point) => {
     if (!pointIds.has(point.id)) return point;
-    const current = point.features?.[feature] ?? (
-      feature === world.metadata?.modelFeature ? point.x : point.y
-    );
-    const numeric = Number(current);
-    if (!Number.isFinite(numeric)) {
-      throw explorationError('EXPLORATION_INVALID_OPERATION', { type: 'TRANSFORM_FEATURE_VALUES', feature });
-    }
+    const numeric = featureValue(world, point, feature, 'TRANSFORM_FEATURE_VALUES');
     const nextValue = kind === 'shift'
       ? numeric + amount
       : kind === 'scale'
@@ -328,9 +346,7 @@ function inverseFor(world, operation) {
       if (!point) throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointId });
       return {
         pointId,
-        value: point.features?.[feature] ?? (
-          feature === world.metadata?.modelFeature ? point.x : point.y
-        ),
+        value: featureValue(world, point, feature, operation.type),
       };
     });
     return { type: 'SET_FEATURE_VALUES', feature, values };
