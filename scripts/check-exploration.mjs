@@ -81,6 +81,8 @@ assert.deepEqual(registeredWorldOperations.map((operation) => operation.type), [
   'MOVE_POINT',
   'REMOVE_POINT',
   'REMOVE_POINTS',
+  'SET_FEATURE_VALUES',
+  'TRANSFORM_FEATURE_VALUES',
   'SET_TRAIN_TEST_MEMBERSHIP',
 ], 'the public World operation registry is authoritative and ordered');
 for (const operation of registeredWorldOperations) {
@@ -205,11 +207,39 @@ const gestureInput = {
 const gestureA = materializeWorldGesture(gestureInput);
 const gestureB = materializeWorldGesture(gestureInput);
 assert.deepEqual(gestureA, gestureB, 'same normalized gesture and seed materialize identical observations and IDs');
+const denserGesture = materializeWorldGesture({ ...gestureInput, density: 12 });
+assert.ok(denserGesture.operations[0].points.length > gestureA.operations[0].points.length, 'brush density increases generated observations');
 assert.ok(gestureA.operations[0].points.length <= MAX_POINTS_PER_GESTURE, 'gesture point output is bounded');
 assert.throws(() => materializeWorldGesture({
   ...gestureInput,
   path: Array.from({ length: MAX_GESTURE_PATH_POINTS + 1 }, (_, index) => ({ x: index, y: index })),
 }), (error) => error.code === 'EXPLORATION_RESOURCE_LIMIT', 'gesture path input is bounded before expansion');
+
+const multiFeatureWorld = createWorld({
+  id: 'multi-feature-world', task: 'regression', featureNames: ['area', 'age', 'price'],
+  metadata: { modelFeature: 'area', targetFeature: 'price' },
+  observations: [
+    { id: 'mf1', x: 10, y: 100, target: 100, features: { area: 10, age: 4, price: 100 }, membership: 'train' },
+    { id: 'mf2', x: 20, y: 200, target: 200, features: { area: 20, age: 8, price: 200 }, membership: 'test' },
+  ],
+});
+const transformedFeatures = applyWorldTransaction(multiFeatureWorld, {
+  id: 'feature-shift', actor: 'human', intent: 'feature-intervention',
+  operations: [{ type: 'TRANSFORM_FEATURE_VALUES', feature: 'age', kind: 'shift', amount: 2, scope: 'train', pointIds: ['mf1'] }],
+});
+assert.equal(transformedFeatures.world.observations[0].features.age, 6, 'feature intervention changes the named feature');
+assert.equal(transformedFeatures.world.observations[1].features.age, 8, 'scoped feature intervention leaves other observations unchanged');
+assert.equal(transformedFeatures.world.observations[0].features.area, 10, 'feature intervention preserves unrelated features');
+assert.deepEqual(applyWorldTransaction(transformedFeatures.world, transformedFeatures.inverse).world, multiFeatureWorld, 'feature intervention undo restores exact values');
+const noiseTransaction = {
+  id: 'feature-noise', actor: 'human', intent: 'feature-intervention',
+  operations: [{ type: 'TRANSFORM_FEATURE_VALUES', feature: 'age', kind: 'noise', amount: 0.5, seed: 19, scope: 'all', pointIds: ['mf1', 'mf2'] }],
+};
+assert.deepEqual(
+  applyWorldTransaction(multiFeatureWorld, noiseTransaction).world,
+  applyWorldTransaction(multiFeatureWorld, { ...noiseTransaction, id: 'feature-noise-repeat' }).world,
+  'same feature noise seed produces deterministic values',
+);
 
 const phase11Host = createPlaygroundHost({ getDataset: () => null });
 await phase11Host.open({ playgroundId: 'linear-regression', seed: 404 });
@@ -218,6 +248,14 @@ const ids = phase11Initial.world.observations.map((point) => point.id);
 assert.ok(ids.length > 2, 'default LR World has enough observations for a split');
 assert.equal(ids.length, teachingDatasetById('linear-trend').dataset.rows.length, 'default LR uses the registered linear-trend teaching dataset');
 assert.ok(phase11Initial.world.observations.every((point) => point.membership === 'unspecified'));
+const editedBeforeRun = await phase11Host.dispatch({ type: 'ADD_POINT', x: 50, y: 50 });
+const editedPointCount = editedBeforeRun.world.observations.length;
+const runOnCurrentWorld = await phase11Host.dispatch({ type: 'RUN' });
+assert.equal(runOnCurrentWorld.world.observations.length, editedPointCount, 'Run trains on the current World without restoring edits');
+const resetLearningOnly = await phase11Host.dispatch({ type: 'RESET_LEARNING' });
+assert.equal(resetLearningOnly.world.observations.length, editedPointCount, 'Reset learning preserves learner data edits');
+const restoredOriginal = await phase11Host.dispatch({ type: 'RESTORE_ORIGINAL_DATA' });
+assert.equal(restoredOriginal.world.observations.length, phase11Initial.world.observations.length, 'Restore original data is the explicit destructive action');
 const testIds = ids.slice(-2);
 const splitSnapshot = await phase11Host.dispatch({
   type: 'SET_TRAIN_TEST_MEMBERSHIP', pointIds: testIds, membership: 'test',

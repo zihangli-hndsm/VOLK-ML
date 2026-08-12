@@ -38,6 +38,27 @@ function boundsForPoints(points) {
   };
 }
 
+function DistributionView({ points, feature, t }) {
+  const values = points.map((point) => Number(point.features?.[feature] ?? point.x)).filter(Number.isFinite);
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values) : 1;
+  const span = Math.max(1, max - min);
+  const bins = Array.from({ length: 10 }, () => 0);
+  values.forEach((value) => {
+    bins[Math.min(9, Math.floor(((value - min) / span) * 10))] += 1;
+  });
+  const peak = Math.max(1, ...bins);
+  return <svg viewBox="0 0 640 360" className="block h-auto w-full" role="img" aria-label={t('playground.workspace.distributionAria')}>
+    <rect width="640" height="360" fill="white" />
+    {bins.map((count, index) => <rect key={index} x={52 + index * 55} y={320 - (count / peak) * 250} width="44" height={(count / peak) * 250} fill="#2563eb" opacity="0.78" />)}
+    <path d="M42 320 H620" stroke="#475569" strokeWidth="2" />
+    <text x="331" y="350" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">{feature}</text>
+    <text x="18" y="180" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 18 180)">{t('playground.workspace.count')}</text>
+    <text x="52" y="338" fontSize="11" fill="#64748b">{min.toFixed(2)}</text>
+    <text x="575" y="338" fontSize="11" fill="#64748b">{max.toFixed(2)}</text>
+  </svg>;
+}
+
 export default function DataWorkspace({ snapshot, onDispatch, t }) {
   const svgRef = useRef(null);
   const gestureRef = useRef(null);
@@ -48,13 +69,21 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
   const [spread, setSpread] = useState(0.12);
   const [density, setDensity] = useState(6);
   const [selectedId, setSelectedId] = useState(null);
+  const [viewMode, setViewMode] = useState(snapshot.viewState?.mode ?? 'scatter');
+  const [xFeature, setXFeature] = useState(snapshot.viewState?.xFeature ?? snapshot.world?.featureNames?.[0] ?? 'x');
+  const [yFeature, setYFeature] = useState(snapshot.viewState?.yFeature ?? snapshot.world?.featureNames?.[1] ?? 'y');
+  const [interventionFeature, setInterventionFeature] = useState(xFeature);
+  const [interventionKind, setInterventionKind] = useState('shift');
+  const [interventionScope, setInterventionScope] = useState('all');
+  const [interventionAmount, setInterventionAmount] = useState(0.2);
+  const [interventionSeed, setInterventionSeed] = useState(7);
   const [draftPoint, setDraftPoint] = useState(null);
   const [preciseX, setPreciseX] = useState('');
   const [preciseY, setPreciseY] = useState('');
   const [error, setError] = useState(null);
   const [previewPath, setPreviewPath] = useState([]);
   const world = snapshot.world;
-  const bounds = initialBounds(snapshot);
+  const baseBounds = initialBounds(snapshot);
   const operations = new Set((snapshot.capabilities?.worldOperations ?? []).map((item) => item.type));
   const canEdit = Boolean(snapshot.capabilities?.canEditWorld)
     && operations.has('ADD_POINTS')
@@ -63,6 +92,15 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
     && operations.has('REMOVE_POINTS')
     && operations.has('SET_TRAIN_TEST_MEMBERSHIP');
   const points = world?.observations ?? [];
+  const featureNames = world?.featureNames ?? ['x', 'y'];
+  const projectedPoints = points.map((point) => ({
+    x: Number(point.features?.[xFeature] ?? point.x),
+    y: Number(point.features?.[yFeature] ?? point.y),
+  })).filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  const bounds = viewMode === 'scatter' && (xFeature !== 'x' || yFeature !== 'y')
+    ? boundsForPoints(projectedPoints)
+    : baseBounds;
+  const numericValue = (point, feature) => Number(point.features?.[feature] ?? (feature === xFeature ? point.x : point.y));
   const visiblePoints = useMemo(
     () => points.filter((point) => pointInLayer(point, snapshot.viewState?.visibility ?? 'both')),
     [points, snapshot.viewState?.visibility],
@@ -88,7 +126,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
   };
   const hitRadius = Math.max(bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin) * 0.035;
   const nearestPoint = (position) => visiblePoints
-    .map((point) => ({ point, distance: Math.hypot(point.x - position.x, point.y - position.y) }))
+    .map((point) => ({ point, distance: Math.hypot(numericValue(point, xFeature) - position.x, numericValue(point, yFeature) - position.y) }))
     .sort((a, b) => a.distance - b.distance)[0];
   const dispatchTransaction = (transaction) => {
     setError(null);
@@ -203,7 +241,15 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
           id: nextGestureId('move'),
           actor: 'human',
           intent: 'move',
-          operations: [{ type: 'MOVE_POINT', pointId: drag.id, x: position.x, y: position.y }],
+          operations: [{
+            type: 'SET_FEATURE_VALUES',
+            feature: xFeature,
+            values: [{ pointId: drag.id, value: position.x }],
+          }, ...(viewMode === 'scatter' ? [{
+            type: 'SET_FEATURE_VALUES',
+            feature: yFeature,
+            values: [{ pointId: drag.id, value: position.y }],
+          }] : [])],
         });
       }
       return;
@@ -228,7 +274,9 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
       if (selectedId) {
         dispatchTransaction({
           id: nextGestureId('precise-move'), actor: 'human', intent: 'move',
-          operations: [{ type: 'MOVE_POINT', pointId: selectedId, x, y }],
+          operations: [{ type: 'SET_FEATURE_VALUES', feature: xFeature, values: [{ pointId: selectedId, value: x }] }, ...(viewMode === 'scatter'
+            ? [{ type: 'SET_FEATURE_VALUES', feature: yFeature, values: [{ pointId: selectedId, value: y }] }]
+            : [])],
         });
       } else {
         dispatchTransaction({
@@ -244,6 +292,22 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
     type: 'SET_WORKSPACE_VIEW',
     patch: { bounds: boundsForPoints(points), autoFitRevision: (snapshot.viewState?.autoFitRevision ?? 0) + 1 },
   });
+  const selectFeatureView = (nextX, nextY, nextMode = viewMode) => {
+    setViewMode(nextMode);
+    if (nextX) setXFeature(nextX);
+    if (nextY) setYFeature(nextY);
+    onDispatch({ type: 'SET_WORKSPACE_VIEW', patch: { mode: nextMode, xFeature: nextX ?? xFeature, yFeature: nextY ?? yFeature } });
+  };
+  const scopeIds = interventionScope === 'selected'
+    ? (selectedId ? [selectedId] : [])
+    : points.filter((point) => interventionScope === 'all' || visibleMembership(point) === interventionScope).map((point) => point.id);
+  const applyIntervention = () => {
+    if (!scopeIds.length) return;
+    dispatchTransaction({
+      id: nextGestureId('intervention'), actor: 'human', intent: 'feature-intervention',
+      operations: [{ type: 'TRANSFORM_FEATURE_VALUES', feature: interventionFeature, kind: interventionKind, amount: Number(interventionAmount), seed: Number(interventionSeed), scope: interventionScope, pointIds: scopeIds }],
+    });
+  };
   const visibility = snapshot.viewState?.visibility ?? 'both';
   const pathPreview = previewPath;
 
@@ -259,6 +323,10 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
       </div>
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2">
+      <button type="button" aria-pressed={viewMode === 'scatter'} onClick={() => selectFeatureView(xFeature, yFeature, 'scatter')} className={`rounded-xl px-3 py-2 text-xs font-bold ${viewMode === 'scatter' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}>{t('playground.workspace.scatterView')}</button>
+      <button type="button" aria-pressed={viewMode === 'distribution'} onClick={() => selectFeatureView(xFeature, null, 'distribution')} className={`rounded-xl px-3 py-2 text-xs font-bold ${viewMode === 'distribution' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}>{t('playground.workspace.distributionView')}</button>
+      <label className="text-xs font-bold text-slate-500">{t('playground.workspace.xFeature')}<select value={xFeature} onChange={(event) => selectFeatureView(event.target.value, yFeature)} className="ml-1 rounded-lg border p-1"><option value="">{t('playground.workspace.chooseFeature')}</option>{featureNames.map((feature) => <option key={feature}>{feature}</option>)}</select></label>
+      {viewMode === 'scatter' && <label className="text-xs font-bold text-slate-500">{t('playground.workspace.yFeature')}<select value={yFeature} onChange={(event) => selectFeatureView(xFeature, event.target.value)} className="ml-1 rounded-lg border p-1">{featureNames.map((feature) => <option key={feature}>{feature}</option>)}</select></label>}
       {TOOLS.map((item) => <button key={item} type="button" aria-pressed={tool === item}
         aria-label={t(`playground.workspace.tool.${item}`)} onClick={() => setTool(item)}
         className={`rounded-xl px-3 py-2 text-xs font-bold ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
@@ -273,7 +341,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
     </div>
     <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-        <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none select-none" role="img"
+        {viewMode === 'distribution' ? <DistributionView points={visiblePoints} feature={xFeature} t={t} /> : <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none select-none" role="img"
           aria-label={t('playground.workspace.canvasAria')} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
           onPointerUp={onPointerUp} onPointerCancel={cancelPointer}>
           <rect x={PLOT.left} y={PLOT.top} width={PLOT.right - PLOT.left} height={PLOT.bottom - PLOT.top} fill="white" />
@@ -285,8 +353,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
           {visiblePoints.map((point) => {
             const selected = selectedId === point.id;
             const draft = draftPoint?.id === point.id ? draftPoint : point;
-            const cx = xToSvg(draft.x);
-            const cy = yToSvg(draft.y);
+            const cx = xToSvg(numericValue(draft, xFeature));
+            const cy = yToSvg(numericValue(draft, yFeature));
             return visibleMembership(point) === 'test'
               ? <rect key={point.id} x={cx - 5} y={cy - 5} width="10" height="10" transform={`rotate(45 ${cx} ${cy})`} fill="white" stroke={selected ? '#f59e0b' : '#7c3aed'} strokeWidth={selected ? 3 : 2} />
               : <circle key={point.id} cx={cx} cy={cy} r={selected ? 7 : 5} fill="#16a34a" stroke={selected ? '#f59e0b' : 'white'} strokeWidth={selected ? 3 : 1.5} />;
@@ -294,7 +362,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
           {pathPreview.length > 1 && <polyline points={pathPreview.map((point) => `${xToSvg(point.x)},${yToSvg(point.y)}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth="2" strokeDasharray="5 4" opacity="0.65" />}
           <text x="331" y="350" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">x</text>
           <text x="14" y="170" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 14 170)">y</text>
-        </svg>
+        </svg>}
       </div>
       <div className="space-y-3">
         <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-600">
@@ -303,8 +371,17 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
         </div>
         {(tool === 'brush' || tool === 'spray') && <div className="rounded-xl border border-slate-200 p-3 text-xs font-bold text-slate-700">
           <label className="block">{t('playground.workspace.spread')}<input aria-label={t('playground.workspace.spread')} type="range" min="0.02" max="0.6" step="0.01" value={spread} onChange={(event) => setSpread(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /></label>
-          {tool === 'spray' && <label className="mt-3 block">{t('playground.workspace.density')}<input aria-label={t('playground.workspace.density')} type="range" min="1" max="20" step="1" value={density} onChange={(event) => setDensity(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /></label>}
+          <label className="mt-3 block">{t('playground.workspace.density')}<input aria-label={t('playground.workspace.density')} type="range" min="1" max="20" step="1" value={density} onChange={(event) => setDensity(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /></label>
         </div>}
+        <div className="rounded-xl border border-slate-200 p-3 text-xs font-bold text-slate-700">
+          <p>{t('playground.workspace.intervention')}</p>
+          <select value={interventionFeature} onChange={(event) => setInterventionFeature(event.target.value)} className="mt-2 w-full rounded-lg border p-2">{featureNames.map((feature) => <option key={feature}>{feature}</option>)}</select>
+          <select value={interventionKind} onChange={(event) => setInterventionKind(event.target.value)} className="mt-2 w-full rounded-lg border p-2"><option value="shift">{t('playground.workspace.shift')}</option><option value="scale">{t('playground.workspace.scale')}</option><option value="noise">{t('playground.workspace.addNoise')}</option></select>
+          <select value={interventionScope} onChange={(event) => setInterventionScope(event.target.value)} className="mt-2 w-full rounded-lg border p-2"><option value="all">{t('playground.workspace.scope.all')}</option><option value="train">{t('playground.workspace.scope.train')}</option><option value="test">{t('playground.workspace.scope.test')}</option><option value="selected" disabled={!selectedId}>{t('playground.workspace.scope.selected')}</option></select>
+          <input aria-label={t('playground.workspace.amount')} type="number" step="0.1" value={interventionAmount} onChange={(event) => setInterventionAmount(event.target.value)} className="mt-2 w-full rounded-lg border p-2" />
+          {interventionKind === 'noise' && <input aria-label={t('playground.workspace.seed')} type="number" value={interventionSeed} onChange={(event) => setInterventionSeed(event.target.value)} className="mt-2 w-full rounded-lg border p-2" />}
+          <button type="button" disabled={!scopeIds.length} onClick={applyIntervention} className="mt-2 w-full rounded-lg bg-amber-500 px-3 py-2 text-white disabled:opacity-40">{t('playground.workspace.apply')}</button>
+        </div>
         <form onSubmit={preciseSubmit} className="rounded-xl border border-slate-200 p-3">
           <p className="text-xs font-bold text-slate-700">{selectedId ? t('playground.workspace.editPoint') : t('playground.workspace.precisePoint')}</p>
           <div className="mt-2 grid grid-cols-2 gap-2"><input inputMode="decimal" aria-label={t('playground.workspace.xCoordinate')} value={preciseX} onChange={(event) => setPreciseX(event.target.value)} placeholder={t('playground.workspace.xShort')} className="w-full rounded-lg border p-2 text-sm" /><input inputMode="decimal" aria-label={t('playground.workspace.yCoordinate')} value={preciseY} onChange={(event) => setPreciseY(event.target.value)} placeholder={t('playground.workspace.yShort')} className="w-full rounded-lg border p-2 text-sm" /></div>

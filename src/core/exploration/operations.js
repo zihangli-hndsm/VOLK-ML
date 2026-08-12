@@ -85,7 +85,17 @@ export function addPoints(world, points, { provenance = 'manual' } = {}) {
 
 export function movePoint(world, pointId, { x, y, target }) {
   const observations = world.observations.map((point) => point.id === String(pointId)
-    ? { ...point, x, y, ...(point.target !== undefined ? { target: target ?? y } : {}) }
+    ? {
+      ...setFeatureValue(
+        world,
+        setFeatureValue(world, point, world.metadata?.modelFeature ?? 'x', x),
+        world.metadata?.targetFeature ?? 'y',
+        target ?? y,
+      ),
+      x,
+      y,
+      ...(point.target !== undefined ? { target: target ?? y } : {}),
+    }
     : point);
   if (observations.every((point, index) => point === world.observations[index])) {
     throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointId });
@@ -110,6 +120,93 @@ export function removePoints(world, pointIds) {
     throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointIds: [...ids] });
   }
   return worldWithObservations(world, observations, { type: 'world.removePoints', pointIds: [...ids] });
+}
+
+function setFeatureValue(world, point, feature, value) {
+  const next = {
+    ...point,
+    features: { ...(point.features ?? {}), [feature]: value },
+  };
+  if (feature === world.metadata?.modelFeature) next.x = value;
+  if (feature === world.metadata?.targetFeature) {
+    next.y = value;
+    if (next.target !== undefined) next.target = value;
+  }
+  return next;
+}
+
+function deterministicNoise(seed, pointId, feature) {
+  let state = 2166136261;
+  for (const character of `${seed}:${feature}:${pointId}`) {
+    state ^= character.charCodeAt(0);
+    state = Math.imul(state, 16777619);
+  }
+  const uniform = () => {
+    state += 0x6D2B79F5;
+    let value = state;
+    value = Math.imul(value ^ (value >>> 15), value | 1);
+    value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+    return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+  };
+  const u1 = Math.max(Number.EPSILON, uniform());
+  const u2 = uniform();
+  return Math.sqrt(-2 * Math.log(u1)) * Math.cos(Math.PI * 2 * u2);
+}
+
+export function setFeatureValues(world, feature, values) {
+  if (typeof feature !== 'string' || !feature || !Array.isArray(values) || !values.length) {
+    throw explorationError('EXPLORATION_INVALID_OPERATION', { type: 'SET_FEATURE_VALUES' });
+  }
+  const valueById = new Map(values.map((entry) => [String(entry.pointId), Number(entry.value)]));
+  if ([...valueById.values()].some((value) => !Number.isFinite(value))) {
+    throw explorationError('EXPLORATION_INVALID_OPERATION', { type: 'SET_FEATURE_VALUES', feature });
+  }
+  const observations = world.observations.map((point) => valueById.has(point.id)
+    ? setFeatureValue(world, point, feature, valueById.get(point.id))
+    : point);
+  if ([...valueById.keys()].some((id) => !world.observations.some((point) => point.id === id))) {
+    throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointIds: [...valueById.keys()] });
+  }
+  return worldWithObservations(world, observations, {
+    type: 'world.setFeatureValues',
+    feature,
+    pointIds: [...valueById.keys()],
+  });
+}
+
+export function applyFeatureTransform(world, operation) {
+  const feature = String(operation?.feature ?? '');
+  const kind = String(operation?.kind ?? 'shift');
+  const amount = Number(operation?.amount);
+  const pointIds = new Set((operation?.pointIds ?? []).map(String));
+  if (!feature || !['shift', 'scale', 'noise'].includes(kind) || !Number.isFinite(amount) || !pointIds.size) {
+    throw explorationError('EXPLORATION_INVALID_OPERATION', { type: 'TRANSFORM_FEATURE_VALUES' });
+  }
+  const observations = world.observations.map((point) => {
+    if (!pointIds.has(point.id)) return point;
+    const current = point.features?.[feature] ?? (
+      feature === world.metadata?.modelFeature ? point.x : point.y
+    );
+    const numeric = Number(current);
+    if (!Number.isFinite(numeric)) {
+      throw explorationError('EXPLORATION_INVALID_OPERATION', { type: 'TRANSFORM_FEATURE_VALUES', feature });
+    }
+    const nextValue = kind === 'shift'
+      ? numeric + amount
+      : kind === 'scale'
+        ? numeric * amount
+        : numeric + deterministicNoise(operation.seed ?? 0, point.id, feature) * amount;
+    return setFeatureValue(world, point, feature, nextValue);
+  });
+  return worldWithObservations(world, observations, {
+    type: 'world.transformFeatureValues',
+    feature,
+    kind,
+    amount,
+    seed: operation.seed ?? 0,
+    scope: operation.scope ?? 'selected',
+    pointIds: [...pointIds],
+  });
 }
 
 export function setTrainTestMembership(world, pointIds, membership) {
@@ -149,6 +246,8 @@ export function applyWorldOperation(world, operation) {
     case 'MOVE_POINT': return movePoint(current, operation.pointId, operation);
     case 'REMOVE_POINT': return removePoint(current, operation.pointId);
     case 'REMOVE_POINTS': return removePoints(current, operation.pointIds);
+    case 'SET_FEATURE_VALUES': return setFeatureValues(current, operation.feature, operation.values);
+    case 'TRANSFORM_FEATURE_VALUES': return applyFeatureTransform(current, operation);
     case 'RESTORE_POINTS': {
       const entries = [...(operation.entries ?? [])].sort((a, b) => a.index - b.index);
       const observations = [...current.observations];
@@ -218,6 +317,23 @@ function inverseFor(world, operation) {
       .filter((entry) => ids.has(entry.point.id));
     if (entries.length !== ids.size) throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointIds: [...ids] });
     return { type: 'RESTORE_POINTS', entries: clone(entries) };
+  }
+  if (operation.type === 'SET_FEATURE_VALUES' || operation.type === 'TRANSFORM_FEATURE_VALUES') {
+    const feature = String(operation.feature);
+    const pointIds = operation.type === 'SET_FEATURE_VALUES'
+      ? (operation.values ?? []).map((entry) => String(entry.pointId))
+      : (operation.pointIds ?? []).map(String);
+    const values = pointIds.map((pointId) => {
+      const point = world.observations.find((item) => item.id === pointId);
+      if (!point) throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointId });
+      return {
+        pointId,
+        value: point.features?.[feature] ?? (
+          feature === world.metadata?.modelFeature ? point.x : point.y
+        ),
+      };
+    });
+    return { type: 'SET_FEATURE_VALUES', feature, values };
   }
   if (operation.type === 'RESTORE_POINTS') {
     return { type: 'REMOVE_POINTS', pointIds: (operation.entries ?? []).map((entry) => String(entry.point.id)) };

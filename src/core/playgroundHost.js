@@ -52,19 +52,21 @@ function resolveSource(playground, dataset) {
         return {
           kind: 'workspace-dataset',
           name: dataset.name,
-          fingerprint: fingerprintOf([
-            dataset.name,
-            dataset.task,
-            dataset.featureColumns,
-            dataset.targetColumn,
-            sample.total,
-            sample.points.map((point) => [point.x, point.y]),
-          ]),
-          points: sample.points.map((point, index) => ({ id: `d${index}`, x: point.x, y: point.y })),
-          feature: sample.feature,
-          target: sample.target,
-          total: sample.total,
-          usingDataset: true,
+            fingerprint: fingerprintOf([
+              dataset.name,
+              dataset.task,
+              dataset.featureColumns,
+              dataset.targetColumn,
+              sample.total,
+              sample.points.map((point) => [point.x, point.y, point.features]),
+            ]),
+            points: sample.points.map((point, index) => ({ ...point, id: `d${index}` })),
+            feature: sample.feature,
+            target: sample.target,
+            featureColumns: [...(dataset.featureColumns ?? [])],
+            task: 'regression',
+            total: sample.total,
+            usingDataset: true,
         };
       }
     }
@@ -81,6 +83,7 @@ function resolveSource(playground, dataset) {
       points,
       feature: 'x',
       target: 'y',
+      task: 'regression',
       total: points.length,
       usingDataset: false,
     };
