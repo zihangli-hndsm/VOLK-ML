@@ -29,6 +29,23 @@ The Agent may accelerate this journey, but it must not be required for the core 
 
 This roadmap should guide future Codex work whenever a task touches interactive data worlds, playground exploration, experiment comparison, manual or guided exploration, agent-guided exploration, or learning journeys.
 
+## Document status and infrastructure direction
+
+This roadmap is the authoritative exploration plan. The design rationale in `docs/exploration-infrastructure-supplement.md` has been selectively integrated here; when wording or phase boundaries differ, this roadmap governs implementation scope. The supplement remains a deeper reference, not a parallel backlog.
+
+The infrastructure direction is to build open-ended scenarios from a finite set of registered semantic capabilities rather than accumulating hard-coded playgrounds or Agent-only recipes:
+
+```text
+learner intent
+  -> scenario specification
+  -> world construction and intervention
+  -> experiment execution
+  -> observable evidence
+  -> next question
+```
+
+This direction strengthens the existing phased plan. It does not authorize implementing a general Scenario Engine before the minimum World, operation, comparison, and observation contracts have been proven through learner-facing vertical slices.
+
 ---
 
 # Product thesis
@@ -263,6 +280,24 @@ Causal interpretation should be supported by controlled comparison or explicitly
 
 A `World` describes the environment that produces or contains observations used by an experiment.
 
+The long-term World contract should distinguish four semantic concerns:
+
+- **State**: current observations, stable identities, train/test membership, labels, time, and provenance;
+- **Rules**: latent relations, class rules, correlations, dynamics, and other mechanisms that may produce data;
+- **Observation process**: sampling, coverage, noise, missingness, measurement, and selection effects between latent rules and observed data;
+- **Interventions**: explicit operations that change state, rules, or the observation process.
+
+These concerns may share one implementation boundary at first, but they must not be collapsed semantically. The system should be able to represent the difference between changing an underlying relationship and changing only how that relationship is observed:
+
+```text
+latent World rules
+  -> observation process
+  -> observed Dataset
+  -> Model / learning / evaluation
+```
+
+This distinction is the basis for honest exploration of sampling bias, noise, missingness, train/test coverage, covariate shift, concept shift, shortcut learning, and extrapolation. A finite Sample World does not claim latent rules or a generator unless those semantics are explicitly present.
+
 The first implementation should focus on small two-dimensional supervised-learning Worlds because they are highly visual, cheap to run, and useful across regression, KNN, MLPs, classification, clustering, generalization, and distribution-shift examples.
 
 A World may initially be one of two semantic modes.
@@ -331,6 +366,51 @@ Relevant traces
 
 An Experiment is not merely the current mutable project state. It should be possible to capture, duplicate, compare, repeat, and restore experimental states without manually reconstructing them.
 
+The learner-facing UI should begin with A/B comparison, while the underlying identity and lineage remain branch-capable. An experimental branch should be expressible as a parent or baseline plus a semantic change set, not as storage hard-coded to exactly two slots. This leaves room for follow-up branches and Exploration Threads without exposing version-control concepts to beginners.
+
+## Scenario specification
+
+A `ScenarioSpec` is the conceptual grammar for expressing a controlled exploration. The exact implementation name and shape may follow existing runtime conventions, but it should be able to declare:
+
+```text
+Baseline
+Interventions
+Constraints
+Observables
+Randomness policy
+Execution strategy
+Comparison goal
+Fidelity metadata
+```
+
+The core sentence it must preserve is:
+
+> **Change X, hold Y fixed, observe Z.**
+
+Interventions should use registered domain semantics, not model-specific prompt branches. Constraints should explicitly distinguish intended changes from held conditions and allow validation to reject a proposed scenario that introduces hidden confounds. A formal constraint editor and a general Scenario Engine UI are not Phase 1 requirements; the first value is a small, inspectable contract shared by manual, Guided, and Agent paths.
+
+Exploration-variable metadata may extend existing control and operation schemas with semantic role, meaning, intervention kind, preserved conditions, possible effects, and known confounds. This metadata belongs to registered capabilities rather than Agent prompt memorization.
+
+## Observables and evidence
+
+Observables are first-class semantic outputs of an experiment. They may describe:
+
+- outcomes, such as train error, test error, predictions, or residuals;
+- model state, such as slope, intercept, boundaries, or learned parameters;
+- learning behavior, such as loss trajectories, stopping reasons, or gradient evidence;
+- World evidence, such as coverage, class balance, variance, or train/test mismatch.
+
+Observation processing should follow a deterministic pipeline where practical:
+
+```text
+raw observables
+  -> derived observables
+  -> conservative evidence detectors
+  -> learner UI / Guided Explore / Agent
+```
+
+Examples of derived observables include generalization gap, outlier sensitivity, repeat stability, and coverage mismatch. The Agent may explain or propose follow-ups from this evidence, but should not recompute deterministic facts or infer causes that the comparison does not establish.
+
 ---
 
 ## Exploration Thread
@@ -348,6 +428,8 @@ New question
 ```
 
 This should be lightweight and optional. It is intended to preserve reasoning, not turn the app into a notebook product.
+
+Snapshots answer what an experiment contains now; semantic actions answer how it got there. History should therefore retain lightweight, JSON-safe action records with actor, domain, intent, and mutation summary. One human gesture or one accepted Agent proposal should form one understandable action boundary even when it expands into multiple low-level mutations. This supports grouped Undo, ancestry, provenance, and thread reconstruction without committing to full event sourcing.
 
 ---
 
@@ -737,6 +819,19 @@ Do not allow an Agent or brush gesture to generate unbounded work.
 
 The 2D Workspace is the most direct World Builder. Parameterized generators are a complementary layer, especially useful for reproducible comparisons and Agent-created experiments.
 
+Simple learner-facing presets should be backed by composable semantic primitives rather than becoming the only representation. For a 2D regression World, useful separable capabilities include:
+
+```text
+Input generator
++ latent relation
++ observation noise
++ anomaly process
++ sampling / coverage
++ train/test process
+```
+
+The UI may present a small preset such as "two clusters with noise," while the scenario and comparison layers retain which primitives were composed and which were changed. The first generator release should implement only the combinations required by its acceptance scenarios; this decomposition is an extension point, not a mandate for a universal generator framework.
+
 ## First generator vocabulary
 
 Start with a small semantically clear set.
@@ -866,6 +961,18 @@ Do not imply that one seed is definitive evidence about a stochastic system.
 
 Repeat should be a manual first-class action, not an Agent-only operation.
 
+It should also be a real, bounded Experiment Engine primitive:
+
+```text
+scenario
+  -> explicit trial seeds
+  -> repeated execution
+  -> per-trial observables
+  -> aggregate observables
+```
+
+Repeated execution must preserve the declared intervention and held conditions, report its randomness policy, and respect browser workload limits. The result should remain inspectable at both aggregate and individual-trial levels where practical.
+
 A lightweight regression example may show multiple fitted slopes/lines across repeated datasets and summarize their spread.
 
 This creates a natural path toward:
@@ -877,6 +984,10 @@ This creates a natural path toward:
 - the distinction between one observation and a repeatable pattern.
 
 The first Repeat implementation should remain visually simple and bounded.
+
+## Future parameter sweep
+
+A bounded parameter sweep is a later core execution primitive, not a Phase 1 requirement. Its eventual contract should apply a declared list or range of values, execute under explicit randomness and constraints, and collect one or more observables. The architecture should leave room for this operation without adding sweep UI or broad framework work before Repeat and controlled comparison are proven.
 
 ---
 
@@ -1006,6 +1117,18 @@ For experimentally testable questions, the Agent should attempt to:
 7. highlight evidence rather than immediately narrating a complete answer;
 8. suggest a next experiment grounded in what just happened.
 
+## Capability discovery and Scenario Fidelity
+
+The Agent should discover what can be changed, observed, constrained, compared, repeated, or restored from registered semantic capabilities. It must not rely on a growing prompt-only catalog of model-specific scenarios. Existing control schemas, operation intents, semantic state, and Agent inspection APIs should evolve toward this capability-discovery boundary.
+
+For every proposed scenario, the system should compare requested intent with implemented semantics and report one of:
+
+- **exact**: every material requested condition is represented;
+- **partial**: a useful subset is represented and missing aspects are explicit;
+- **approximate**: the scenario uses a disclosed proxy or simplification.
+
+Unsupported or omitted aspects must remain visible in fidelity metadata. Scenario Fidelity is evidence about implementation coverage, not a license to silently approximate or to expose internal planner vocabulary in the default learner UI.
+
 ## Example: vague distribution question
 
 User:
@@ -1085,6 +1208,8 @@ Avoid claiming a cause solely because two values changed together.
 
 Human and Agent interaction should converge on a stable set of semantic domain operations.
 
+The operation registry is also the capability registry: each operation should declare enough semantics for UI affordances, validation, comparison, constraints, history, and Agent discovery to agree on what it changes. Model adapters may execute model mathematics, but they must not become the source of exploration capabilities or model-specific Agent branches.
+
 Illustrative operations include:
 
 ```text
@@ -1134,6 +1259,10 @@ The Agent invokes domain operations through semantic commands/plans:
 "Duplicate this and increase noise."
 "Repeat this experiment five times."
 ```
+
+## Semantic action history and grouped Undo
+
+Every accepted operation should produce a lightweight semantic action record suitable for history and comparison. At minimum it should identify the actor, affected domain, user-level intent, and mutation summary. Compound brush gestures and approved Agent plans should be grouped into one reversible action boundary; low-level point updates should not flood learner history or require the Agent to reconstruct an inverse operation from prose.
 
 ## Do not let the Agent operate the DOM as the core contract
 
@@ -1318,6 +1447,8 @@ The phases below are ordered by product dependency, not by implementation conven
 
 Create the semantic and architectural base for Worlds and Experiments without duplicating the current playground runtime.
 
+The delivered finite-sample foundation remains the starting point. The following design decisions define forward-compatible extension boundaries; they do not require implementing a general Scenario Engine inside Phase 0.
+
 ### Scope
 
 - define the minimum World contract for 2D sample data;
@@ -1325,7 +1456,12 @@ Create the semantic and architectural base for Worlds and Experiments without du
 - define Experiment snapshot/restore semantics;
 - define Experiment semantic diff categories;
 - define shared domain operations for UI and Agent use;
+- distinguish World State, latent Rules, Observation Process, and Interventions in the semantic design, while allowing the first finite Sample World to implement only State and direct interventions;
+- define a discoverable operation registry and minimal exploration-variable metadata rather than Agent-only capability lists;
+- define minimal `change` / `hold` constraint semantics and observable declarations;
+- keep Experiment identity and lineage branch-capable even though the first learner UI is A/B;
 - define undoable human action boundaries;
+- define lightweight grouped semantic action records;
 - decide persistence/versioning impact before changing project JSON;
 - keep UI strings localized;
 - define resource limits and deterministic seed behavior;
@@ -1360,6 +1496,7 @@ Let a learner directly create and reshape a finite 2D dataset without importing 
 - classification labels if the architecture can support them cleanly in the same slice;
 - deterministic bounded point generation;
 - practical Undo/Reset with gesture-level action grouping;
+- route every gesture through registered World interventions and verify the resulting grouped semantic action;
 - view/data transform separation;
 - non-drag precise-edit alternative.
 
@@ -1390,6 +1527,7 @@ Turn ad-hoc manipulation into a human-friendly controlled experiment workflow.
 - Duplicate;
 - switch active A/B Experiment;
 - modify one branch independently;
+- preserve semantic parent/baseline identity and ancestry without hard-coding storage to only A and B;
 - restore either branch;
 - Compare toggle/view;
 - Changed / Unchanged semantic summary;
@@ -1425,7 +1563,8 @@ Complement freehand data drawing with reproducible parameterized Worlds.
 - seed/regenerate;
 - separate train/test World configuration;
 - clear generated-vs-manual provenance;
-- generated samples remain inspectable/editable.
+- generated samples remain inspectable/editable;
+- compose initial presets from explicit input, latent-relation, observation-noise, anomaly, coverage, and train/test primitives where the accepted vertical slice needs them.
 
 ### Acceptance scenarios
 
@@ -1447,6 +1586,7 @@ Make VOLK-ML a complete exploration environment without Agent assistance.
 
 - Free Explore surface remains uncluttered;
 - deterministic Observation Detection;
+- first-class raw and derived observables shared by learner UI, Guided Explore, and Agent inspection;
 - optional Things to Try prompts;
 - experiment recipes;
 - affordance guidance/highlighting;
@@ -1479,6 +1619,9 @@ Make natural-language curiosity an optional accelerator for the existing manual 
 - simplified learner-facing prompt;
 - hide plan/script/fidelity internals by default;
 - interpret common exploration goals into shared World/Experiment operations;
+- discover available interventions, constraints, observables, execution operations, and resource limits from registered capabilities;
+- represent controlled proposals as Scenario specifications grounded in `change` / `hold` semantics;
+- report exact, partial, or approximate Scenario Fidelity with missing aspects disclosed;
 - experiment proposals with visible change summaries;
 - Agent mutation diff;
 - optional prediction prompt;
@@ -1498,6 +1641,8 @@ The following requests should lead to useful, inspectable experiments rather tha
 - "Why did the line move so much after I added that point?"
 
 The Agent must not silently change multiple causal factors when proposing a one-factor comparison.
+
+The Agent must not gain scenario capabilities solely through model-specific prompt branches. If a capability cannot be discovered or invoked through the shared semantic layer, it is not yet an Agent-supported exploration operation.
 
 Every resulting Experiment must remain manually inspectable, editable, comparable, and reversible through the normal product UI where practical.
 
@@ -1590,6 +1735,18 @@ The goal is not merely to add new components. Each new domain should answer:
 6. What can Guided Explore scaffold without AI?
 7. What can the Agent safely accelerate?
 
+## Later infrastructure after the core loop is proven
+
+Once controlled comparison, bounded Repeat, deterministic observables, and capability discovery work in the 2D wedge, later cycles may add:
+
+- richer ScenarioSpec composition across registered capabilities;
+- repeat aggregation and evidence views beyond the initial bounded workflow;
+- bounded parameter sweeps;
+- deeper experiment graphs and branch navigation;
+- cross-domain World composition for sequence, image, representation, and agent/tool-use scenarios.
+
+These are dependency directions, not permission to broaden an earlier phase. Each must enter through a separately accepted learner-facing vertical slice.
+
 ---
 
 # Priority summary
@@ -1680,7 +1837,9 @@ The exploration roadmap does **not** aim to turn VOLK-ML into:
 - an Agent that primarily lectures in chat;
 - an Agent-dependent application that becomes incomplete without an AI provider;
 - a hidden system where Agent-generated changes cannot be inspected or reproduced;
-- a Git-like experiment version-control interface for beginners.
+- a Git-like experiment version-control interface for beginners;
+- a general-purpose Scenario Engine framework built before the 2D exploration contracts prove their value;
+- a formal constraint editor or parameter-sweep UI in the early Workspace phases.
 
 ---
 
@@ -1708,6 +1867,20 @@ Domain operation
 ```
 
 Do not make DOM manipulation the Agent API. Do not make TeachingPlan the human UI model.
+
+## Finite primitives, composable scenarios
+
+Prefer a finite registry of semantically rich World, intervention, constraint, observable, and execution capabilities over hard-coded teaching scenarios. Human UI, Guided Explore, and Agent planning should compose the same capabilities at different levels of assistance.
+
+The conceptual architecture may be reasoned about as Scenario, World, Experiment, and Observation engines with visualization adapters, but these are responsibility boundaries rather than a requirement for separate services, reducers, or premature framework modules. Add abstractions only when a validated vertical slice needs them.
+
+Visualization should consume semantic state and map learner interactions back to domain operations. Neither the Agent nor comparison logic should reason from pixels or DOM structure when semantic evidence exists.
+
+## Controlled changes and inspectability
+
+Material experimental causes should be inspectable somewhere through progressive disclosure: World rules, observation process, data and membership, model, preprocessing, learning, evaluation, randomness, ancestry, action history, and Scenario Fidelity. This does not mean exposing every field in the default view.
+
+For controlled comparisons, validate intended `change` and `hold` conditions before execution where practical. Do not hide confounds, and do not let a Changed / Unchanged summary claim one-factor clarity when the semantic diff shows otherwise.
 
 ## Keep UI and Agent operations aligned
 
@@ -1770,6 +1943,13 @@ Examples:
 - Sample World never acquires generator claims without an explicit conversion;
 - Comparison Clarity reflects semantic differences rather than raw incidental state;
 - view transforms do not mutate World coordinates.
+- latent World rules remain unchanged when only the observation process is intervened on;
+- declared `hold` constraints reject conflicting operations;
+- A/B branches are isolated and retain parent/baseline ancestry;
+- one gesture or accepted Agent proposal produces one grouped semantic action;
+- Repeat uses explicit seeds, preserves the Scenario, aggregates declared observables, and enforces limits;
+- capability discovery exposes registered interventions and observables without model-specific Agent branches;
+- exact, partial, and approximate Scenario Fidelity never hide missing requested aspects.
 
 ## Resource safety
 
@@ -1845,6 +2025,21 @@ The optional Agent adds a natural-language path on top of the same Lab:
 9. The learner can ignore the Agent and continue manually at any point.
 
 At no point should the learner need to understand internal planner/script/fidelity terminology in order to complete either journey.
+
+## Long-term Scenario capability test
+
+The infrastructure direction is successful when the same registered capabilities can eventually express this scenario without a model-specific hard-coded lesson:
+
+1. Keep the true linear relation and model fixed.
+2. Restrict training observations to a sparse middle region.
+3. Place part of the test distribution outside observed training coverage.
+4. Add outliers to training only.
+5. Compare the result with a baseline while showing every changed and held condition.
+6. Repeat across explicit seeds.
+7. Observe slope stability, train/test error, generalization gap, coverage mismatch, and repeat variation.
+8. Continue by changing one additional factor or branching from either Experiment.
+
+The learner may construct this through direct manipulation, Guided Explore, or an Agent proposal. All three paths must resolve to the same inspectable World interventions, constraints, experiment lineage, observables, and execution semantics. This is a long-term architecture test, not an early-phase acceptance requirement.
 
 ---
 

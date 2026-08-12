@@ -369,3 +369,12 @@
 - Updated `docs/architecture/exploration-semantics.md`, `docs/architecture/playgrounds.md`, and made the JSX smoke entry cross-platform on Windows.
 - Validation: `npm run check`, `npm run check:compiler`, `npm run build`, and `git diff --check` passed. KNN/LR/MLP render smoke and 12 example checks passed.
 - Deferred: full 2D drawing workspace, learner-facing Experiment Bar, compare UI, persistent experiment history, generators, and undo UI remain Phase 1/2/3 scope.
+
+## 2026-08-12 - Integrate Scenario Infrastructure into Exploration Roadmap
+
+- Made `docs/exploration-roadmap.md` the explicit single source of truth and selectively integrated the Scenario Engine supplement without creating a parallel backlog or expanding the Phase 1 Workspace scope.
+- Strengthened the roadmap with World State/Rules/Observation Process/Intervention boundaries, a conceptual ScenarioSpec and `change`/`hold` constraints, first-class raw and derived observables, branch-capable Experiment lineage, grouped semantic actions, composable generators, bounded Repeat, and a future sweep extension point.
+- Grounded Agent exploration in registered capability discovery and exact/partial/approximate Scenario Fidelity, then mapped the infrastructure dependencies into Phases 0-5, later infrastructure, architectural guidance, deterministic validation, and a long-term capability test.
+- Marked `docs/exploration-infrastructure-supplement.md` as integrated design rationale; the roadmap governs any future conflict or phase decision.
+- Validation: `npm run check` passed outside the workspace sandbox after the sandbox blocked esbuild parent-directory access; core/exploration checks, KNN/LR/MLP render smoke, and 12 example checks passed. Integration-term coverage, local Markdown links, UTF-8/command-envelope scans, and `git diff --check` passed. `npm run build` was omitted because this change is documentation-only and touches no executable code.
+- Deferred: no Scenario Engine runtime, constraint editor, sweep UI, or other Phase 1+ executable work was started.

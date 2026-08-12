@@ -2,6 +2,8 @@
 
 ## Purpose
 
+> **Integration status:** The actionable direction in this supplement was selectively integrated into `docs/exploration-roadmap.md` on 2026-08-12. The roadmap is the authoritative implementation plan and phase boundary. This document remains a deeper design rationale; it is not a separate backlog, and any future conflict should be resolved in favor of the roadmap.
+
 This document supplements `docs/exploration-roadmap.md` with a deeper infrastructure direction that emerged after the original exploration design.
 
 The original roadmap established the learner-facing product model:
