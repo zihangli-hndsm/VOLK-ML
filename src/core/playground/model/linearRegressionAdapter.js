@@ -14,10 +14,23 @@ import { playgroundError } from '../../playgrounds/session.js';
 
 const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
 
+function trainingPoints(points) {
+  const hasExplicitSplit = points.some((point) => point.membership === 'train' || point.membership === 'test');
+  return hasExplicitSplit ? points.filter((point) => point.membership === 'train') : points;
+}
+
+function testPoints(points) {
+  return points.filter((point) => point.membership === 'test');
+}
+
 function recomputeDerived(points) {
+  const train = trainingPoints(points);
+  if (train.length < 2) {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', { reason: 'minimum two training points' });
+  }
   return {
     ranges: playgroundRanges(points.map(({ x, y }) => ({ x, y }))),
-    optimum: leastSquaresFit(points.map(({ x, y }) => ({ x, y }))),
+    optimum: leastSquaresFit(train.map(({ x, y }) => ({ x, y }))),
   };
 }
 
@@ -49,10 +62,11 @@ function sceneGradient(gradient) {
 }
 
 function emitLineUpdate(recorder, modelState) {
+  const train = trainingPoints(modelState.points);
   recorder.emit('prediction.updated', { weight: modelState.weight, bias: modelState.bias });
   recorder.emit('residuals.computed', {
-    count: modelState.points.length,
-    mse: meanSquaredError(modelState.points, modelState.weight, modelState.bias),
+    count: train.length,
+    mse: meanSquaredError(train, modelState.weight, modelState.bias),
   });
 }
 
@@ -140,9 +154,17 @@ export const linearRegressionAdapter = {
   },
 
   initialize({ source, controls, recorder }) {
-    const points = source.points.map((point) => ({ id: point.id, x: point.x, y: point.y }));
+    const points = source.points.map((point) => ({
+      id: point.id,
+      x: point.x,
+      y: point.y,
+      membership: point.membership ?? 'unspecified',
+      provenance: point.provenance ?? (source.kind === 'workspace-dataset' ? 'imported' : 'generated'),
+    }));
     const derived = recomputeDerived(points);
-    const initialBias = points.reduce((sum, point) => sum + point.y, 0) / points.length;
+    const train = trainingPoints(points);
+    const test = testPoints(points);
+    const initialBias = train.reduce((sum, point) => sum + point.y, 0) / train.length;
     const merged = {
       weight: 0,
       bias: initialBias,
@@ -152,9 +174,13 @@ export const linearRegressionAdapter = {
       showBestFit: false,
       ...controls,
     };
-    const normalization = fitLinearNormalization(points.map((point) => ({ x: [point.x], y: point.y })), 1);
+    const normalization = fitLinearNormalization(train.map((point) => ({ x: [point.x], y: point.y })), 1);
     recorder.emit('data.loaded', { points: points.length, feature: source.feature, target: source.target });
-    recorder.emit('split.created', { kind: 'all-data', trainRows: points.length, testRows: 0 });
+    recorder.emit('split.created', {
+      kind: test.length ? 'explicit-membership' : 'all-data',
+      trainRows: train.length,
+      testRows: test.length,
+    });
     recorder.emit('normalization.fitted', {
       xMean: normalization.xMeans[0],
       xStd: normalization.xStds[0],
@@ -182,6 +208,31 @@ export const linearRegressionAdapter = {
       },
       totalSteps: 0,
     };
+  },
+
+  applyWorld(modelState, world, { recorder }) {
+    if (world.task !== 'regression') {
+      throw playgroundError('INVALID_PLAYGROUND_ACTION', { reason: 'linear regression requires a regression World' });
+    }
+    const points = world.observations.map((point) => ({
+      id: point.id,
+      x: point.x,
+      y: point.target ?? point.y,
+      membership: point.membership,
+      provenance: point.provenance,
+    }));
+    const derived = recomputeDerived(points);
+    const train = trainingPoints(points);
+    const test = testPoints(points);
+    const next = clearTraining({ ...modelState, points, ...derived });
+    recorder.emit('data.loaded', { points: points.length });
+    recorder.emit('split.created', {
+      kind: test.length ? 'explicit-membership' : 'all-data',
+      trainRows: train.length,
+      testRows: test.length,
+    });
+    emitLineUpdate(recorder, next);
+    return { modelState: next, timeline: { step: 0, totalSteps: 0 } };
   },
 
   applyModelAction(modelState, action, { controls, recorder }) {
@@ -239,7 +290,7 @@ export const linearRegressionAdapter = {
       return { controls: { weight: next.weight, bias: next.bias }, modelState: next };
     }
     if (action.type === 'START_TRAINING') {
-      const points = modelState.points.map(({ x, y }) => ({ x, y }));
+      const points = trainingPoints(modelState.points).map(({ x, y }) => ({ x, y }));
       const trainer = createLinearRegressionTrainer(points);
       const start = normalizeLinearParameters({
         weights: [modelState.weight],
@@ -342,8 +393,8 @@ export const linearRegressionAdapter = {
       if (entry) {
         recorder.emit('prediction.updated', { weight: entry.weight, bias: entry.bias });
         recorder.emit('residuals.computed', {
-          count: modelState.points.length,
-          mse: meanSquaredError(modelState.points, entry.weight, entry.bias),
+          count: trainingPoints(modelState.points).length,
+          mse: meanSquaredError(trainingPoints(modelState.points), entry.weight, entry.bias),
         });
       }
       return {
@@ -357,7 +408,9 @@ export const linearRegressionAdapter = {
 
   deriveScene(modelState, { controls, source }) {
     const { points, ranges, optimum, weight, bias } = modelState;
-    const gradient = sceneGradient(modelState.gradient) ?? regressionGradient(points, weight, bias);
+    const train = trainingPoints(points);
+    const test = testPoints(points);
+    const gradient = sceneGradient(modelState.gradient) ?? regressionGradient(train, weight, bias);
     const prediction = (x) => weight * x + bias;
     const bestFitLine = {
       weight: optimum.weight,
@@ -392,11 +445,19 @@ export const linearRegressionAdapter = {
         })),
       },
       ranges,
-      scatterPoints: points.map(({ id, x, y }) => ({ id, x, y })),
+      scatterPoints: points.map(({ id, x, y, membership }) => ({
+        id,
+        x,
+        y,
+        membership,
+        subset: membership === 'test' ? 'test' : 'train',
+      })),
       residualPoints: points.map((point) => ({ id: point.id, x: point.x, y: point.y, prediction: prediction(point.x) })),
       axes: { x: source?.feature ?? 'x', y: source?.target ?? 'y' },
     };
-    const mse = meanSquaredError(points, weight, bias);
+    const trainMse = meanSquaredError(train, weight, bias);
+    const testMse = test.length ? meanSquaredError(test, weight, bias) : null;
+    const mse = trainMse;
     const training = modelState.training;
     let observation = {
       titleKey: 'playground.lr.observation.intro',
@@ -438,7 +499,7 @@ export const linearRegressionAdapter = {
     }
     return {
       scene,
-      metrics: { mse },
+      metrics: { mse, trainMse, testMse },
       observation,
       formula: {
         key: 'playground.formula.linear',

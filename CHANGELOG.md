@@ -378,3 +378,13 @@
 - Marked `docs/exploration-infrastructure-supplement.md` as integrated design rationale; the roadmap governs any future conflict or phase decision.
 - Validation: `npm run check` passed outside the workspace sandbox after the sandbox blocked esbuild parent-directory access; core/exploration checks, KNN/LR/MLP render smoke, and 12 example checks passed. Integration-term coverage, local Markdown links, UTF-8/command-envelope scans, and `git diff --check` passed. `npm run build` was omitted because this change is documentation-only and touches no executable code.
 - Deferred: no Scenario Engine runtime, constraint editor, sweep UI, or other Phase 1+ executable work was started.
+
+## 2026-08-12 - Phase 1.1 World Transaction Foundation
+
+- Added canonical, model-independent World transactions with atomic multi-operation validation, deterministic IDs, lightweight semantic action records, exact inverse operations, bounded grouped Undo/Redo history, and explicit human/Agent/system actors.
+- Added a pure deterministic Brush/Spray gesture materializer with bounded path input, per-gesture point output, total World observations, and transaction operation count; the same normalized gesture and seed reproduce identical observations and IDs.
+- Extended the unified Playground runtime with `APPLY_WORLD_TRANSACTION`, `UNDO_WORLD_ACTION`, `REDO_WORLD_ACTION`, and non-semantic `SET_WORKSPACE_VIEW`; script baselines and captures now preserve World history, source state, transaction counters, and view state without creating a second reducer.
+- Added the optional model-adapter `applyWorld()` boundary and implemented it for Linear Regression. Explicit train observations alone control fitting/training, test observations produce `testMse` without changing fitted parameters, and legacy unspecified Worlds retain all-data behavior. KNN/MLP World editing remains unsupported and is reported through capabilities.
+- Added Phase 1.1 contract coverage for transaction atomicity and resource limits, exact inverse ordering/values, deterministic gestures, Agent/manual parity, grouped history, Undo/Redo, adapter rejection rollback, train/test isolation, view fingerprint isolation, and Script reset history isolation; documented the contracts in `exploration-semantics.md` and `playgrounds.md`.
+- Validation: `npm run check`, `npm run check:compiler`, `npm run build`, UTF-8/command-envelope scan, and `git diff --check` passed. KNN/LR/MLP render smoke and 12 example checks passed. The build retained its existing large-chunk warning.
+- Deferred: no Point/Brush/Spray React UI, selection/touch interaction, classification World editing, Experiment Bar, generator, Scenario Engine, or persistence change is included; these remain Phase 1.2+ work.

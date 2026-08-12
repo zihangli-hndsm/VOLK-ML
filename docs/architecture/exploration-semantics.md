@@ -68,3 +68,47 @@ current no-Agent Playground journey remains usable and continues to use the
 same model actions. A full 2D drawing workspace, user-facing duplicate/compare
 controls, undo UI, generators, and persistent Experiment history remain
 Phase 1/2/3 work.
+
+## Phase 1.1 World transaction foundation
+
+Phase 1.1 adds the semantic transaction boundary needed by the future 2D Data
+Workspace without adding its drawing UI. `applyWorldTransaction()` applies a
+non-empty list of registered World operations atomically and returns:
+
+- the next validated World;
+- one lightweight semantic action record (`actor`, `domain`, `intent`, and a
+  mutation summary);
+- a normalized forward transaction;
+- an inverse transaction for exact Undo.
+
+The unified Playground runtime accepts `APPLY_WORLD_TRANSACTION`,
+`UNDO_WORLD_ACTION`, and `REDO_WORLD_ACTION`. It owns the history stacks, keeps
+only forward/inverse operations rather than a World snapshot per action, and
+clears Redo after a new accepted edit. Script baselines and captures preserve
+World history, source state, the transaction counter, and view state so script
+branches do not leak edits into one another. The public snapshot exposes only
+the lightweight action records.
+
+`src/core/exploration/gestures.js` is a pure deterministic materializer for
+future Brush and Spray UI gestures. The same normalized path, seed, spread,
+density, membership, and gesture ID produce the same point IDs and values.
+Path input, points per gesture, and total World observations are bounded before
+the runtime accepts the transaction. Transactions also cap operation count,
+and the runtime retains a bounded number of reversible action entries.
+
+World edits remain model-independent. An adapter may opt into them through
+`applyWorld(modelState, world, context)`. Linear Regression is the first and
+only Phase 1.1 implementation. It rebuilds its point state from the canonical
+World, clears stale training playback, and computes fitting/training from
+explicit `train` observations while reserving `test` observations for
+`testMse`. Legacy Worlds with only `unspecified` membership retain the previous
+all-data training behavior. KNN and MLP do not yet advertise `canEditWorld`.
+
+Workspace view state is separate from the Experiment. `SET_WORKSPACE_VIEW`
+updates validated bounds and Train/Test visibility without changing the World,
+Experiment semantic fingerprint, or World action history. The future drawing
+surface must use this boundary rather than encoding pan/zoom as data changes.
+
+Phase 1.1 deliberately does not include Point/Brush/Spray React controls,
+selection, touch interaction, Experiment Bar, generators, Scenario execution,
+or classification World editing. Those remain later accepted slices.

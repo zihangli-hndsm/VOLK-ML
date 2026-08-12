@@ -6,6 +6,7 @@ import { mlpAdapter } from './mlpAdapter.js';
 //   { id, capabilities, defaultVisualizationPreset,
 //     initialize({source, controls, seed, recorder}),
 //     applyModelAction(modelState, action, {controls, recorder}),
+//     applyWorld?(modelState, world, {controls, recorder, source}),
 //     deriveScene(modelState, {controls, source}),
 //     scriptOperations }
 // Adapters are pure model logic: they never import React, DOM, SVG or the

@@ -8,7 +8,11 @@ import { scriptError } from './visualization/scriptErrors.js';
 import { buildDataState } from './data/datasetAdapter.js';
 import { getPlayground } from '../playgrounds/registry.js';
 import { createExperiment } from '../exploration/experiment.js';
-import { synchronizeExperiment } from '../exploration/operations.js';
+import {
+  applyWorldTransaction,
+  MAX_WORLD_HISTORY_ACTIONS,
+  synchronizeExperiment,
+} from '../exploration/operations.js';
 import { worldFromPlaygroundSource } from '../exploration/world.js';
 import {
   playgroundError,
@@ -33,6 +37,10 @@ const GENERIC_ACTIONS = [
   'RUN_SCENARIO',
   'SCENARIO_NEXT',
   'SET_VISUAL',
+  'SET_WORKSPACE_VIEW',
+  'APPLY_WORLD_TRANSACTION',
+  'UNDO_WORLD_ACTION',
+  'REDO_WORLD_ACTION',
   'SCRIPT_LOAD',
   'SCRIPT_PLAY',
   'SCRIPT_PAUSE',
@@ -44,6 +52,39 @@ const GENERIC_ACTIONS = [
 ];
 
 const jsonSafe = (value) => (value === undefined || typeof value === 'function' ? null : structuredClone(value));
+
+function initialViewState(ranges = {}) {
+  return {
+    bounds: {
+      xMin: Number.isFinite(ranges.xMin) ? ranges.xMin : -1,
+      xMax: Number.isFinite(ranges.xMax) ? ranges.xMax : 1,
+      yMin: Number.isFinite(ranges.yMin) ? ranges.yMin : -1,
+      yMax: Number.isFinite(ranges.yMax) ? ranges.yMax : 1,
+    },
+    visibility: 'both',
+    autoFitRevision: 0,
+  };
+}
+
+function validateViewPatch(current, patch = {}) {
+  const visibility = patch.visibility ?? current.visibility;
+  if (!['train', 'test', 'both'].includes(visibility)) {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'SET_WORKSPACE_VIEW', field: 'visibility' });
+  }
+  const bounds = { ...current.bounds, ...(patch.bounds ?? {}) };
+  if (!['xMin', 'xMax', 'yMin', 'yMax'].every((key) => Number.isFinite(Number(bounds[key])))
+    || Number(bounds.xMin) >= Number(bounds.xMax)
+    || Number(bounds.yMin) >= Number(bounds.yMax)) {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'SET_WORKSPACE_VIEW', field: 'bounds' });
+  }
+  return {
+    bounds: Object.fromEntries(Object.entries(bounds).map(([key, value]) => [key, Number(value)])),
+    visibility,
+    autoFitRevision: Number.isInteger(patch.autoFitRevision)
+      ? patch.autoFitRevision
+      : current.autoFitRevision,
+  };
+}
 
 export function createRuntimeSession(playground, { source, controls = {}, seed, sessionId, dataset }) {
   const adapter = requireModelAdapter(playground.adapterId ?? playground.id);
@@ -105,6 +146,9 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     modelState: initialized.modelState,
     dataState,
     experiment,
+    worldHistory: { past: [], future: [] },
+    worldActionCounter: 0,
+    viewState: initialViewState(initialized.modelState?.ranges),
     timeline: { step: 0, totalSteps: initialized.totalSteps ?? 0, speed: 1 },
     scenario: null,
     script: preset ? structuredClone(preset) : null,
@@ -157,6 +201,60 @@ function applyModelAction(session, action) {
   return {
     next,
     recorder,
+  };
+}
+
+function sourceFromWorld(source, world) {
+  return {
+    ...source,
+    points: world.observations.map((point) => ({
+      id: point.id,
+      x: point.x,
+      y: point.target ?? point.y,
+      target: point.target ?? point.y,
+      membership: point.membership,
+      provenance: point.provenance,
+    })),
+    total: world.observations.length,
+  };
+}
+
+function synchronizeWorldSession(session, transactionResult, { history, mutationRecord }) {
+  const adapter = requireModelAdapter(session.adapterId);
+  if (typeof adapter.applyWorld !== 'function') {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+      type: 'APPLY_WORLD_TRANSACTION',
+      reason: 'adapter does not support World editing',
+      adapterId: session.adapterId,
+    });
+  }
+  const recorder = createTraceRecorder(session.traces);
+  const sourceData = sourceFromWorld(session.sourceData, transactionResult.world);
+  const patch = adapter.applyWorld(session.modelState, transactionResult.world, {
+    controls: session.controls,
+    recorder,
+    source: sourceData,
+  });
+  const merged = mergePatches(session, patch);
+  const synced = synchronizeExperiment(session.experiment, {
+    world: transactionResult.world,
+    source: sourceData,
+    controls: merged.controls,
+    controlDescriptors: getPlayground(session.playgroundId)?.controls ?? [],
+    adapterId: session.adapterId,
+    seed: session.seed,
+    traces: recorder.list(),
+  });
+  return {
+    ...merged,
+    sourceData,
+    experiment: {
+      ...synced,
+      mutations: [...session.experiment.mutations, structuredClone(mutationRecord)],
+    },
+    worldHistory: history,
+    traces: recorder.list(),
+    status: 'paused',
   };
 }
 
@@ -271,6 +369,64 @@ export function dispatchRuntimeAction(session, action) {
   if (action.type === 'SET_VISUAL') {
     return { ...session, visualState: { ...session.visualState, ...(action.patch ?? {}) } };
   }
+  if (action.type === 'SET_WORKSPACE_VIEW') {
+    return { ...session, viewState: validateViewPatch(session.viewState, action.patch) };
+  }
+  if (action.type === 'APPLY_WORLD_TRANSACTION') {
+    const id = action.transaction?.id ?? `${session.sessionId}-world-${session.worldActionCounter + 1}`;
+    if ([...session.worldHistory.past, ...session.worldHistory.future].some((entry) => entry.record.id === id)) {
+      throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, reason: 'duplicate transaction id', id });
+    }
+    const result = applyWorldTransaction(session.experiment.world, { ...action.transaction, id });
+    const historyEntry = { record: result.record, forward: result.forward, inverse: result.inverse };
+    return {
+      ...synchronizeWorldSession(session, result, {
+        history: {
+          past: [...session.worldHistory.past, historyEntry].slice(-MAX_WORLD_HISTORY_ACTIONS),
+          future: [],
+        },
+        mutationRecord: result.record,
+      }),
+      worldActionCounter: session.worldActionCounter + 1,
+    };
+  }
+  if (action.type === 'UNDO_WORLD_ACTION') {
+    const entry = session.worldHistory.past.at(-1);
+    if (!entry) return session;
+    const result = applyWorldTransaction(session.experiment.world, entry.inverse);
+    return synchronizeWorldSession(session, result, {
+      history: {
+        past: session.worldHistory.past.slice(0, -1),
+        future: [entry, ...session.worldHistory.future],
+      },
+      mutationRecord: {
+        id: `${entry.record.id}-undo`,
+        actor: ['human', 'agent', 'system'].includes(action.actor) ? action.actor : 'human',
+        domain: 'world',
+        intent: 'undo',
+        mutationSummary: { actionId: entry.record.id },
+      },
+    });
+  }
+  if (action.type === 'REDO_WORLD_ACTION') {
+    const entry = session.worldHistory.future[0];
+    if (!entry) return session;
+    const result = applyWorldTransaction(session.experiment.world, entry.forward);
+    const redoneEntry = { ...entry, forward: result.forward, inverse: result.inverse };
+    return synchronizeWorldSession(session, result, {
+      history: {
+        past: [...session.worldHistory.past, redoneEntry].slice(-MAX_WORLD_HISTORY_ACTIONS),
+        future: session.worldHistory.future.slice(1),
+      },
+      mutationRecord: {
+        id: `${entry.record.id}-redo`,
+        actor: ['human', 'agent', 'system'].includes(action.actor) ? action.actor : 'human',
+        domain: 'world',
+        intent: 'redo',
+        mutationSummary: { actionId: entry.record.id },
+      },
+    });
+  }
   if (action.type === 'PLAY') {
     if (session.timeline.totalSteps > 0 && session.timeline.step >= session.timeline.totalSteps) {
       const reset = dispatchRuntimeAction(session, { type: 'RESET' });
@@ -312,6 +468,9 @@ export function dispatchRuntimeAction(session, action) {
         source: structuredClone(session.sourceData ?? session.source),
         seed: session.seed,
         traces: structuredClone(session.traces),
+        worldHistory: structuredClone(session.worldHistory),
+        worldActionCounter: session.worldActionCounter,
+        viewState: structuredClone(session.viewState),
       },
     };
   }
@@ -363,6 +522,11 @@ export function dispatchRuntimeAction(session, action) {
           dataState: baseline.dataState ? structuredClone(baseline.dataState) : {},
           experiment: baseline.experiment ? structuredClone(baseline.experiment) : shell.experiment,
           traces: baseline.traces ? structuredClone(baseline.traces) : shell.traces,
+          worldHistory: baseline.worldHistory ? structuredClone(baseline.worldHistory) : shell.worldHistory,
+          worldActionCounter: Number.isInteger(baseline.worldActionCounter)
+            ? baseline.worldActionCounter
+            : shell.worldActionCounter,
+          viewState: baseline.viewState ? structuredClone(baseline.viewState) : shell.viewState,
           baseline: structuredClone(session.baseline ?? shell.baseline),
           scriptBaseline: structuredClone(session.scriptBaseline),
         };
@@ -389,6 +553,10 @@ export function dispatchRuntimeAction(session, action) {
           modelState: structuredClone(session.modelState),
           dataState: session.dataState ? structuredClone(session.dataState) : {},
           experiment: structuredClone(session.experiment),
+          sourceData: structuredClone(session.sourceData),
+          worldHistory: structuredClone(session.worldHistory),
+          worldActionCounter: session.worldActionCounter,
+          viewState: structuredClone(session.viewState),
           timeline: structuredClone(session.timeline),
           traceCount: session.traces.length,
           scene: jsonSafe(semantic.scene),
@@ -413,6 +581,12 @@ export function dispatchRuntimeAction(session, action) {
       modelState: structuredClone(captured.modelState),
       dataState: captured.dataState ? structuredClone(captured.dataState) : {},
       experiment: captured.experiment ? structuredClone(captured.experiment) : session.experiment,
+      sourceData: captured.sourceData ? structuredClone(captured.sourceData) : session.sourceData,
+      worldHistory: captured.worldHistory ? structuredClone(captured.worldHistory) : session.worldHistory,
+      worldActionCounter: Number.isInteger(captured.worldActionCounter)
+        ? captured.worldActionCounter
+        : session.worldActionCounter,
+      viewState: captured.viewState ? structuredClone(captured.viewState) : session.viewState,
       timeline: captured.timeline ? structuredClone(captured.timeline) : session.timeline,
       // Branch isolation: the trace history returns to the baseline
       // checkpoint so branch B emits exactly the same evidence as a fresh
@@ -462,6 +636,9 @@ export function deriveRuntimeSnapshot(session) {
       ...semanticCapabilities,
       canPause: session.status === 'playing',
     };
+  capabilities.canEditWorld = typeof adapter.applyWorld === 'function';
+  capabilities.canUndoWorld = session.worldHistory.past.length > 0;
+  capabilities.canRedoWorld = session.worldHistory.future.length > 0;
   const primitives = materializePrimitives({
     script: session.script,
     semanticState: modelContext,
@@ -492,6 +669,11 @@ export function deriveRuntimeSnapshot(session) {
     dataState: jsonSafe(session.dataState),
     experiment: jsonSafe(session.experiment),
     world: jsonSafe(session.experiment?.world),
+    viewState: jsonSafe(session.viewState),
+    actionHistory: {
+      past: session.worldHistory.past.map((entry) => jsonSafe(entry.record)),
+      future: session.worldHistory.future.map((entry) => jsonSafe(entry.record)),
+    },
     primitives: primitives.map((primitive) => jsonSafe(primitive)),
   };
 }
