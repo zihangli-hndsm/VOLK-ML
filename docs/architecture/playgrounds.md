@@ -22,6 +22,14 @@ Unified stage (renderer by primitive type)
 
 `src/core/playground/playgroundRuntime.js` owns the session: controls, timeline, status, semantic traces and visual state. The UI, the Canvas Agent (`canvas.playground`) and `src/core/playground/visualization/scriptRuntime.js` all dispatch the same JSON actions through `dispatchRuntimeAction()`. Model-specific behavior lives in the model adapters (`src/core/playground/model/`), which never import React/DOM/SVG and never touch the session reducer.
 
+Since Phase 1.1, the same reducer also owns canonical World transactions,
+grouped World Undo/Redo history, and non-semantic Workspace view state.
+`APPLY_WORLD_TRANSACTION` applies a model-independent atomic operation group to
+`Experiment.world`, then calls an adapter's optional `applyWorld()` boundary.
+Linear Regression implements that boundary; unsupported adapters reject World
+editing rather than receiving model-specific transaction branches in the
+runtime. `SET_WORKSPACE_VIEW` never changes Experiment semantics.
+
 The old descriptors in `src/core/playgrounds/linearRegression.js` and `src/core/playgrounds/knn.js` are metadata only (id, title, controls, actions, scenarios, source validation); `src/core/playgrounds/session.js` is a thin compatibility wrapper over the unified runtime, so the registry, Agent API and existing contract tests keep working.
 
 Since the PR B follow-up, **Visualization Scripts own visualization composition**:

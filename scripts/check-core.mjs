@@ -128,6 +128,9 @@ import { getPrimitiveSchema, listPrimitiveSchemas, validatePrimitiveContract } f
 import { PRIMITIVE_TYPES } from '../src/core/playground/visualization/primitives.js';
 import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from '../src/core/playground/trace/traceTypes.js';
 import { RESOURCE_LIMITS } from '../src/core/playground/visualization/scriptValidator.js';
+import { MAX_GESTURE_PATH_POINTS, MAX_POINTS_PER_GESTURE } from '../src/core/exploration/gestures.js';
+import { MAX_WORLD_HISTORY_ACTIONS, MAX_WORLD_TRANSACTION_OPERATIONS } from '../src/core/exploration/operations.js';
+import { MAX_WORLD_OBSERVATIONS } from '../src/core/exploration/world.js';
 import { validateType } from '../src/core/playground/visualization/typeContracts.js';
 import { validateTracePayload } from '../src/core/playground/trace/traceTypes.js';
 import {
@@ -4012,7 +4015,14 @@ assert.throws(
       assert.deepEqual(schemaContext.model.operations, knnSchemaAdapter.scriptOperations, 'inspectContext operations match the schemas');
       assert.deepEqual(schemaContext.traces, TRACE_EVENTS['knn'], 'inspectContext traces match the registry');
       assert.deepEqual(Object.keys(schemaContext.traceSchemas), TRACE_EVENTS['knn'], 'inspectContext trace schemas match the registry');
-      assert.deepEqual(schemaContext.resourceLimits, RESOURCE_LIMITS, 'inspectContext resource limits match the enforced limits');
+      assert.deepEqual(schemaContext.resourceLimits, {
+        ...RESOURCE_LIMITS,
+        maxWorldObservations: MAX_WORLD_OBSERVATIONS,
+        maxGesturePathPoints: MAX_GESTURE_PATH_POINTS,
+        maxPointsPerGesture: MAX_POINTS_PER_GESTURE,
+        maxWorldTransactionOperations: MAX_WORLD_TRANSACTION_OPERATIONS,
+        maxWorldHistoryActions: MAX_WORLD_HISTORY_ACTIONS,
+      }, 'inspectContext resource limits match the enforced limits');
       assert.deepEqual(schemaContext.primitives, listPrimitiveSchemas(), 'inspectContext primitive schemas match the registry');
       const capabilitySchemas = schemaAgent.getCapabilities().models.find((model) => model.id === 'knn').operationSchemas;
       assert.deepEqual(capabilitySchemas, knnSchemaAdapter.scriptOperations, 'getCapabilities operation schemas match the adapters');

@@ -58,6 +58,8 @@ export const linearRegressionPlayground = {
         id: point.id ?? index,
         x: finiteOrNull(point.x),
         y: finiteOrNull(point.y),
+        membership: point.membership ?? point.split ?? 'unspecified',
+        provenance: point.provenance,
       })).filter((point) => point.x !== null && point.y !== null)
       : [];
     if (points.length < 2) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { reason: 'needs at least two finite points' });

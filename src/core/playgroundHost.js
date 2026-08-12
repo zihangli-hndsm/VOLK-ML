@@ -25,6 +25,9 @@ import { listModelAdapters, getModelAdapter } from './playground/model/modelRegi
 import { PRIMITIVE_TYPES } from './playground/visualization/primitives.js';
 import { listPrimitiveSchemas } from './playground/visualization/schemas.js';
 import { RESOURCE_LIMITS } from './playground/visualization/scriptValidator.js';
+import { MAX_GESTURE_PATH_POINTS, MAX_POINTS_PER_GESTURE } from './exploration/gestures.js';
+import { MAX_WORLD_HISTORY_ACTIONS, MAX_WORLD_TRANSACTION_OPERATIONS } from './exploration/operations.js';
+import { MAX_WORLD_OBSERVATIONS } from './exploration/world.js';
 import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from './playground/trace/traceTypes.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -333,7 +336,12 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
             'ADD_POINTS',
             'MOVE_POINT',
             'REMOVE_POINT',
+            'REMOVE_POINTS',
             'SET_TRAIN_TEST_MEMBERSHIP',
+            'APPLY_WORLD_TRANSACTION',
+            'UNDO_WORLD_ACTION',
+            'REDO_WORLD_ACTION',
+            'SET_WORKSPACE_VIEW',
             'DUPLICATE_EXPERIMENT',
             'RESTORE_EXPERIMENT',
             'COMPARE_EXPERIMENTS',
@@ -359,7 +367,14 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           { prefix: '$metrics', fields: Object.keys(snapshot.metrics ?? {}) },
           { prefix: '$trace', fields: null },
         ],
-        resourceLimits: { ...RESOURCE_LIMITS },
+        resourceLimits: {
+          ...RESOURCE_LIMITS,
+          maxWorldObservations: MAX_WORLD_OBSERVATIONS,
+          maxGesturePathPoints: MAX_GESTURE_PATH_POINTS,
+          maxPointsPerGesture: MAX_POINTS_PER_GESTURE,
+          maxWorldTransactionOperations: MAX_WORLD_TRANSACTION_OPERATIONS,
+          maxWorldHistoryActions: MAX_WORLD_HISTORY_ACTIONS,
+        },
         currentState: {
           status: snapshot.status,
           scriptId: snapshot.script?.id ?? null,
