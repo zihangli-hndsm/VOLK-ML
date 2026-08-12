@@ -35,6 +35,9 @@ const GENERIC_ACTIONS = [
   'STEP',
   'SEEK',
   'RESET',
+  'RESET_LEARNING',
+  'RUN',
+  'RESTORE_ORIGINAL_DATA',
   'RUN_SCENARIO',
   'SCENARIO_NEXT',
   'SET_VISUAL',
@@ -54,7 +57,7 @@ const GENERIC_ACTIONS = [
 
 const jsonSafe = (value) => (value === undefined || typeof value === 'function' ? null : structuredClone(value));
 
-function initialViewState(ranges = {}) {
+function initialViewState(ranges = {}, featureNames = []) {
   return {
     bounds: {
       xMin: Number.isFinite(ranges.xMin) ? ranges.xMin : -1,
@@ -63,11 +66,14 @@ function initialViewState(ranges = {}) {
       yMax: Number.isFinite(ranges.yMax) ? ranges.yMax : 1,
     },
     visibility: 'both',
+    mode: 'scatter',
+    xFeature: featureNames[0] ?? 'x',
+    yFeature: featureNames[1] ?? 'y',
     autoFitRevision: 0,
   };
 }
 
-function validateViewPatch(current, patch = {}) {
+function validateViewPatch(current, patch = {}, featureNames = []) {
   const visibility = patch.visibility ?? current.visibility;
   if (!['train', 'test', 'both'].includes(visibility)) {
     throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'SET_WORKSPACE_VIEW', field: 'visibility' });
@@ -81,6 +87,15 @@ function validateViewPatch(current, patch = {}) {
   return {
     bounds: Object.fromEntries(Object.entries(bounds).map(([key, value]) => [key, Number(value)])),
     visibility,
+    mode: ['scatter', 'distribution'].includes(patch.mode ?? current.mode)
+      ? (patch.mode ?? current.mode)
+      : (() => { throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'SET_WORKSPACE_VIEW', field: 'mode' }); })(),
+    xFeature: featureNames.includes(patch.xFeature ?? current.xFeature)
+      ? (patch.xFeature ?? current.xFeature)
+      : current.xFeature,
+    yFeature: featureNames.includes(patch.yFeature ?? current.yFeature)
+      ? (patch.yFeature ?? current.yFeature)
+      : current.yFeature,
     autoFitRevision: Number.isInteger(patch.autoFitRevision)
       ? patch.autoFitRevision
       : current.autoFitRevision,
@@ -149,7 +164,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     experiment,
     worldHistory: { past: [], future: [] },
     worldActionCounter: 0,
-    viewState: initialViewState(initialized.modelState?.ranges),
+    viewState: initialViewState(initialized.modelState?.ranges, experiment.world.featureNames),
     timeline: { step: 0, totalSteps: initialized.totalSteps ?? 0, speed: 1 },
     scenario: null,
     script: preset ? structuredClone(preset) : null,
@@ -209,6 +224,7 @@ function sourceFromWorld(source, world) {
   return {
     ...source,
     points: world.observations.map((point) => ({
+      ...point,
       id: point.id,
       x: point.x,
       y: point.target ?? point.y,
@@ -216,6 +232,9 @@ function sourceFromWorld(source, world) {
       membership: point.membership,
       provenance: point.provenance,
     })),
+    featureColumns: source.featureColumns ?? world.featureNames.filter((feature) => feature !== world.metadata?.targetFeature),
+    feature: source.feature ?? world.metadata?.modelFeature,
+    target: source.target ?? world.metadata?.targetFeature,
     total: world.observations.length,
   };
 }
@@ -287,6 +306,8 @@ function canonicalWorldTransaction(action) {
         ? 'move'
         : action.type === 'SET_TRAIN_TEST_MEMBERSHIP'
           ? 'membership'
+          : action.type === 'SET_FEATURE_VALUES' || action.type === 'TRANSFORM_FEATURE_VALUES'
+            ? 'feature-intervention'
           : 'erase';
     const operation = { ...action };
     delete operation.actor;
@@ -378,6 +399,48 @@ function computeScriptStepActions(session) {
   return actions;
 }
 
+function resetLearningSession(session) {
+  const adapter = requireModelAdapter(session.adapterId);
+  const recorder = createTraceRecorder(session.traces);
+  const patch = typeof adapter.resetLearning === 'function'
+    ? adapter.resetLearning(session.modelState, {
+      controls: session.controls,
+      recorder,
+      source: session.sourceData,
+      world: session.experiment.world,
+    })
+    : { modelState: session.modelState, timeline: { step: 0, totalSteps: 0 } };
+  const merged = mergePatches(session, patch);
+  const points = Array.isArray(merged.modelState?.points) ? merged.modelState.points : undefined;
+  return {
+    ...merged,
+    status: 'paused',
+    traces: recorder.list(),
+    experiment: synchronizeExperiment(session.experiment, {
+      world: session.experiment.world,
+      source: session.sourceData,
+      points,
+      controls: merged.controls,
+      controlDescriptors: getPlayground(session.playgroundId)?.controls ?? [],
+      adapterId: session.adapterId,
+      seed: session.seed,
+      traces: recorder.list(),
+    }),
+  };
+}
+
+function runCurrentWorld(session) {
+  let next = resetLearningSession(session);
+  const started = applyModelAction(next, { type: 'START_TRAINING' });
+  next = { ...started.next, traces: started.recorder.list() };
+  const totalSteps = next.timeline.totalSteps ?? 0;
+  for (let index = 0; index < totalSteps; index += 1) {
+    const stepped = applyModelAction(next, { type: 'STEP' });
+    next = { ...stepped.next, traces: stepped.recorder.list() };
+  }
+  return { ...next, status: 'completed' };
+}
+
 export function dispatchRuntimeAction(session, action) {
   validateActionShape(action);
   const playground = getPlayground(session.playgroundId);
@@ -409,7 +472,10 @@ export function dispatchRuntimeAction(session, action) {
     return { ...session, visualState: { ...session.visualState, ...(action.patch ?? {}) } };
   }
   if (action.type === 'SET_WORKSPACE_VIEW') {
-    return { ...session, viewState: validateViewPatch(session.viewState, action.patch) };
+    return {
+      ...session,
+      viewState: validateViewPatch(session.viewState, action.patch, session.experiment.world.featureNames),
+    };
   }
   if (action.type === 'APPLY_WORLD_TRANSACTION') {
     const id = action.transaction?.id ?? `${session.sessionId}-world-${session.worldActionCounter + 1}`;
@@ -473,10 +539,12 @@ export function dispatchRuntimeAction(session, action) {
       },
     });
   }
+  if (action.type === 'RESET_LEARNING') return resetLearningSession(session);
+  if (action.type === 'RUN') return runCurrentWorld(session);
+  if (action.type === 'RESTORE_ORIGINAL_DATA') return dispatchRuntimeAction(session, { type: 'RESET' });
   if (action.type === 'PLAY') {
     if (session.timeline.totalSteps > 0 && session.timeline.step >= session.timeline.totalSteps) {
-      const reset = dispatchRuntimeAction(session, { type: 'RESET' });
-      return { ...reset, status: 'playing' };
+      return { ...runCurrentWorld(session), status: 'playing' };
     }
     return { ...session, status: 'playing' };
   }

@@ -41,7 +41,7 @@ first-split normalization and comparison-factor contracts.
 
 ### 2D Data Workspace MVP (Phase 1)
 
-`DataWorkspace.jsx` is a reusable learner surface over `snapshot.world` and
+`DataWorkspace.jsx` is a reusable Data Lab surface over `snapshot.world` and
 `snapshot.capabilities`. It exposes Point, Brush, Spray, Select/Move, Erase,
 Train/Test authoring, precise coordinate entry, Fit view, and visible Undo /
 Redo only when the runtime advertises the required World capabilities. Tool
@@ -55,6 +55,14 @@ dataset when no workspace dataset is supplied. Fallback points are only used
 when that teaching dataset is unavailable. The Workspace deliberately does
 not add an Experiment Bar, generators, Scenario execution, persistence, or
 editable KNN/MLP Worlds in this phase.
+
+The shared Experiment Lab shell renders this Data Lab beside a peer Model Lab
+tab over the same runtime session. Data Lab projection changes are validated
+`SET_WORKSPACE_VIEW` updates and do not alter World semantics. Numeric feature
+interventions use the registered `SET_FEATURE_VALUES` and
+`TRANSFORM_FEATURE_VALUES` operations, with grouped Undo and deterministic
+seeded noise. `RUN` and `RESET_LEARNING` preserve the current World; restoring
+the open-time baseline is an explicit `RESTORE_ORIGINAL_DATA` action.
 
 The old descriptors in `src/core/playgrounds/linearRegression.js` and `src/core/playgrounds/knn.js` are metadata only (id, title, controls, actions, scenarios, source validation); `src/core/playgrounds/session.js` is a thin compatibility wrapper over the unified runtime, so the registry, Agent API and existing contract tests keep working.
 

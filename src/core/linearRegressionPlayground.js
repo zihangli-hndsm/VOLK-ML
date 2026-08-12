@@ -41,7 +41,10 @@ export function regressionPointsFromDataset(dataset, limit = 80) {
   const valid = dataset.rows.flatMap((row) => {
     const x = finiteNumber(row[feature]);
     const y = finiteNumber(row[target]);
-    return x === null || y === null ? [] : [{ x, y }];
+    const features = Object.fromEntries((dataset.featureColumns ?? []).map((column) => [column, finiteNumber(row[column])]));
+    return x === null || y === null || Object.values(features).some((value) => value === null)
+      ? []
+      : [{ x, y, target: y, features }];
   });
   if (valid.length < 2) {
     return {

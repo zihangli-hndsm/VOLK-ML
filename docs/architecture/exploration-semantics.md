@@ -39,6 +39,14 @@ operation returns an immutable next World and one grouped mutation record;
 future brush or Agent actions can map to the same boundary without leaking UI
 details into the domain.
 
+The registry also exposes named-feature interventions: `SET_FEATURE_VALUES`
+for projected point edits and `TRANSFORM_FEATURE_VALUES` for deterministic
+numeric Shift, Scale, and Add Noise operations. A transform is scoped to an
+explicit observation ID set and records its feature, kind, amount, seed, and
+scope. Noise uses stable seed/feature/observation identity, never UI
+`Math.random()`, and both operation types invert through one grouped feature
+value transaction.
+
 Control descriptors declare whether a control belongs to `model`, `learning`,
 `evaluation`, or `view`. Runtime synchronization uses those declarations to
 partition the current session into the Experiment bundle. View-only controls
@@ -168,8 +176,8 @@ outside both the Experiment and comparison fingerprint.
 
 ## Phase 1 2D Data Workspace MVP
 
-`src/components/playground/DataWorkspace.jsx` is a generic learner-facing
-surface over the canonical World snapshot. It is rendered only when runtime
+`src/components/playground/DataWorkspace.jsx` is a generic learner-facing Data
+Lab surface over the canonical World snapshot. It is rendered only when runtime
 capabilities advertise `canEditWorld` and the required public operation types;
 the component does not inspect a playground ID or mutate model state. Linear
 Regression is the first supported adapter. KNN and MLP remain unchanged until
@@ -215,3 +223,10 @@ point. Visible Undo/Redo buttons read `canUndoWorld` and `canRedoWorld` from
 the runtime snapshot and therefore operate on complete semantic gesture
 boundaries. Reset remains the existing Playground open-time source reset and
 is intentionally separate from Undo.
+
+The Experiment Lab shell presents Data Lab and Model Lab as peer UI tabs over
+one runtime session. Data Lab owns projection state (scatter/distribution,
+selected numeric features, visibility, and selection); Model Lab owns model
+controls and learning playback. Switching tabs does not recreate the session.
+`RUN` and `RESET_LEARNING` reset/recompute learning from the current canonical
+World, while `RESTORE_ORIGINAL_DATA` is the explicit open-time baseline restore.

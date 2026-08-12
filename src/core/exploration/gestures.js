@@ -78,7 +78,13 @@ export function materializeWorldGesture({
     throw explorationError('EXPLORATION_INVALID_OPERATION', { field: 'spread/density' });
   }
   const random = randomGenerator(`${seed}:${id}:${tool}`);
-  const spacing = tool === 'brush' ? Math.max(0.02, normalizedSpread || 0.08) : Math.max(0.04, normalizedSpread || 0.12);
+  // Brush density changes the distance between deterministic path anchors;
+  // Spray density still controls the number of samples around each anchor.
+  // Keeping the two meanings separate preserves the distinction between a
+  // path-following brush and a local cloud tool.
+  const spacing = tool === 'brush'
+    ? Math.max(0.02, 0.18 / normalizedDensity)
+    : Math.max(0.04, normalizedSpread || 0.12);
   const anchors = sampledPath(normalizedPath, spacing);
   const points = [];
   for (const anchor of anchors) {

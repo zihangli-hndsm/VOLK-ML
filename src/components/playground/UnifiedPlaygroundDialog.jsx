@@ -9,9 +9,10 @@ import DataWorkspace from './DataWorkspace.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import PresentationMode from './PresentationMode.jsx';
 
-export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t }) {
+export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model' }) {
   const [snapshot, setSnapshot] = useState(null);
   const [presentationMode, setPresentationMode] = useState(false);
+  const [activeTab, setActiveTab] = useState(initialTab);
   const playground = useMemo(() => (playgroundId ? getPlayground(playgroundId) : null), [playgroundId]);
 
   useEffect(() => {
@@ -20,6 +21,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     let unsubscribe = () => {};
     setSnapshot(null);
     setPresentationMode(false);
+    setActiveTab(initialTab);
     host.ensureOpen(playgroundId).then(() => {
       if (!active) return;
       try {
@@ -67,8 +69,11 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     <section className="max-h-[94vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
       <div className="space-y-4">
         <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} />
+        <div role="tablist" aria-label={t('playground.lab.tabs')} className="flex gap-2 border-b border-slate-200 pb-2">
+          {['data', 'model'].map((tab) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => setActiveTab(tab)} className={`rounded-xl px-4 py-2 text-sm font-black ${activeTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{t(`playground.lab.${tab}`)}</button>)}
+        </div>
         {agent && <PlaygroundAgentPanel host={host} agent={agent} snapshot={snapshot} t={t} />}
-        <DataWorkspace snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} t={t} />
+        {activeTab === 'data' ? <DataWorkspace snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} t={t} /> : <>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <PlaygroundStage snapshot={snapshot} t={t} />
@@ -83,7 +88,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
               ? <FormulaRenderer props={formulaPrimitive.props} t={t} />
               : <p className="font-mono text-sm font-bold text-sky-300">—</p>}
           </div>
-        </div>
+        </div></>}
       </div>
     </section>
   </div>;

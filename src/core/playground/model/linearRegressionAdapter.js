@@ -22,6 +22,18 @@ function testPoints(points) {
   return points.filter((point) => point.membership === 'test');
 }
 
+function pointForModel(point, feature, target) {
+  const x = finiteOrNull(point.features?.[feature]) ?? finiteOrNull(point.x);
+  const y = finiteOrNull(point.features?.[target]) ?? finiteOrNull(point.target) ?? finiteOrNull(point.y);
+  return {
+    ...point,
+    x,
+    y,
+    target: y,
+    ...(point.features ? { features: structuredClone(point.features) } : {}),
+  };
+}
+
 function validateRegressionWorld(world) {
   if (world.task !== 'regression') {
     throw playgroundError('INVALID_PLAYGROUND_ACTION', { reason: 'linear regression requires a regression World' });
@@ -154,10 +166,11 @@ export const linearRegressionAdapter = {
   },
 
   initialize({ source, controls, recorder }) {
+    const feature = source.feature ?? source.featureColumns?.[0] ?? 'x';
+    const target = source.target ?? 'y';
     const points = source.points.map((point) => ({
+      ...pointForModel(point, feature, target),
       id: point.id,
-      x: point.x,
-      y: point.y,
       membership: point.membership ?? 'unspecified',
       provenance: point.provenance ?? (source.kind === 'workspace-dataset' ? 'imported' : 'generated'),
     }));
@@ -199,6 +212,9 @@ export const linearRegressionAdapter = {
       },
       modelState: {
         points,
+        feature,
+        target,
+        featureColumns: source.featureColumns ? [...source.featureColumns] : [feature],
         ...derived,
         weight: merged.weight,
         bias: merged.bias,
@@ -216,10 +232,11 @@ export const linearRegressionAdapter = {
 
   applyWorld(modelState, world, { recorder }) {
     validateRegressionWorld(world);
+    const feature = modelState.feature ?? world.metadata?.modelFeature ?? 'x';
+    const target = modelState.target ?? world.metadata?.targetFeature ?? 'y';
     const points = world.observations.map((point) => ({
+      ...pointForModel(point, feature, target),
       id: point.id,
-      x: point.x,
-      y: point.target ?? point.y,
       membership: point.membership,
       provenance: point.provenance,
     }));
@@ -235,6 +252,18 @@ export const linearRegressionAdapter = {
     });
     emitLineUpdate(recorder, next);
     return { modelState: next, timeline: { step: 0, totalSteps: 0 } };
+  },
+
+  resetLearning(modelState, { recorder }) {
+    const train = trainingPoints(modelState.points);
+    const initialBias = train.reduce((sum, point) => sum + point.y, 0) / Math.max(1, train.length);
+    const next = clearTraining({ ...modelState, weight: 0, bias: initialBias });
+    emitLineUpdate(recorder, next);
+    return {
+      modelState: next,
+      controls: { weight: 0, bias: initialBias },
+      timeline: { step: 0, totalSteps: 0 },
+    };
   },
 
   applyModelAction(modelState, action, { controls, recorder }) {
@@ -435,7 +464,7 @@ export const linearRegressionAdapter = {
         membership: point.membership,
         subset: point.membership === 'test' ? 'test' : 'train',
       })),
-      axes: { x: source?.feature ?? 'x', y: source?.target ?? 'y' },
+      axes: { x: modelState.feature ?? source?.feature ?? 'x', y: modelState.target ?? source?.target ?? 'y' },
     };
     const trainMse = meanSquaredError(train, weight, bias);
     const testMse = test.length ? meanSquaredError(test, weight, bias) : null;

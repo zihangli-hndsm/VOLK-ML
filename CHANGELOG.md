@@ -408,3 +408,13 @@
 - Added focused coverage for the default 11-point LR flow, 9/2 split normalization, test-only movement and MSE behavior, membership-only comparison, exact Undo/Redo, legacy/canonical equivalence, Agent parity, registry discovery, extension boundaries, and KNN/LR/MLP render smoke.
 - Updated `docs/architecture/exploration-semantics.md` and `docs/architecture/playgrounds.md`. No React drawing workspace, Scenario Engine, classification World editing, persistence schema, or model-specific exploration branch was added.
 - Validation: `npm run check`, `npm run check:compiler`, `npm run build`, changed-line UTF-8/command-envelope scan, and `git diff --check` passed. The build retained its existing large-chunk warning.
+
+## 2026-08-12 - Experiment Lab and Data Lab vertical slice
+
+- Added one shared Experiment Lab shell with peer Data Lab and Model Lab tabs, plus separate model-oriented and Data Lab-oriented entry points; tab switching preserves the same World, Experiment, runtime, and model session.
+- Split learning lifecycle semantics: `RUN` and `RESET_LEARNING` operate on the current edited World, while `RESTORE_ORIGINAL_DATA` is the explicit destructive baseline restore.
+- Extended Brush density so deterministic path-following Brush gestures produce more observations as density increases; Spray keeps its local-cloud interpretation.
+- Preserved full numeric feature maps in regression Worlds, added projection-only scatter/distribution views, named-feature projected editing, and registry-backed Shift, Scale, and deterministic Add Noise interventions with all/train/test/selected scopes and grouped Undo.
+- Updated exploration architecture documentation and regression coverage for lifecycle preservation, multi-feature semantics, feature interventions, projection isolation, and Brush density.
+- Validation: `npm run check`, `npm run build`, `node scripts/check-exploration.mjs`, render smoke, and `git diff --check` passed. The build retains the existing large-chunk warning.
+- Deferred: Experiment Bar/A-B Compare, generators, Scenario Engine, Guided Explore, Agent Explore redesign, Repeat/sweeps, Training Microscope, and broader model editing.

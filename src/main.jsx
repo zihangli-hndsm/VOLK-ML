@@ -485,6 +485,7 @@ function Workspace() {
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [playgroundOpen, setPlaygroundOpen] = useState(false);
   const [playgroundId, setPlaygroundId] = useState(null);
+  const [playgroundInitialTab, setPlaygroundInitialTab] = useState('model');
   const [tutorialManifest, setTutorialManifest] = useState(null);
   const [projectName, setProjectName] = useState(() => t('project.sampleName'));
   const [customComponents, setCustomComponents] = useState([]);
@@ -1387,6 +1388,7 @@ function Workspace() {
           <select aria-label={t('nav.playground')} value="" onChange={(event) => {
             const id = event.target.value;
             if (id) {
+              setPlaygroundInitialTab('model');
               setPlaygroundId(id);
               setPlaygroundOpen(true);
             }
@@ -1397,6 +1399,7 @@ function Workspace() {
             ))}
           </select>
         </label>
+        <button className="rounded-xl bg-emerald-100 px-3 py-2 font-bold text-emerald-700" onClick={() => { setPlaygroundInitialTab('data'); setPlaygroundId('linear-regression'); setPlaygroundOpen(true); }}>{t('nav.exploreData')}</button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setLeftOpen((value) => !value)}>☰ <span className="hidden sm:inline">{t('nav.blocks')}</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setRightOpen((value) => !value)}>⚙ <span className="hidden sm:inline">{t('nav.parameters')}</span></button>
         <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setViewMode((value) => value === 'canvas' ? 'architecture' : 'canvas')}>{viewMode === 'canvas' ? '⌘' : '⌁'} <span className="hidden lg:inline">{t(`nav.${viewMode === 'canvas' ? 'architecture' : 'canvas'}`)}</span></button>
@@ -1447,7 +1450,7 @@ function Workspace() {
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     <AiSettingsDialog t={t} />
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => { setPlaygroundId(id); setPlaygroundOpen(true); }} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
-    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} host={playgroundHostRef.current} agent={playgroundAgentRef.current} onClose={() => setPlaygroundOpen(false)} t={t} />
+    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={playgroundHostRef.current} agent={playgroundAgentRef.current} onClose={() => setPlaygroundOpen(false)} t={t} />
   </div>;
 }
 

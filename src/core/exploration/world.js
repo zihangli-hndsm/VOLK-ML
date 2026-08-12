@@ -152,8 +152,15 @@ export function worldFromPlaygroundSource(source, { seed = null, id = 'world-1' 
   if (!source || typeof source !== 'object' || !Array.isArray(source.points)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'source' });
   }
-  const classification = Array.isArray(source.featureColumns) && source.featureColumns.length >= 2;
-  const featureNames = classification ? [...source.featureColumns] : [source.feature ?? 'x', source.target ?? 'y'];
+  const classification = source.task === 'classification'
+    || (!source.task && Array.isArray(source.featureColumns) && source.featureColumns.length >= 2 && !source.target);
+  const inputFeatureNames = Array.isArray(source.featureColumns) && source.featureColumns.length
+    ? [...source.featureColumns]
+    : [source.feature ?? 'x'];
+  const targetFeature = source.target ?? 'y';
+  const featureNames = classification
+    ? inputFeatureNames
+    : [...new Set([...inputFeatureNames, targetFeature])];
   const defaultProvenance = source.kind === 'workspace-dataset' ? 'imported' : 'generated';
   const observations = source.points.map((point, index) => {
     if (classification) {
@@ -168,11 +175,30 @@ export function worldFromPlaygroundSource(source, { seed = null, id = 'world-1' 
         provenance: point.provenance,
       };
     }
+    const features = Object.fromEntries(inputFeatureNames.map((feature) => [
+      feature,
+      finite(
+        point.features?.[feature]
+          ?? point[feature]
+          ?? (feature === source.feature ? point.x : undefined),
+        `source.points[${index}].${feature}`,
+      ),
+    ]));
+    const target = finite(
+      point.features?.[targetFeature]
+        ?? point[targetFeature]
+        ?? point.target
+        ?? point.y,
+      `source.points[${index}].${targetFeature}`,
+    );
+    features[targetFeature] = target;
+    const modelFeature = source.feature ?? inputFeatureNames[0] ?? 'x';
     return {
       id: point.id ?? `observation-${index + 1}`,
-      x: point.x,
-      y: point.y,
-      target: point.target ?? point.y,
+      x: features[modelFeature] ?? finite(point.x, `source.points[${index}].x`),
+      y: target,
+      target,
+      features,
       membership: point.membership ?? point.split,
       provenance: point.provenance,
     };
@@ -189,6 +215,10 @@ export function worldFromPlaygroundSource(source, { seed = null, id = 'world-1' 
       kind: source.kind ?? null,
       fingerprint: source.fingerprint ?? null,
       name: source.name ?? null,
+    },
+    metadata: classification ? {} : {
+      modelFeature: source.feature ?? inputFeatureNames[0] ?? 'x',
+      targetFeature,
     },
   });
 }
