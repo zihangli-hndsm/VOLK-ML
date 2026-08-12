@@ -1,0 +1,319 @@
+import { useMemo, useRef, useState } from 'react';
+import {
+  materializeWorldGesture,
+  MAX_GESTURE_PATH_POINTS,
+} from '../../core/exploration/gestures.js';
+
+const PLOT = { left: 42, right: 620, top: 18, bottom: 320 };
+const TOOLS = ['point', 'brush', 'spray', 'select', 'erase'];
+
+function initialBounds(snapshot) {
+  return snapshot.viewState?.bounds ?? snapshot.scene?.ranges ?? {
+    xMin: -1, xMax: 1, yMin: -1, yMax: 1,
+  };
+}
+
+function visibleMembership(point) {
+  return point.membership === 'test' ? 'test' : 'train';
+}
+
+function pointInLayer(point, visibility) {
+  return visibility === 'both' || visibleMembership(point) === visibility;
+}
+
+function boundsForPoints(points) {
+  const xs = points.map((point) => Number(point.x)).filter(Number.isFinite);
+  const ys = points.map((point) => Number(point.y)).filter(Number.isFinite);
+  const xMin = xs.length ? Math.min(...xs) : -1;
+  const xMax = xs.length ? Math.max(...xs) : 1;
+  const yMin = ys.length ? Math.min(...ys) : -1;
+  const yMax = ys.length ? Math.max(...ys) : 1;
+  const xSpan = Math.max(0.5, xMax - xMin);
+  const ySpan = Math.max(0.5, yMax - yMin);
+  return {
+    xMin: xMin - xSpan * 0.12,
+    xMax: xMax + xSpan * 0.12,
+    yMin: yMin - ySpan * 0.12,
+    yMax: yMax + ySpan * 0.12,
+  };
+}
+
+export default function DataWorkspace({ snapshot, onDispatch, t }) {
+  const svgRef = useRef(null);
+  const gestureRef = useRef(null);
+  const dragRef = useRef(null);
+  const counterRef = useRef(0);
+  const [tool, setTool] = useState('point');
+  const [layer, setLayer] = useState('train');
+  const [spread, setSpread] = useState(0.12);
+  const [density, setDensity] = useState(6);
+  const [selectedId, setSelectedId] = useState(null);
+  const [draftPoint, setDraftPoint] = useState(null);
+  const [preciseX, setPreciseX] = useState('');
+  const [preciseY, setPreciseY] = useState('');
+  const [error, setError] = useState(null);
+  const [previewPath, setPreviewPath] = useState([]);
+  const world = snapshot.world;
+  const bounds = initialBounds(snapshot);
+  const operations = new Set((snapshot.capabilities?.worldOperations ?? []).map((item) => item.type));
+  const canEdit = Boolean(snapshot.capabilities?.canEditWorld)
+    && operations.has('ADD_POINTS')
+    && operations.has('MOVE_POINT')
+    && operations.has('REMOVE_POINT')
+    && operations.has('REMOVE_POINTS')
+    && operations.has('SET_TRAIN_TEST_MEMBERSHIP');
+  const points = world?.observations ?? [];
+  const visiblePoints = useMemo(
+    () => points.filter((point) => pointInLayer(point, snapshot.viewState?.visibility ?? 'both')),
+    [points, snapshot.viewState?.visibility],
+  );
+  const counts = useMemo(() => points.reduce((result, point) => {
+    result[visibleMembership(point)] += 1;
+    return result;
+  }, { train: 0, test: 0 }), [points]);
+
+  if (!canEdit) return null;
+
+  const xToSvg = (x) => PLOT.left + ((x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (PLOT.right - PLOT.left);
+  const yToSvg = (y) => PLOT.bottom - ((y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (PLOT.bottom - PLOT.top);
+  const svgToWorld = (event) => {
+    const rect = svgRef.current?.getBoundingClientRect();
+    if (!rect || !rect.width || !rect.height) return null;
+    const x = (event.clientX - rect.left) / rect.width * 640;
+    const y = (event.clientY - rect.top) / rect.height * 360;
+    return {
+      x: bounds.xMin + ((x - PLOT.left) / (PLOT.right - PLOT.left)) * (bounds.xMax - bounds.xMin),
+      y: bounds.yMax - ((y - PLOT.top) / (PLOT.bottom - PLOT.top)) * (bounds.yMax - bounds.yMin),
+    };
+  };
+  const hitRadius = Math.max(bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin) * 0.035;
+  const nearestPoint = (position) => visiblePoints
+    .map((point) => ({ point, distance: Math.hypot(point.x - position.x, point.y - position.y) }))
+    .sort((a, b) => a.distance - b.distance)[0];
+  const dispatchTransaction = (transaction) => {
+    setError(null);
+    Promise.resolve(onDispatch({ type: 'APPLY_WORLD_TRANSACTION', transaction })).catch((nextError) => setError(nextError));
+  };
+  const nextGestureId = (name) => `workspace-${name}-${counterRef.current++}`;
+  const finishGesture = (event) => {
+    const position = svgToWorld(event);
+    const gesture = gestureRef.current;
+    gestureRef.current = null;
+    setPreviewPath([]);
+    if (!gesture || gesture.failed || !position) return;
+    const path = [...gesture.path, position];
+    try {
+      if (gesture.tool === 'brush' || gesture.tool === 'spray') {
+        dispatchTransaction(materializeWorldGesture({
+          id: gesture.id,
+          tool: gesture.tool,
+          path,
+          seed: snapshot.world.randomness?.seed ?? snapshot.seed ?? 0,
+          spread,
+          density,
+          membership: layer,
+          provenance: 'manual',
+          existingPointCount: points.length,
+        }));
+      } else if (gesture.tool === 'erase') {
+        const ids = new Set(points.filter((point) => path.some((sample) => (
+          Math.hypot(point.x - sample.x, point.y - sample.y) <= hitRadius
+        ))).map((point) => point.id));
+        if (ids.size) {
+          dispatchTransaction({
+            id: gesture.id,
+            actor: 'human',
+            intent: 'erase',
+            operations: [{
+              type: ids.size === 1 ? 'REMOVE_POINT' : 'REMOVE_POINTS',
+              ...(ids.size === 1 ? { pointId: [...ids][0] } : { pointIds: [...ids] }),
+            }],
+          });
+        }
+      } else if (gesture.tool === 'point') {
+        dispatchTransaction({
+          id: gesture.id,
+          actor: 'human',
+          intent: 'point',
+          operations: [{
+            type: 'ADD_POINTS',
+            points: [{ x: position.x, y: position.y, target: position.y, membership: layer, provenance: 'manual' }],
+          }],
+        });
+      }
+    } catch (nextError) {
+      setError(nextError);
+    }
+  };
+  const onPointerDown = (event) => {
+    if (event.button !== undefined && event.button !== 0) return;
+    const position = svgToWorld(event);
+    if (!position) return;
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    setError(null);
+    if (tool === 'select') {
+      const hit = nearestPoint(position);
+      if (!hit || hit.distance > hitRadius) {
+        setSelectedId(null);
+        return;
+      }
+      setSelectedId(hit.point.id);
+      setPreciseX(String(hit.point.x));
+      setPreciseY(String(hit.point.y));
+      dragRef.current = { id: hit.point.id, start: position, current: position };
+      return;
+    }
+    gestureRef.current = {
+      id: nextGestureId(tool),
+      tool,
+      path: [position],
+      failed: false,
+    };
+    setPreviewPath([position]);
+  };
+  const onPointerMove = (event) => {
+    const position = svgToWorld(event);
+    if (!position) return;
+    if (dragRef.current) {
+      dragRef.current.current = position;
+      setDraftPoint({ id: dragRef.current.id, ...position });
+      return;
+    }
+    if (!gestureRef.current) return;
+    if (gestureRef.current.path.length >= MAX_GESTURE_PATH_POINTS) {
+      gestureRef.current.failed = true;
+      setError(t('playground.workspace.gestureTooLong'));
+      return;
+    }
+    const previous = gestureRef.current.path.at(-1);
+    if (!previous || Math.hypot(previous.x - position.x, previous.y - position.y) > 0.001) {
+      gestureRef.current.path.push(position);
+      setPreviewPath([...gestureRef.current.path]);
+    }
+  };
+  const onPointerUp = (event) => {
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    if (dragRef.current) {
+      const drag = dragRef.current;
+      dragRef.current = null;
+      const position = svgToWorld(event) ?? drag.current;
+      setDraftPoint(null);
+      if (position && Math.hypot(position.x - drag.start.x, position.y - drag.start.y) > 0.001) {
+        dispatchTransaction({
+          id: nextGestureId('move'),
+          actor: 'human',
+          intent: 'move',
+          operations: [{ type: 'MOVE_POINT', pointId: drag.id, x: position.x, y: position.y }],
+        });
+      }
+      return;
+    }
+    finishGesture(event);
+  };
+  const cancelPointer = () => {
+    gestureRef.current = null;
+    dragRef.current = null;
+    setPreviewPath([]);
+    setDraftPoint(null);
+  };
+  const preciseSubmit = (event) => {
+    event.preventDefault();
+    const x = Number(preciseX);
+    const y = Number(preciseY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      setError(t('playground.workspace.invalidCoordinates'));
+      return;
+    }
+    try {
+      if (selectedId) {
+        dispatchTransaction({
+          id: nextGestureId('precise-move'), actor: 'human', intent: 'move',
+          operations: [{ type: 'MOVE_POINT', pointId: selectedId, x, y }],
+        });
+      } else {
+        dispatchTransaction({
+          id: nextGestureId('precise-point'), actor: 'human', intent: 'point',
+          operations: [{ type: 'ADD_POINTS', points: [{ x, y, target: y, membership: layer, provenance: 'manual' }] }],
+        });
+      }
+    } catch (nextError) {
+      setError(nextError);
+    }
+  };
+  const fitView = () => onDispatch({
+    type: 'SET_WORKSPACE_VIEW',
+    patch: { bounds: boundsForPoints(points), autoFitRevision: (snapshot.viewState?.autoFitRevision ?? 0) + 1 },
+  });
+  const visibility = snapshot.viewState?.visibility ?? 'both';
+  const pathPreview = previewPath;
+
+  return <section className="rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.workspace.ariaLabel')}>
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h3 className="text-sm font-black text-slate-900">{t('playground.workspace.title')}</h3>
+        <p className="mt-1 text-xs text-slate-500">{t('playground.workspace.instructions')}</p>
+      </div>
+      <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
+        <span>{t('playground.workspace.trainCount', { count: counts.train })}</span>
+        <span>{t('playground.workspace.testCount', { count: counts.test })}</span>
+      </div>
+    </div>
+    <div className="mt-3 flex flex-wrap items-center gap-2">
+      {TOOLS.map((item) => <button key={item} type="button" aria-pressed={tool === item}
+        aria-label={t(`playground.workspace.tool.${item}`)} onClick={() => setTool(item)}
+        className={`rounded-xl px-3 py-2 text-xs font-bold ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+        {t(`playground.workspace.tool.${item}`)}
+      </button>)}
+      <span className="mx-1 h-6 w-px bg-slate-200" aria-hidden="true" />
+      <span className="text-xs font-bold text-slate-500">{t('playground.workspace.layer')}</span>
+      {['train', 'test'].map((item) => <button key={item} type="button" aria-pressed={layer === item}
+        onClick={() => setLayer(item)} className={`rounded-xl px-3 py-2 text-xs font-bold ${layer === item ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+        {t(`playground.workspace.layer.${item}`)}
+      </button>)}
+    </div>
+    <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+        <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none select-none" role="img"
+          aria-label={t('playground.workspace.canvasAria')} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
+          onPointerUp={onPointerUp} onPointerCancel={cancelPointer}>
+          <rect x={PLOT.left} y={PLOT.top} width={PLOT.right - PLOT.left} height={PLOT.bottom - PLOT.top} fill="white" />
+          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => <g key={`grid-${ratio}`}>
+            <line x1={PLOT.left} y1={PLOT.top + ratio * (PLOT.bottom - PLOT.top)} x2={PLOT.right} y2={PLOT.top + ratio * (PLOT.bottom - PLOT.top)} stroke="#e2e8f0" />
+            <line x1={PLOT.left + ratio * (PLOT.right - PLOT.left)} y1={PLOT.top} x2={PLOT.left + ratio * (PLOT.right - PLOT.left)} y2={PLOT.bottom} stroke="#e2e8f0" />
+          </g>)}
+          <path d={`M${PLOT.left} ${PLOT.top} V${PLOT.bottom} H${PLOT.right}`} fill="none" stroke="#475569" strokeWidth="2" />
+          {visiblePoints.map((point) => {
+            const selected = selectedId === point.id;
+            const draft = draftPoint?.id === point.id ? draftPoint : point;
+            const cx = xToSvg(draft.x);
+            const cy = yToSvg(draft.y);
+            return visibleMembership(point) === 'test'
+              ? <rect key={point.id} x={cx - 5} y={cy - 5} width="10" height="10" transform={`rotate(45 ${cx} ${cy})`} fill="white" stroke={selected ? '#f59e0b' : '#7c3aed'} strokeWidth={selected ? 3 : 2} />
+              : <circle key={point.id} cx={cx} cy={cy} r={selected ? 7 : 5} fill="#16a34a" stroke={selected ? '#f59e0b' : 'white'} strokeWidth={selected ? 3 : 1.5} />;
+          })}
+          {pathPreview.length > 1 && <polyline points={pathPreview.map((point) => `${xToSvg(point.x)},${yToSvg(point.y)}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth="2" strokeDasharray="5 4" opacity="0.65" />}
+          <text x="331" y="350" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">x</text>
+          <text x="14" y="170" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 14 170)">y</text>
+        </svg>
+      </div>
+      <div className="space-y-3">
+        <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-600">
+          <div className="flex items-center justify-between gap-2"><span className="font-bold">{t('playground.workspace.visibility')}</span><select value={visibility} onChange={(event) => onDispatch({ type: 'SET_WORKSPACE_VIEW', patch: { visibility: event.target.value } })} className="rounded-lg border bg-white p-1.5 font-bold"><option value="both">{t('playground.workspace.visibility.both')}</option><option value="train">{t('playground.workspace.visibility.train')}</option><option value="test">{t('playground.workspace.visibility.test')}</option></select></div>
+          <div className="mt-2 flex flex-wrap gap-2"><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-green-600" />{t('playground.workspace.layer.train')}</span><span><i className="mr-1 inline-block h-2.5 w-2.5 rotate-45 border-2 border-violet-600" />{t('playground.workspace.layer.test')}</span></div>
+        </div>
+        {(tool === 'brush' || tool === 'spray') && <div className="rounded-xl border border-slate-200 p-3 text-xs font-bold text-slate-700">
+          <label className="block">{t('playground.workspace.spread')}<input aria-label={t('playground.workspace.spread')} type="range" min="0.02" max="0.6" step="0.01" value={spread} onChange={(event) => setSpread(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /></label>
+          {tool === 'spray' && <label className="mt-3 block">{t('playground.workspace.density')}<input aria-label={t('playground.workspace.density')} type="range" min="1" max="20" step="1" value={density} onChange={(event) => setDensity(Number(event.target.value))} className="mt-2 w-full accent-blue-600" /></label>}
+        </div>}
+        <form onSubmit={preciseSubmit} className="rounded-xl border border-slate-200 p-3">
+          <p className="text-xs font-bold text-slate-700">{selectedId ? t('playground.workspace.editPoint') : t('playground.workspace.precisePoint')}</p>
+          <div className="mt-2 grid grid-cols-2 gap-2"><input inputMode="decimal" aria-label={t('playground.workspace.xCoordinate')} value={preciseX} onChange={(event) => setPreciseX(event.target.value)} placeholder={t('playground.workspace.xShort')} className="w-full rounded-lg border p-2 text-sm" /><input inputMode="decimal" aria-label={t('playground.workspace.yCoordinate')} value={preciseY} onChange={(event) => setPreciseY(event.target.value)} placeholder={t('playground.workspace.yShort')} className="w-full rounded-lg border p-2 text-sm" /></div>
+          <button type="submit" className="mt-2 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white">{selectedId ? t('playground.workspace.updatePoint') : t('playground.workspace.addPoint')}</button>
+        </form>
+        <div className="flex gap-2"><button type="button" disabled={!snapshot.capabilities?.canUndoWorld} onClick={() => onDispatch({ type: 'UNDO_WORLD_ACTION' })} className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.workspace.undo')}</button><button type="button" disabled={!snapshot.capabilities?.canRedoWorld} onClick={() => onDispatch({ type: 'REDO_WORLD_ACTION' })} className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.workspace.redo')}</button></div>
+        <button type="button" onClick={fitView} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.workspace.fitView')}</button>
+        {error && <p role="alert" className="rounded-xl bg-amber-50 p-2 text-xs font-bold text-amber-800">{typeof error === 'string' ? error : t('playground.workspace.actionFailed')}</p>}
+      </div>
+    </div>
+  </section>;
+}

@@ -14,7 +14,7 @@ import {
   synchronizeExperiment,
 } from '../exploration/operations.js';
 import { worldFromPlaygroundSource } from '../exploration/world.js';
-import { isPublicWorldOperation } from '../exploration/operationRegistry.js';
+import { isPublicWorldOperation, listWorldOperations } from '../exploration/operationRegistry.js';
 import {
   playgroundError,
   validateActionShape,
@@ -683,6 +683,9 @@ export function deriveRuntimeSnapshot(session) {
       canPause: session.status === 'playing',
     };
   capabilities.canEditWorld = typeof adapter.applyWorld === 'function';
+  capabilities.worldOperations = capabilities.canEditWorld
+    ? listWorldOperations()
+    : [];
   capabilities.canUndoWorld = session.worldHistory.past.length > 0;
   capabilities.canRedoWorld = session.worldHistory.future.length > 0;
   const primitives = materializePrimitives({

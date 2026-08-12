@@ -68,18 +68,20 @@ function resolveSource(playground, dataset) {
         };
       }
     }
+    const teaching = teachingDatasetById('linear-trend')?.dataset;
+    const points = (teaching?.rows ?? fallbackRegressionPoints).map((point, index) => ({
+      id: `e${index}`,
+      x: point.x ?? point[0],
+      y: point.y ?? point[1],
+    }));
     return {
       kind: 'example',
-      name: 'Example data',
-      fingerprint: 'example-linear-trend-v1',
-      points: fallbackRegressionPoints.map((point, index) => ({
-        id: `e${index}`,
-        x: point.x ?? point[0],
-        y: point.y ?? point[1],
-      })),
+      name: teaching?.name ?? 'Example data',
+      fingerprint: teaching ? 'teaching-linear-trend-v1' : 'example-linear-trend-fallback-v1',
+      points,
       feature: 'x',
       target: 'y',
-      total: fallbackRegressionPoints.length,
+      total: points.length,
       usingDataset: false,
     };
   }

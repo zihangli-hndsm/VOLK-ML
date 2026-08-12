@@ -30,6 +30,7 @@ import {
 } from '../src/core/exploration/operationRegistry.js';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
+import { teachingDatasetById } from '../src/core/teachingDatasets.js';
 
 // Phase 0 exploration semantics: World/Experiment snapshots are explicit,
 // detached, serializable domain state shared by runtime and Agent inspection.
@@ -214,17 +215,18 @@ const phase11Host = createPlaygroundHost({ getDataset: () => null });
 await phase11Host.open({ playgroundId: 'linear-regression', seed: 404 });
 const phase11Initial = phase11Host.getState();
 const ids = phase11Initial.world.observations.map((point) => point.id);
-assert.equal(ids.length, 11, 'default LR acceptance World starts with 11 observations');
+assert.ok(ids.length > 2, 'default LR World has enough observations for a split');
+assert.equal(ids.length, teachingDatasetById('linear-trend').dataset.rows.length, 'default LR uses the registered linear-trend teaching dataset');
 assert.ok(phase11Initial.world.observations.every((point) => point.membership === 'unspecified'));
 const testIds = ids.slice(-2);
 const splitSnapshot = await phase11Host.dispatch({
   type: 'SET_TRAIN_TEST_MEMBERSHIP', pointIds: testIds, membership: 'test',
 });
 assert.equal(splitSnapshot.actionHistory.past.length, 1, 'one compatibility split action is one undoable canonical action');
-assert.equal(splitSnapshot.world.observations.filter((point) => point.membership === 'train').length, 9);
+assert.equal(splitSnapshot.world.observations.filter((point) => point.membership === 'train').length, ids.length - 2);
 assert.equal(splitSnapshot.world.observations.filter((point) => point.membership === 'test').length, 2);
 assert.equal(splitSnapshot.world.observations.filter((point) => point.membership === 'unspecified').length, 0);
-assert.equal(splitSnapshot.actionHistory.past[0].mutationSummary.normalizedUnspecifiedToTrain, 9, 'first split normalization is inspectable');
+assert.equal(splitSnapshot.actionHistory.past[0].mutationSummary.normalizedUnspecifiedToTrain, ids.length - 2, 'first split normalization is inspectable');
 assert.deepEqual(splitSnapshot.world, splitSnapshot.experiment.world, 'runtime World and Experiment World share one semantic result');
 assert.equal(splitSnapshot.metrics.testMse === null, false, 'explicit test membership produces a test metric');
 const fitBeforeTestMove = {
