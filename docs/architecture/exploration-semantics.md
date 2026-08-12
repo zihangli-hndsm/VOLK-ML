@@ -117,9 +117,10 @@ updates validated bounds and Train/Test visibility without changing the World,
 Experiment semantic fingerprint, or World action history. The future drawing
 surface must use this boundary rather than encoding pan/zoom as data changes.
 
-Phase 1.1 deliberately does not include Point/Brush/Spray React controls,
-selection, touch interaction, Experiment Bar, generators, Scenario execution,
-or classification World editing. Those remain later accepted slices.
+Phase 1.1 deliberately does not include an Experiment Bar, generators,
+Scenario execution, or persistence. The accepted Phase 1.2 Data Lab slice adds
+the learner-facing Point/Brush/Spray and selection controls over this same
+transaction boundary; it still does not add editable KNN/MLP model adapters.
 
 ## Canonical World operations and split semantics
 
@@ -177,11 +178,11 @@ outside both the Experiment and comparison fingerprint.
 ## Phase 1 2D Data Workspace MVP
 
 `src/components/playground/DataWorkspace.jsx` is a generic learner-facing Data
-Lab surface over the canonical World snapshot. It is rendered only when runtime
-capabilities advertise `canEditWorld` and the required public operation types;
-the component does not inspect a playground ID or mutate model state. Linear
-Regression is the first supported adapter. KNN and MLP remain unchanged until
-their World editing semantics are accepted.
+Lab surface over the canonical World snapshot. The internal `data-lab` session
+opens without a model, so editing and projection are available before model
+selection. An attached adapter may opt into World synchronization through
+`applyWorld()`; Linear Regression is the first supported adapter, while KNN
+and MLP remain inspectable model choices without editable World synchronization.
 
 The human interaction boundary is:
 
@@ -202,10 +203,11 @@ pointer-up. Move commits one `MOVE_POINT`; a multi-point erase commits one
 `REMOVE_POINTS` transaction. Pointer cancellation and resource-limit
 violations discard the local draft without a partial semantic mutation.
 
-The Workspace keeps a conservative view policy: the runtime's initial bounds
-are used on open, ordinary edits preserve those bounds, and the learner may
-explicitly request `Fit view`. Visibility (`train`, `test`, or `both`) and
-bounds remain `SET_WORKSPACE_VIEW` state and never enter World history or the
+The Workspace keeps a projection policy: scatter and distribution views read
+named values through `src/core/exploration/projection.js`; changing the
+projection changes only `SET_WORKSPACE_VIEW` state. Bounds are computed from
+the active projection and never become World data. Visibility (`train`, `test`,
+or `both`) also remains view state and never enters World history or the
 Experiment semantic fingerprint. Hidden test points remain counted and are
 called out in the layer legend.
 
@@ -218,11 +220,12 @@ metadata and render test residuals with a distinct dashed violet treatment;
 `trainMse` and `testMse` remain separate semantic metrics.
 
 The precise editor is an accessibility and exactness path, not a second data
-store. It emits `ADD_POINTS` for a new point or `MOVE_POINT` for the selected
-point. Visible Undo/Redo buttons read `canUndoWorld` and `canRedoWorld` from
-the runtime snapshot and therefore operate on complete semantic gesture
-boundaries. Reset remains the existing Playground open-time source reset and
-is intentionally separate from Undo.
+store. It emits named-feature `SET_FEATURE_VALUES` for a selected point and
+uses `observationFromProjection()` for a new row only when the active 2D
+projection supplies every required World value. Multi-feature projections
+therefore disable new-row tools instead of silently filling hidden columns or
+writing a fallback `y`. Unknown feature names and non-numeric feature values
+are rejected atomically by the domain operations.
 
 The Experiment Lab shell presents Data Lab and Model Lab as peer UI tabs over
 one runtime session. Data Lab owns projection state (scatter/distribution,
@@ -230,3 +233,6 @@ selected numeric features, visibility, and selection); Model Lab owns model
 controls and learning playback. Switching tabs does not recreate the session.
 `RUN` and `RESET_LEARNING` reset/recompute learning from the current canonical
 World, while `RESTORE_ORIGINAL_DATA` is the explicit open-time baseline restore.
+Attaching a compatible model changes model capabilities, not the World. A
+visualization-script restart restores the explanation/model baseline while
+preserving current World observations, World history, and feature edits.

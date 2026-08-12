@@ -45,6 +45,96 @@ function hasActiveScript(session) {
 }
 
 function resolveSource(playground, dataset) {
+  if (playground.id === 'data-lab') {
+    if (dataset?.task === 'classification') {
+      const numericFeatures = (dataset.featureColumns ?? []).filter((feature) => (
+        (dataset.columns ?? []).some((column) => column.name === feature && column.type === 'number')
+      ));
+      const target = dataset.targetColumn;
+      const rows = (dataset.rows ?? []).filter((row) => (
+        numericFeatures.every((feature) => Number.isFinite(Number(row?.[feature])))
+        && row?.[target] !== undefined
+        && row?.[target] !== null
+        && String(row[target]) !== ''
+      ));
+      const labels = [...new Set(rows.map((row) => String(row[target])))];
+      return {
+        kind: 'workspace-dataset',
+        name: dataset.name,
+        fingerprint: fingerprintOf([dataset.name, dataset.task, numericFeatures, target, rows.length]),
+        task: 'classification',
+        points: rows.map((row, index) => ({
+          id: `d${index}`,
+          features: Object.fromEntries(numericFeatures.map((feature) => [feature, Number(row[feature])])),
+          label: String(row[target]),
+          membership: row.membership ?? row.split,
+          provenance: 'imported',
+        })),
+        featureColumns: numericFeatures,
+        target: target ?? 'label',
+        targetColumn: target ?? 'label',
+        trainRatio: dataset.trainRatio ?? 0.8,
+        total: rows.length,
+        usingDataset: true,
+        labelCount: labels.length,
+      };
+    }
+    if (dataset?.task === 'regression') {
+      const featureColumns = [...(dataset.featureColumns ?? [])];
+      const target = dataset.targetColumn;
+      const rows = (dataset.rows ?? []).filter((row) => (
+        featureColumns.every((feature) => Number.isFinite(Number(row?.[feature])))
+        && Number.isFinite(Number(row?.[target]))
+      ));
+      return {
+        kind: 'workspace-dataset',
+        name: dataset.name,
+        fingerprint: fingerprintOf([dataset.name, dataset.task, featureColumns, target, rows.length]),
+        task: 'regression',
+        points: rows.map((row, index) => ({
+          id: `d${index}`,
+          x: Number(row[featureColumns[0]]),
+          y: Number(row[target]),
+          target: Number(row[target]),
+          features: Object.fromEntries([
+            ...featureColumns.map((feature) => [feature, Number(row[feature])]),
+            [target, Number(row[target])],
+          ]),
+          membership: row.membership ?? row.split,
+          provenance: 'imported',
+        })),
+        feature: featureColumns[0],
+        target,
+        featureColumns,
+        targetColumn: target,
+        trainRatio: dataset.trainRatio ?? 0.8,
+        total: rows.length,
+        usingDataset: true,
+      };
+    }
+    const teaching = teachingDatasetById('linear-trend')?.dataset;
+    const points = (teaching?.rows ?? fallbackRegressionPoints).map((point, index) => ({
+      id: `e${index}`,
+      x: point.x ?? point[0],
+      y: point.y ?? point[1],
+      target: point.y ?? point[1],
+      features: { x: point.x ?? point[0], y: point.y ?? point[1] },
+      provenance: 'generated',
+    }));
+    return {
+      kind: 'example',
+      name: teaching?.name ?? 'Data Lab sample',
+      fingerprint: teaching ? 'teaching-linear-trend-v1' : 'data-lab-sample-v1',
+      task: 'regression',
+      points,
+      feature: 'x',
+      target: 'y',
+      featureColumns: ['x'],
+      targetColumn: 'y',
+      total: points.length,
+      usingDataset: false,
+    };
+  }
   if (playground.id === 'linear-regression') {
     if (dataset?.task === 'regression') {
       const sample = regressionPointsFromDataset(dataset);
@@ -315,7 +405,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           };
         }
       }
-      const semanticFields = Object.keys(adapter.semanticSchema ?? {});
+      const semanticFields = Object.keys(adapter?.semanticSchema ?? {});
       const worldOperations = listWorldOperations();
       const transactionActions = ['APPLY_WORLD_TRANSACTION', 'UNDO_WORLD_ACTION', 'REDO_WORLD_ACTION'];
       const viewActions = ['SET_WORKSPACE_VIEW'];
@@ -323,12 +413,12 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       const context = {
         version: 1,
         playground: { id: session.playgroundId, modelAdapter: session.adapterId, task: data.task ?? null },
-        model: {
+        model: adapter ? {
           capabilities: { ...adapter.capabilities },
           operations: adapter.scriptOperations ?? {},
           semanticFields,
           semanticSchema: adapter.semanticSchema ?? {},
-        },
+        } : null,
         data: {
           task: data.task ?? null,
           featureColumns: data.featureColumns ?? [],
@@ -367,7 +457,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         traceSchemas: Object.fromEntries((TRACE_EVENTS[session.adapterId] ?? []).map((type) => [type, TRACE_PAYLOAD_SCHEMAS[type] ?? {}])),
         primitives: listPrimitiveSchemas(),
         bindings: [
-          { prefix: '$model', fields: semanticFields },
+          { prefix: '$model', fields: adapter ? semanticFields : [] },
           { prefix: '$data', fields: ['schema', 'rows', 'task', 'featureColumns', 'targetColumn', 'trainRatio'] },
           { prefix: '$controls', fields: Object.keys(snapshot.controls ?? {}) },
           { prefix: '$metrics', fields: Object.keys(snapshot.metrics ?? {}) },
@@ -390,7 +480,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           revealed: snapshot.metrics?.revealed ?? null,
           predictedLabel: snapshot.metrics?.predictedLabel ?? null,
         },
-        teachingCapabilities: adapter.teachingCapabilities ?? {},
+        teachingCapabilities: adapter?.teachingCapabilities ?? {},
       };
       context.teaching = {
         objectives: [...TEACHING_OBJECTIVES],

@@ -39,16 +39,23 @@ been checked; it recomputes model state but does not own World mutation
 semantics. See `docs/architecture/exploration-semantics.md` for the exact
 first-split normalization and comparison-factor contracts.
 
-### 2D Data Workspace MVP (Phase 1)
+### 2D Data Workspace and data-first Experiment Lab (Phase 1.2)
 
 `DataWorkspace.jsx` is a reusable Data Lab surface over `snapshot.world` and
-`snapshot.capabilities`. It exposes Point, Brush, Spray, Select/Move, Erase,
-Train/Test authoring, precise coordinate entry, Fit view, and visible Undo /
-Redo only when the runtime advertises the required World capabilities. Tool
-drafts are local pointer state; completed gestures dispatch the same registered
-World transactions used by other callers. Brush/Spray use the bounded,
-deterministic gesture materializer, while view bounds and visibility use
-`SET_WORKSPACE_VIEW` and remain non-semantic.
+`snapshot.capabilities`. The internal `data-lab` session is model-optional: it
+opens from the current workspace dataset (or the registered teaching sample),
+supports Point, Brush, Spray, Select/Move, Erase, Train/Test authoring, precise
+coordinate entry, Fit view, and visible Undo/Redo, then offers compatible model
+descriptors from the registry. Model attachment keeps the same World and only
+adds model controls, semantic state, and visualization playback.
+
+Projection semantics are centralized in
+`src/core/exploration/projection.js`. Scatter, distribution, hit testing,
+erase, selection, and axis labels all use named feature values. New-row tools
+are available only when the two-dimensional projection is complete; a
+multi-feature projection cannot invent hidden feature values. Distribution
+bars distinguish train and test with both shape/pattern and labels, not color
+alone.
 
 Linear Regression defaults back to the registered `linear-trend` teaching
 dataset when no workspace dataset is supplied. Fallback points are only used
@@ -62,7 +69,9 @@ tab over the same runtime session. Data Lab projection changes are validated
 interventions use the registered `SET_FEATURE_VALUES` and
 `TRANSFORM_FEATURE_VALUES` operations, with grouped Undo and deterministic
 seeded noise. `RUN` and `RESET_LEARNING` preserve the current World; restoring
-the open-time baseline is an explicit `RESTORE_ORIGINAL_DATA` action.
+the open-time baseline is an explicit `RESTORE_ORIGINAL_DATA` action. Script
+restart is named `Restart explanation` in the UI and preserves learner World
+edits, history, and projection state.
 
 The old descriptors in `src/core/playgrounds/linearRegression.js` and `src/core/playgrounds/knn.js` are metadata only (id, title, controls, actions, scenarios, source validation); `src/core/playgrounds/session.js` is a thin compatibility wrapper over the unified runtime, so the registry, Agent API and existing contract tests keep working.
 

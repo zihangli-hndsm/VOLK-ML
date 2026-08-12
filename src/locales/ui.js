@@ -640,4 +640,11 @@ export const messages = {
   'playground.workspace.yCoordinate': { en: 'y coordinate', zh: 'y 坐标' },
   'playground.workspace.xShort': { en: 'x', zh: 'x' },
   'playground.workspace.yShort': { en: 'y', zh: 'y' },
+  'playground.workspace.drawingUnavailable': { en: 'New rows are unavailable for this projection because other feature values are not specified.', zh: '当前投影未指定其他特征值，暂时无法新增数据行。' },
+  'playground.dataLab.title': { en: 'Data Lab', zh: '数据实验室' },
+  'playground.dataLab.description': { en: 'Inspect and edit the Experiment World before choosing a compatible model.', zh: '在选择兼容模型前查看并编辑 Experiment World。' },
+  'playground.model.emptyTitle': { en: 'Choose a model when you are ready', zh: '准备好后选择模型' },
+  'playground.model.emptyBody': { en: 'Your data and edits remain in the same World. Attach a compatible model to train, inspect, and explain it.', zh: '数据和编辑会保留在同一个 World 中。选择兼容模型后即可训练、查看和解释。' },
+  'playground.model.noCompatible': { en: 'No compatible in-browser model is available for this World.', zh: '当前 World 没有可用的兼容浏览器模型。' },
+  'playground.timeline.restartExplanation': { en: 'Restart explanation', zh: '重启解释' },
 };

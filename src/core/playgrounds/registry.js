@@ -1,8 +1,9 @@
 import { linearRegressionPlayground } from './linearRegression.js';
 import { knnPlayground } from './knn.js';
 import { mlpPlayground } from './mlp.js';
+import { dataLabPlayground } from './dataLab.js';
 
-const playgrounds = [linearRegressionPlayground, knnPlayground, mlpPlayground];
+const playgrounds = [linearRegressionPlayground, knnPlayground, mlpPlayground, dataLabPlayground];
 const byId = new Map(playgrounds.map((playground) => [playground.id, playground]));
 
 const summarize = (playground) => ({
@@ -25,7 +26,11 @@ const summarize = (playground) => ({
 });
 
 export function listPlaygrounds() {
-  return playgrounds.map(summarize);
+  return playgrounds.filter((playground) => playground.kind !== 'session').map(summarize);
+}
+
+export function listPlaygroundDescriptors() {
+  return playgrounds.map((playground) => playground);
 }
 
 export function getPlayground(id) {

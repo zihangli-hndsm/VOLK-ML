@@ -56,7 +56,9 @@ export function buildDataState({ source, workspaceDataset }) {
   if (source?.usingDataset && workspaceDataset) {
     return inspectDataset(workspaceDataset);
   }
-  if (Array.isArray(source?.featureColumns) && source.featureColumns.length >= 2) {
+  const inferredClassification = source?.task === 'classification'
+    || (!source?.task && Array.isArray(source?.featureColumns) && source.featureColumns.length >= 2 && !source?.target);
+  if (inferredClassification && Array.isArray(source?.featureColumns) && source.featureColumns.length >= 2) {
     return {
       schema: [
         ...source.featureColumns.map((name) => ({ name, type: 'number', missing: 0 })),
@@ -71,6 +73,23 @@ export function buildDataState({ source, workspaceDataset }) {
   }
   const feature = source?.feature ?? 'x';
   const target = source?.target ?? 'y';
+  if (source?.task === 'regression' && Array.isArray(source?.featureColumns) && source.featureColumns.length) {
+    const featureColumns = [...source.featureColumns];
+    return {
+      schema: [
+        ...featureColumns.map((name) => ({ name, type: 'number', missing: 0 })),
+        { name: target, type: 'number', missing: 0 },
+      ],
+      rows: (source?.points ?? []).map((point) => ({
+        ...Object.fromEntries(featureColumns.map((name) => [name, point.features?.[name]])),
+        [target]: point.features?.[target] ?? point.target ?? point.y,
+      })),
+      task: 'regression',
+      featureColumns,
+      targetColumn: target,
+      trainRatio: source.trainRatio ?? null,
+    };
+  }
   return {
     schema: [
       { name: feature, type: 'number', missing: 0 },
