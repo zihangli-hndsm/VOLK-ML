@@ -3,6 +3,7 @@
 
 import { cloneWorld, createWorld, explorationError, worldFromPlaygroundSource } from './world.js';
 import { validateExperiment } from './experiment.js';
+import { isPublicWorldOperation } from './operationRegistry.js';
 
 const clone = (value) => structuredClone(value);
 
@@ -61,8 +62,25 @@ function allocatePointIds(world, points, transactionId) {
 
 export function addPoints(world, points, { provenance = 'manual' } = {}) {
   if (!Array.isArray(points) || !points.length) throw explorationError('EXPLORATION_INVALID_OPERATION', { type: 'ADD_POINTS' });
-  const next = points.map((point) => ({ ...point, provenance: point.provenance ?? provenance }));
-  return worldWithObservations(world, [...world.observations, ...next], { type: 'world.addPoints', count: next.length });
+  const explicitSplit = world.observations.some((point) => point.membership !== 'unspecified')
+    || points.some((point) => point.membership === 'train' || point.membership === 'test');
+  const existing = explicitSplit
+    ? world.observations.map((point) => point.membership === 'unspecified' ? { ...point, membership: 'train' } : point)
+    : world.observations;
+  const next = points.map((point) => ({
+    ...point,
+    membership: explicitSplit && (point.membership ?? 'unspecified') === 'unspecified'
+      ? 'train'
+      : point.membership,
+    provenance: point.provenance ?? provenance,
+  }));
+  return worldWithObservations(world, [...existing, ...next], {
+    type: 'world.addPoints',
+    count: next.length,
+    normalizedUnspecifiedToTrain: explicitSplit
+      ? existing.filter((point, index) => point.membership !== world.observations[index].membership).length
+      : 0,
+  });
 }
 
 export function movePoint(world, pointId, { x, y, target }) {
@@ -95,15 +113,32 @@ export function removePoints(world, pointIds) {
 }
 
 export function setTrainTestMembership(world, pointIds, membership) {
+  if (membership !== 'train' && membership !== 'test') {
+    throw explorationError('EXPLORATION_INVALID_OPERATION', {
+      type: 'SET_TRAIN_TEST_MEMBERSHIP',
+      field: 'membership',
+      value: membership,
+    });
+  }
   const ids = new Set((Array.isArray(pointIds) ? pointIds : [pointIds]).map(String));
   if (!ids.size || [...ids].some((id) => !world.observations.some((point) => point.id === id))) {
     throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointIds: [...ids] });
   }
-  const observations = world.observations.map((point) => ids.has(point.id) ? { ...point, membership } : point);
+  const observations = world.observations.map((point) => ({
+    ...point,
+    membership: ids.has(point.id)
+      ? membership
+      : point.membership === 'unspecified'
+        ? 'train'
+        : point.membership,
+  }));
   return worldWithObservations(world, observations, {
     type: 'world.setTrainTestMembership',
     pointIds: [...ids],
     membership,
+    normalizedUnspecifiedToTrain: world.observations.filter((point, index) => (
+      point.membership === 'unspecified' && observations[index].membership === 'train'
+    )).length,
   });
 }
 
@@ -151,9 +186,19 @@ function prepareOperation(world, operation, transactionId) {
   return clone(operation);
 }
 
+function isInternalWorldOperation(type) {
+  return type === 'RESTORE_POINTS' || type === 'RESTORE_MEMBERSHIPS';
+}
+
 function inverseFor(world, operation) {
   if (operation.type === 'ADD_POINTS') {
-    return { type: 'REMOVE_POINTS', pointIds: operation.points.map((point) => String(point.id)) };
+    const normalized = world.observations
+      .filter((point) => point.membership === 'unspecified')
+      .map((point) => ({ pointId: point.id, membership: point.membership }));
+    return [
+      { type: 'REMOVE_POINTS', pointIds: operation.points.map((point) => String(point.id)) },
+      ...(normalized.length ? [{ type: 'RESTORE_MEMBERSHIPS', entries: normalized }] : []),
+    ];
   }
   if (operation.type === 'MOVE_POINT') {
     const previous = world.observations.find((point) => point.id === String(operation.pointId));
@@ -179,7 +224,12 @@ function inverseFor(world, operation) {
   }
   if (operation.type === 'SET_TRAIN_TEST_MEMBERSHIP' || operation.type === 'RESTORE_MEMBERSHIPS') {
     const ids = operation.type === 'SET_TRAIN_TEST_MEMBERSHIP'
-      ? new Set((Array.isArray(operation.pointIds) ? operation.pointIds : [operation.pointIds]).map(String))
+      ? new Set([
+        ...(Array.isArray(operation.pointIds) ? operation.pointIds : [operation.pointIds]).map(String),
+        ...world.observations
+          .filter((point) => point.membership === 'unspecified')
+          .map((point) => point.id),
+      ])
       : new Set((operation.entries ?? []).map((entry) => String(entry.pointId)));
     return {
       type: 'RESTORE_MEMBERSHIPS',
@@ -203,6 +253,11 @@ export function applyWorldTransaction(world, transaction) {
   const intent = String(transaction?.intent ?? 'edit');
   if (!intent) throw explorationError('EXPLORATION_INVALID_OPERATION', { field: 'intent' });
   const requested = requireOperationArray(transaction?.operations);
+  for (const operation of requested) {
+    if (!isPublicWorldOperation(operation?.type) && !(actor === 'system' && isInternalWorldOperation(operation?.type))) {
+      throw explorationError('EXPLORATION_INVALID_OPERATION', { type: operation?.type });
+    }
+  }
   let next = current;
   const forward = [];
   const inverse = [];
@@ -213,7 +268,7 @@ export function applyWorldTransaction(world, transaction) {
     const result = applyWorldOperation(next, operation);
     next = result.world;
     forward.push(operation);
-    inverse.unshift(undo);
+    inverse.unshift(...(Array.isArray(undo) ? undo : [undo]));
     mutations.push(result.mutation);
   }
   const record = {
@@ -224,6 +279,10 @@ export function applyWorldTransaction(world, transaction) {
     mutationSummary: {
       operationCount: forward.length,
       types: [...new Set(mutations.map((item) => item.type))],
+      normalizedUnspecifiedToTrain: mutations.reduce(
+        (total, item) => total + Number(item.details?.normalizedUnspecifiedToTrain ?? 0),
+        0,
+      ),
     },
   };
   return {
@@ -321,13 +380,18 @@ export function applyExperimentOperation(experiment, operation) {
   if (operation?.type === 'SYNC_RUNTIME') {
     return synchronizeExperiment(current, operation);
   }
-  if (['ADD_POINTS', 'MOVE_POINT', 'REMOVE_POINT', 'SET_TRAIN_TEST_MEMBERSHIP'].includes(operation?.type)) {
-    const result = applyWorldOperation(current.world, operation);
+  if (isPublicWorldOperation(operation?.type)) {
+    const result = applyWorldTransaction(current.world, {
+      id: operation.transactionId ?? 'experiment-world-operation',
+      actor: operation.actor ?? 'system',
+      intent: operation.intent ?? operation.type.toLowerCase(),
+      operations: [operation],
+    });
     return validateExperiment({
       ...current,
       world: result.world,
       result: null,
-      mutations: [...current.mutations, result.mutation],
+      mutations: [...current.mutations, result.record],
     });
   }
   throw explorationError('EXPLORATION_INVALID_OPERATION', { type: operation?.type });

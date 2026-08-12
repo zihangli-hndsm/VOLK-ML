@@ -18,7 +18,7 @@ const worldSemantic = (world) => ({
   dimension: world.dimension,
   task: world.task,
   featureNames: world.featureNames,
-  observations: world.observations,
+  observations: world.observations.map(({ membership, ...observation }) => observation),
   source: world.source,
   metadata: world.metadata,
 });

@@ -31,12 +31,21 @@ const invokeAsync = async (operation, callback) => {
 };
 
 export function createPlaygroundAgentApi(host) {
+  const agentAction = (action) => {
+    const next = copy(action);
+    if (next.type === 'APPLY_WORLD_TRANSACTION') {
+      next.transaction = { ...(next.transaction ?? {}), actor: next.transaction?.actor ?? 'agent' };
+    } else {
+      next.actor = next.actor ?? 'agent';
+    }
+    return next;
+  };
   return Object.freeze({
     apiVersion: 1,
     list: () => invoke('list', () => copy(host.list())),
     open: (request) => invokeAsync('open', async () => copy(await host.open(copy(request ?? {})))),
     getState: () => invoke('getState', () => copy(host.getState())),
-    dispatch: (action) => invokeAsync('dispatch', async () => copy(await host.dispatch(copy(action)))),
+    dispatch: (action) => invokeAsync('dispatch', async () => copy(await host.dispatch(agentAction(action)))),
     play: () => invokeAsync('play', async () => copy(await host.play())),
     pause: () => invokeAsync('pause', async () => copy(await host.pause())),
     step: () => invokeAsync('step', async () => copy(await host.step())),

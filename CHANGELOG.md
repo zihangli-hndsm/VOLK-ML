@@ -388,3 +388,13 @@
 - Added Phase 1.1 contract coverage for transaction atomicity and resource limits, exact inverse ordering/values, deterministic gestures, Agent/manual parity, grouped history, Undo/Redo, adapter rejection rollback, train/test isolation, view fingerprint isolation, and Script reset history isolation; documented the contracts in `exploration-semantics.md` and `playgrounds.md`.
 - Validation: `npm run check`, `npm run check:compiler`, `npm run build`, UTF-8/command-envelope scan, and `git diff --check` passed. KNN/LR/MLP render smoke and 12 example checks passed. The build retained its existing large-chunk warning.
 - Deferred: no Point/Brush/Spray React UI, selection/touch interaction, classification World editing, Experiment Bar, generator, Scenario Engine, or persistence change is included; these remain Phase 1.2+ work.
+
+## 2026-08-12 - Canonical World Operations and Split Semantics
+
+- Added an authoritative, model-independent registry for public World operations and derived human/Agent capability inspection from its metadata; internal restore operations remain system-only Undo details.
+- Routed legacy Linear Regression point edits, direct public operations, and Agent requests through one atomic World transaction path with grouped history, exact inverse operations, and inspectable actor/provenance metadata.
+- Defined the first explicit train/test assignment to normalize every remaining `unspecified` observation to `train`; later additions follow the explicit split, invalid splits roll back atomically, and Linear Regression synchronizes only from the accepted canonical World.
+- Kept Experiment comparison factors orthogonal: observation values and existence belong to `world`, membership belongs only to `trainTest`, and Workspace view state remains non-semantic.
+- Added focused coverage for the default 11-point LR flow, 9/2 split normalization, test-only movement and MSE behavior, membership-only comparison, exact Undo/Redo, legacy/canonical equivalence, Agent parity, registry discovery, extension boundaries, and KNN/LR/MLP render smoke.
+- Updated `docs/architecture/exploration-semantics.md` and `docs/architecture/playgrounds.md`. No React drawing workspace, Scenario Engine, classification World editing, persistence schema, or model-specific exploration branch was added.
+- Validation: `npm run check`, `npm run check:compiler`, `npm run build`, changed-line UTF-8/command-envelope scan, and `git diff --check` passed. The build retained its existing large-chunk warning.

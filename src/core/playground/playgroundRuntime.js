@@ -14,6 +14,7 @@ import {
   synchronizeExperiment,
 } from '../exploration/operations.js';
 import { worldFromPlaygroundSource } from '../exploration/world.js';
+import { isPublicWorldOperation } from '../exploration/operationRegistry.js';
 import {
   playgroundError,
   validateActionShape,
@@ -230,6 +231,9 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
   }
   const recorder = createTraceRecorder(session.traces);
   const sourceData = sourceFromWorld(session.sourceData, transactionResult.world);
+  if (typeof adapter.validateWorld === 'function') {
+    adapter.validateWorld(transactionResult.world);
+  }
   const patch = adapter.applyWorld(session.modelState, transactionResult.world, {
     controls: session.controls,
     recorder,
@@ -256,6 +260,39 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
     traces: recorder.list(),
     status: 'paused',
   };
+}
+
+function canonicalWorldTransaction(action) {
+  const actor = ['human', 'agent', 'system'].includes(action.actor) ? action.actor : 'human';
+  if (action.type === 'ADD_POINT') {
+    return {
+      actor,
+      intent: 'point',
+      operations: [{
+        type: 'ADD_POINTS',
+        points: [{
+          x: action.x,
+          y: action.y,
+          target: action.y,
+          membership: action.membership ?? 'unspecified',
+          provenance: action.provenance ?? (actor === 'agent' ? 'agent' : 'manual'),
+        }],
+      }],
+    };
+  }
+  if (isPublicWorldOperation(action.type)) {
+    const intent = action.type === 'ADD_POINTS'
+      ? 'point'
+      : action.type === 'MOVE_POINT'
+        ? 'move'
+        : action.type === 'SET_TRAIN_TEST_MEMBERSHIP'
+          ? 'membership'
+          : 'erase';
+    const operation = { ...action };
+    delete operation.actor;
+    return { actor, intent, operations: [operation] };
+  }
+  return null;
 }
 
 function semanticContext(session) {
@@ -345,7 +382,9 @@ export function dispatchRuntimeAction(session, action) {
   validateActionShape(action);
   const playground = getPlayground(session.playgroundId);
   if (!playground) throw playgroundError('PLAYGROUND_NOT_FOUND', { playgroundId: session.playgroundId });
-  if (!GENERIC_ACTIONS.includes(action.type) && !playground.actions.includes(action.type)) {
+  if (!GENERIC_ACTIONS.includes(action.type)
+    && !isPublicWorldOperation(action.type)
+    && !playground.actions.includes(action.type)) {
     throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, playgroundId: playground.id });
   }
 
@@ -389,6 +428,13 @@ export function dispatchRuntimeAction(session, action) {
       }),
       worldActionCounter: session.worldActionCounter + 1,
     };
+  }
+  const compatibilityTransaction = canonicalWorldTransaction(action);
+  if (compatibilityTransaction) {
+    return dispatchRuntimeAction(session, {
+      type: 'APPLY_WORLD_TRANSACTION',
+      transaction: compatibilityTransaction,
+    });
   }
   if (action.type === 'UNDO_WORLD_ACTION') {
     const entry = session.worldHistory.past.at(-1);

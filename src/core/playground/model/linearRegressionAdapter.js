@@ -15,12 +15,22 @@ import { playgroundError } from '../../playgrounds/session.js';
 const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) : null);
 
 function trainingPoints(points) {
-  const hasExplicitSplit = points.some((point) => point.membership === 'train' || point.membership === 'test');
-  return hasExplicitSplit ? points.filter((point) => point.membership === 'train') : points;
+  return points.filter((point) => point.membership !== 'test');
 }
 
 function testPoints(points) {
   return points.filter((point) => point.membership === 'test');
+}
+
+function validateRegressionWorld(world) {
+  if (world.task !== 'regression') {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', { reason: 'linear regression requires a regression World' });
+  }
+  const trainCount = world.observations.filter((point) => point.membership !== 'test').length;
+  if (trainCount < 2) {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', { reason: 'minimum two training points' });
+  }
+  return world;
 }
 
 function recomputeDerived(points) {
@@ -40,16 +50,6 @@ function clearTraining(modelState) {
     gradient: null,
     training: { currentStep: 0, history: [], totalSteps: 0 },
   };
-}
-
-function nextPointId(points, counter) {
-  let id = `p-${counter}`;
-  let next = counter;
-  while (points.some((point) => point.id === id)) {
-    next += 1;
-    id = `p-${next}`;
-  }
-  return { id, counter: next + 1 };
 }
 
 function sceneGradient(gradient) {
@@ -210,10 +210,12 @@ export const linearRegressionAdapter = {
     };
   },
 
+  validateWorld(world) {
+    return validateRegressionWorld(world);
+  },
+
   applyWorld(modelState, world, { recorder }) {
-    if (world.task !== 'regression') {
-      throw playgroundError('INVALID_PLAYGROUND_ACTION', { reason: 'linear regression requires a regression World' });
-    }
+    validateRegressionWorld(world);
     const points = world.observations.map((point) => ({
       id: point.id,
       x: point.x,
@@ -255,33 +257,6 @@ export const linearRegressionAdapter = {
         return { controls: { [action.key]: action.value } };
       }
       throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
-    }
-    if (action.type === 'ADD_POINT') {
-      const x = finiteOrNull(action.x);
-      const y = finiteOrNull(action.y);
-      if (x === null || y === null) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type });
-      const { id, counter } = nextPointId(modelState.points, modelState.pointCounter);
-      const points = [...modelState.points, { id, x, y }];
-      const next = { ...clearTraining({ ...modelState, points, pointCounter: counter }), ...recomputeDerived(points) };
-      recorder.emit('data.loaded', { points: points.length });
-      emitLineUpdate(recorder, next);
-      return { modelState: next };
-    }
-    if (action.type === 'MOVE_POINT') {
-      const x = finiteOrNull(action.x);
-      const y = finiteOrNull(action.y);
-      if (x === null || y === null) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type });
-      const points = modelState.points.map((point) => (point.id === action.pointId ? { ...point, x, y } : point));
-      const next = { ...clearTraining({ ...modelState, points }), ...recomputeDerived(points) };
-      emitLineUpdate(recorder, next);
-      return { modelState: next };
-    }
-    if (action.type === 'REMOVE_POINT') {
-      const points = modelState.points.filter((point) => point.id !== action.pointId);
-      if (points.length < 2) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, reason: 'minimum two points' });
-      const next = { ...clearTraining({ ...modelState, points }), ...recomputeDerived(points) };
-      emitLineUpdate(recorder, next);
-      return { modelState: next };
     }
     if (action.type === 'SET_BEST_FIT') {
       const next = clearTraining({ ...modelState, weight: modelState.optimum.weight, bias: modelState.optimum.bias });
