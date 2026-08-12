@@ -2799,7 +2799,7 @@ assert.throws(
         { id: 't', invoke: { operation: 'traceFit', args: {} } },
         { id: 'r', reveal: true },
       ]));
-      assert.equal(revealSnap.timeline.step, 1, 'reveal has runtime semantics');
+      assert.equal(revealSnap.timeline.step, revealSnap.timeline.totalSteps, 'reveal follows the declared training playback timeline');
       const hideSnap = runOps(
         opScript(
           [{ id: 'h', hide: 'scatter' }],

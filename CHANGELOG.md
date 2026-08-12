@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-13 — Data Lab playback regression and classification safeguards
+
+- Linear Regression teaching playback now samples the adapter-declared training timeline across reveal steps, and the shared scheduler advances both script and model-only playback through finite semantic actions.
+- Classification projections no longer enable unlabeled point creation or fabricate a label; the Data Lab explains that a new classification observation requires an explicit label.
+- Acceptance: exploration, render smoke, examples sync, production build, and browser playback checks passed.
+
 更新日志只追加、不修改：每个已验收的开发周期在文件末尾新增一条记录；已有条目一律不改写、不删除（如需更正，以新条目形式补充说明）。
 
 ## 2026-08-05 — Canvas UX fixes

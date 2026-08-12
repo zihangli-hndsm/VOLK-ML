@@ -522,7 +522,25 @@ function computeScriptStepActions(session) {
     const action = translator(resolveValue(stepDefinition.invoke.args ?? {}, context));
     if (action) actions.push(action);
   }
-  if (stepDefinition.reveal) actions.push({ type: 'STEP' });
+  if (stepDefinition.reveal) {
+    const revealSteps = script.steps.filter((step) => step.reveal);
+    const revealIndex = revealSteps.indexOf(stepDefinition);
+    const previousInvocation = script.steps
+      .slice(0, scriptState.step)
+      .reverse()
+      .find((step) => step.invoke?.operation);
+    const playback = previousInvocation
+      ? adapter.scriptOperations?.[previousInvocation.invoke.operation]?.playback
+      : null;
+    const revealCountControl = playback?.revealCountControl;
+    const declaredRevealCount = revealCountControl ? Number(session.controls[revealCountControl]) : 0;
+    const currentStep = Number(session.timeline.step) || 0;
+    const targetStep = Number.isFinite(declaredRevealCount) && declaredRevealCount > 0 && revealIndex >= 0
+      ? Math.ceil(declaredRevealCount * (revealIndex + 1) / Math.max(1, revealSteps.length))
+      : currentStep + 1;
+    const stepsToDispatch = Math.max(1, targetStep - currentStep);
+    for (let index = 0; index < stepsToDispatch; index += 1) actions.push({ type: 'STEP' });
+  }
   if (stepDefinition.show) actions.push({ type: 'SET_VISUAL', patch: { [stepDefinition.show]: true } });
   if (stepDefinition.hide) actions.push({ type: 'SET_VISUAL', patch: { [stepDefinition.hide]: false } });
   if (stepDefinition.highlight) actions.push({ type: 'SET_VISUAL', patch: { highlight: stepDefinition.highlight } });
@@ -780,7 +798,11 @@ export function dispatchRuntimeAction(session, action) {
   if (action.type === 'RESTORE_ORIGINAL_DATA') return restoreOriginalDataSession(session);
   if (action.type === 'PLAY') {
     if (session.timeline.totalSteps > 0 && session.timeline.step >= session.timeline.totalSteps) {
-      return { ...runCurrentWorld(session), status: 'playing' };
+      return { ...session, status: 'completed' };
+    }
+    if (session.timeline.totalSteps <= 0 && modelAdapterFor(session)) {
+      const started = dispatchRuntimeAction(session, { type: 'START_TRAINING' });
+      return { ...started, status: 'playing' };
     }
     return { ...session, status: 'playing' };
   }

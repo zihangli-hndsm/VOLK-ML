@@ -97,6 +97,9 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
   const projectedViewBounds = projectedBounds(points, xFeature, yFeature);
   const bounds = viewMode === 'scatter' ? projectedViewBounds : baseBounds;
   const canCreateObservation = Boolean(snapshot.capabilities?.canCreateObservationFromProjection);
+  const creationUnavailableMessage = world?.task === 'classification'
+    ? t('playground.workspace.classificationLabelRequired')
+    : t('playground.workspace.drawingUnavailable');
   const visiblePoints = useMemo(
     () => points.filter((point) => pointInLayer(point, snapshot.viewState?.visibility ?? 'both')),
     [points, snapshot.viewState?.visibility],
@@ -181,7 +184,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
           provenance: 'manual',
         });
         if (!point) {
-          setError(t('playground.workspace.drawingUnavailable'));
+          setError(creationUnavailableMessage);
           return;
         }
         dispatchTransaction({
@@ -203,7 +206,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
     const position = svgToWorld(event);
     if (!position) return;
     if ((tool === 'point' || tool === 'brush' || tool === 'spray') && !canCreateObservation) {
-      setError(t('playground.workspace.drawingUnavailable'));
+      setError(creationUnavailableMessage);
       return;
     }
     event.currentTarget.setPointerCapture?.(event.pointerId);
@@ -307,7 +310,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
           provenance: 'manual',
         });
         if (!point) {
-          setError(t('playground.workspace.drawingUnavailable'));
+          setError(creationUnavailableMessage);
           return;
         }
         dispatchTransaction({
@@ -366,7 +369,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
         {t(`playground.workspace.tool.${item}`)}
         </button>;
       })}
-      {!canCreateObservation && <span className="text-xs font-bold text-amber-700">{t('playground.workspace.drawingUnavailable')}</span>}
+      {!canCreateObservation && <span className="text-xs font-bold text-amber-700">{creationUnavailableMessage}</span>}
       <span className="mx-1 h-6 w-px bg-slate-200" aria-hidden="true" />
       <span className="text-xs font-bold text-slate-500">{t('playground.workspace.layer')}</span>
       {['train', 'test'].map((item) => <button key={item} type="button" aria-pressed={layer === item}
