@@ -165,3 +165,53 @@ observation membership belongs only to `trainTest`. Moving test points changes
 `world` while preserving fitted Linear Regression parameters, although test
 MSE may change. A pure membership edit changes only `trainTest`. View state is
 outside both the Experiment and comparison fingerprint.
+
+## Phase 1 2D Data Workspace MVP
+
+`src/components/playground/DataWorkspace.jsx` is a generic learner-facing
+surface over the canonical World snapshot. It is rendered only when runtime
+capabilities advertise `canEditWorld` and the required public operation types;
+the component does not inspect a playground ID or mutate model state. Linear
+Regression is the first supported adapter. KNN and MLP remain unchanged until
+their World editing semantics are accepted.
+
+The human interaction boundary is:
+
+```text
+pointer event(s)
+    -> local tool/layer/gesture draft
+    -> completed pointer gesture
+    -> registered World operation
+    -> one World transaction
+    -> runtime history + adapter.applyWorld()
+    -> semantic model snapshot and render
+```
+
+Point, precise-coordinate entry, Brush, Spray, Select/Move, and Erase all use
+the same registered operations. Brush and Spray delegate point materialization
+to `materializeWorldGesture()` and commit one `ADD_POINTS` transaction on
+pointer-up. Move commits one `MOVE_POINT`; a multi-point erase commits one
+`REMOVE_POINTS` transaction. Pointer cancellation and resource-limit
+violations discard the local draft without a partial semantic mutation.
+
+The Workspace keeps a conservative view policy: the runtime's initial bounds
+are used on open, ordinary edits preserve those bounds, and the learner may
+explicitly request `Fit view`. Visibility (`train`, `test`, or `both`) and
+bounds remain `SET_WORKSPACE_VIEW` state and never enter World history or the
+Experiment semantic fingerprint. Hidden test points remain counted and are
+called out in the layer legend.
+
+The train/test authoring layer is UI state that supplies membership to new
+observations. The first explicit assignment still goes through the domain's
+normalization rule; React does not duplicate split semantics. Train points use
+filled markers and test points use outlined diamond markers, so the distinction
+does not depend on color alone. Residual primitives carry the same subset
+metadata and render test residuals with a distinct dashed violet treatment;
+`trainMse` and `testMse` remain separate semantic metrics.
+
+The precise editor is an accessibility and exactness path, not a second data
+store. It emits `ADD_POINTS` for a new point or `MOVE_POINT` for the selected
+point. Visible Undo/Redo buttons read `canUndoWorld` and `canRedoWorld` from
+the runtime snapshot and therefore operate on complete semantic gesture
+boundaries. Reset remains the existing Playground open-time source reset and
+is intentionally separate from Undo.

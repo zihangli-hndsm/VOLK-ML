@@ -8,6 +8,7 @@ import { getPreset } from '../src/core/playground/visualization/presetRegistry.j
 import { fallbackRegressionPoints } from '../src/core/linearRegressionPlayground.js';
 import PlaygroundStage from '../src/components/playground/PlaygroundStage.jsx';
 import PlaygroundInspector from '../src/components/playground/PlaygroundInspector.jsx';
+import DataWorkspace from '../src/components/playground/DataWorkspace.jsx';
 import PresentationMode from '../src/components/playground/PresentationMode.jsx';
 import VoteBarRenderer from '../src/components/playground/renderers/VoteBarRenderer.jsx';
 import ParameterTrajectoryRenderer from '../src/components/playground/renderers/ParameterTrajectoryRenderer.jsx';
@@ -110,6 +111,15 @@ export function runPlaygroundRenderSmoke() {
   // LR: every preset step must render Stage + Inspector without throwing.
   const lrSnapshots = snapshotsForPreset(lr, lrSource, 'linear-regression.intuition', 7);
   for (const snapshot of lrSnapshots) renderStageAndInspector(lr, snapshot);
+  const workspaceMarkup = renderToStaticMarkup(React.createElement(DataWorkspace, {
+    snapshot: lrSnapshots[0], onDispatch: noopDispatch, t,
+  }));
+  assert.ok(workspaceMarkup.includes('playground.workspace.title'), 'editable LR workspace renders from capability snapshot');
+  assert.ok(workspaceMarkup.includes('playground.workspace.tool.brush'), 'workspace exposes brush tool semantics');
+  assert.ok(workspaceMarkup.includes('playground.workspace.undo'), 'workspace exposes runtime Undo control');
+  assert.equal(renderToStaticMarkup(React.createElement(DataWorkspace, {
+    snapshot: knnSnapshots[0], onDispatch: noopDispatch, t,
+  })), '', 'unsupported adapters do not receive editable workspace controls');
 
   // PR F.1: the MLP preset trains, reveals epochs and hidden activations; the
   // new toolkit primitives (network-graph, matrix-grid, parameter-trajectory,

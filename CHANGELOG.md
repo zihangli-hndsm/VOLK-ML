@@ -389,6 +389,16 @@
 - Validation: `npm run check`, `npm run check:compiler`, `npm run build`, UTF-8/command-envelope scan, and `git diff --check` passed. KNN/LR/MLP render smoke and 12 example checks passed. The build retained its existing large-chunk warning.
 - Deferred: no Point/Brush/Spray React UI, selection/touch interaction, classification World editing, Experiment Bar, generator, Scenario Engine, or persistence change is included; these remain Phase 1.2+ work.
 
+## 2026-08-12 - Phase 1 2D Data Workspace MVP
+
+- Restored the registered `linear-trend` teaching dataset as the default Linear Regression source; fallback points are used only when the teaching dataset is unavailable, and acceptance coverage now derives split counts from the actual initial World size.
+- Added a capability-driven generic `DataWorkspace` learner surface with Point, Brush, Spray, Select/Move, Erase, Train/Test authoring layers, precise coordinate entry, Fit view, and visible runtime Undo/Redo.
+- Routed all Workspace edits through registered World operations and one completed-pointer transaction boundary. Brush/Spray reuse the bounded deterministic gesture materializer; grouped erase uses `REMOVE_POINTS`; pointer cancellation and resource-limit failures do not partially mutate the World.
+- Added non-color-only Train/Test visualization, subset-aware residual rendering, explicit Train MSE/Test MSE labels, conservative bounds preservation, and semantic view-only visibility/Fit view handling.
+- Added learner-surface render coverage, unsupported-adapter capability coverage, default teaching-data regression coverage, operation-registry metadata clarification, and Phase 1 architecture documentation.
+- Validation: `npm run check`, `npm run check:compiler`, `npm run build`, `git diff --check`, changed-line UTF-8/command-envelope scan, desktop pointer acceptance, and 768×1024 tablet-sized pointer acceptance passed. The build retains the existing large-chunk warning.
+- Deferred: Experiment Bar, A/B Compare, generators, Guided Explore, Agent Explore redesign, Scenario Engine, persistence changes, and editable KNN/MLP Worlds.
+
 ## 2026-08-12 - Canonical World Operations and Split Semantics
 
 - Added an authoritative, model-independent registry for public World operations and derived human/Agent capability inspection from its metadata; internal restore operations remain system-only Undo details.

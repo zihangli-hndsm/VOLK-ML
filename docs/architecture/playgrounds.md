@@ -39,6 +39,23 @@ been checked; it recomputes model state but does not own World mutation
 semantics. See `docs/architecture/exploration-semantics.md` for the exact
 first-split normalization and comparison-factor contracts.
 
+### 2D Data Workspace MVP (Phase 1)
+
+`DataWorkspace.jsx` is a reusable learner surface over `snapshot.world` and
+`snapshot.capabilities`. It exposes Point, Brush, Spray, Select/Move, Erase,
+Train/Test authoring, precise coordinate entry, Fit view, and visible Undo /
+Redo only when the runtime advertises the required World capabilities. Tool
+drafts are local pointer state; completed gestures dispatch the same registered
+World transactions used by other callers. Brush/Spray use the bounded,
+deterministic gesture materializer, while view bounds and visibility use
+`SET_WORKSPACE_VIEW` and remain non-semantic.
+
+Linear Regression defaults back to the registered `linear-trend` teaching
+dataset when no workspace dataset is supplied. Fallback points are only used
+when that teaching dataset is unavailable. The Workspace deliberately does
+not add an Experiment Bar, generators, Scenario execution, persistence, or
+editable KNN/MLP Worlds in this phase.
+
 The old descriptors in `src/core/playgrounds/linearRegression.js` and `src/core/playgrounds/knn.js` are metadata only (id, title, controls, actions, scenarios, source validation); `src/core/playgrounds/session.js` is a thin compatibility wrapper over the unified runtime, so the registry, Agent API and existing contract tests keep working.
 
 Since the PR B follow-up, **Visualization Scripts own visualization composition**:

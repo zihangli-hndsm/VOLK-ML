@@ -427,7 +427,14 @@ export const linearRegressionAdapter = {
         membership,
         subset: membership === 'test' ? 'test' : 'train',
       })),
-      residualPoints: points.map((point) => ({ id: point.id, x: point.x, y: point.y, prediction: prediction(point.x) })),
+      residualPoints: points.map((point) => ({
+        id: point.id,
+        x: point.x,
+        y: point.y,
+        prediction: prediction(point.x),
+        membership: point.membership,
+        subset: point.membership === 'test' ? 'test' : 'train',
+      })),
       axes: { x: source?.feature ?? 'x', y: source?.target ?? 'y' },
     };
     const trainMse = meanSquaredError(train, weight, bias);

@@ -5,6 +5,7 @@ import PlaygroundStage from './PlaygroundStage.jsx';
 import PlaygroundInspector from './PlaygroundInspector.jsx';
 import PlaygroundTimeline from './PlaygroundTimeline.jsx';
 import PlaygroundAgentPanel from './PlaygroundAgentPanel.jsx';
+import DataWorkspace from './DataWorkspace.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import PresentationMode from './PresentationMode.jsx';
 
@@ -67,6 +68,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       <div className="space-y-4">
         <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} />
         {agent && <PlaygroundAgentPanel host={host} agent={agent} snapshot={snapshot} t={t} />}
+        <DataWorkspace snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} t={t} />
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <PlaygroundStage snapshot={snapshot} t={t} />

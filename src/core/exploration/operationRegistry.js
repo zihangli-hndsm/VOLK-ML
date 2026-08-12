@@ -1,10 +1,13 @@
+// `preserves` names semantic configuration domains only. They do not promise
+// that derived fitted parameters, metrics, or results remain numerically
+// unchanged after the World is edited.
 const PUBLIC_WORLD_OPERATIONS = [
   {
     type: 'ADD_POINTS',
     domain: 'world-state',
     category: 'create-observations',
     changes: ['observations', 'observation-values'],
-    preserves: ['model', 'learning', 'evaluation'],
+    preserves: ['model-configuration', 'learning-configuration', 'evaluation-configuration'],
     undoable: true,
     agentDiscoverable: true,
     humanAccessible: true,
@@ -14,7 +17,7 @@ const PUBLIC_WORLD_OPERATIONS = [
     domain: 'world-state',
     category: 'edit-observation',
     changes: ['observation-values'],
-    preserves: ['membership', 'model', 'learning', 'evaluation'],
+    preserves: ['membership', 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
     undoable: true,
     agentDiscoverable: true,
     humanAccessible: true,
@@ -24,7 +27,7 @@ const PUBLIC_WORLD_OPERATIONS = [
     domain: 'world-state',
     category: 'remove-observations',
     changes: ['observations'],
-    preserves: ['model', 'learning', 'evaluation'],
+    preserves: ['model-configuration', 'learning-configuration', 'evaluation-configuration'],
     undoable: true,
     agentDiscoverable: true,
     humanAccessible: true,
@@ -34,7 +37,7 @@ const PUBLIC_WORLD_OPERATIONS = [
     domain: 'world-state',
     category: 'remove-observations',
     changes: ['observations'],
-    preserves: ['model', 'learning', 'evaluation'],
+    preserves: ['model-configuration', 'learning-configuration', 'evaluation-configuration'],
     undoable: true,
     agentDiscoverable: true,
     humanAccessible: true,
@@ -44,7 +47,7 @@ const PUBLIC_WORLD_OPERATIONS = [
     domain: 'world-state',
     category: 'assign-membership',
     changes: ['membership'],
-    preserves: ['observation-values', 'model', 'learning', 'evaluation'],
+    preserves: ['observation-values', 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
     undoable: true,
     agentDiscoverable: true,
     humanAccessible: true,
