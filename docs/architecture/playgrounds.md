@@ -30,6 +30,15 @@ Linear Regression implements that boundary; unsupported adapters reject World
 editing rather than receiving model-specific transaction branches in the
 runtime. `SET_WORKSPACE_VIEW` never changes Experiment semantics.
 
+Public World-edit capabilities come from
+`src/core/exploration/operationRegistry.js`, not from a model-specific action
+list. Human controls, the Playground Agent, and legacy Linear Regression
+actions all enter the same atomic transaction path. The adapter receives the
+accepted canonical World through `applyWorld()` only after split validity has
+been checked; it recomputes model state but does not own World mutation
+semantics. See `docs/architecture/exploration-semantics.md` for the exact
+first-split normalization and comparison-factor contracts.
+
 The old descriptors in `src/core/playgrounds/linearRegression.js` and `src/core/playgrounds/knn.js` are metadata only (id, title, controls, actions, scenarios, source validation); `src/core/playgrounds/session.js` is a thin compatibility wrapper over the unified runtime, so the registry, Agent API and existing contract tests keep working.
 
 Since the PR B follow-up, **Visualization Scripts own visualization composition**:

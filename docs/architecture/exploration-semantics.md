@@ -112,3 +112,56 @@ surface must use this boundary rather than encoding pan/zoom as data changes.
 Phase 1.1 deliberately does not include Point/Brush/Spray React controls,
 selection, touch interaction, Experiment Bar, generators, Scenario execution,
 or classification World editing. Those remain later accepted slices.
+
+## Canonical World operations and split semantics
+
+`src/core/exploration/operationRegistry.js` is the authority for public World
+operations. Each entry declares what the operation changes and preserves,
+whether it is undoable, and whether humans and Agents may discover it. Runtime
+capability inspection is derived from this registry. Internal inverse
+operations such as `RESTORE_POINTS` and `RESTORE_MEMBERSHIPS` are deliberately
+absent from it and are accepted only inside system-owned Undo transactions.
+
+Every editable Linear Regression World action now follows one path:
+
+```text
+human gesture / Agent action / legacy LR action
+                  -> registered World operation
+                  -> one atomic World transaction
+                  -> canonical Experiment.world
+                  -> adapter.applyWorld()
+                  -> derived model state and metrics
+```
+
+Legacy `ADD_POINT`, `MOVE_POINT`, and `REMOVE_POINT` actions are compatibility
+inputs only. The runtime translates them before mutation, so they share point
+ID allocation, action grouping, validation, history, and Agent provenance with
+the public operations. One dispatch is one human-level history boundary even
+when its transaction contains many operations. Undo applies the stored inverse
+operations as one system transaction; Redo reapplies the normalized forward
+transaction.
+
+Membership has one explicit transition rule. A World containing only
+`unspecified` observations preserves the legacy behavior that every
+observation trains the model. The first public assignment to `train` or `test`
+starts an explicit split and atomically normalizes every remaining
+`unspecified` observation to `train`. Once a split exists, newly added
+unspecified observations are likewise normalized to `train`. Linear
+Regression therefore always treats `membership !== 'test'` as training data,
+including a defensive mixed imported World. A transaction that would leave
+fewer than two training observations is rejected before model synchronization;
+the World, Experiment, traces, and Undo/Redo history remain unchanged.
+
+`adapter.applyWorld()` is a synchronization consequence, not an alternative
+mutation authority. Adapters may validate whether a candidate canonical World
+is usable by their model and then rebuild derived state, but they do not define
+public World actions or split policy. This keeps a future finite-sample model
+extension on the registry/transaction boundary and avoids model branches in
+the exploration layer.
+
+Experiment comparison keeps the factors orthogonal. Coordinates, targets,
+labels, provenance, and observation existence belong to the `world` factor;
+observation membership belongs only to `trainTest`. Moving test points changes
+`world` while preserving fitted Linear Regression parameters, although test
+MSE may change. A pure membership edit changes only `trainTest`. View state is
+outside both the Experiment and comparison fingerprint.

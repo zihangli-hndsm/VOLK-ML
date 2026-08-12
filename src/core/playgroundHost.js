@@ -27,6 +27,7 @@ import { listPrimitiveSchemas } from './playground/visualization/schemas.js';
 import { RESOURCE_LIMITS } from './playground/visualization/scriptValidator.js';
 import { MAX_GESTURE_PATH_POINTS, MAX_POINTS_PER_GESTURE } from './exploration/gestures.js';
 import { MAX_WORLD_HISTORY_ACTIONS, MAX_WORLD_TRANSACTION_OPERATIONS } from './exploration/operations.js';
+import { listWorldOperations } from './exploration/operationRegistry.js';
 import { MAX_WORLD_OBSERVATIONS } from './exploration/world.js';
 import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from './playground/trace/traceTypes.js';
 
@@ -71,14 +72,14 @@ function resolveSource(playground, dataset) {
       kind: 'example',
       name: 'Example data',
       fingerprint: 'example-linear-trend-v1',
-      points: (teachingDatasetById('linear-trend')?.dataset.rows ?? fallbackRegressionPoints).map((point, index) => ({
+      points: fallbackRegressionPoints.map((point, index) => ({
         id: `e${index}`,
         x: point.x ?? point[0],
         y: point.y ?? point[1],
       })),
       feature: 'x',
       target: 'y',
-      total: (teachingDatasetById('linear-trend')?.dataset.rows ?? fallbackRegressionPoints).length,
+      total: fallbackRegressionPoints.length,
       usingDataset: false,
     };
   }
@@ -310,6 +311,10 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         }
       }
       const semanticFields = Object.keys(adapter.semanticSchema ?? {});
+      const worldOperations = listWorldOperations();
+      const transactionActions = ['APPLY_WORLD_TRANSACTION', 'UNDO_WORLD_ACTION', 'REDO_WORLD_ACTION'];
+      const viewActions = ['SET_WORKSPACE_VIEW'];
+      const experimentOperations = ['DUPLICATE_EXPERIMENT', 'RESTORE_EXPERIMENT', 'COMPARE_EXPERIMENTS'];
       const context = {
         version: 1,
         playground: { id: session.playgroundId, modelAdapter: session.adapterId, task: data.task ?? null },
@@ -332,19 +337,15 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         experiment: snapshot.experiment ?? null,
         exploration: {
           version: 1,
+          worldOperations,
+          transactionActions,
+          viewActions,
+          experimentOperations,
           operations: [
-            'ADD_POINTS',
-            'MOVE_POINT',
-            'REMOVE_POINT',
-            'REMOVE_POINTS',
-            'SET_TRAIN_TEST_MEMBERSHIP',
-            'APPLY_WORLD_TRANSACTION',
-            'UNDO_WORLD_ACTION',
-            'REDO_WORLD_ACTION',
-            'SET_WORKSPACE_VIEW',
-            'DUPLICATE_EXPERIMENT',
-            'RESTORE_EXPERIMENT',
-            'COMPARE_EXPERIMENTS',
+            ...worldOperations.map((operation) => operation.type),
+            ...transactionActions,
+            ...viewActions,
+            ...experimentOperations,
           ],
         },
         controlSchemas: (playground?.controls ?? []).map((control) => ({
