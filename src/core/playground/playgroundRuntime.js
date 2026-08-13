@@ -244,6 +244,7 @@ function applyModelAction(session, action) {
   const next = {
     ...merged,
     experiment: synchronizeExperiment(session.experiment, {
+      world: session.experiment.world,
       source: session.sourceData,
       points,
       controls: merged.controls,
@@ -489,6 +490,7 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
   });
   return {
     ...merged,
+    seed: transactionResult.world.randomness?.seed ?? session.seed,
     sourceData,
     dataState,
     experiment: {
@@ -521,7 +523,13 @@ function canonicalWorldTransaction(action) {
     };
   }
   if (isPublicWorldOperation(action.type)) {
-    const intent = action.type === 'ADD_POINTS'
+    const intent = action.type === 'SET_WORLD_GENERATOR' || action.type === 'SET_GENERATOR_PARAMETER' || action.type === 'SET_GENERATOR_SEED'
+      ? 'world-generator'
+      : action.type === 'REGENERATE_WORLD'
+        ? 'regenerate-world'
+        : action.type === 'FREEZE_AS_SAMPLES'
+          ? 'freeze-as-samples'
+          : action.type === 'ADD_POINTS'
       ? 'point'
       : action.type === 'MOVE_POINT'
         ? 'move'

@@ -460,3 +460,8 @@
 - Added semantic A/B comparison for World, train/test assignment, model, learning, evaluation, and randomness factors; learned Linear Regression weight/bias are treated as results rather than configuration.
 - Added comparison clarity and result-difference summaries, Agent operation parity, Linear Regression coverage, KNN compatibility checks, and runtime-only experiment workspace documentation.
 - Validation: full `npm.cmd run check`, focused experiment runtime checks, browser A/B/undo acceptance, `npm.cmd run build`, and `git diff --check` passed.
+## 2026-08-13 - Phase 3 World Builder generators
+
+- Added a bounded deterministic World Builder for Uniform, Gaussian-like, and Two-cluster inputs with explicit linear relation, additive noise, outlier provenance, seed, and train/test generator configuration.
+- Added registered SET_WORLD_GENERATOR, SET_GENERATOR_PARAMETER, SET_GENERATOR_SEED, REGENERATE_WORLD, and FREEZE_AS_SAMPLES operations with shared UI/Agent parity, grouped World history, model-result invalidation, and generated/manual provenance semantics.
+- Added generated-vs-sample UI badges, parameter controls, regenerate/freeze actions, nested World-generator comparison details, serialization coverage, deterministic generation checks, and browser-safe sample limits.

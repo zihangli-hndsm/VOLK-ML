@@ -5,6 +5,7 @@ import { cloneWorld, createWorld, explorationError, worldFromPlaygroundSource } 
 import { validateExperiment } from './experiment.js';
 import { isPublicWorldOperation } from './operationRegistry.js';
 import { getProjectedValue } from './projection.js';
+import { cloneGeneratorSpec, generateObservations, normalizeGeneratorSpec } from './generator.js';
 
 const clone = (value) => structuredClone(value);
 
@@ -13,14 +14,103 @@ function mutation(type, details = {}) {
 }
 
 function worldWithObservations(world, observations, details) {
+  const modifiedPointIds = new Set((details.modifiedPointIds ?? []).map(String));
+  const nextObservations = observations.map((point) => world.mode === 'generated' && modifiedPointIds.has(point.id)
+    ? { ...point, provenance: 'manual' }
+    : point);
+  const generator = world.generator
+    ? {
+      ...world.generator,
+      status: world.mode === 'generated' ? 'modified' : world.generator.status,
+    }
+    : null;
   return {
     world: createWorld({
       ...world,
-      observations,
+      observations: nextObservations,
       source: world.source,
       seed: world.randomness?.seed ?? null,
+      mode: world.mode ?? 'sample',
+      generator,
     }),
     mutation: mutation(details.type, details),
+  };
+}
+
+function setWorldGenerator(world, spec, seed = world.randomness?.seed ?? null) {
+  const normalized = normalizeGeneratorSpec(spec);
+  return {
+    world: createWorld({
+      ...world,
+      mode: 'generated',
+      seed,
+      generator: {
+        version: normalized.version,
+        active: true,
+        status: 'dirty',
+        spec: normalized,
+        lastSeed: seed,
+      },
+    }),
+    mutation: mutation('world.setGenerator', { type: 'world.setGenerator', seed }),
+  };
+}
+
+function setGeneratorParameter(world, path, value) {
+  const allowed = new Set([
+    'input.type', 'input.params.min', 'input.params.max', 'input.params.mean', 'input.params.spread',
+    'input.params.centerA', 'input.params.centerB', 'relation.slope', 'relation.bias',
+    'noise.amount', 'sampling.samples', 'outliers.count',
+    'train.input.type', 'train.input.params.min', 'train.input.params.max', 'train.input.params.mean',
+    'train.input.params.spread', 'train.input.params.centerA', 'train.input.params.centerB', 'train.samples',
+    'test.input.type', 'test.input.params.min', 'test.input.params.max', 'test.input.params.mean',
+    'test.input.params.spread', 'test.input.params.centerA', 'test.input.params.centerB', 'test.samples',
+  ]);
+  if (!allowed.has(path)) throw explorationError('EXPLORATION_INVALID_GENERATOR', { field: 'path', value: path });
+  const spec = cloneGeneratorSpec(world.generator?.spec ?? {});
+  const segments = path.split('.');
+  let cursor = spec;
+  for (const segment of segments.slice(0, -1)) cursor = cursor[segment];
+  cursor[segments.at(-1)] = value;
+  return setWorldGenerator(world, spec, world.randomness?.seed ?? null);
+}
+
+function setGeneratorSeed(world, seed) {
+  const number = Number(seed);
+  if (!Number.isFinite(number)) throw explorationError('EXPLORATION_INVALID_GENERATOR', { field: 'seed', value: seed });
+  return setWorldGenerator(world, world.generator?.spec ?? {}, Math.trunc(number));
+}
+
+function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
+  if (!world.generator?.spec) throw explorationError('EXPLORATION_INVALID_GENERATOR', { reason: 'World has no generator specification' });
+  const generated = generateObservations(world.generator.spec, seed, { worldId: world.id });
+  return {
+    world: createWorld({
+      ...world,
+      mode: 'generated',
+      observations: generated.observations,
+      seed: generated.seed,
+      generator: {
+        ...world.generator,
+        active: true,
+        status: 'clean',
+        spec: generated.spec,
+        lastSeed: generated.seed,
+      },
+    }),
+    mutation: mutation('world.regenerate', { type: 'world.regenerate', seed: generated.seed, count: generated.observations.length }),
+  };
+}
+
+function freezeAsSamples(world) {
+  if (!world.generator) return { world: cloneWorld(world), mutation: mutation('world.freezeAsSamples', { alreadySample: true }) };
+  return {
+    world: createWorld({
+      ...world,
+      mode: 'sample',
+      generator: { ...world.generator, active: false, status: 'modified' },
+    }),
+    mutation: mutation('world.freezeAsSamples', { sourceMode: 'generated' }),
   };
 }
 
@@ -101,7 +191,7 @@ export function movePoint(world, pointId, { x, y, target }) {
   if (observations.every((point, index) => point === world.observations[index])) {
     throw explorationError('EXPLORATION_POINT_NOT_FOUND', { pointId });
   }
-  return worldWithObservations(world, observations, { type: 'world.movePoint', pointId: String(pointId) });
+  return worldWithObservations(world, observations, { type: 'world.movePoint', pointId: String(pointId), modifiedPointIds: [pointId] });
 }
 
 export function removePoint(world, pointId) {
@@ -191,6 +281,7 @@ export function setFeatureValues(world, feature, values) {
     type: 'world.setFeatureValues',
     feature,
     pointIds: [...valueById.keys()],
+    modifiedPointIds: [...valueById.keys()],
   });
 }
 
@@ -224,6 +315,7 @@ export function applyFeatureTransform(world, operation) {
     seed: operation.seed ?? 0,
     scope: operation.scope ?? 'selected',
     pointIds: [...pointIds],
+    modifiedPointIds: [...pointIds],
   });
 }
 
@@ -286,6 +378,12 @@ export function applyWorldOperation(world, operation) {
         pointIds: [...membershipById.keys()],
       });
     }
+    case 'SET_WORLD_GENERATOR': return setWorldGenerator(current, operation.spec, operation.seed);
+    case 'SET_GENERATOR_PARAMETER': return setGeneratorParameter(current, String(operation.path ?? ''), operation.value);
+    case 'SET_GENERATOR_SEED': return setGeneratorSeed(current, operation.seed);
+    case 'REGENERATE_WORLD': return regenerateWorld(current, operation.seed);
+    case 'FREEZE_AS_SAMPLES': return freezeAsSamples(current);
+    case 'RESTORE_WORLD': return { world: cloneWorld(operation.world), mutation: mutation('world.restore', { type: 'world.restore' }) };
     default: throw explorationError('EXPLORATION_INVALID_OPERATION', { type: operation?.type });
   }
 }
@@ -304,7 +402,7 @@ function prepareOperation(world, operation, transactionId) {
 }
 
 function isInternalWorldOperation(type) {
-  return type === 'RESTORE_POINTS' || type === 'RESTORE_MEMBERSHIPS';
+  return type === 'RESTORE_POINTS' || type === 'RESTORE_MEMBERSHIPS' || type === 'RESTORE_WORLD';
 }
 
 function inverseFor(world, operation) {
@@ -371,6 +469,10 @@ function inverseFor(world, operation) {
       })),
     };
   }
+  if (['SET_WORLD_GENERATOR', 'SET_GENERATOR_PARAMETER', 'SET_GENERATOR_SEED', 'REGENERATE_WORLD', 'FREEZE_AS_SAMPLES'].includes(operation.type)) {
+    return { type: 'RESTORE_WORLD', world: cloneWorld(world) };
+  }
+  if (operation.type === 'RESTORE_WORLD') return { type: 'RESTORE_WORLD', world: cloneWorld(world) };
   throw explorationError('EXPLORATION_INVALID_OPERATION', { type: operation.type });
 }
 
@@ -494,6 +596,7 @@ export function synchronizeExperiment(experiment, {
     : runtimeSource
       ? worldFromPlaygroundSource(runtimeSource, { id: current.world.id, seed })
       : current.world;
+  const effectiveSeed = seed ?? world.randomness?.seed ?? null;
   const sections = partitionControls(controls, controlDescriptors);
   const nextMutation = runtimeMutation(action, controlDescriptors);
   return validateExperiment({
@@ -502,7 +605,7 @@ export function synchronizeExperiment(experiment, {
     model: { adapterId: adapterId ?? current.model.adapterId, controls: sections.model },
     learning: { controls: sections.learning },
     evaluation: { controls: sections.evaluation },
-    randomness: { seed: seed ?? null, policy: seed === null || seed === undefined ? 'unspecified' : 'fixed-seed' },
+    randomness: { seed: effectiveSeed, policy: effectiveSeed === null || effectiveSeed === undefined ? 'unspecified' : 'fixed-seed' },
     ...(result !== undefined ? { result: clone(result) } : {}),
     ...(traces ? { traces: clone(traces) } : {}),
     mutations: nextMutation ? [...current.mutations, nextMutation] : current.mutations,

@@ -6,6 +6,7 @@ import PlaygroundInspector from './PlaygroundInspector.jsx';
 import PlaygroundTimeline from './PlaygroundTimeline.jsx';
 import PlaygroundAgentPanel from './PlaygroundAgentPanel.jsx';
 import DataWorkspace from './DataWorkspace.jsx';
+import WorldBuilder from './WorldBuilder.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import PresentationMode from './PresentationMode.jsx';
 import ExperimentBar from './ExperimentBar.jsx';
@@ -109,7 +110,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
           <p className="mt-1 text-xs">{t('playground.playback.errorStatePreserved')}</p>
         </div>}
         {agent && snapshot.model && <PlaygroundAgentPanel host={host} agent={agent} snapshot={snapshot} t={t} />}
-        {activeTab === 'data' ? <DataWorkspace snapshot={snapshot} onDispatch={dispatchAction} t={t} /> : <>
+        {activeTab === 'data' ? <div className="space-y-4"><WorldBuilder snapshot={snapshot} onDispatch={dispatchAction} t={t} /><DataWorkspace snapshot={snapshot} onDispatch={dispatchAction} t={t} /></div> : <>
         {!snapshot.model ? <ModelEmptyState snapshot={snapshot} onDispatch={dispatchAction} t={t} /> : <>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">

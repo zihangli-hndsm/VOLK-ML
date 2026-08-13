@@ -19,10 +19,48 @@ const worldSemantic = (world) => ({
   dimension: world.dimension,
   task: world.task,
   featureNames: world.featureNames,
+  mode: world.mode ?? 'sample',
+  generator: world.generator,
   observations: world.observations.map(({ membership, ...observation }) => observation),
   source: world.source,
   metadata: world.metadata,
 });
+
+const generatorSemantic = (world) => {
+  const spec = world.generator?.spec;
+  if (!spec) return null;
+  return {
+    input: spec.input,
+    trainInput: spec.train?.input,
+    testInput: spec.test?.input,
+    relation: spec.relation,
+    noise: spec.noise,
+    samples: { train: spec.train?.samples ?? 0, test: spec.test?.samples ?? 0 },
+    outliers: spec.outliers,
+    seedPolicy: world.randomness?.policy ?? 'unspecified',
+  };
+};
+
+function worldGeneratorDetails(left, right) {
+  const a = generatorSemantic(left);
+  const b = generatorSemantic(right);
+  if (!a && !b) return { changed: [], left: null, right: null };
+  const fields = [
+    ['inputDistribution', a?.trainInput, b?.trainInput],
+    ['testInputDistribution', a?.testInput, b?.testInput],
+    ['linearRelation', a?.relation, b?.relation],
+    ['noise', a?.noise, b?.noise],
+    ['sampleCount', a?.samples, b?.samples],
+    ['outliers', a?.outliers, b?.outliers],
+    ['seedPolicy', a?.seedPolicy, b?.seedPolicy],
+  ];
+  return {
+    changed: fields.filter(([, leftValue, rightValue]) => stable(leftValue) !== stable(rightValue)).map(([key]) => key),
+    unchanged: fields.filter(([, leftValue, rightValue]) => stable(leftValue) === stable(rightValue)).map(([key]) => key),
+    left: a,
+    right: b,
+  };
+}
 
 const trainTestSemantic = (world, sharedIds = null) => world.observations
   .filter(({ id }) => !sharedIds || sharedIds.has(id))
@@ -62,6 +100,9 @@ export function compareExperiments(left, right) {
     changed,
     unchanged: FACTORS.filter((factor) => !factors[factor].changed),
     factors,
+    details: {
+      worldGenerator: worldGeneratorDetails(leftValue.world, rightValue.world),
+    },
     clarity: changed.length === 0 ? 'identical' : changed.length === 1 ? 'high' : 'mixed',
   };
 }

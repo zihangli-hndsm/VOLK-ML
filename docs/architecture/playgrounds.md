@@ -136,6 +136,44 @@ comparison, semantic diff, clarity, result availability, and Repeat seed
 policy. Experiment snapshots are runtime-only; they are intentionally not
 inserted into project JSON in Phase 2, so existing project persistence and
 version migrations remain unchanged.
+
+### Phase 3 World Builder generators
+
+Phase 3 keeps the finite-observation World contract while adding an explicit
+`world.mode` distinction: `sample` means the current observations are the
+World, while `generated` means the observations are one realization of the
+active `world.generator.spec`. The generator is deliberately small and
+explicit: `uniform`, `gaussian`, and `two-cluster` input shapes; a separate
+linear latent relation (`slope` and `bias`); additive Gaussian-like noise;
+bounded train/test sample counts; and deterministic outlier count. Learned
+model weight/bias fields are never reused as generator relation parameters.
+
+`src/core/exploration/generator.js` owns normalization, browser-safe limits,
+and seeded deterministic generation. The same normalized specification and
+seed produce the same observations and stable split/index IDs; no direct
+`Math.random()` path is used. Generated observations carry `generated` or
+`generated-outlier` provenance. `SET_WORLD_GENERATOR`,
+`SET_GENERATOR_PARAMETER`, `SET_GENERATOR_SEED`, `REGENERATE_WORLD`, and
+`FREEZE_AS_SAMPLES` are registered World operations, so World Builder UI and
+Agent dispatch share the same transaction, Undo, validation, and model-result
+refresh boundary.
+
+Manual edits remain ordinary World operations. Editing a generated point marks
+that point `manual` and the active generator `modified`; it does not silently
+claim that the realization is untouched. `FREEZE_AS_SAMPLES` preserves current
+observations and historical generator metadata but changes active semantics to
+the finite sample World. Train and test generators live under the same shared
+relation/noise/randomness policy, with separate input shapes and sample counts
+for controlled distribution-shift experiments.
+
+Comparison keeps `world` as one Phase 2 top-level factor. Its nested
+`details.worldGenerator` identifies changed or held-constant primitives such
+as input distribution, test input distribution, relation, noise, sample count,
+outliers, and seed policy without turning each parameter into a separate
+clarity factor. The Data Lab World Builder exposes the same distinction with
+Generated World / Sample World / Modified after generation badges, while the
+existing direct drawing, move, erase, precise edit, membership, and World
+Undo/Redo tools remain available.
 - The validator rejects `show`/`hide`/`highlight` targets that are not declared primitives (`SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE`) and requires exactly one annotation primitive for `annotate` steps (`SCRIPT_ANNOTATION_TARGET_MISSING` / `SCRIPT_ANNOTATION_TARGET_AMBIGUOUS`).
 - KNN teaching/fallback `$data` rows include the `label` target column and the schema declares it, so `$data.targetColumn` always exists in `$data.rows`.
 - Script contract errors are centralized in `visualization/scriptErrors.js` (`SCRIPT_ERROR_CODES`) and pass through the Canvas Agent with their stable codes instead of `OPERATION_FAILED`.
