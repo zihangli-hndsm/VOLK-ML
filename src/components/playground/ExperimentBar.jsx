@@ -29,6 +29,8 @@ export default function ExperimentBar({ snapshot, onDispatch, t }) {
   const target = workspace.experiments.find((item) => item.id === targetId);
   const changed = diff?.changed ?? [];
   const unchanged = diff?.unchanged ?? [];
+  const generatorChanged = diff?.details?.worldGenerator?.changed ?? [];
+  const generatorUnchanged = diff?.details?.worldGenerator?.unchanged ?? [];
   const resultRows = comparison?.results?.active && comparison?.results?.against
     ? metricRows(comparison.results.active).map(([key, value]) => ({
       key,
@@ -58,10 +60,12 @@ export default function ExperimentBar({ snapshot, onDispatch, t }) {
       <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
         <p className="text-xs font-black uppercase tracking-wider text-rose-600">{t('playground.experiment.changed')}</p>
         <p className="mt-2 text-sm font-bold text-slate-700">{changed.length ? changed.map((factor) => t(factorKeys[factor])).join(', ') : t('playground.experiment.none')}</p>
+        {generatorChanged.length > 0 && <p className="mt-2 text-xs font-bold text-rose-700">{t('playground.experiment.worldDetails')}: {generatorChanged.map((key) => t(`playground.experiment.generator.${key}`)).join(', ')}</p>}
       </div>
       <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
         <p className="text-xs font-black uppercase tracking-wider text-emerald-600">{t('playground.experiment.heldConstant')}</p>
         <p className="mt-2 text-sm font-bold text-slate-700">{unchanged.length ? unchanged.map((factor) => t(factorKeys[factor])).join(', ') : t('playground.experiment.none')}</p>
+        {generatorUnchanged.length > 0 && <p className="mt-2 text-xs font-bold text-emerald-700">{t('playground.experiment.worldDetails')}: {generatorUnchanged.map((key) => t(`playground.experiment.generator.${key}`)).join(', ')}</p>}
       </div>
       <div className="rounded-xl bg-white p-3 ring-1 ring-slate-200">
         <p className="text-xs font-black uppercase tracking-wider text-violet-700">{t('playground.experiment.clarity')}</p>

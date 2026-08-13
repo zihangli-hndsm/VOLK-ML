@@ -1,11 +1,15 @@
-// Phase 0 semantic World contract. A World is an explicit finite collection
-// of observations; it is not a claim about an underlying distribution.
+// Semantic World contract. A World is always an explicit finite collection of
+// observations. A generated World additionally keeps the specification that
+// produced the current realization; it never treats the points as a latent
+// distribution by themselves.
+
+import { cloneGeneratorSpec, GENERATOR_VERSION } from './generator.js';
 
 export const WORLD_VERSION = 1;
 export const WORLD_KIND = 'sample';
 export const WORLD_DIMENSION = 2;
 export const WORLD_MEMBERSHIPS = ['train', 'test', 'unspecified'];
-export const WORLD_PROVENANCE = ['manual', 'generated', 'imported', 'agent'];
+export const WORLD_PROVENANCE = ['manual', 'generated', 'generated-outlier', 'imported', 'agent'];
 export const MAX_WORLD_OBSERVATIONS = 10_000;
 
 const clone = (value) => structuredClone(value);
@@ -61,7 +65,32 @@ function normalizeObservation(input, index, defaultProvenance) {
   if (features) observation.features = features;
   if (input.label !== undefined) observation.label = String(input.label);
   if (input.target !== undefined) observation.target = finite(input.target, `observations[${index}].target`);
+  if (input.generation && typeof input.generation === 'object' && !Array.isArray(input.generation)) {
+    observation.generation = clone(input.generation);
+  }
   return observation;
+}
+
+function normalizeGeneratorState(generator, { mode, seed }) {
+  if (!generator || typeof generator !== 'object' || Array.isArray(generator) || !generator.spec) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator' });
+  }
+  const spec = cloneGeneratorSpec(generator.spec);
+  const desiredSeed = generator.seed ?? generator.lastSeed ?? seed ?? null;
+  const legacyRealization = mode === 'generated' && !generator.realization && generator.status === 'clean'
+    ? { spec, seed: generator.lastSeed ?? seed ?? null }
+    : null;
+  const realization = generator.realization ?? legacyRealization;
+  return {
+    version: generator.version ?? GENERATOR_VERSION,
+    active: Boolean(generator.active ?? mode === 'generated'),
+    status: ['clean', 'dirty', 'modified'].includes(generator.status) ? generator.status : 'dirty',
+    spec,
+    seed: desiredSeed,
+    realization: realization
+      ? { spec: cloneGeneratorSpec(realization.spec), seed: realization.seed ?? null }
+      : null,
+  };
 }
 
 export function createWorld({
@@ -74,6 +103,8 @@ export function createWorld({
   seed = null,
   source = null,
   metadata = {},
+  mode = 'sample',
+  generator = null,
 } = {}) {
   if (!['regression', 'classification', null].includes(task)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'task', value: task });
@@ -90,6 +121,13 @@ export function createWorld({
     if (ids.has(observation.id)) throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'observation.id', value: observation.id });
     ids.add(observation.id);
   }
+  if (!['sample', 'generated'].includes(mode)) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'mode', value: mode });
+  }
+  const normalizedGenerator = generator ? normalizeGeneratorState(generator, { mode, seed }) : null;
+  if (mode === 'generated' && !normalizedGenerator) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator' });
+  }
   return validateWorld({
     version: WORLD_VERSION,
     kind: WORLD_KIND,
@@ -100,6 +138,8 @@ export function createWorld({
     featureNames: [...featureNames],
     observations: normalized,
     source: source ? clone(source) : null,
+    mode,
+    generator: normalizedGenerator,
     randomness: { seed: seed ?? null, policy: seed === null || seed === undefined ? 'unspecified' : 'fixed-seed' },
     metadata: clone(metadata),
   });
@@ -121,6 +161,18 @@ export function validateWorld(world) {
   if (!Array.isArray(world.featureNames) || world.featureNames.length < 2 || world.featureNames.some((name) => typeof name !== 'string' || !name)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'featureNames' });
   }
+  const mode = world.mode ?? 'sample';
+  if (!['sample', 'generated'].includes(mode)) throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'mode', value: mode });
+  let generator = null;
+  if (world.generator) {
+    generator = normalizeGeneratorState(world.generator, {
+      mode,
+      seed: world.randomness?.seed ?? null,
+    });
+  }
+  if (mode === 'generated' && (!generator || !generator.active || !generator.realization)) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator.active' });
+  }
   const defaultProvenance = world.observations[0]?.provenance ?? 'manual';
   const observations = world.observations.map((observation, index) => normalizeObservation(observation, index, defaultProvenance));
   const ids = new Set();
@@ -138,6 +190,8 @@ export function validateWorld(world) {
     featureNames: [...world.featureNames],
     observations,
     source: world.source ? clone(world.source) : null,
+    mode,
+    generator,
     randomness: {
       seed: world.randomness?.seed ?? null,
       policy: world.randomness?.policy ?? (world.randomness?.seed === null || world.randomness?.seed === undefined ? 'unspecified' : 'fixed-seed'),

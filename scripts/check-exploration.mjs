@@ -78,6 +78,11 @@ assert.equal(multiDiff.clarity, 'mixed', 'mixed comparisons are informative, not
 
 const registeredWorldOperations = listWorldOperations();
 assert.deepEqual(registeredWorldOperations.map((operation) => operation.type), [
+  'SET_WORLD_GENERATOR',
+  'SET_GENERATOR_PARAMETER',
+  'SET_GENERATOR_SEED',
+  'REGENERATE_WORLD',
+  'FREEZE_AS_SAMPLES',
   'ADD_POINTS',
   'MOVE_POINT',
   'REMOVE_POINT',
@@ -87,7 +92,7 @@ assert.deepEqual(registeredWorldOperations.map((operation) => operation.type), [
   'SET_TRAIN_TEST_MEMBERSHIP',
 ], 'the public World operation registry is authoritative and ordered');
 for (const operation of registeredWorldOperations) {
-  assert.equal(operation.domain, 'world-state');
+  assert.ok(['world-state', 'world-generator'].includes(operation.domain));
   assert.equal(operation.undoable, true);
   assert.equal(operation.agentDiscoverable, true);
   assert.equal(operation.humanAccessible, true);
