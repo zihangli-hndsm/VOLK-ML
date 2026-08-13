@@ -6,6 +6,8 @@
 - Added explicit Agent execution over existing Duplicate, World transaction, Run, Compare, Repeat, and evidence semantics with agent provenance and evidence focus.
 - Added a learner-facing Explore with Agent panel while preserving advanced Teaching Script tooling behind an explicit section.
 - Added deterministic Phase 5 core and host regression coverage for preview-only proposals, controlled outlier/test-shift experiments, unsupported capabilities, hidden confounds, resources, and manual/view staleness.
+- Acceptance fix: proposal fidelity now comes from detached preflight, accepted scenarios commit atomically, generator parameters are typed, two-distributions changes both registered input families, and line-move uses recoverable World history or clarifies.
+- Learner interpretation can use the existing configured AI provider for high-level intent with a bounded local fallback; AI output never contains execution authority.
 
 ## 2026-08-13 - Phase 4 acceptance fixes
 

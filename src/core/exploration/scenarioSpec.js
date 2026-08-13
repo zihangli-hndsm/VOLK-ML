@@ -1,4 +1,6 @@
 import { MAX_WORLD_TRANSACTION_OPERATIONS } from './operations.js';
+import { listGeneratorParameterCapabilities } from './operationRegistry.js';
+import { validateCanonicalControlValue } from '../playground/controlValidation.js';
 
 export const SCENARIO_SPEC_VERSION = 1;
 export const SCENARIO_FIDELITY_STATUSES = ['exact', 'partial', 'approximate'];
@@ -26,23 +28,56 @@ function operationMetadata(context, type) {
 
 function validateControlValue(schema, value) {
   if (!schema) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_CONTROL', { key: null });
-  if (schema.type === 'number') {
-    const number = Number(value);
-    if (!Number.isFinite(number)
-      || (schema.min !== undefined && number < schema.min)
-      || (schema.max !== undefined && number > schema.max)) {
-      throw scenarioError('EXPLORATION_SCENARIO_CONTROL_OUT_OF_RANGE', { key: schema.key, value, min: schema.min, max: schema.max });
+  try {
+    return validateCanonicalControlValue(schema, value);
+  } catch {
+    throw scenarioError('EXPLORATION_SCENARIO_CONTROL_OUT_OF_RANGE', {
+      key: schema.key,
+      value,
+      min: schema.min,
+      max: schema.max,
+      step: schema.step,
+      options: schema.options,
+    });
+  }
+}
+
+function generatorParameterCapability(path, context) {
+  const registered = (context?.exploration?.worldOperations ?? [])
+    .find((operation) => operation.type === 'SET_GENERATOR_PARAMETER')
+    ?.parameterSchema?.parameters;
+  return (registered ?? listGeneratorParameterCapabilities()).find((item) => item.path === path) ?? null;
+}
+
+function validateTypedGeneratorParameter(capability, value, path) {
+  if (!capability) throw scenarioError('EXPLORATION_SCENARIO_INVALID_PARAMETER', { path, reason: 'capability-unavailable' });
+  if (capability.type === 'enum') {
+    if (!capability.options?.includes(value)) {
+      throw scenarioError('EXPLORATION_SCENARIO_INVALID_PARAMETER', { path, value, options: capability.options });
     }
-    return number;
+    return value;
   }
-  if (schema.type === 'boolean') return Boolean(value);
-  if (schema.options && !schema.options.includes(value)) {
-    throw scenarioError('EXPLORATION_SCENARIO_CONTROL_OUT_OF_RANGE', { key: schema.key, value, options: schema.options });
+  const number = Number(value);
+  if (!Number.isFinite(number)
+    || (capability.type === 'integer' && !Number.isInteger(number))
+    || (capability.min !== undefined && number < capability.min)
+    || (capability.max !== undefined && number > capability.max)) {
+    throw scenarioError('EXPLORATION_SCENARIO_INVALID_PARAMETER', { path, value, min: capability.min, max: capability.max, type: capability.type });
   }
-  return value;
+  return number;
 }
 
 function validateWorldParameters(change, context) {
+  if (change.operation === 'UNDO_WORLD_ACTION') {
+    if (!(context?.exploration?.transactionActions ?? []).includes(change.operation)) {
+      throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { operation: change.operation });
+    }
+    const parameters = change.parameters ?? {};
+    const actionId = String(parameters.actionId ?? '');
+    const action = (context?.recentWorldActions ?? []).find((item) => item.id === actionId);
+    if (!action?.reversible) throw scenarioError('EXPLORATION_SCENARIO_POINT_NOT_FOUND', { actionId });
+    return { actionId };
+  }
   const metadata = operationMetadata(context, change.operation);
   if (!metadata) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { operation: change.operation });
   const parameters = change.parameters ?? {};
@@ -85,22 +120,12 @@ function validateWorldParameters(change, context) {
     }
   }
   if (change.operation === 'SET_GENERATOR_PARAMETER') {
-    const allowedPaths = metadata.parameterSchema?.allowedPaths ?? [];
-    if (!allowedPaths.includes(parameters.path) || !Number.isFinite(Number(parameters.value))) {
-      throw scenarioError('EXPLORATION_SCENARIO_INVALID_PARAMETER', { operation: change.operation, path: parameters.path });
-    }
+    const capability = generatorParameterCapability(parameters.path, context);
+    const value = validateTypedGeneratorParameter(capability, parameters.value, parameters.path);
     if (!context?.world?.generator?.spec) {
       throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { operation: change.operation, reason: 'generator-required' });
     }
-    if (parameters.path.endsWith('.samples') || parameters.path === 'outliers.count') {
-      const value = Number(parameters.value);
-      if (!Number.isInteger(value) || value < 0 || value > 500) {
-        throw scenarioError('EXPLORATION_SCENARIO_RESOURCE_LIMIT', { field: parameters.path, min: 0, max: 500, value });
-      }
-    }
-    if (parameters.path === 'noise.amount' && Number(parameters.value) < 0) {
-      throw scenarioError('EXPLORATION_SCENARIO_INVALID_PARAMETER', { operation: change.operation, path: parameters.path, reason: 'noise cannot be negative' });
-    }
+    return { ...clone(parameters), value };
   }
   return clone(parameters);
 }
@@ -151,8 +176,6 @@ export function validateScenarioSpec(spec, context = {}) {
   for (const id of observe) {
     if (!observableIds.has(id)) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OBSERVABLE', { id });
   }
-  const fidelity = spec.fidelity ?? { status: 'exact', represented: [], missing: [], approximations: [] };
-  if (!SCENARIO_FIDELITY_STATUSES.includes(fidelity.status)) throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'fidelity.status' });
   const execution = { duplicateBaseline: true, run: true, compare: true, repeat: null, ...(spec.execution ?? {}) };
   if (execution.repeat !== null && (!Number.isInteger(Number(execution.repeat)) || Number(execution.repeat) < 2 || Number(execution.repeat) > 20)) {
     throw scenarioError('EXPLORATION_SCENARIO_RESOURCE_LIMIT', { field: 'execution.repeat', min: 2, max: 20 });
@@ -169,12 +192,7 @@ export function validateScenarioSpec(spec, context = {}) {
     hold,
     observe,
     execution,
-    fidelity: {
-      status: fidelity.status,
-      represented: stringArray(fidelity.represented ?? [], 'fidelity.represented'),
-      missing: stringArray(fidelity.missing ?? [], 'fidelity.missing'),
-      approximations: stringArray(fidelity.approximations ?? [], 'fidelity.approximations'),
-    },
+    ...(spec.approximation ? { approximation: String(spec.approximation) } : {}),
   };
 }
 

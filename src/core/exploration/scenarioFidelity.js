@@ -27,6 +27,10 @@ const TARGET_TO_GENERATOR_DETAIL = Object.freeze({
   'input-distribution': 'trainInputDistribution',
 });
 
+const TARGET_TO_GENERATOR_DETAILS = Object.freeze({
+  'input-distribution': ['trainInputDistribution', 'testInputDistribution'],
+});
+
 const HOLD_TO_GENERATOR_DETAIL = Object.freeze({
   noise: 'noise',
   'latent-relation': 'linearRelation',
@@ -40,16 +44,23 @@ export function evaluateScenarioFidelity(spec, comparison) {
   const confounds = [...held].filter((factor) => changed.has(factor) && !intended.has(factor));
   const unrepresented = [...changed].filter((factor) => !intended.has(factor));
   const generatorChanged = new Set(comparison?.details?.worldGenerator?.changed ?? []);
-  const intendedGenerator = new Set(spec.change.map((change) => TARGET_TO_GENERATOR_DETAIL[change.semanticTarget]).filter(Boolean));
+  const intendedGenerator = new Set(spec.change.flatMap((change) => (
+    TARGET_TO_GENERATOR_DETAILS[change.semanticTarget]
+      ?? [TARGET_TO_GENERATOR_DETAIL[change.semanticTarget]]
+  )).filter(Boolean));
   const heldGenerator = new Set(spec.hold.map((item) => HOLD_TO_GENERATOR_DETAIL[item]).filter(Boolean));
   const generatorConfounds = [...heldGenerator].filter((field) => generatorChanged.has(field));
   const generatorUnrepresented = [...generatorChanged].filter((field) => !intendedGenerator.has(field));
   const missing = [...new Set([...confounds, ...unrepresented, ...generatorConfounds, ...generatorUnrepresented])];
-  const status = missing.length ? 'partial' : 'exact';
+  const status = missing.length
+    ? 'partial'
+    : spec.approximation ? 'approximate' : 'exact';
   return {
     status,
     represented: [...changed].filter((factor) => !missing.includes(factor)),
     missing,
-    approximations: status === 'partial' ? ['Actual semantic diff contains a factor outside the declared one-factor proposal.'] : [],
+    approximations: spec.approximation
+      ? [spec.approximation]
+      : status === 'partial' ? ['Actual semantic diff contains a factor outside the declared one-factor proposal.'] : [],
   };
 }
