@@ -95,7 +95,13 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
   const projectedPoints = points.map((point) => projectObservation(point, xFeature, yFeature))
     .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
   const projectedViewBounds = projectedBounds(points, xFeature, yFeature);
-  const bounds = viewMode === 'scatter' ? projectedViewBounds : baseBounds;
+  const comparisonBounds = snapshot.experimentWorkspace?.comparison?.enabled
+    && snapshot.experimentWorkspace.comparison.bounds;
+  const bounds = viewMode === 'scatter'
+    ? comparisonBounds?.xFeature === xFeature && comparisonBounds?.yFeature === yFeature
+      ? comparisonBounds
+      : projectedViewBounds
+    : baseBounds;
   const canCreateObservation = Boolean(snapshot.capabilities?.canCreateObservationFromProjection);
   const creationUnavailableMessage = world?.task === 'classification'
     ? t('playground.workspace.classificationLabelRequired')

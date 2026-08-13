@@ -100,7 +100,9 @@ JSON-safe experiment records. Each record has an identity, learner-facing
 name, parent/baseline lineage, the existing Experiment semantic bundle, and the
 small runtime state needed to restore the World, controls, model result,
 timeline, traces, and existing Undo boundary. `DUPLICATE_EXPERIMENT` deep
-clones the active record and gives it a new identity; later actions continue to
+clones the exact current runtime record and gives it a new identity; its World,
+source, model/data state, Experiment baseline, and script baseline are all
+captured from that same duplication-time state. Later actions continue to
 dispatch through the same unified runtime, so World and model mutations affect
 only the active record. `SWITCH_EXPERIMENT` restores the full record while
 leaving presentation-only state such as hover, temporary selection, dialog
@@ -116,6 +118,17 @@ metrics/results. Duplicate experiments retain the current deterministic seed;
 the UI reports that relationship as Matched or Unspecified. `REPEAT_EXPERIMENT`
 is the bounded manual repeat entry point: it reruns the current World/model
 under the existing seed policy without creating a new trial system.
+Switching between A/B roles also swaps the comparison target, so the runtime
+never exposes a self-comparison. When Compare is enabled for compatible 2D
+Worlds, Data Lab uses a union of both projected bounds as a shared view frame;
+the frame is comparison/view state and never part of the semantic Experiment
+diff. The Experiment Bar's Undo setting change is intentionally distinct from
+Data Lab World Undo.
+
+Experiment lineage has one canonical source: `experiment.lineage`. Workspace
+and Agent summaries derive `parentExperimentId` and `baselineExperimentId`
+from that semantic lineage, so a branch such as A -> B -> C remains consistent
+across all inspection surfaces.
 
 The Agent's `inspectContext()` exposes the same `experimentWorkspace` summary
 used by the human Experiment Bar, including identities, ancestry, active

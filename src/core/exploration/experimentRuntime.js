@@ -1,5 +1,6 @@
 import { cloneExperiment, duplicateExperiment } from './experiment.js';
 import { compareExperiments } from './comparison.js';
+import { projectedBounds } from './projection.js';
 
 export const EXPERIMENT_WORKSPACE_VERSION = 1;
 export const MAX_EXPERIMENT_UNDO = 50;
@@ -27,6 +28,7 @@ export function captureExperimentRuntime(session) {
     captures: clone(session.captures),
     scenario: clone(session.scenario),
     status: session.status,
+    seed: session.seed,
   };
 }
 
@@ -34,8 +36,6 @@ function recordFromSession(session, metadata = {}) {
   return {
     id: metadata.id ?? session.experiment.id,
     name: metadata.name ?? 'A',
-    parentExperimentId: metadata.parentExperimentId ?? session.experiment.lineage?.parentId ?? null,
-    baselineExperimentId: metadata.baselineExperimentId ?? session.experiment.lineage?.baselineId ?? null,
     state: captureExperimentRuntime(session),
     undo: clone(session.experimentUndo ?? []),
   };
@@ -83,12 +83,34 @@ export function syncActiveExperiment(session) {
   };
 }
 
-function rekeyState(state, experiment) {
-  const next = clone(state);
-  next.experiment = cloneExperiment(experiment);
-  if (next.baseline?.experiment) next.baseline.experiment = cloneExperiment(experiment);
-  if (next.scriptBaseline?.experiment) next.scriptBaseline.experiment = cloneExperiment(experiment);
-  return next;
+function baselineFromState(state) {
+  return {
+    controls: clone(state.controls),
+    modelState: clone(state.modelState),
+    source: clone(state.sourceData),
+    dataState: clone(state.dataState),
+    experiment: cloneExperiment(state.experiment),
+    traces: clone(state.traces),
+    worldHistory: clone(state.worldHistory),
+    seed: state.seed ?? state.experiment.randomness?.seed ?? null,
+  };
+}
+
+function scriptBaselineFromState(state) {
+  return state.script
+    ? {
+      controls: clone(state.controls),
+      modelState: clone(state.modelState),
+      dataState: clone(state.dataState),
+      experiment: cloneExperiment(state.experiment),
+      source: clone(state.sourceData),
+      seed: state.seed ?? state.experiment.randomness?.seed ?? null,
+      traces: clone(state.traces),
+      worldHistory: clone(state.worldHistory),
+      worldActionCounter: state.worldActionCounter,
+      viewState: clone(state.viewState),
+    }
+    : null;
 }
 
 export function duplicateActiveExperiment(session) {
@@ -101,30 +123,19 @@ export function duplicateActiveExperiment(session) {
     id,
     parentId: sourceId,
   });
-  const state = rekeyState(captureExperimentRuntime(prepared), experiment);
+  const state = captureExperimentRuntime(prepared);
+  state.experiment = cloneExperiment(experiment);
+  // A duplicate is a branch from the exact current runtime state. Rebuilding
+  // both baselines from that same captured state prevents a hybrid such as a
+  // current World paired with the session-open model/data baseline.
+  state.baseline = baselineFromState(state);
+  state.scriptBaseline = scriptBaselineFromState(state);
   const name = Object.keys(workspace.entries).length === 1 ? 'B' : `Experiment ${ordinal}`;
   return {
     ...prepared,
-    experiment,
-    baseline: state.baseline,
-    sourceData: state.sourceData,
-    source: state.source,
-    controls: state.controls,
-    modelState: state.modelState,
-    dataState: state.dataState,
-    worldHistory: state.worldHistory,
-    worldActionCounter: state.worldActionCounter,
-    viewState: state.viewState,
-    timeline: state.timeline,
-    traces: state.traces,
-    visualState: state.visualState,
-    script: state.script,
-    scriptState: state.scriptState,
-    scriptBaseline: state.scriptBaseline,
-    captures: state.captures,
-    scenario: state.scenario,
+    ...state,
     status: 'paused',
-    experimentUndo: clone(prepared.experimentUndo ?? []),
+    experimentUndo: [],
     experimentWorkspace: {
       ...workspace,
       activeExperimentId: id,
@@ -135,10 +146,8 @@ export function duplicateActiveExperiment(session) {
         [id]: {
           id,
           name,
-          parentExperimentId: sourceId,
-          baselineExperimentId: sourceId,
           state,
-          undo: clone(prepared.experimentUndo ?? []),
+          undo: [],
         },
       },
       comparison: {
@@ -154,7 +163,14 @@ export function switchExperiment(session, experimentId) {
   const workspace = prepared.experimentWorkspace;
   const target = workspace.entries[String(experimentId)];
   if (!target) return prepared;
+  if (target.id === workspace.activeExperimentId) return prepared;
   const state = clone(target.state);
+  const comparison = workspace.comparison ?? { enabled: false, againstExperimentId: null };
+  let nextAgainst = comparison.againstExperimentId;
+  if (nextAgainst === target.id) nextAgainst = workspace.activeExperimentId;
+  if (comparison.enabled && (!nextAgainst || nextAgainst === target.id)) {
+    nextAgainst = Object.keys(workspace.entries).find((id) => id !== target.id) ?? null;
+  }
   return {
     ...prepared,
     ...state,
@@ -164,6 +180,11 @@ export function switchExperiment(session, experimentId) {
     experimentWorkspace: {
       ...workspace,
       activeExperimentId: target.id,
+      comparison: {
+        ...comparison,
+        enabled: Boolean(comparison.enabled && nextAgainst && nextAgainst !== target.id),
+        againstExperimentId: nextAgainst,
+      },
     },
   };
 }
@@ -171,10 +192,13 @@ export function switchExperiment(session, experimentId) {
 export function setExperimentComparison(session, { enabled = true, againstExperimentId } = {}) {
   const prepared = syncActiveExperiment(session);
   const workspace = prepared.experimentWorkspace;
-  const targetId = againstExperimentId
+  let targetId = againstExperimentId
     ?? workspace.comparison.againstExperimentId
     ?? Object.keys(workspace.entries).find((id) => id !== workspace.activeExperimentId)
     ?? null;
+  if (targetId === workspace.activeExperimentId) {
+    targetId = Object.keys(workspace.entries).find((id) => id !== workspace.activeExperimentId) ?? null;
+  }
   if (enabled && (!targetId || !workspace.entries[targetId])) return prepared;
   return {
     ...prepared,
@@ -185,6 +209,24 @@ export function setExperimentComparison(session, { enabled = true, againstExperi
         againstExperimentId: targetId,
       },
     },
+  };
+}
+
+function comparisonBoundsFor(leftState, rightState) {
+  const leftWorld = leftState?.experiment?.world;
+  const rightWorld = rightState?.experiment?.world;
+  if (!leftWorld || !rightWorld || leftWorld.featureNames?.length !== 2 || rightWorld.featureNames?.length !== 2) return null;
+  const xFeature = leftState.viewState?.xFeature ?? leftWorld.featureNames[0];
+  const yFeature = leftState.viewState?.yFeature ?? leftWorld.featureNames[1];
+  if (!rightWorld.featureNames.includes(xFeature) || !rightWorld.featureNames.includes(yFeature)) return null;
+  const bounds = [leftWorld, rightWorld].map((world) => projectedBounds(world.observations, xFeature, yFeature));
+  return {
+    xMin: Math.min(...bounds.map((value) => value.xMin)),
+    xMax: Math.max(...bounds.map((value) => value.xMax)),
+    yMin: Math.min(...bounds.map((value) => value.yMin)),
+    yMax: Math.max(...bounds.map((value) => value.yMax)),
+    xFeature,
+    yFeature,
   };
 }
 
@@ -239,10 +281,10 @@ export function deriveExperimentWorkspace(session) {
   const entries = Object.values(workspace.entries).map((record) => ({
     id: record.id,
     name: record.name,
-    parentExperimentId: record.parentExperimentId ?? null,
-    baselineExperimentId: record.baselineExperimentId ?? null,
+    parentExperimentId: record.state?.experiment?.lineage?.parentId ?? null,
+    baselineExperimentId: record.state?.experiment?.lineage?.baselineId ?? null,
   }));
-  const target = workspace.comparison.enabled
+  const target = workspace.comparison.enabled && workspace.comparison.againstExperimentId !== workspace.activeExperimentId
     ? workspace.entries[workspace.comparison.againstExperimentId]
     : null;
   const diff = target ? compareExperiments(active.state.experiment, target.state.experiment) : null;
@@ -258,6 +300,7 @@ export function deriveExperimentWorkspace(session) {
         active: resultForRecord(active),
         against: resultForRecord(target),
       } : null,
+      bounds: target ? comparisonBoundsFor(active.state, target.state) : null,
     },
     repeat: {
       available: Boolean(prepared.adapterId),

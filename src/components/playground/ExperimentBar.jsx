@@ -44,6 +44,7 @@ export default function ExperimentBar({ snapshot, onDispatch, t }) {
       </div>
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white">{t('playground.experiment.duplicate')}</button>
+        <button type="button" onClick={() => onDispatch({ type: 'RESET' })} className="rounded-xl bg-slate-200 px-3 py-2 text-xs font-black text-slate-700">{t('playground.experiment.reset')}</button>
         {snapshot.capabilities?.canUndoExperiment && <button type="button" onClick={() => onDispatch({ type: 'UNDO_EXPERIMENT_ACTION' })} className="rounded-xl bg-slate-200 px-3 py-2 text-xs font-black text-slate-700">{t('playground.experiment.undo')}</button>}
         {snapshot.model && <button type="button" onClick={() => onDispatch({ type: 'REPEAT_EXPERIMENT' })} className="rounded-xl bg-amber-100 px-3 py-2 text-xs font-black text-amber-800">{t('playground.experiment.repeat')}</button>}
         {target && <button type="button" aria-pressed={Boolean(comparison.enabled)} onClick={() => onDispatch({ type: 'SET_COMPARE', enabled: !comparison.enabled, againstExperimentId: target.id })} className={`rounded-xl px-3 py-2 text-xs font-black ${comparison.enabled ? 'bg-violet-700 text-white' : 'bg-violet-100 text-violet-800'}`}>{comparison.enabled ? t('playground.experiment.compareOn') : t('playground.experiment.compare')}</button>}

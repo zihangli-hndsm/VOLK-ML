@@ -57,11 +57,6 @@ const GENERIC_ACTIONS = [
   'COMPARE_EXPERIMENTS',
   'REPEAT_EXPERIMENT',
   'UNDO_EXPERIMENT_ACTION',
-  'DUPLICATE_EXPERIMENT',
-  'SWITCH_EXPERIMENT',
-  'SET_COMPARE',
-  'COMPARE_EXPERIMENTS',
-  'REPEAT_EXPERIMENT',
   'RUN_SCENARIO',
   'SCENARIO_NEXT',
   'SET_VISUAL',
@@ -757,6 +752,7 @@ function resetVisualizationScript(session) {
     adapterId: session.adapterId,
     seed: session.seed,
     traces,
+    result: resultForSession({ ...session, sourceData: source, controls, modelState, dataState }),
   });
   return {
     ...session,
@@ -1033,6 +1029,12 @@ export function dispatchRuntimeAction(session, action) {
       traces: Number.isInteger(captured.traceCount)
         ? session.traces.slice(0, captured.traceCount)
         : session.traces,
+      result: resultForSession({
+        ...session,
+        sourceData: source,
+        controls: captured.controls,
+        modelState: captured.modelState,
+      }),
     });
     return {
       ...session,
