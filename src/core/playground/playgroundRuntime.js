@@ -14,6 +14,15 @@ import {
   synchronizeExperiment,
 } from '../exploration/operations.js';
 import { worldFromPlaygroundSource } from '../exploration/world.js';
+import { createWorld } from '../exploration/world.js';
+import { generateObservations } from '../exploration/generator.js';
+import {
+  conditionFingerprintForSession,
+  deriveObservableSet,
+  isGeneratedRepeatCondition,
+  isRepeatEvidenceCurrent,
+} from '../exploration/observables.js';
+import { detectObservations } from '../exploration/observationDetectors.js';
 import { canCreateObservationFromProjection } from '../exploration/projection.js';
 import {
   duplicateActiveExperiment,
@@ -73,6 +82,10 @@ const GENERIC_ACTIONS = [
   'SCRIPT_CAPTURE',
   'SCRIPT_RESTORE_CAPTURE',
 ];
+
+export const MIN_REPEAT_TRIALS = 2;
+export const DEFAULT_REPEAT_TRIALS = 5;
+export const MAX_REPEAT_TRIALS = 20;
 
 const jsonSafe = (value) => (value === undefined || typeof value === 'function' ? null : structuredClone(value));
 
@@ -201,6 +214,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
       ? { status: 'ready', step: 0, totalSteps: preset.steps.length }
       : { status: 'idle', step: 0, totalSteps: 0 },
     captures: {},
+    repeatEvidence: null,
     traces: recorder.list(),
     visualState: {},
     metrics: {},
@@ -700,6 +714,161 @@ function runCurrentWorld(session) {
   return { ...next, status: 'completed' };
 }
 
+function explorationEvidenceFor(session, experimentWorkspace) {
+  const conditionFingerprint = conditionFingerprintForSession({
+    world: session.experiment.world,
+    adapterId: session.adapterId,
+    experiment: session.experiment,
+  });
+  const repeatEvidence = isRepeatEvidenceCurrent(session.repeatEvidence, conditionFingerprint)
+    ? session.repeatEvidence
+    : null;
+  const comparison = experimentWorkspace?.comparison?.enabled
+    ? experimentWorkspace.comparison
+    : null;
+  const targetState = comparison?.againstExperimentId
+    ? session.experimentWorkspace?.entries?.[comparison.againstExperimentId]?.state
+    : null;
+  const targetResult = targetState?.experiment?.result ?? null;
+  const targetEvidence = targetState
+    ? deriveObservableSet({ world: targetState.experiment.world, result: targetResult })
+    : null;
+  const evidence = deriveObservableSet({
+    world: session.experiment.world,
+    result: session.experiment.result,
+    comparison,
+    comparisonContext: targetState ? { world: targetState.experiment.world, result: targetResult } : null,
+    repeatEvidence,
+    conditionFingerprint,
+  });
+  const observations = detectObservations({
+    observables: evidence,
+    comparisonObservables: targetEvidence,
+    comparison: comparison && targetState ? {
+      diff: comparison.diff,
+      experimentIds: [session.experiment.id, targetState.experiment.id],
+    } : null,
+    repeatEvidence,
+  });
+  return {
+    version: 1,
+    observables: evidence.raw,
+    derivedObservables: evidence.derived,
+    observations,
+    repeatEvidence,
+  };
+}
+
+function aggregateRepeatValues(trials, id) {
+  const values = trials.map((trial) => Number(trial.observables?.[id])).filter(Number.isFinite);
+  if (!values.length) return null;
+  const mean = values.reduce((sum, value) => sum + value, 0) / values.length;
+  const variance = values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / values.length;
+  return {
+    mean,
+    min: Math.min(...values),
+    max: Math.max(...values),
+    standardDeviation: Math.sqrt(variance),
+  };
+}
+
+function validateRepeatCount(value) {
+  const count = Number(value ?? DEFAULT_REPEAT_TRIALS);
+  if (!Number.isInteger(count) || count < MIN_REPEAT_TRIALS || count > MAX_REPEAT_TRIALS) {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+      type: 'REPEAT_EXPERIMENT',
+      reason: 'trial count outside semantic repeat bounds',
+      min: MIN_REPEAT_TRIALS,
+      max: MAX_REPEAT_TRIALS,
+      value,
+    });
+  }
+  return count;
+}
+
+function repeatTrialWorld(world, seed, generated) {
+  if (!generated) return world;
+  const generatedTrial = generateObservations(world.generator.spec, seed, { worldId: world.id });
+  return createWorld({
+    ...world,
+    observations: generatedTrial.observations,
+    seed,
+    mode: 'generated',
+    generator: {
+      ...world.generator,
+      active: true,
+      status: 'clean',
+      spec: generatedTrial.spec,
+      seed,
+      realization: { spec: generatedTrial.spec, seed },
+    },
+  });
+}
+
+function runRepeatExperiment(session, requestedCount) {
+  const count = validateRepeatCount(requestedCount);
+  const adapter = modelAdapterFor(session);
+  if (!adapter) throw playgroundError('PLAYGROUND_MODEL_REQUIRED', { action: 'REPEAT_EXPERIMENT' });
+  const activeWorld = session.experiment.world;
+  const generated = isGeneratedRepeatCondition(activeWorld);
+  const numericSeed = Number(session.seed ?? activeWorld.randomness?.seed ?? activeWorld.generator?.seed);
+  const baseSeed = Number.isFinite(numericSeed) ? Math.trunc(numericSeed) : null;
+  const trials = [];
+  for (let index = 0; index < count; index += 1) {
+    const seed = generated ? (baseSeed ?? 0) + index : baseSeed;
+    const world = repeatTrialWorld(activeWorld, seed, generated);
+    const source = sourceFromWorld(session.sourceData, world);
+    const recorder = createTraceRecorder();
+    const initialized = adapter.initialize({ source, controls: structuredClone(session.controls), seed, recorder });
+    const trialExperiment = synchronizeExperiment(session.experiment, {
+      world,
+      source,
+      points: initialized.modelState?.points,
+      controls: initialized.controls,
+      controlDescriptors: modelControlsFor(session),
+      adapterId: session.adapterId,
+      seed,
+      traces: recorder.list(),
+      result: null,
+    });
+    const trialSession = runCurrentWorld({
+      ...session,
+      sourceData: source,
+      source: { ...session.source, stale: false },
+      controls: initialized.controls,
+      modelState: initialized.modelState,
+      experiment: trialExperiment,
+      traces: recorder.list(),
+      timeline: { step: 0, totalSteps: 0, speed: session.timeline.speed ?? 1 },
+      status: 'paused',
+    });
+    const trialEvidence = deriveObservableSet({ world, result: trialSession.experiment.result });
+    const observables = Object.fromEntries(['model.slope', 'model.bias', 'outcome.trainMse', 'outcome.testMse']
+      .map((id) => [id, trialEvidence.raw[id]?.value ?? null]));
+    trials.push({ index, id: `trial-${index + 1}`, seed, observables });
+  }
+  const aggregates = Object.fromEntries([
+    ['slope', 'model.slope'],
+    ['bias', 'model.bias'],
+    ['trainMse', 'outcome.trainMse'],
+    ['testMse', 'outcome.testMse'],
+  ].map(([key, id]) => [key, aggregateRepeatValues(trials, id)]));
+  const evidence = {
+    status: 'completed',
+    trialCount: count,
+    seedPolicy: generated ? 'base-seed-plus-trial-index' : 'fixed-world-deterministic',
+    baseSeed,
+    conditionFingerprint: conditionFingerprintForSession({
+      world: activeWorld,
+      adapterId: session.adapterId,
+      experiment: session.experiment,
+    }),
+    trials,
+    aggregates,
+  };
+  return syncActiveExperiment({ ...session, repeatEvidence: evidence, status: 'completed' });
+}
+
 function resetVisualizationScript(session) {
   const adapter = modelAdapterFor(session);
   if (!adapter) {
@@ -864,7 +1033,7 @@ export function dispatchRuntimeAction(session, action) {
     });
   }
   if (action.type === 'REPEAT_EXPERIMENT') {
-    return { ...runCurrentWorld(session), status: 'completed' };
+    return runRepeatExperiment(session, action.trials ?? action.count);
   }
   const compatibilityTransaction = canonicalWorldTransaction(action);
   if (compatibilityTransaction) {
@@ -1132,6 +1301,8 @@ export function deriveRuntimeSnapshot(session) {
     visualState: session.visualState,
     dataState: session.dataState,
   });
+  const experimentWorkspace = deriveExperimentWorkspace(session);
+  const explorationEvidence = explorationEvidenceFor(session, experimentWorkspace);
   return {
     apiVersion: 1,
     sessionId: session.sessionId,
@@ -1169,7 +1340,11 @@ export function deriveRuntimeSnapshot(session) {
     visualState: jsonSafe(session.visualState),
     dataState: jsonSafe(session.dataState),
     experiment: jsonSafe(session.experiment),
-    experimentWorkspace: jsonSafe(deriveExperimentWorkspace(session)),
+    experimentWorkspace: jsonSafe(experimentWorkspace),
+    observables: jsonSafe(explorationEvidence.observables),
+    derivedObservables: jsonSafe(explorationEvidence.derivedObservables),
+    observations: jsonSafe(explorationEvidence.observations),
+    repeatEvidence: jsonSafe(explorationEvidence.repeatEvidence),
     world: jsonSafe(session.experiment?.world),
     viewState: jsonSafe(session.viewState),
     actionHistory: {

@@ -864,6 +864,46 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
 - Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
 - The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.
 
+## Phase 4 guided exploration contracts
+
+`src/core/exploration/observables.js` is the shared semantic boundary for
+learner UI, deterministic observation detection, and `host.inspectContext()`.
+It exposes JSON-safe raw observables and derived observables with explicit
+availability; unavailable evidence is `available: false` and never coerced to
+zero. The initial registry covers World train/test counts and x-ranges,
+generator noise, generated outliers, Linear Regression slope/bias, train/test
+MSE, learning step, comparison clarity, generalization gap, factual coverage
+mismatch, slope/error ratios, and repeat spreads.
+
+`src/core/exploration/observationDetectors.js` consumes only those semantic
+observables and comparison/repeat evidence. Its named conservative thresholds
+are centralized in `OBSERVATION_THRESHOLDS`. Detector output is structured
+(`id`, severity, message key, evidence, related observable ids, and related
+experiment ids), deterministic, bounded, and factual. The hard rule is
+evidence-not-cause: notices state what changed or what support is covered;
+they do not claim that a factor caused model failure.
+
+Repeat is an execution result, not a World mutation. Generated Worlds use
+explicit `baseSeed + trialIndex` seeds, generate temporary realizations from
+the unchanged desired specification, run the registered model adapter, and
+return JSON-safe per-trial and aggregate slope/bias/train-MSE/test-MSE
+evidence. The semantic bounds are 2–20 trials, with 5 as the default. Sample
+Worlds use a fixed-world deterministic policy rather than injected randomness.
+Repeat evidence lives in runtime experiment state and is not written to
+project JSON; the active World, Experiment identity, and A/B workspace remain
+unchanged.
+
+`guidedExploration.js` registers the curated Things to Try prompts, two open
+recipes (train/test support and outlier), and semantic affordance ids. Guided
+Explore is ephemeral presentation state: selecting a prompt only highlights
+visible affordances and explains an approach; starting a recipe applies its
+explicit setup through normal World operations. There is no progress, score,
+lock, or forced path. Evidence notices are dismissible, capped, localized,
+keyboard-accessible, and progressively disclosed. The same observables,
+detectors, repeat evidence, and guidance capabilities are included in Agent
+inspection parity. Phase 4 intentionally does not add natural-language Agent
+planning or other Phase 5 behavior.
+
 ### Experimental browser AI goal interpretation
 
 The Playground Agent keeps its deterministic path authoritative: user language is optionally interpreted by a replaceable provider adapter into a typed `TeachingGoal`, then the existing schema-grounded Planner, TeachingPlan, Composer, validation, strict dry run, and Goal Fidelity pipeline produces the preview. The LLM never generates a Visualization Script or mutates the active runtime. The current browser provider path is for private experimentation only: credentials live only in volatile page memory and are sent directly to the selected provider when a request is made. VOLK-ML does not intentionally persist them to browser storage, project files, exports, URLs, or application logs; production deployment will move credential handling behind a server-side proxy. A single bounded repair call is allowed for invalid typed output, and the local lexical parser remains available.

@@ -30,6 +30,7 @@ import { MAX_WORLD_HISTORY_ACTIONS, MAX_WORLD_TRANSACTION_OPERATIONS } from './e
 import { listWorldOperations } from './exploration/operationRegistry.js';
 import { MAX_WORLD_OBSERVATIONS } from './exploration/world.js';
 import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from './playground/trace/traceTypes.js';
+import { AFFORDANCE_IDS, EXPLORATION_RECIPES, THINGS_TO_TRY } from './exploration/guidedExploration.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -431,11 +432,25 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         controls: snapshot.controls,
         world: snapshot.world ?? null,
         experiment: snapshot.experiment ?? null,
+        observables: snapshot.observables ?? {},
+        derivedObservables: snapshot.derivedObservables ?? {},
+        observations: snapshot.observations ?? [],
+        repeatEvidence: snapshot.repeatEvidence ?? null,
         experimentWorkspace: snapshot.experimentWorkspace ?? null,
+        recipes: structuredClone(EXPLORATION_RECIPES),
+        thingsToTry: structuredClone(THINGS_TO_TRY),
+        affordances: [...AFFORDANCE_IDS],
         exploration: {
           version: 1,
           worldMode: snapshot.world?.mode ?? 'sample',
           generator: snapshot.world?.generator ?? null,
+          observables: snapshot.observables ?? {},
+          derivedObservables: snapshot.derivedObservables ?? {},
+          observations: snapshot.observations ?? [],
+          repeatEvidence: snapshot.repeatEvidence ?? null,
+          recipes: structuredClone(EXPLORATION_RECIPES),
+          thingsToTry: structuredClone(THINGS_TO_TRY),
+          affordances: [...AFFORDANCE_IDS],
           worldOperations,
           transactionActions,
           viewActions,

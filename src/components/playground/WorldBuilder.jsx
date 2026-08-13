@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { normalizeGeneratorSpec } from '../../core/exploration/generator.js';
+import { deriveWorldGeneratorFacts } from '../../core/exploration/world.js';
 
 const DEFAULT_SPEC = normalizeGeneratorSpec({
   relation: { slope: 2, bias: 1 },
@@ -22,13 +23,15 @@ function fieldsForInput(input) {
       : [['centerA', input.params.centerA], ['centerB', input.params.centerB], ['spread', input.params.spread]];
 }
 
-export default function WorldBuilder({ snapshot, onDispatch, t }) {
+export default function WorldBuilder({ snapshot, onDispatch, t, highlightedAffordances = [] }) {
   const world = snapshot.world;
   const activeSpec = world?.generator?.spec ?? DEFAULT_SPEC;
   const spec = useMemo(() => normalizeGeneratorSpec(activeSpec), [activeSpec]);
   const input = spec.train.input;
   const testInput = spec.test.input;
   const seed = world?.generator?.seed ?? world?.randomness?.seed ?? snapshot.seed ?? 42;
+  const generatorFacts = deriveWorldGeneratorFacts(world);
+  const highlight = (id) => highlightedAffordances.includes(id) ? ' ring-2 ring-amber-400 ring-offset-1' : '';
   const dispatchTransaction = (operations, intent = 'world-generator') => onDispatch({
     type: 'APPLY_WORLD_TRANSACTION',
     transaction: { id: `world-builder-${crypto.randomUUID()}`, actor: 'human', intent, operations },
@@ -72,7 +75,7 @@ export default function WorldBuilder({ snapshot, onDispatch, t }) {
       </div>
     </div>
     <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
-      <label className="text-xs font-bold text-slate-700">{t('playground.worldBuilder.input')}<select value={input.type} onChange={(event) => setInputType(event.target.value)} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2"><option value="uniform">{t('playground.worldBuilder.uniform')}</option><option value="gaussian">{t('playground.worldBuilder.gaussian')}</option><option value="two-cluster">{t('playground.worldBuilder.twoCluster')}</option></select></label>
+      <label data-affordance-id="world.generator.trainInput" className={`text-xs font-bold text-slate-700${highlight('world.generator.trainInput')}`}>{t('playground.worldBuilder.input')}<select value={input.type} onChange={(event) => setInputType(event.target.value)} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2"><option value="uniform">{t('playground.worldBuilder.uniform')}</option><option value="gaussian">{t('playground.worldBuilder.gaussian')}</option><option value="two-cluster">{t('playground.worldBuilder.twoCluster')}</option></select></label>
       <div className="rounded-xl bg-white/80 p-2 ring-1 ring-indigo-100">
         <p className="text-xs font-bold text-slate-700">{t('playground.worldBuilder.inputParameters')}</p>
         <div className="mt-1 grid grid-cols-2 gap-2">
@@ -87,11 +90,11 @@ export default function WorldBuilder({ snapshot, onDispatch, t }) {
         </div>
         <p className="mt-1 text-[11px] text-slate-500">y = {spec.relation.slope}x + {spec.relation.bias}</p>
       </div>
-      <label className="text-xs font-bold text-slate-700">{t('playground.worldBuilder.noise')}<input type="number" min="0" step="0.1" value={spec.noise.amount} onChange={(event) => setParameter('noise.amount', numberValue(event.target.value, spec.noise.amount))} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2" /></label>
-      <label className="text-xs font-bold text-slate-700">{t('playground.worldBuilder.samples')}<input type="number" min="2" max="500" step="1" value={spec.train.samples} onChange={(event) => setParameter('train.samples', Math.trunc(numberValue(event.target.value, spec.train.samples)))} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2" /></label>
-      <label className="text-xs font-bold text-slate-700">{t('playground.worldBuilder.outliers')}<input type="number" min="0" max={spec.train.samples + spec.test.samples} step="1" value={spec.outliers.count} onChange={(event) => setParameter('outliers.count', Math.trunc(numberValue(event.target.value, spec.outliers.count)))} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2" /></label>
+      <label data-affordance-id="world.generator.noise" className={`text-xs font-bold text-slate-700${highlight('world.generator.noise')}`}>{t('playground.worldBuilder.noise')}<input type="number" min="0" step="0.1" value={spec.noise.amount} onChange={(event) => setParameter('noise.amount', numberValue(event.target.value, spec.noise.amount))} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2" /></label>
+      <label data-affordance-id="world.generator.sampleCount" className={`text-xs font-bold text-slate-700${highlight('world.generator.sampleCount')}`}>{t('playground.worldBuilder.samples')}<input type="number" min="2" max="500" step="1" value={spec.train.samples} onChange={(event) => setParameter('train.samples', Math.trunc(numberValue(event.target.value, spec.train.samples)))} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2" /></label>
+      <label data-affordance-id="world.outlier" className={`text-xs font-bold text-slate-700${highlight('world.outlier')}`}>{t('playground.worldBuilder.outliers')}<input type="number" min="0" max={spec.train.samples + spec.test.samples} step="1" value={spec.outliers.count} onChange={(event) => setParameter('outliers.count', Math.trunc(numberValue(event.target.value, spec.outliers.count)))} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2" /></label>
       <label className="text-xs font-bold text-slate-700">{t('playground.worldBuilder.seed')}<input type="number" step="1" value={seed} onChange={(event) => onDispatch({ type: 'SET_GENERATOR_SEED', seed: Math.trunc(numberValue(event.target.value, seed)) })} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2" /></label>
-      <div className="rounded-xl bg-white/80 p-2 ring-1 ring-indigo-100">
+      <div data-affordance-id="world.generator.testInput" className={`rounded-xl bg-white/80 p-2 ring-1 ring-indigo-100${highlight('world.generator.testInput')}`}>
         <p className="text-xs font-bold text-slate-700">{t('playground.worldBuilder.testConfig')}</p>
         <div className="mt-1 grid gap-2">
           <label className="text-[11px] font-bold text-slate-500">{t('playground.worldBuilder.testInput')}<select value={spec.test.input.type} onChange={(event) => setParameter('test.input.type', event.target.value)} className="mt-1 w-full rounded-lg border p-1.5 text-sm text-slate-800"><option value="uniform">{t('playground.worldBuilder.uniform')}</option><option value="gaussian">{t('playground.worldBuilder.gaussian')}</option><option value="two-cluster">{t('playground.worldBuilder.twoCluster')}</option></select></label>
@@ -105,7 +108,7 @@ export default function WorldBuilder({ snapshot, onDispatch, t }) {
     <div className="mt-3 flex flex-wrap gap-2">
       <button type="button" onClick={generate} className="rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white">{t('playground.worldBuilder.regenerate')}</button>
       {world?.mode === 'generated' && <button type="button" onClick={() => onDispatch({ type: 'FREEZE_AS_SAMPLES' })} className="rounded-xl bg-white px-4 py-2 text-xs font-black text-slate-700 ring-1 ring-indigo-200">{t('playground.worldBuilder.freeze')}</button>}
-      {world?.mode === 'generated' && world.generator?.status === 'dirty' && <span className="self-center text-xs font-bold text-amber-700">{t('playground.worldBuilder.dirtyHint')}</span>}
+      {world?.mode === 'generated' && generatorFacts.needsRegeneration && <span className="self-center text-xs font-bold text-amber-700">{t('playground.worldBuilder.dirtyHint')}</span>}
       {world?.mode === 'sample' && world.generator && !world.generator.realization && <span className="self-center text-xs font-bold text-slate-600">{t('playground.worldBuilder.configuredHint')}</span>}
     </div>
   </section>;
