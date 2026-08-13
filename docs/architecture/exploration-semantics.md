@@ -260,3 +260,34 @@ The Agent inspection boundary exposes the same `EXPLORATION_RECIPES`,
 Recipes additionally declare `relevantObservableIds`, completing the semantic
 link from an exploration prompt to the evidence a learner can inspect without
 introducing automatic interpretation or intervention.
+
+## Phase 5 Exploration Agent learner mode
+
+Phase 5 adds an optional learner-facing Agent path over the same semantic
+runtime. `scenarioSpec.js` defines a deliberately small JSON-safe ScenarioSpec
+v1 with `baseline`, `change`, `hold`, `observe`, `execution`, and `fidelity`.
+The baseline contains the active Experiment ID and the Phase 4 semantic
+condition fingerprint. A proposal is validated against `inspectContext()`
+before execution: World operations come from the registered operation list,
+controls come from model control schemas, observables come from the shared raw
+and derived registry, and resource limits are checked before mutation.
+
+Natural-language interpretation is separated from deterministic planning.
+`explorationInterpreter.js` provides a bounded local fallback for obvious
+learner intents; `scenarioPlanner.js` resolves those intents into registered
+World operations and observable IDs. The planner never returns a
+Visualization Script as the source of truth. `scenarioFidelity.js` compares
+the declared Change/Keep-fixed contract with the actual Experiment semantic
+diff and reports `exact` or `partial` coverage instead of silently claiming a
+clean experiment.
+
+Execution requires explicit acceptance. `executeExploration()` first checks
+that the proposal baseline ID and condition fingerprint still match, then uses
+the normal agent-attributed Duplicate, World transaction, Run, Compare, Repeat,
+and SET_VISUAL actions. The resulting branch remains visible in the normal
+Experiment Bar and its evidence remains the shared Evidence surface. Agent
+focus is presentation-only; mutation details are computed from the actual
+semantic comparison. Existing TeachingPlan and Visualization Script tooling
+is retained under an Advanced section. Persistent Exploration Threads,
+background tutoring, parameter sweeps, and a general Scenario Engine remain
+out of scope.

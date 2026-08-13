@@ -11,6 +11,8 @@ const PUBLIC_WORLD_OPERATIONS = [
     undoable: true,
     agentDiscoverable: true,
     humanAccessible: true,
+    semanticTarget: 'generator-specification',
+    parameterSchema: { allowedPaths: ['train.input.type', 'train.input.params.min', 'train.input.params.max', 'train.input.params.mean', 'train.input.params.spread', 'train.input.params.centerA', 'train.input.params.centerB', 'train.samples', 'test.input.type', 'test.input.params.min', 'test.input.params.max', 'test.input.params.mean', 'test.input.params.spread', 'test.input.params.centerA', 'test.input.params.centerB', 'test.samples', 'relation.slope', 'relation.bias', 'noise.amount', 'outliers.count'] },
   },
   {
     type: 'SET_GENERATOR_PARAMETER',
@@ -21,6 +23,8 @@ const PUBLIC_WORLD_OPERATIONS = [
     undoable: true,
     agentDiscoverable: true,
     humanAccessible: true,
+    semanticTarget: 'generator-specification',
+    parameterSchema: { allowedPaths: ['train.input.type', 'train.input.params.min', 'train.input.params.max', 'train.input.params.mean', 'train.input.params.spread', 'train.input.params.centerA', 'train.input.params.centerB', 'train.samples', 'test.input.type', 'test.input.params.min', 'test.input.params.max', 'test.input.params.mean', 'test.input.params.spread', 'test.input.params.centerA', 'test.input.params.centerB', 'test.samples', 'relation.slope', 'relation.bias', 'noise.amount', 'outliers.count'] },
   },
   {
     type: 'SET_GENERATOR_SEED',

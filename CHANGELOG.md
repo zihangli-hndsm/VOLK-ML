@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-13 - Phase 5 Exploration Agent learner mode
+
+- Added a capability-grounded ScenarioSpec v1 proposal pipeline with deterministic intent fallback, change/hold/observe validation, fidelity reporting, and stale-proposal rejection.
+- Added explicit Agent execution over existing Duplicate, World transaction, Run, Compare, Repeat, and evidence semantics with agent provenance and evidence focus.
+- Added a learner-facing Explore with Agent panel while preserving advanced Teaching Script tooling behind an explicit section.
+- Added deterministic Phase 5 core and host regression coverage for preview-only proposals, controlled outlier/test-shift experiments, unsupported capabilities, hidden confounds, resources, and manual/view staleness.
+
 ## 2026-08-13 - Phase 4 acceptance fixes
 
 - Corrected train/test coverage fractions for overlap, containment, disjoint, and point ranges.

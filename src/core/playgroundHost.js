@@ -31,6 +31,11 @@ import { listWorldOperations } from './exploration/operationRegistry.js';
 import { MAX_WORLD_OBSERVATIONS } from './exploration/world.js';
 import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from './playground/trace/traceTypes.js';
 import { AFFORDANCE_IDS, EXPLORATION_RECIPES, THINGS_TO_TRY } from './exploration/guidedExploration.js';
+import { conditionFingerprintForSession } from './exploration/observables.js';
+import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
+import { planExplorationIntent, planExplorationRequest } from './exploration/scenarioPlanner.js';
+import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
+import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -391,6 +396,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const adapter = getModelAdapter(session.adapterId);
       const playground = getPlayground(session.playgroundId);
+      const controlPlayground = getPlayground(session.modelPlaygroundId ?? session.playgroundId) ?? playground;
       const snapshot = derivePlaygroundSnapshot(session);
       const data = snapshot.dataState ?? {};
       const statistics = {};
@@ -462,7 +468,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
             ...experimentOperations,
           ],
         },
-        controlSchemas: (playground?.controls ?? []).map((control) => ({
+        controlSchemas: (controlPlayground?.controls ?? []).map((control) => ({
           key: control.key,
           type: control.type,
           ...(control.domain ? { domain: control.domain } : {}),
@@ -501,12 +507,99 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         },
         teachingCapabilities: adapter?.teachingCapabilities ?? {},
       };
+      context.conditionFingerprint = conditionFingerprintForSession({
+        world: snapshot.world,
+        adapterId: snapshot.experiment?.model?.adapterId ?? session.adapterId,
+        experiment: snapshot.experiment,
+      });
       context.teaching = {
         objectives: [...TEACHING_OBJECTIVES],
         supportedObjectives: getSupportedTeachingObjectives(context),
         capabilities: context.teachingCapabilities,
       };
+      context.explorationAgent = {
+        scenarioSpecVersion: SCENARIO_SPEC_VERSION,
+        fidelityStatuses: [...SCENARIO_FIDELITY_STATUSES],
+        proposalLifecycle: ['propose', 'accept', 'execute', 'inspect'],
+      };
       return context;
+    },
+
+    proposeExploration({ request, intent } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const context = this.inspectContext();
+      if (intent) {
+        return planExplorationIntent(intent, request ?? String(intent), context);
+      }
+      return planExplorationRequest(request, context);
+    },
+
+    async executeExploration({ scenario } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      if (!scenario) throw scenarioError('EXPLORATION_SCENARIO_NOT_PROPOSAL');
+      const context = this.inspectContext();
+      const validated = validateScenarioSpec(scenario, context);
+      const currentFingerprint = conditionFingerprintForSession({
+        world: session.experiment.world,
+        adapterId: session.adapterId,
+        experiment: session.experiment,
+      });
+      if (validated.baseline.conditionFingerprint !== currentFingerprint
+        || validated.baseline.experimentId !== session.experiment.id) {
+        throw scenarioError('EXPLORATION_PROPOSAL_STALE', {
+          baseline: validated.baseline,
+          current: { experimentId: session.experiment.id, conditionFingerprint: currentFingerprint },
+        });
+      }
+      if (validated.execution.duplicateBaseline) {
+        commit(dispatchPlaygroundAction(session, { type: 'DUPLICATE_EXPERIMENT', actor: 'agent' }));
+      }
+      const baselineId = validated.baseline.experimentId;
+      const worldOperations = [];
+      for (const change of validated.change) {
+        if (change.operation === 'SET_CONTROL') {
+          commit(dispatchPlaygroundAction(session, { type: 'SET_CONTROL', actor: 'agent', key: change.parameters.key, value: change.parameters.value }));
+        } else if (change.operation === 'REPEAT_EXPERIMENT') {
+          commit(dispatchPlaygroundAction(session, { type: 'REPEAT_EXPERIMENT', actor: 'agent', trials: change.parameters.trials }));
+        } else if (['DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS'].includes(change.operation)) {
+          commit(dispatchPlaygroundAction(session, { type: change.operation, actor: 'agent', ...change.parameters }));
+        } else {
+          worldOperations.push({ type: change.operation, ...change.parameters });
+        }
+      }
+      if (worldOperations.length) {
+        commit(dispatchPlaygroundAction(session, {
+          type: 'APPLY_WORLD_TRANSACTION',
+          transaction: {
+            id: `${session.sessionId}-agent-scenario-${Date.now()}`,
+            actor: 'agent',
+            intent: 'exploration-scenario',
+            operations: worldOperations,
+          },
+        }));
+      }
+      if (validated.execution.run) commit(dispatchPlaygroundAction(session, { type: 'RUN', actor: 'agent' }));
+      if (validated.execution.compare) {
+        commit(dispatchPlaygroundAction(session, { type: 'SET_COMPARE', actor: 'agent', enabled: true, againstExperimentId: baselineId }));
+      }
+      if (validated.execution.repeat !== null) {
+        commit(dispatchPlaygroundAction(session, { type: 'REPEAT_EXPERIMENT', actor: 'agent', trials: validated.execution.repeat }));
+      }
+      const result = derivePlaygroundSnapshot(session);
+      const diff = result.experimentWorkspace?.comparison?.diff ?? null;
+      const fidelity = evaluateScenarioFidelity(validated, diff);
+      commit(dispatchPlaygroundAction(session, { type: 'SET_VISUAL', patch: { evidenceFocus: validated.observe } }));
+      const followUps = [];
+        if (diff?.changed?.includes('world')) followUps.push({ id: 'repeat-condition' });
+        if (result.observations?.some((notice) => notice.id === 'SLOPE_MOVED_STRONGLY')) followUps.push({ id: 'smaller-change' });
+      return {
+        snapshot: present(derivePlaygroundSnapshot(session)),
+        scenario: validated,
+        fidelity,
+        mutationDiff: diff,
+        evidenceFocus: [...validated.observe],
+        followUps: followUps.slice(0, 2),
+      };
     },
 
     listPresets() {

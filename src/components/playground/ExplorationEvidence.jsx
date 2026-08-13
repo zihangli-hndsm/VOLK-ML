@@ -43,7 +43,8 @@ export default function ExplorationEvidence({ snapshot, t }) {
     {open && <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {available.map((id) => {
         const item = read(id);
-        return <div key={id} className="rounded-xl bg-slate-50 p-2 text-xs"><span className="block font-bold text-slate-500">{t(item.labelKey)}</span><span className="font-mono font-black text-slate-800">{value(item.value, item.valueType)}</span></div>;
+        const focused = snapshot.visualState?.evidenceFocus?.includes(id);
+        return <div key={id} className={`rounded-xl bg-slate-50 p-2 text-xs${focused ? ' ring-2 ring-amber-400 ring-offset-1' : ''}`}><span className="block font-bold text-slate-500">{t(item.labelKey)}</span><span className="font-mono font-black text-slate-800">{value(item.value, item.valueType)}</span></div>;
       })}
       {repeat && <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs sm:col-span-2 lg:col-span-3">
         <p className="font-black text-blue-900">{t('playground.evidence.repeatTitle', { count: repeat.trialCount })}</p>
