@@ -58,7 +58,7 @@ function DistributionView({ points, feature, t }) {
   </svg>;
 }
 
-export default function DataWorkspace({ snapshot, onDispatch, t }) {
+export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffordances = [] }) {
   const svgRef = useRef(null);
   const gestureRef = useRef(null);
   const dragRef = useRef(null);
@@ -103,6 +103,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
       : projectedViewBounds
     : baseBounds;
   const canCreateObservation = Boolean(snapshot.capabilities?.canCreateObservationFromProjection);
+  const highlight = (id) => highlightedAffordances.includes(id) ? ' ring-2 ring-amber-400 ring-offset-1' : '';
   const creationUnavailableMessage = world?.task === 'classification'
     ? t('playground.workspace.classificationLabelRequired')
     : t('playground.workspace.drawingUnavailable');
@@ -369,17 +370,17 @@ export default function DataWorkspace({ snapshot, onDispatch, t }) {
       {viewMode === 'scatter' && <label className="text-xs font-bold text-slate-500">{t('playground.workspace.yFeature')}<select value={yFeature} onChange={(event) => selectFeatureView(xFeature, event.target.value)} className="ml-1 rounded-lg border p-1">{featureNames.map((feature) => <option key={feature}>{feature}</option>)}</select></label>}
       {TOOLS.map((item) => {
         const disabled = ['point', 'brush', 'spray'].includes(item) && !canCreateObservation;
-        return <button key={item} type="button" disabled={disabled} aria-pressed={tool === item}
+        return <button data-affordance-id={item === 'point' || item === 'spray' ? 'world.outlier' : undefined} key={item} type="button" disabled={disabled} aria-pressed={tool === item}
           aria-label={t(`playground.workspace.tool.${item}`)} onClick={() => setTool(item)}
-          className={`rounded-xl px-3 py-2 text-xs font-bold ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'} disabled:cursor-not-allowed disabled:opacity-40`}>
+          className={`rounded-xl px-3 py-2 text-xs font-bold ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}${item === 'point' || item === 'spray' ? highlight('world.outlier') : ''} disabled:cursor-not-allowed disabled:opacity-40`}>
         {t(`playground.workspace.tool.${item}`)}
         </button>;
       })}
       {!canCreateObservation && <span className="text-xs font-bold text-amber-700">{creationUnavailableMessage}</span>}
       <span className="mx-1 h-6 w-px bg-slate-200" aria-hidden="true" />
       <span className="text-xs font-bold text-slate-500">{t('playground.workspace.layer')}</span>
-      {['train', 'test'].map((item) => <button key={item} type="button" aria-pressed={layer === item}
-        onClick={() => setLayer(item)} className={`rounded-xl px-3 py-2 text-xs font-bold ${layer === item ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+      {['train', 'test'].map((item) => <button data-affordance-id="world.trainTestLayer" key={item} type="button" aria-pressed={layer === item}
+        onClick={() => setLayer(item)} className={`rounded-xl px-3 py-2 text-xs font-bold ${layer === item ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'}${highlight('world.trainTestLayer')}`}>
         {t(`playground.workspace.layer.${item}`)}
       </button>)}
     </div>

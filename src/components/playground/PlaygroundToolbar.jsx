@@ -1,4 +1,5 @@
-export default function PlaygroundToolbar({ playground, snapshot, onDispatch, onPresent, onClose, t }) {
+export default function PlaygroundToolbar({ playground, snapshot, onDispatch, onPresent, onClose, t, highlightedAffordances = [] }) {
+  const highlight = highlightedAffordances.includes('model.run') ? ' ring-2 ring-amber-400 ring-offset-1' : '';
   const sourceLabel = snapshot.source.kind === 'workspace-dataset'
     ? t('playground.source.workspace', { name: snapshot.source.name })
     : t('playground.source.example');
@@ -15,7 +16,7 @@ export default function PlaygroundToolbar({ playground, snapshot, onDispatch, on
     </div>
     <div className="flex items-center gap-2">
       {snapshot.model && <>
-        <button onClick={() => onDispatch({ type: 'RUN' })} className="rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white">{t('playground.lifecycle.run')}</button>
+        <button data-affordance-id="model.run" onClick={() => onDispatch({ type: 'RUN' })} className={`rounded-xl bg-emerald-600 px-3 py-2 text-xs font-bold text-white${highlight}`}>{t('playground.lifecycle.run')}</button>
         <button onClick={() => onDispatch({ type: 'RESET_LEARNING' })} className="rounded-xl bg-blue-100 px-3 py-2 text-xs font-bold text-blue-700">{t('playground.lifecycle.resetLearning')}</button>
       </>}
       <button onClick={() => onDispatch({ type: 'RESTORE_ORIGINAL_DATA' })} className="rounded-xl bg-rose-100 px-3 py-2 text-xs font-bold text-rose-700">{t('playground.lifecycle.restoreData')}</button>

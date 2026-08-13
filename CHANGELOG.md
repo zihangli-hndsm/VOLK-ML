@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-13 — Phase 4 Manual & Guided Exploration UX
+
+- Added shared raw/derived observable derivation, deterministic evidence-only observation detectors, and Agent inspection parity.
+- Added bounded deterministic Repeat for generated Worlds with per-trial and aggregate evidence while preserving the active Experiment.
+- Added quiet Things to Try, open recipes, semantic affordance highlighting, dismissible notices, and localized evidence surfaces.
+- Added Phase 3 generator edge-state regression coverage and integrated Phase 4 checks into `npm run check`.
+
 ## 2026-08-13 — Finalize browser playback failure semantics
 
 - Preserved existing timeline fields when model adapters return partial patches, keeping playback speed valid after training starts.

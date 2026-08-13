@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
-import { createWorld, deserializeWorld, serializeWorld } from '../src/core/exploration/world.js';
+import { createWorld, deserializeWorld, deriveWorldGeneratorFacts, serializeWorld } from '../src/core/exploration/world.js';
 import { applyWorldTransaction } from '../src/core/exploration/operations.js';
 import { compareExperiments } from '../src/core/exploration/comparison.js';
 import { createExperiment } from '../src/core/exploration/experiment.js';
@@ -113,6 +113,14 @@ assert.equal(modified.mode, 'generated');
 assert.equal(modified.generator.status, 'modified');
 assert.equal(modified.observations[0].provenance, 'manual');
 assert.deepEqual(modified.observations[0].generation, seedRegenerated.observations[0].generation, 'manual move preserves original generation metadata');
+const changedThenEdited = applyWorldTransaction(changedInput, {
+  id: 'phase3-change-then-edit', actor: 'human', intent: 'move',
+  operations: [{ type: 'MOVE_POINT', pointId: changedInput.observations[0].id, x: 8, y: 8 }],
+}).world;
+assert.deepEqual(deriveWorldGeneratorFacts(changedThenEdited), {
+  needsRegeneration: true,
+  hasManualEdits: true,
+}, 'generator change and manual edit remain independently observable');
 const frozen = applyWorldTransaction(modified, {
   id: 'phase3-freeze', actor: 'human', intent: 'freeze-as-samples',
   operations: [{ type: 'FREEZE_AS_SAMPLES' }],

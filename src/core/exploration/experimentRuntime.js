@@ -26,6 +26,7 @@ export function captureExperimentRuntime(session) {
     scriptState: clone(session.scriptState),
     scriptBaseline: clone(session.scriptBaseline),
     captures: clone(session.captures),
+    repeatEvidence: clone(session.repeatEvidence),
     scenario: clone(session.scenario),
     status: session.status,
     seed: session.seed,
@@ -93,6 +94,7 @@ function baselineFromState(state) {
     traces: clone(state.traces),
     worldHistory: clone(state.worldHistory),
     seed: state.seed ?? state.experiment.randomness?.seed ?? null,
+    repeatEvidence: clone(state.repeatEvidence),
   };
 }
 
@@ -248,6 +250,7 @@ export function resetActiveExperiment(session) {
     timeline: { step: 0, totalSteps: 0, speed: prepared.timeline.speed ?? 1 },
     traces: clone(baseline.traces ?? []),
     seed: baselineSeed,
+    repeatEvidence: clone(baseline.repeatEvidence ?? null),
     visualState: {},
     status: 'paused',
     experimentUndo: [],

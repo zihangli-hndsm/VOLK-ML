@@ -93,6 +93,24 @@ function normalizeGeneratorState(generator, { mode, seed }) {
   };
 }
 
+const sameValue = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+
+// These facts deliberately remain separate from the legacy status enum. A
+// learner can change the desired generator and then manually edit the
+// displayed realization; both facts must remain visible at once.
+export function deriveWorldGeneratorFacts(world) {
+  const generator = world?.generator;
+  if (!generator) return { needsRegeneration: false, hasManualEdits: false };
+  const realization = generator.realization;
+  const needsRegeneration = !realization
+    || !sameValue(generator.spec, realization.spec)
+    || generator.seed !== realization.seed;
+  const hasManualEdits = (world.observations ?? []).some((point) => (
+    point.provenance === 'manual' && point.generation
+  ));
+  return { needsRegeneration, hasManualEdits };
+}
+
 export function createWorld({
   id = 'world-1',
   name = 'Untitled sample world',

@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 const factorKeys = {
   world: 'playground.experiment.factor.world',
   trainTest: 'playground.experiment.factor.trainTest',
@@ -18,7 +20,9 @@ function metricRows(results) {
   ].filter(([, value]) => value !== undefined && value !== null && Number.isFinite(Number(value)));
 }
 
-export default function ExperimentBar({ snapshot, onDispatch, t }) {
+export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffordances = [] }) {
+  const [repeatCount, setRepeatCount] = useState(snapshot.repeatEvidence?.trialCount ?? 5);
+  const highlight = (id) => highlightedAffordances.includes(id) ? ' ring-2 ring-amber-400 ring-offset-1' : '';
   const workspace = snapshot.experimentWorkspace;
   if (!workspace) return null;
   const comparison = workspace.comparison;
@@ -45,11 +49,11 @@ export default function ExperimentBar({ snapshot, onDispatch, t }) {
         <p className="mt-1 text-sm font-black text-slate-900">{t('playground.experiment.instruction')}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className="rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white">{t('playground.experiment.duplicate')}</button>
+        <button data-affordance-id="experiment.duplicate" type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className={`rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white${highlight('experiment.duplicate')}`}>{t('playground.experiment.duplicate')}</button>
         <button type="button" onClick={() => onDispatch({ type: 'RESET' })} className="rounded-xl bg-slate-200 px-3 py-2 text-xs font-black text-slate-700">{t('playground.experiment.reset')}</button>
         {snapshot.capabilities?.canUndoExperiment && <button type="button" onClick={() => onDispatch({ type: 'UNDO_EXPERIMENT_ACTION' })} className="rounded-xl bg-slate-200 px-3 py-2 text-xs font-black text-slate-700">{t('playground.experiment.undo')}</button>}
-        {snapshot.model && <button type="button" onClick={() => onDispatch({ type: 'REPEAT_EXPERIMENT' })} className="rounded-xl bg-amber-100 px-3 py-2 text-xs font-black text-amber-800">{t('playground.experiment.repeat')}</button>}
-        {target && <button type="button" aria-pressed={Boolean(comparison.enabled)} onClick={() => onDispatch({ type: 'SET_COMPARE', enabled: !comparison.enabled, againstExperimentId: target.id })} className={`rounded-xl px-3 py-2 text-xs font-black ${comparison.enabled ? 'bg-violet-700 text-white' : 'bg-violet-100 text-violet-800'}`}>{comparison.enabled ? t('playground.experiment.compareOn') : t('playground.experiment.compare')}</button>}
+        {snapshot.model && <div data-affordance-id="experiment.repeat" className={`flex items-center gap-1 rounded-xl bg-amber-100 px-2 py-1 text-xs font-black text-amber-800${highlight('experiment.repeat')}`}><label htmlFor="repeat-trials">{t('playground.experiment.repeat')}</label><select id="repeat-trials" value={repeatCount} onChange={(event) => setRepeatCount(Number(event.target.value))} className="rounded-lg border border-amber-200 bg-white px-1 py-1"><option value="2">2</option><option value="3">3</option><option value="5">5</option><option value="10">10</option><option value="20">20</option></select><button type="button" onClick={() => onDispatch({ type: 'REPEAT_EXPERIMENT', trials: repeatCount })} className="rounded-lg bg-amber-500 px-2 py-1 text-white">{t('playground.experiment.runRepeat')}</button></div>}
+        {target && <button data-affordance-id="experiment.compare" type="button" aria-pressed={Boolean(comparison.enabled)} onClick={() => onDispatch({ type: 'SET_COMPARE', enabled: !comparison.enabled, againstExperimentId: target.id })} className={`rounded-xl px-3 py-2 text-xs font-black ${comparison.enabled ? 'bg-violet-700 text-white' : 'bg-violet-100 text-violet-800'}${highlight('experiment.compare')}`}>{comparison.enabled ? t('playground.experiment.compareOn') : t('playground.experiment.compare')}</button>}
       </div>
     </div>
     <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label={t('playground.experiment.switchLabel')}>
