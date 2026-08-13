@@ -190,8 +190,16 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
   };
 }
 
+export function mergeTimelinePatch(current, patch) {
+  const timeline = { ...current };
+  for (const [key, value] of Object.entries(patch ?? {})) {
+    if (value !== undefined) timeline[key] = value;
+  }
+  return timeline;
+}
+
 function mergePatches(session, patch) {
-  const timeline = { ...session.timeline, ...(patch.timeline ?? {}) };
+  const timeline = mergeTimelinePatch(session.timeline, patch.timeline);
   if (patch.timeline?.totalSteps !== undefined && patch.timeline.step === undefined) {
     timeline.step = Math.min(session.timeline.step, patch.timeline.totalSteps);
   }

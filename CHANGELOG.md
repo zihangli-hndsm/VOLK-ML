@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-13 — Finalize browser playback failure semantics
+
+- Preserved existing timeline fields when model adapters return partial patches, keeping playback speed valid after training starts.
+- Added a shared failure-safe browser scheduler that stops on rejected dispatches and surfaces the action, teaching step, operation, and reason while preserving the last valid semantic state.
+- Added focused timeline, reduced-motion, scheduler integration, and browser acceptance coverage; updated playground architecture notes.
+
 ## 2026-08-13 — Data Lab playback regression and classification safeguards
 
 - Linear Regression teaching playback now samples the adapter-declared training timeline across reveal steps, and the shared scheduler advances both script and model-only playback through finite semantic actions.

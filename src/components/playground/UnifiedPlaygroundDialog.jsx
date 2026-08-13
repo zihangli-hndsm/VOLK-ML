@@ -8,12 +8,13 @@ import PlaygroundAgentPanel from './PlaygroundAgentPanel.jsx';
 import DataWorkspace from './DataWorkspace.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import PresentationMode from './PresentationMode.jsx';
-import { getPlaybackAction } from '../../core/playgroundHost.js';
+import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model' }) {
   const [snapshot, setSnapshot] = useState(null);
   const [presentationMode, setPresentationMode] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab);
+  const [playbackError, setPlaybackError] = useState(null);
   const playground = useMemo(() => (playgroundId ? getPlayground(playgroundId) : null), [playgroundId]);
   const modelPlayground = useMemo(
     () => getPlayground(snapshot?.modelPlaygroundId ?? snapshot?.playgroundId ?? playgroundId) ?? playground,
@@ -25,6 +26,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     let active = true;
     let unsubscribe = () => {};
     setSnapshot(null);
+    setPlaybackError(null);
     setPresentationMode(false);
     setActiveTab(initialTab);
     host.ensureOpen(playgroundId).then(() => {
@@ -46,25 +48,47 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   }, [open, playgroundId, host]);
 
   useEffect(() => {
-    if (!snapshot) return undefined;
-    const action = getPlaybackAction(snapshot);
-    if (!action) return undefined;
-    const script = snapshot.scriptState;
-    const stepDefinition = snapshot.script?.steps?.[script.step];
-    const base = action.type === 'SCRIPT_STEP' ? stepDefinition?.durationMs ?? 600 : 600;
+    if (!snapshot || playbackError) return undefined;
+    let active = true;
     const reducedMotion = typeof window !== 'undefined'
       && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
-    const delay = reducedMotion ? 0 : base / Math.max(0.25, snapshot.timeline.speed);
-    const timer = setTimeout(() => host.dispatch(action), delay);
-    return () => clearTimeout(timer);
-  }, [snapshot, host]);
+    const scheduler = createPlaybackScheduler({
+      dispatch: (action) => host.dispatch(action),
+      onError: ({ action, error, snapshot: scheduledSnapshot }) => {
+        if (!active) return;
+        const stepDefinition = scheduledSnapshot.script?.steps?.[scheduledSnapshot.scriptState?.step];
+        const operation = stepDefinition?.invoke?.operation || t('playground.playback.operationUnknown');
+        const reason = error?.code || error?.message || String(error);
+        setPlaybackError({
+          action: action.type,
+          operation,
+          reason,
+          step: stepDefinition?.id || String(scheduledSnapshot.scriptState?.step ?? t('playground.playback.stepUnknown')),
+        });
+        const pauseAction = action.type === 'SCRIPT_STEP' ? { type: 'SCRIPT_PAUSE' } : { type: 'PAUSE' };
+        host.dispatch(pauseAction).catch(() => {});
+      },
+    });
+    scheduler.schedule(snapshot, { reducedMotion });
+    return () => {
+      active = false;
+      scheduler.cancel();
+    };
+  }, [snapshot, host, playbackError, t]);
+
+  const dispatchAction = (action) => {
+    if (['PLAY', 'SCRIPT_PLAY', 'STEP', 'SCRIPT_STEP', 'RESET', 'SCRIPT_RESET'].includes(action.type)) {
+      setPlaybackError(null);
+    }
+    return host.dispatch(action);
+  };
 
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;
   if (presentationMode) {
     return <PresentationMode
       playground={modelPlayground}
       snapshot={snapshot}
-      onDispatch={(action) => host.dispatch(action)}
+      onDispatch={dispatchAction}
       onExit={() => setPresentationMode(false)}
       t={t}
     />;
@@ -73,20 +97,25 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   return <div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-3 sm:p-5" onMouseDown={onClose}>
     <section className="max-h-[94vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
       <div className="space-y-4">
-        <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} />
+        <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} />
         <div role="tablist" aria-label={t('playground.lab.tabs')} className="flex gap-2 border-b border-slate-200 pb-2">
           {['data', 'model'].map((tab) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => setActiveTab(tab)} className={`rounded-xl px-4 py-2 text-sm font-black ${activeTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{t(`playground.lab.${tab}`)}</button>)}
         </div>
+        {playbackError && <div role="alert" className="rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+          <p className="font-black">{t('playground.playback.errorTitle')}</p>
+          <p className="mt-1">{t('playground.playback.errorBody', playbackError)}</p>
+          <p className="mt-1 text-xs">{t('playground.playback.errorStatePreserved')}</p>
+        </div>}
         {agent && snapshot.model && <PlaygroundAgentPanel host={host} agent={agent} snapshot={snapshot} t={t} />}
-        {activeTab === 'data' ? <DataWorkspace snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} t={t} /> : <>
-        {!snapshot.model ? <ModelEmptyState snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} t={t} /> : <>
+        {activeTab === 'data' ? <DataWorkspace snapshot={snapshot} onDispatch={dispatchAction} t={t} /> : <>
+        {!snapshot.model ? <ModelEmptyState snapshot={snapshot} onDispatch={dispatchAction} t={t} /> : <>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
           <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white">
             <PlaygroundStage snapshot={snapshot} t={t} />
           </div>
-          <PlaygroundInspector playground={modelPlayground} snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} t={t} />
+          <PlaygroundInspector playground={modelPlayground} snapshot={snapshot} onDispatch={dispatchAction} t={t} />
         </div>
-        <PlaygroundTimeline snapshot={snapshot} onDispatch={(action) => host.dispatch(action)} t={t} />
+        <PlaygroundTimeline snapshot={snapshot} onDispatch={dispatchAction} t={t} />
         <div className="rounded-2xl bg-slate-950 p-4 text-center">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('playground.formulaTitle')}</p>
           <div className="mt-2">
