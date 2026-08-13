@@ -477,6 +477,7 @@ export function synchronizeExperiment(experiment, {
   seed,
   action,
   traces,
+  result,
 } = {}) {
   const current = validateExperiment(experiment);
   const runtimePoints = points?.map((point) => {
@@ -502,6 +503,7 @@ export function synchronizeExperiment(experiment, {
     learning: { controls: sections.learning },
     evaluation: { controls: sections.evaluation },
     randomness: { seed: seed ?? null, policy: seed === null || seed === undefined ? 'unspecified' : 'fixed-seed' },
+    ...(result !== undefined ? { result: clone(result) } : {}),
     ...(traces ? { traces: clone(traces) } : {}),
     mutations: nextMutation ? [...current.mutations, nextMutation] : current.mutations,
   });

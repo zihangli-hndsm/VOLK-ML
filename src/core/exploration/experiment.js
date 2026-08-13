@@ -46,6 +46,7 @@ export function createExperiment({
     lineage: {
       parentId: lineage.parentId ?? null,
       sourceId: lineage.sourceId ?? null,
+      baselineId: lineage.baselineId ?? null,
     },
     mutations: clone(mutations),
   });
@@ -77,8 +78,13 @@ export function duplicateExperiment(experiment, { id = `${experiment.id}-copy`, 
     ...source,
     id: String(id),
     world: cloneWorld(source.world),
-    lineage: { ...source.lineage, parentId: parentId ?? null, sourceId: source.id },
-    mutations: [],
+    lineage: {
+      ...source.lineage,
+      parentId: parentId ?? null,
+      sourceId: source.id,
+      baselineId: source.lineage.baselineId ?? source.id,
+    },
+    mutations: clone(source.mutations),
   });
 }
 

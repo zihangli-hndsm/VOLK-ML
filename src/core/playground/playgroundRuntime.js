@@ -15,6 +15,17 @@ import {
 } from '../exploration/operations.js';
 import { worldFromPlaygroundSource } from '../exploration/world.js';
 import { canCreateObservationFromProjection } from '../exploration/projection.js';
+import {
+  duplicateActiveExperiment,
+  captureExperimentRuntime,
+  deriveExperimentWorkspace,
+  ensureExperimentWorkspace,
+  resetActiveExperiment,
+  setExperimentComparison,
+  switchExperiment,
+  syncActiveExperiment,
+  restoreExperimentRuntime,
+} from '../exploration/experimentRuntime.js';
 import { isPublicWorldOperation, listWorldOperations } from '../exploration/operationRegistry.js';
 import {
   playgroundError,
@@ -40,6 +51,17 @@ const GENERIC_ACTIONS = [
   'RUN',
   'RESTORE_ORIGINAL_DATA',
   'ATTACH_MODEL',
+  'DUPLICATE_EXPERIMENT',
+  'SWITCH_EXPERIMENT',
+  'SET_COMPARE',
+  'COMPARE_EXPERIMENTS',
+  'REPEAT_EXPERIMENT',
+  'UNDO_EXPERIMENT_ACTION',
+  'DUPLICATE_EXPERIMENT',
+  'SWITCH_EXPERIMENT',
+  'SET_COMPARE',
+  'COMPARE_EXPERIMENTS',
+  'REPEAT_EXPERIMENT',
   'RUN_SCENARIO',
   'SCENARIO_NEXT',
   'SET_VISUAL',
@@ -144,7 +166,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     seed,
     traces: recorder.list(),
   });
-  return {
+  const session = {
     apiVersion: 1,
     sessionId: resolvedSessionId,
     playgroundId: playground.id,
@@ -187,7 +209,9 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     traces: recorder.list(),
     visualState: {},
     metrics: {},
+    experimentUndo: [],
   };
+  return ensureExperimentWorkspace(session);
 }
 
 export function mergeTimelinePatch(current, patch) {
@@ -233,6 +257,7 @@ function applyModelAction(session, action) {
       seed: session.seed,
       action,
       traces: recorder.list(),
+      result: resultForSession(merged),
     }),
   };
   return {
@@ -279,6 +304,26 @@ function modelPlaygroundFor(session) {
 
 function modelAdapterFor(session) {
   return session.adapterId ? getModelAdapter(session.adapterId) : null;
+}
+
+function resultForSession(session) {
+  const adapter = modelAdapterFor(session);
+  if (!adapter || !session.modelState) return null;
+  const semantic = adapter.deriveScene(session.modelState, {
+    controls: session.controls,
+    source: session.sourceData,
+  });
+  return {
+    metrics: jsonSafe(semantic.metrics ?? {}),
+    observation: jsonSafe(semantic.observation ?? null),
+    model: {
+      weight: Number.isFinite(Number(session.modelState.weight)) ? Number(session.modelState.weight) : undefined,
+      bias: Number.isFinite(Number(session.modelState.bias)) ? Number(session.modelState.bias) : undefined,
+      trainingStep: Number.isFinite(Number(session.modelState.training?.currentStep))
+        ? Number(session.modelState.training.currentStep)
+        : undefined,
+    },
+  };
 }
 
 function modelControlsFor(session) {
@@ -339,6 +384,7 @@ function attachModelSession(session, modelPlaygroundId) {
     adapterId: adapter.id,
     seed: session.seed,
     traces: recorder.list(),
+    result: resultForSession({ ...session, adapterId: adapter.id, modelState: initialized.modelState, controls: initialized.controls, sourceData: source }),
   });
   const preset = getPreset(adapter.defaultVisualizationPreset);
   const dataState = buildDataState({ source, workspaceDataset: null });
@@ -348,6 +394,17 @@ function attachModelSession(session, modelPlaygroundId) {
     adapterId: adapter.id,
     sourceData: source,
     source: { ...session.source, name: source.name, fingerprint: source.fingerprint, stale: false },
+    baseline: {
+      ...session.baseline,
+      controls: structuredClone(initialized.controls),
+      modelState: structuredClone(initialized.modelState),
+      source: structuredClone(source),
+      dataState: structuredClone(dataState),
+      experiment: structuredClone(experiment),
+      traces: structuredClone(recorder.list()),
+      worldHistory: structuredClone(session.worldHistory),
+      seed: session.seed,
+    },
     controls: initialized.controls,
     modelState: initialized.modelState,
     dataState,
@@ -433,6 +490,7 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
     adapterId: session.adapterId,
     seed: session.seed,
     traces: recorder.list(),
+    result: resultForSession(merged),
   });
   return {
     ...merged,
@@ -445,6 +503,7 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
     worldHistory: history,
     traces: recorder.list(),
     status: 'paused',
+    experimentUndo: [],
   };
 }
 
@@ -528,7 +587,7 @@ function computeScriptStepActions(session) {
   if (stepDefinition.setControl) {
     const resolved = resolveValue(stepDefinition.setControl, context);
     for (const [key, value] of Object.entries(resolved)) {
-      actions.push({ type: 'SET_CONTROL', key, value });
+      actions.push({ type: 'SET_CONTROL', key, value, actor: 'system' });
     }
   }
   if (stepDefinition.invoke) {
@@ -615,6 +674,7 @@ function resetLearningSession(session) {
       adapterId: session.adapterId,
       seed: session.seed,
       traces: recorder.list(),
+      result: resultForSession(merged),
     }),
   };
 }
@@ -638,6 +698,7 @@ function resetVisualizationScript(session) {
       ...session,
       scriptState: { status: 'ready', step: 0, totalSteps: session.script?.steps.length ?? 0 },
       visualState: {},
+      experimentUndo: [],
       status: 'paused',
     };
   }
@@ -707,6 +768,7 @@ function resetVisualizationScript(session) {
     traces,
     timeline: { step: 0, totalSteps: 0, speed: session.timeline.speed ?? 1 },
     visualState: {},
+    experimentUndo: [],
     scriptState: { status: 'ready', step: 0, totalSteps: session.script?.steps.length ?? 0 },
     status: 'paused',
   };
@@ -730,21 +792,27 @@ export function dispatchRuntimeAction(session, action) {
   }
 
   if (action.type === 'RESET') {
-    const baseline = session.baseline ?? { controls: session.controls, source: session.sourceData, seed: session.seed };
-    const reset = createRuntimeSession(playground, {
-      source: baseline.source,
-      controls: baseline.controls,
-      seed: baseline.seed,
-      sessionId: session.sessionId,
-    });
-    return { ...reset, dataState: session.dataState };
+    return resetActiveExperiment(session);
+  }
+  if (action.type === 'UNDO_EXPERIMENT_ACTION') {
+    const undo = session.experimentUndo ?? [];
+    const entry = undo.at(-1);
+    if (!entry) return { ...session, experimentUndo: [] };
+    return restoreExperimentRuntime(session, entry.state, { undo: undo.slice(0, -1) });
   }
   if (action.type === 'SET_CONTROL') {
     const control = modelControlsFor(session).find((item) => item.key === action.key);
     if (!control) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
     const value = validateControlValue(control, action.value);
     const { next, recorder } = applyModelAction(session, { ...action, value });
-    return { ...next, status: 'paused', traces: recorder.list() };
+    return {
+      ...next,
+      status: 'paused',
+      traces: recorder.list(),
+      experimentUndo: action.actor === 'system'
+        ? (session.experimentUndo ?? [])
+        : [...(session.experimentUndo ?? []), { state: captureExperimentRuntime(session) }].slice(-50),
+    };
   }
   if (action.type === 'SET_VISUAL') {
     return { ...session, visualState: { ...session.visualState, ...(action.patch ?? {}) } };
@@ -771,10 +839,22 @@ export function dispatchRuntimeAction(session, action) {
         mutationRecord: result.record,
       }),
       worldActionCounter: session.worldActionCounter + 1,
+      experimentUndo: [],
     };
   }
   if (action.type === 'ATTACH_MODEL') {
     return attachModelSession(session, action.modelPlaygroundId ?? action.modelId);
+  }
+  if (action.type === 'DUPLICATE_EXPERIMENT') return duplicateActiveExperiment(session);
+  if (action.type === 'SWITCH_EXPERIMENT') return switchExperiment(session, action.experimentId);
+  if (action.type === 'SET_COMPARE' || action.type === 'COMPARE_EXPERIMENTS') {
+    return setExperimentComparison(session, {
+      enabled: action.enabled ?? true,
+      againstExperimentId: action.againstExperimentId ?? action.rightExperimentId,
+    });
+  }
+  if (action.type === 'REPEAT_EXPERIMENT') {
+    return { ...runCurrentWorld(session), status: 'completed' };
   }
   const compatibilityTransaction = canonicalWorldTransaction(action);
   if (compatibilityTransaction) {
@@ -1026,6 +1106,7 @@ export function deriveRuntimeSnapshot(session) {
   );
   capabilities.canUndoWorld = session.worldHistory.past.length > 0;
   capabilities.canRedoWorld = session.worldHistory.future.length > 0;
+  capabilities.canUndoExperiment = (session.experimentUndo ?? []).length > 0;
   const primitives = materializePrimitives({
     script: session.script,
     semanticState: modelContext,
@@ -1071,6 +1152,7 @@ export function deriveRuntimeSnapshot(session) {
     visualState: jsonSafe(session.visualState),
     dataState: jsonSafe(session.dataState),
     experiment: jsonSafe(session.experiment),
+    experimentWorkspace: jsonSafe(deriveExperimentWorkspace(session)),
     world: jsonSafe(session.experiment?.world),
     viewState: jsonSafe(session.viewState),
     actionHistory: {
