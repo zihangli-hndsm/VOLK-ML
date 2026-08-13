@@ -37,6 +37,24 @@ const changedTraining = await speedHost.dispatch({ type: 'START_TRAINING' });
 assert.equal(changedTraining.timeline.speed, 2, 'START_TRAINING preserves an explicit playback speed');
 await speedHost.close();
 
+const attachedDataLabHost = createPlaygroundHost({ getDataset: () => null });
+await attachedDataLabHost.open({ playgroundId: 'data-lab', seed: 719 });
+await attachedDataLabHost.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: 'linear-regression' });
+await attachedDataLabHost.dispatch({ type: 'SCRIPT_RESET' });
+await attachedDataLabHost.dispatch({ type: 'SCRIPT_STEP' });
+await attachedDataLabHost.dispatch({ type: 'SCRIPT_STEP' });
+const attachedTrainStart = await attachedDataLabHost.dispatch({ type: 'SCRIPT_STEP' });
+assert.equal(attachedTrainStart.scriptState.step, 3, 'Data Lab attached-model scripts reach traceFit');
+assert.equal(attachedTrainStart.timeline.totalSteps, 20, 'attached-model traceFit starts the model timeline');
+const attachedReveal = await attachedDataLabHost.dispatch({ type: 'SCRIPT_STEP' });
+assert.equal(attachedReveal.scene.training.currentStep, 7, 'attached-model script reveal advances training');
+assert.notEqual(
+  `${attachedReveal.scene.line.weight}:${attachedReveal.scene.line.bias}`,
+  '0:0',
+  'attached-model script reveal changes the fitted line',
+);
+await attachedDataLabHost.close();
+
 const pending = new Map();
 let timerId = 0;
 const schedule = (callback, delay) => {
