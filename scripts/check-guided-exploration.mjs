@@ -134,11 +134,24 @@ try {
   const refreshedRepeat = await host.dispatch({ type: 'REPEAT_EXPERIMENT', trials: 2 });
   assert.notEqual(refreshedRepeat.repeatEvidence.conditionFingerprint, firstRepeat.repeatEvidence.conditionFingerprint);
   assert.equal(refreshedRepeat.derivedObservables.repeatSlopeSpread.available, true);
+  const previousFingerprint = refreshedRepeat.repeatEvidence.conditionFingerprint;
   const changedLearning = await host.dispatch({ type: 'SET_CONTROL', key: 'learningRate', value: 0.1 });
   assert.equal(changedLearning.repeatEvidence, null, 'stale Repeat evidence is hidden after a semantic learning-control change');
   assert.equal(changedLearning.derivedObservables.repeatSlopeSpread.available, false);
+  const learningFingerprint = conditionFingerprintForSession({
+    world: changedLearning.world,
+    adapterId: changedLearning.experiment.model.adapterId,
+    experiment: changedLearning.experiment,
+  });
+  assert.notEqual(learningFingerprint, previousFingerprint, 'learning-domain control changes the semantic fingerprint');
   const controlRepeat = await host.dispatch({ type: 'REPEAT_EXPERIMENT', trials: 2 });
   const unchangedFingerprint = controlRepeat.repeatEvidence.conditionFingerprint;
+  const viewResiduals = await host.dispatch({ type: 'SET_CONTROL', key: 'showResiduals', value: true });
+  assert.equal(viewResiduals.repeatEvidence.conditionFingerprint, unchangedFingerprint, 'showResiduals does not invalidate semantic evidence');
+  assert.equal(viewResiduals.derivedObservables.repeatSlopeSpread.available, true);
+  const viewBestFit = await host.dispatch({ type: 'SET_CONTROL', key: 'showBestFit', value: true });
+  assert.equal(viewBestFit.repeatEvidence.conditionFingerprint, unchangedFingerprint, 'showBestFit does not invalidate semantic evidence');
+  assert.equal(viewBestFit.derivedObservables.repeatSlopeSpread.available, true);
   const presentationOnly = await host.dispatch({ type: 'SET_VISUAL', patch: { highlight: 'test-support' } });
   assert.equal(presentationOnly.repeatEvidence.conditionFingerprint, unchangedFingerprint, 'presentation state does not invalidate semantic evidence');
   await assert.rejects(() => host.dispatch({ type: 'REPEAT_EXPERIMENT', trials: 1 }), (error) => error.code === 'INVALID_PLAYGROUND_ACTION');
@@ -156,6 +169,11 @@ try {
   assert.deepEqual(context.exploration.recipes, EXPLORATION_RECIPES);
   assert.deepEqual(context.exploration.thingsToTry, THINGS_TO_TRY);
   assert.deepEqual(context.exploration.affordances, AFFORDANCE_IDS);
+  const movedPoint = presentationOnly.world.observations[0];
+  const manualEdit = await host.dispatch({ type: 'MOVE_POINT', pointId: movedPoint.id, x: movedPoint.x + 0.25, y: movedPoint.y + 0.25 });
+  assert.equal(manualEdit.repeatEvidence, null, 'manual World observation edits invalidate Repeat evidence');
+  assert.equal(manualEdit.derivedObservables.repeatSlopeSpread.available, false);
+  assert.equal(host.inspectContext().repeatEvidence, null);
   await assert.rejects(() => host.dispatch({ type: 'REPEAT_EXPERIMENT', trials: 0 }), (error) => error.code === 'INVALID_PLAYGROUND_ACTION');
 } finally {
   await host.close();
@@ -171,9 +189,9 @@ assert.ok(EXPLORATION_RECIPES.every((recipe) => recipe.relevantObservableIds.eve
   realObservableIds.has(id)
 ))));
 const identityWorld = createWorld({ observations: [{ id: 'p', x: 0, y: 0, membership: 'train' }] });
-const identityA = conditionFingerprintForSession({ world: identityWorld, adapterId: 'linear-regression', controls: { learningRate: 0.1 }, experiment: { id: 'A', model: { adapterId: 'linear-regression' } } });
-const identityB = conditionFingerprintForSession({ world: identityWorld, adapterId: 'linear-regression', controls: { learningRate: 0.1 }, experiment: { id: 'B', model: { adapterId: 'linear-regression' } } });
+const identityA = conditionFingerprintForSession({ world: identityWorld, adapterId: 'linear-regression', experiment: { id: 'A', model: { adapterId: 'linear-regression' } } });
+const identityB = conditionFingerprintForSession({ world: identityWorld, adapterId: 'linear-regression', experiment: { id: 'B', model: { adapterId: 'linear-regression' } } });
 assert.equal(identityA, identityB, 'experiment identity is not part of semantic condition fingerprint');
-const differentAdapter = conditionFingerprintForSession({ world: identityWorld, adapterId: 'knn', controls: { learningRate: 0.1 }, experiment: { id: 'A', model: { adapterId: 'knn' } } });
+const differentAdapter = conditionFingerprintForSession({ world: identityWorld, adapterId: 'knn', experiment: { id: 'A', model: { adapterId: 'knn' } } });
 assert.notEqual(identityA, differentAdapter, 'model adapter identity is part of semantic condition fingerprint');
 console.log('Guided Exploration checks passed: raw/derived observables, unavailable evidence, factual detectors, coverage mismatch, deterministic bounded Repeat, non-mutating active state, Agent inspection parity, and recipe registries.');

@@ -148,8 +148,8 @@ export function isGeneratedRepeatCondition(world) {
 
 // A deterministic identity for Repeat's execution condition. It deliberately
 // excludes experiment ids and presentation state, but includes every World,
-// model, and control input used by the current Repeat implementation.
-export function conditionFingerprintForSession({ world, adapterId, controls = {}, experiment = {} } = {}) {
+// model, and semantically partitioned control input used by Repeat.
+export function conditionFingerprintForSession({ world, adapterId, experiment = {} } = {}) {
   if (!world) return null;
   const executionMode = isGeneratedRepeatCondition(world)
     ? 'generated'
@@ -179,7 +179,6 @@ export function conditionFingerprintForSession({ world, adapterId, controls = {}
     },
     learning: experiment.learning ?? {},
     evaluation: experiment.evaluation ?? {},
-    controls,
   };
   return JSON.stringify(stableValue(payload));
 }

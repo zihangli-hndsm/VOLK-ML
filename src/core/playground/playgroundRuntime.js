@@ -718,7 +718,6 @@ function explorationEvidenceFor(session, experimentWorkspace) {
   const conditionFingerprint = conditionFingerprintForSession({
     world: session.experiment.world,
     adapterId: session.adapterId,
-    controls: session.controls,
     experiment: session.experiment,
   });
   const repeatEvidence = isRepeatEvidenceCurrent(session.repeatEvidence, conditionFingerprint)
@@ -862,7 +861,6 @@ function runRepeatExperiment(session, requestedCount) {
     conditionFingerprint: conditionFingerprintForSession({
       world: activeWorld,
       adapterId: session.adapterId,
-      controls: session.controls,
       experiment: session.experiment,
     }),
     trials,
