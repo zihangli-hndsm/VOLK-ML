@@ -8,6 +8,7 @@ import PlaygroundAgentPanel from './PlaygroundAgentPanel.jsx';
 import DataWorkspace from './DataWorkspace.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import PresentationMode from './PresentationMode.jsx';
+import { getPlaybackAction } from '../../core/playgroundHost.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model' }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -46,15 +47,15 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
 
   useEffect(() => {
     if (!snapshot) return undefined;
+    const action = getPlaybackAction(snapshot);
+    if (!action) return undefined;
     const script = snapshot.scriptState;
-    if (!script || script.status !== 'playing') return undefined;
-    if (script.step >= script.totalSteps) return undefined;
     const stepDefinition = snapshot.script?.steps?.[script.step];
-    const base = stepDefinition?.durationMs ?? 600;
+    const base = action.type === 'SCRIPT_STEP' ? stepDefinition?.durationMs ?? 600 : 600;
     const reducedMotion = typeof window !== 'undefined'
       && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
     const delay = reducedMotion ? 0 : base / Math.max(0.25, snapshot.timeline.speed);
-    const timer = setTimeout(() => host.dispatch({ type: 'SCRIPT_STEP' }), delay);
+    const timer = setTimeout(() => host.dispatch(action), delay);
     return () => clearTimeout(timer);
   }, [snapshot, host]);
 

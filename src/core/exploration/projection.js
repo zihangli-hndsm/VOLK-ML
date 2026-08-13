@@ -42,7 +42,7 @@ export function projectionIsComplete(world, xFeature, yFeature) {
 }
 
 export function canCreateObservationFromProjection(world, xFeature, yFeature) {
-  return projectionIsComplete(world, xFeature, yFeature);
+  return world?.task === 'regression' && projectionIsComplete(world, xFeature, yFeature);
 }
 
 export function observationFromProjection(world, {
@@ -65,9 +65,6 @@ export function observationFromProjection(world, {
     y: targetValue,
     features: values,
     ...(world.task === 'regression' ? { target: targetValue } : {}),
-    ...(world.task === 'classification'
-      ? { label: world.observations.find((observation) => typeof observation.label === 'string')?.label ?? 'manual' }
-      : {}),
     membership,
     provenance,
   };

@@ -86,6 +86,7 @@ Since the PR B follow-up, **Visualization Scripts own visualization composition*
 - Loading a script whose `model.adapter` does not match the session is rejected with `SCRIPT_MODEL_MISMATCH`.
 - Script-mode capabilities come from `scriptState` (seekable from step 0 even when the model timeline is empty), and `SCRIPT_PLAY` on a completed script restarts from the baseline.
 - `playgroundHost` routes `play`/`pause`/`step`/`seek`/`reset` to `SCRIPT_*` actions whenever an active Visualization Script exists, and to the model actions otherwise — the UI and the Canvas Agent control exactly the same timeline.
+- The UI uses one scheduler decision for both modes: a playing Visualization Script dispatches `SCRIPT_STEP`; when no script is actively playing, model `PLAY` dispatches finite `STEP` actions until the model timeline completes. Operation metadata (`playback.revealCountControl`) maps sparse teaching reveals onto sampled model progress, so a three-step linear-regression explanation can expose the full declared training trajectory without conflating the script and model timelines.
 - The validator rejects `show`/`hide`/`highlight` targets that are not declared primitives (`SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE`) and requires exactly one annotation primitive for `annotate` steps (`SCRIPT_ANNOTATION_TARGET_MISSING` / `SCRIPT_ANNOTATION_TARGET_AMBIGUOUS`).
 - KNN teaching/fallback `$data` rows include the `label` target column and the schema declares it, so `$data.targetColumn` always exists in `$data.rows`.
 - Script contract errors are centralized in `visualization/scriptErrors.js` (`SCRIPT_ERROR_CODES`) and pass through the Canvas Agent with their stable codes instead of `OPERATION_FAILED`.
@@ -616,7 +617,7 @@ Presets (`src/core/playground/presets/`, registered in `visualization/presetRegi
 
 ### Unified UI
 
-`src/components/playground/` contains the toolbar (Model / Dataset / Preset / Agent), the unified stage, inspector, timeline and primitive renderers. The stage only knows `primitives[]` — it resolves each primitive through `rendererRegistry.jsx` and never imports model math. Playback is script-driven: with a loaded preset the timeline drives `SCRIPT_*` actions and never special-cases a model (a static test forbids model names and `START_TRAINING`/`START_NEIGHBOR_REVEAL` in the UI directory).
+`src/components/playground/` contains the toolbar (Model / Dataset / Preset / Agent), the unified stage, inspector, timeline and primitive renderers. The stage only knows `primitives[]` — it resolves each primitive through `rendererRegistry.jsx` and never imports model math. Playback is driven by the shared host scheduler: with a loaded preset the timeline drives `SCRIPT_*` actions, otherwise it drives model `STEP` actions; the UI does not special-case a model (a static test forbids model names and `START_TRAINING`/`START_NEIGHBOR_REVEAL` in the UI directory).
 
 ### Visual encoding and renderer resilience
 

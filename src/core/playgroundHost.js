@@ -44,6 +44,20 @@ function hasActiveScript(session) {
   );
 }
 
+// One scheduler decision is shared by the UI and contract tests. A teaching
+// script has priority; model playback is the fallback when no script exists.
+export function getPlaybackAction(snapshot) {
+  if (snapshot?.scriptState?.status === 'playing'
+    && snapshot.scriptState.step < snapshot.scriptState.totalSteps) {
+    return { type: 'SCRIPT_STEP' };
+  }
+  if (snapshot?.status === 'playing'
+    && snapshot.timeline?.totalSteps > snapshot.timeline?.step) {
+    return { type: 'STEP' };
+  }
+  return null;
+}
+
 function resolveSource(playground, dataset) {
   if (playground.id === 'data-lab') {
     if (dataset?.task === 'classification') {

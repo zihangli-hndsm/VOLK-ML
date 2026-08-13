@@ -28,9 +28,10 @@ import {
   isPublicWorldOperation,
   listWorldOperations,
 } from '../src/core/exploration/operationRegistry.js';
-import { createPlaygroundHost } from '../src/core/playgroundHost.js';
+import { createPlaygroundHost, getPlaybackAction } from '../src/core/playgroundHost.js';
 import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
 import { teachingDatasetById } from '../src/core/teachingDatasets.js';
+import { canCreateObservationFromProjection, observationFromProjection } from '../src/core/exploration/projection.js';
 
 // Phase 0 exploration semantics: World/Experiment snapshots are explicit,
 // detached, serializable domain state shared by runtime and Agent inspection.
@@ -249,6 +250,17 @@ assert.throws(() => applyWorldTransaction(multiFeatureWorld, {
   operations: [{ type: 'TRANSFORM_FEATURE_VALUES', feature: 'not-a-column', kind: 'shift', amount: 1, pointIds: ['mf1'] }],
 }), (error) => error.code === 'EXPLORATION_UNKNOWN_FEATURE', 'unknown feature transforms are rejected explicitly');
 
+const classificationProjectionWorld = createWorld({
+  id: 'classification-projection-world', task: 'classification', featureNames: ['x1', 'x2'],
+  metadata: { modelFeature: 'x1', targetFeature: 'x2', targetColumn: 'label' },
+  observations: [
+    { id: 'c1', x: 0, y: 0, features: { x1: 0, x2: 0 }, label: 'left' },
+    { id: 'c2', x: 1, y: 1, features: { x1: 1, x2: 1 }, label: 'right' },
+  ],
+});
+assert.equal(canCreateObservationFromProjection(classificationProjectionWorld, 'x1', 'x2'), false, 'classification projections cannot create unlabeled observations');
+assert.equal(observationFromProjection(classificationProjectionWorld, { xFeature: 'x1', yFeature: 'x2', x: 0.5, y: 0.5 }), null, 'classification projection creation never fabricates a label');
+
 const phase11Host = createPlaygroundHost({ getDataset: () => null });
 await phase11Host.open({ playgroundId: 'linear-regression', seed: 404 });
 const phase11Initial = phase11Host.getState();
@@ -359,6 +371,33 @@ assert.deepEqual(resetScript.actionHistory, editedInScript.actionHistory, 'SCRIP
 assert.notDeepEqual(resetScript.world, beforeScriptEdit.world, 'SCRIPT_RESET does not jump to the open-time session baseline');
 await scriptHistoryHost.close();
 
+const playbackHost = createPlaygroundHost({ getDataset: () => null });
+await playbackHost.open({ playgroundId: 'linear-regression', seed: 515 });
+await playbackHost.loadPreset({ presetId: 'linear-regression.intuition' });
+await playbackHost.dispatch({ type: 'SCRIPT_RESET' });
+await playbackHost.dispatch({ type: 'SCRIPT_PLAY' });
+const revealSnapshots = [];
+let playbackState = playbackHost.getState();
+let playbackGuard = 0;
+while (playbackGuard < 20) {
+  const playbackAction = getPlaybackAction(playbackState);
+  if (!playbackAction) break;
+  playbackState = await playbackHost.dispatch(playbackAction);
+  if ([4, 5, 6].includes(playbackState.scriptState.step)) {
+    revealSnapshots.push({
+      currentStep: playbackState.scene.training.currentStep,
+      weight: playbackState.scene.line.weight,
+      bias: playbackState.scene.line.bias,
+    });
+  }
+  playbackGuard += 1;
+}
+assert.equal(playbackState.scriptState.status, 'completed', 'automatic script playback reaches the final explanation step');
+assert.deepEqual(revealSnapshots.map((snapshot) => snapshot.currentStep), [7, 14, 20], 'LR reveal playback samples the declared training timeline');
+assert.ok(new Set(revealSnapshots.map((snapshot) => `${snapshot.weight}:${snapshot.bias}`)).size > 1, 'LR playback changes fitted parameters across reveal steps');
+assert.equal(getPlaybackAction(playbackState), null, 'completed script playback has no pending scheduler action');
+await playbackHost.close();
+
 const dataLabDataset = {
   name: 'Data Lab multi-feature regression',
   task: 'regression',
@@ -400,6 +439,15 @@ assert.deepEqual(
   { weight: baselineAttached.scene.bestFitLine.weight, bias: baselineAttached.scene.bestFitLine.bias },
   'changing an unrelated feature does not change the selected linear model projection',
 );
+const modelOnlyHost = createPlaygroundHost({ getDataset: () => null });
+await modelOnlyHost.open({ playgroundId: 'linear-regression', seed: 516 });
+const modelTrainingStarted = await modelOnlyHost.dispatch({ type: 'START_TRAINING' });
+assert.ok(modelTrainingStarted.timeline.totalSteps > 0, 'model-only playback prepares a finite model timeline');
+const modelPlaying = await modelOnlyHost.dispatch({ type: 'PLAY' });
+assert.equal(getPlaybackAction(modelPlaying)?.type, 'STEP', 'model-only playback uses the shared scheduler fallback');
+const modelStep = await modelOnlyHost.dispatch(getPlaybackAction(modelPlaying));
+assert.ok(modelStep.timeline.step > modelPlaying.timeline.step, 'model-only playback advances after Play');
+await modelOnlyHost.close();
 await dataLabHost.close();
 await baselineModelHost.close();
 
