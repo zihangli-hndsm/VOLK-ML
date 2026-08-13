@@ -36,6 +36,7 @@ export const EXPLORATION_RECIPES = Object.freeze([
     questionKey: 'playground.recipe.trainTestShift.question',
     approachKey: 'playground.recipe.trainTestShift.approach',
     affordances: ['experiment.duplicate', 'world.generator.testInput', 'experiment.compare'],
+    relevantObservableIds: ['world.trainXRange', 'world.testXRange', 'coverageMismatch', 'outcome.trainMse', 'outcome.testMse', 'generalizationGap'],
     setup: { spec: cleanSpec, seed: 42 },
   },
   {
@@ -43,6 +44,7 @@ export const EXPLORATION_RECIPES = Object.freeze([
     questionKey: 'playground.recipe.outlier.question',
     approachKey: 'playground.recipe.outlier.approach',
     affordances: ['experiment.duplicate', 'world.outlier', 'model.run', 'experiment.compare'],
+    relevantObservableIds: ['world.outlierCount', 'model.slope', 'outcome.trainMse', 'slopeDifference'],
     setup: { spec: cleanSpec, seed: 42 },
   },
 ]);

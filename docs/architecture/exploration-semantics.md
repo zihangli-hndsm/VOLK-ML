@@ -236,3 +236,27 @@ World, while `RESTORE_ORIGINAL_DATA` is the explicit open-time baseline restore.
 Attaching a compatible model changes model capabilities, not the World. A
 visualization-script restart restores the explanation/model baseline while
 preserving current World observations, World history, and feature edits.
+
+## Phase 4 evidence identity and inspection parity
+
+Shared observables in `src/core/exploration/observables.js` are derived at the
+runtime boundary and consumed by the learner surface, deterministic detectors,
+and Agent `inspectContext()`. Train/test coverage is interval geometry: positive
+width ranges use overlap-length fractions, while zero-width ranges use explicit
+point containment so no division by zero implies false coverage.
+
+Repeat evidence carries a canonical `conditionFingerprint`. Its semantic
+payload includes World mode and execution mode, generator specification and
+seed/realization state, fixed World observations and memberships when the
+active condition is a sample/manual realization, model adapter/configuration,
+learning and evaluation configuration, and execution-relevant controls. It
+excludes experiment IDs and presentation state. Snapshot derivation compares
+the stored fingerprint with the active condition before exposing Repeat
+evidence or deriving Repeat observables; stale evidence may remain in runtime
+history but is unavailable as current evidence.
+
+The Agent inspection boundary exposes the same `EXPLORATION_RECIPES`,
+`THINGS_TO_TRY`, and `AFFORDANCE_IDS` registries used by the learner UI.
+Recipes additionally declare `relevantObservableIds`, completing the semantic
+link from an exploration prompt to the evidence a learner can inspect without
+introducing automatic interpretation or intervention.

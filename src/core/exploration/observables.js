@@ -79,26 +79,118 @@ function ratio(value, baseline) {
   return a / b;
 }
 
-function coverageMismatch(trainRange, testRange) {
+function contains(range, point) {
+  return point >= range.min && point <= range.max;
+}
+
+// Coverage is interval geometry, not endpoint heuristics. Positive-width
+// intervals use length fractions; point ranges use explicit containment so a
+// point inside another interval is covered without division by zero.
+export function coverageMismatch(trainRange, testRange) {
   if (!trainRange || !testRange) return null;
   const overlapMin = Math.max(trainRange.min, testRange.min);
   const overlapMax = Math.min(trainRange.max, testRange.max);
   const overlap = Math.max(0, overlapMax - overlapMin);
   const trainWidth = Math.max(0, trainRange.max - trainRange.min);
   const testWidth = Math.max(0, testRange.max - testRange.min);
-  const testOutsideTrain = Math.max(0, testRange.min - trainRange.min) + Math.max(0, trainRange.max - testRange.max);
-  const trainOutsideTest = Math.max(0, trainRange.min - testRange.min) + Math.max(0, testRange.max - trainRange.max);
+  const trainIsPoint = trainWidth === 0;
+  const testIsPoint = testWidth === 0;
+  const samePoint = trainIsPoint && testIsPoint && trainRange.min === testRange.min;
+  const testOutsideTrainFraction = testIsPoint
+    ? (contains(trainRange, testRange.min) ? 0 : 1)
+    : trainIsPoint
+      ? 1
+      : (testWidth - overlap) / testWidth;
+  const trainOutsideTestFraction = trainIsPoint
+    ? (contains(testRange, trainRange.min) ? 0 : 1)
+    : testIsPoint
+      ? 1
+      : (trainWidth - overlap) / trainWidth;
   return {
     trainRange: { min: trainRange.min, max: trainRange.max },
     testRange: { min: testRange.min, max: testRange.max },
     overlapMin,
     overlapMax,
     overlapWidth: overlap,
-    overlapFractionOfTrain: trainWidth ? overlap / trainWidth : (trainRange.min === trainRange.max ? (testRange.min <= trainRange.min && trainRange.min <= testRange.max ? 1 : 0) : null),
-    overlapFractionOfTest: testWidth ? overlap / testWidth : (testRange.min === testRange.max ? (trainRange.min <= testRange.min && testRange.min <= trainRange.max ? 1 : 0) : null),
-    testOutsideTrainFraction: testWidth ? Math.min(1, testOutsideTrain / testWidth) : 0,
-    trainOutsideTestFraction: trainWidth ? Math.min(1, trainOutsideTest / trainWidth) : 0,
+    overlapFractionOfTrain: trainIsPoint ? (contains(testRange, trainRange.min) ? 1 : 0) : overlap / trainWidth,
+    overlapFractionOfTest: testIsPoint ? (contains(trainRange, testRange.min) ? 1 : 0) : overlap / testWidth,
+    testOutsideTrainFraction: samePoint ? 0 : Math.min(1, Math.max(0, testOutsideTrainFraction)),
+    trainOutsideTestFraction: samePoint ? 0 : Math.min(1, Math.max(0, trainOutsideTestFraction)),
   };
+}
+
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])]));
+}
+
+function semanticObservation(point) {
+  return {
+    id: String(point.id ?? ''),
+    x: point.x,
+    y: point.y,
+    target: point.target,
+    label: point.label,
+    membership: point.membership,
+    features: point.features,
+  };
+}
+
+export function isGeneratedRepeatCondition(world) {
+  return Boolean(
+    world?.mode === 'generated'
+    && world.generator?.status === 'clean'
+    && world.generator?.spec
+    && world.generator?.realization,
+  );
+}
+
+// A deterministic identity for Repeat's execution condition. It deliberately
+// excludes experiment ids and presentation state, but includes every World,
+// model, and control input used by the current Repeat implementation.
+export function conditionFingerprintForSession({ world, adapterId, controls = {}, experiment = {} } = {}) {
+  if (!world) return null;
+  const executionMode = isGeneratedRepeatCondition(world)
+    ? 'generated'
+    : 'fixed-world';
+  const payload = {
+    world: {
+      mode: world.mode,
+      executionMode,
+      task: world.task,
+      featureNames: world.featureNames,
+      metadata: world.metadata,
+      generator: world.generator ? {
+        status: world.generator.status,
+        active: world.generator.active,
+        spec: world.generator.spec,
+        seed: world.generator.seed,
+        realizationSeed: world.generator.realization?.seed ?? null,
+      } : null,
+      observations: executionMode === 'fixed-world'
+        ? [...(world.observations ?? [])].sort((left, right) => String(left.id).localeCompare(String(right.id))).map(semanticObservation)
+        : null,
+      randomness: world.randomness,
+    },
+    model: {
+      adapterId: adapterId ?? experiment.model?.adapterId ?? null,
+      configuration: experiment.model ?? {},
+    },
+    learning: experiment.learning ?? {},
+    evaluation: experiment.evaluation ?? {},
+    controls,
+  };
+  return JSON.stringify(stableValue(payload));
+}
+
+export function isRepeatEvidenceCurrent(repeatEvidence, conditionFingerprint) {
+  return Boolean(
+    repeatEvidence
+    && typeof repeatEvidence.conditionFingerprint === 'string'
+    && typeof conditionFingerprint === 'string'
+    && repeatEvidence.conditionFingerprint === conditionFingerprint,
+  );
 }
 
 export function deriveDerivedObservables({ raw, comparisonRaw, repeatEvidence } = {}) {
@@ -139,7 +231,10 @@ export function deriveDerivedObservables({ raw, comparisonRaw, repeatEvidence } 
 export function deriveObservableSet(context = {}) {
   const raw = deriveRawObservables(context);
   const comparisonRaw = context.comparisonContext ? deriveRawObservables(context.comparisonContext) : null;
-  const derived = deriveDerivedObservables({ raw, comparisonRaw, repeatEvidence: context.repeatEvidence });
+  const repeatEvidence = isRepeatEvidenceCurrent(context.repeatEvidence, context.conditionFingerprint)
+    ? context.repeatEvidence
+    : null;
+  const derived = deriveDerivedObservables({ raw, comparisonRaw, repeatEvidence });
   return { raw, derived };
 }
 

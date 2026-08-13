@@ -16,7 +16,12 @@ import {
 import { worldFromPlaygroundSource } from '../exploration/world.js';
 import { createWorld } from '../exploration/world.js';
 import { generateObservations } from '../exploration/generator.js';
-import { deriveObservableSet } from '../exploration/observables.js';
+import {
+  conditionFingerprintForSession,
+  deriveObservableSet,
+  isGeneratedRepeatCondition,
+  isRepeatEvidenceCurrent,
+} from '../exploration/observables.js';
 import { detectObservations } from '../exploration/observationDetectors.js';
 import { canCreateObservationFromProjection } from '../exploration/projection.js';
 import {
@@ -710,6 +715,15 @@ function runCurrentWorld(session) {
 }
 
 function explorationEvidenceFor(session, experimentWorkspace) {
+  const conditionFingerprint = conditionFingerprintForSession({
+    world: session.experiment.world,
+    adapterId: session.adapterId,
+    controls: session.controls,
+    experiment: session.experiment,
+  });
+  const repeatEvidence = isRepeatEvidenceCurrent(session.repeatEvidence, conditionFingerprint)
+    ? session.repeatEvidence
+    : null;
   const comparison = experimentWorkspace?.comparison?.enabled
     ? experimentWorkspace.comparison
     : null;
@@ -725,7 +739,8 @@ function explorationEvidenceFor(session, experimentWorkspace) {
     result: session.experiment.result,
     comparison,
     comparisonContext: targetState ? { world: targetState.experiment.world, result: targetResult } : null,
-    repeatEvidence: session.repeatEvidence,
+    repeatEvidence,
+    conditionFingerprint,
   });
   const observations = detectObservations({
     observables: evidence,
@@ -734,14 +749,14 @@ function explorationEvidenceFor(session, experimentWorkspace) {
       diff: comparison.diff,
       experimentIds: [session.experiment.id, targetState.experiment.id],
     } : null,
-    repeatEvidence: session.repeatEvidence,
+    repeatEvidence,
   });
   return {
     version: 1,
     observables: evidence.raw,
     derivedObservables: evidence.derived,
     observations,
-    repeatEvidence: session.repeatEvidence ?? null,
+    repeatEvidence,
   };
 }
 
@@ -796,7 +811,7 @@ function runRepeatExperiment(session, requestedCount) {
   const adapter = modelAdapterFor(session);
   if (!adapter) throw playgroundError('PLAYGROUND_MODEL_REQUIRED', { action: 'REPEAT_EXPERIMENT' });
   const activeWorld = session.experiment.world;
-  const generated = activeWorld.mode === 'generated' && Boolean(activeWorld.generator?.spec);
+  const generated = isGeneratedRepeatCondition(activeWorld);
   const numericSeed = Number(session.seed ?? activeWorld.randomness?.seed ?? activeWorld.generator?.seed);
   const baseSeed = Number.isFinite(numericSeed) ? Math.trunc(numericSeed) : null;
   const trials = [];
@@ -844,6 +859,12 @@ function runRepeatExperiment(session, requestedCount) {
     trialCount: count,
     seedPolicy: generated ? 'base-seed-plus-trial-index' : 'fixed-world-deterministic',
     baseSeed,
+    conditionFingerprint: conditionFingerprintForSession({
+      world: activeWorld,
+      adapterId: session.adapterId,
+      controls: session.controls,
+      experiment: session.experiment,
+    }),
     trials,
     aggregates,
   };

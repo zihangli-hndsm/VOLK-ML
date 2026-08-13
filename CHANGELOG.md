@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-13 - Phase 4 acceptance fixes
+
+- Corrected train/test coverage fractions for overlap, containment, disjoint, and point ranges.
+- Bound Repeat evidence to a canonical semantic condition fingerprint and filtered stale evidence at the runtime evidence boundary.
+- Exposed the shared recipes, Things to Try, affordance IDs, and recipe observable references through Agent inspection.
+
 ## 2026-08-13 — Phase 4 Manual & Guided Exploration UX
 
 - Added shared raw/derived observable derivation, deterministic evidence-only observation detectors, and Agent inspection parity.
