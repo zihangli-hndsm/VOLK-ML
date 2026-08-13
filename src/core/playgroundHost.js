@@ -30,6 +30,7 @@ import { MAX_WORLD_HISTORY_ACTIONS, MAX_WORLD_TRANSACTION_OPERATIONS } from './e
 import { listWorldOperations } from './exploration/operationRegistry.js';
 import { MAX_WORLD_OBSERVATIONS } from './exploration/world.js';
 import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from './playground/trace/traceTypes.js';
+export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
 
@@ -42,20 +43,6 @@ function hasActiveScript(session) {
     && session?.scriptState
     && session.scriptState.totalSteps > 0
   );
-}
-
-// One scheduler decision is shared by the UI and contract tests. A teaching
-// script has priority; model playback is the fallback when no script exists.
-export function getPlaybackAction(snapshot) {
-  if (snapshot?.scriptState?.status === 'playing'
-    && snapshot.scriptState.step < snapshot.scriptState.totalSteps) {
-    return { type: 'SCRIPT_STEP' };
-  }
-  if (snapshot?.status === 'playing'
-    && snapshot.timeline?.totalSteps > snapshot.timeline?.step) {
-    return { type: 'STEP' };
-  }
-  return null;
 }
 
 function resolveSource(playground, dataset) {

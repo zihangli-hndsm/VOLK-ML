@@ -648,4 +648,9 @@ export const messages = {
   'playground.model.emptyBody': { en: 'Your data and edits remain in the same World. Attach a compatible model to train, inspect, and explain it.', zh: '数据和编辑会保留在同一个 World 中。选择兼容模型后即可训练、查看和解释。' },
   'playground.model.noCompatible': { en: 'No compatible in-browser model is available for this World.', zh: '当前 World 没有可用的兼容浏览器模型。' },
   'playground.timeline.restartExplanation': { en: 'Restart explanation', zh: '重启解释' },
+  'playground.playback.errorTitle': { en: 'Playback failed', zh: '播放失败' },
+  'playground.playback.errorBody': { en: 'Action {action} failed at script step {step} while running {operation}: {reason}', zh: '脚本步骤 {step} 执行 {operation} 时动作 {action} 失败：{reason}' },
+  'playground.playback.errorStatePreserved': { en: 'Automatic playback stopped. The last valid semantic state was preserved; restart or step manually to continue.', zh: '自动播放已停止。最后一个有效语义状态已保留；可重启或手动单步继续。' },
+  'playground.playback.operationUnknown': { en: 'the current operation', zh: '当前操作' },
+  'playground.playback.stepUnknown': { en: 'unknown', zh: '未知' },
 };
