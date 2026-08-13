@@ -12,6 +12,7 @@ import PresentationMode from './PresentationMode.jsx';
 import ExperimentBar from './ExperimentBar.jsx';
 import ExplorationEvidence from './ExplorationEvidence.jsx';
 import GuidedExplore from './GuidedExplore.jsx';
+import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
 import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model' }) {
@@ -115,7 +116,8 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
           <p className="mt-1">{t('playground.playback.errorBody', playbackError)}</p>
           <p className="mt-1 text-xs">{t('playground.playback.errorStatePreserved')}</p>
         </div>}
-        {agent && snapshot.model && <PlaygroundAgentPanel host={host} agent={agent} snapshot={snapshot} t={t} />}
+        {agent && snapshot.model && <ExplorationAgentPanel agent={agent} snapshot={snapshot} t={t} />}
+        {agent && snapshot.model && <details className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><summary className="cursor-pointer text-xs font-black uppercase tracking-wider text-slate-600">{t('playground.explorationAgent.advancedTeaching')}</summary><div className="mt-3"><PlaygroundAgentPanel host={host} agent={agent} snapshot={snapshot} t={t} /></div></details>}
         {activeTab === 'data' ? <div className="space-y-4"><WorldBuilder snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /><DataWorkspace snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></div> : <>
         {!snapshot.model ? <ModelEmptyState snapshot={snapshot} onDispatch={dispatchAction} t={t} /> : <>
         <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">

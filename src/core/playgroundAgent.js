@@ -2,6 +2,7 @@ import { PLAYGROUND_ERROR_CODES } from './playgrounds/session.js';
 import { SCRIPT_ERROR_CODES } from './playground/visualization/scriptErrors.js';
 export { getAgentExamples, listAgentExamplePlaygroundIds } from './playground/agent/agentExamples.js';
 export { buildTeachingInterpretationContext, createLlmGoalInterpreter, LLM_PROVIDERS } from './playground/agent/llmGoalInterpreter.js';
+export { createExplorationAiInterpreter, explorationIntentIds } from './exploration/explorationAiInterpreter.js';
 
 const copy = (value) => structuredClone(value);
 
@@ -54,6 +55,9 @@ export function createPlaygroundAgentApi(host) {
     runScenario: (scenarioId) => invokeAsync('runScenario', async () => copy(await host.runScenario(String(scenarioId)))),
     getCapabilities: () => invoke('getCapabilities', () => copy(host.getCapabilities())),
     inspectContext: () => invoke('inspectContext', () => copy(host.inspectContext())),
+    proposeExploration: (request) => invoke('proposeExploration', () => copy(host.proposeExploration(typeof request === 'string' ? { request } : copy(request ?? {})))),
+    preflightExplorationScenario: (scenario) => invoke('preflightExplorationScenario', () => copy(host.preflightExplorationScenario({ scenario: copy(scenario) }))),
+    executeExploration: (scenario) => invokeAsync('executeExploration', async () => copy(await host.executeExploration({ scenario: copy(scenario) }))),
     listPresets: () => invoke('listPresets', () => copy(host.listPresets())),
     loadPreset: (request) => invokeAsync('loadPreset', async () => copy(await host.loadPreset(copy(request ?? {})))),
     validateScript: (script) => invoke('validateScript', () => copy(host.validateScript(copy(script)))),

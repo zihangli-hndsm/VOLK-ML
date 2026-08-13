@@ -3,6 +3,7 @@ import {
   deriveRuntimeSnapshot,
   dispatchRuntimeAction,
 } from '../playground/playgroundRuntime.js';
+import { validateCanonicalControlValue } from '../playground/controlValidation.js';
 
 export const PLAYGROUND_ERROR_CODES = [
   'PLAYGROUND_NOT_FOUND',
@@ -22,6 +23,17 @@ export const PLAYGROUND_ERROR_CODES = [
   'TEACHING_CONTROL_INVALID',
   'TEACHING_VALUE_OUT_OF_RANGE',
   'TEACHING_GOAL_FIDELITY_FAILED',
+  'EXPLORATION_SCENARIO_INVALID',
+  'EXPLORATION_SCENARIO_UNSUPPORTED_REQUEST',
+  'EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION',
+  'EXPLORATION_SCENARIO_UNSUPPORTED_OBSERVABLE',
+  'EXPLORATION_SCENARIO_UNSUPPORTED_CONTROL',
+  'EXPLORATION_SCENARIO_CONTROL_OUT_OF_RANGE',
+  'EXPLORATION_SCENARIO_INVALID_PARAMETER',
+  'EXPLORATION_SCENARIO_POINT_NOT_FOUND',
+  'EXPLORATION_SCENARIO_RESOURCE_LIMIT',
+  'EXPLORATION_PROPOSAL_STALE',
+  'EXPLORATION_SCENARIO_NOT_PROPOSAL',
 ];
 
 export function playgroundError(code, details = {}) {
@@ -41,18 +53,11 @@ export function validateActionShape(action) {
 }
 
 export function validateControlValue(control, value) {
-  if (control.type === 'number') {
-    const number = Number(value);
-    if (!Number.isFinite(number)) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: control.key, value });
-    if (control.min !== undefined && number < control.min) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: control.key, value });
-    if (control.max !== undefined && number > control.max) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: control.key, value });
-    return number;
+  try {
+    return validateCanonicalControlValue(control, value);
+  } catch (error) {
+    throw playgroundError(error.code ?? 'INVALID_PLAYGROUND_CONTROL', error.details ?? { key: control?.key, value });
   }
-  if (control.type === 'boolean') return Boolean(value);
-  if (control.type === 'select' && control.options && !control.options.includes(value)) {
-    throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: control.key, value });
-  }
-  return value;
 }
 
 // Public session API. All session semantics live in the unified playground

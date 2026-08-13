@@ -31,6 +31,11 @@ import { listWorldOperations } from './exploration/operationRegistry.js';
 import { MAX_WORLD_OBSERVATIONS } from './exploration/world.js';
 import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from './playground/trace/traceTypes.js';
 import { AFFORDANCE_IDS, EXPLORATION_RECIPES, THINGS_TO_TRY } from './exploration/guidedExploration.js';
+import { conditionFingerprintForSession } from './exploration/observables.js';
+import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
+import { planExplorationIntent, planExplorationRequest } from './exploration/scenarioPlanner.js';
+import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
+import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -44,6 +49,88 @@ function hasActiveScript(session) {
     && session?.scriptState
     && session.scriptState.totalSteps > 0
   );
+}
+
+function sessionConditionFingerprint(value) {
+  return conditionFingerprintForSession({
+    world: value?.experiment?.world,
+    adapterId: value?.adapterId,
+    experiment: value?.experiment,
+  });
+}
+
+function executeExplorationOnDetachedSession(baseSession, validated) {
+  let candidate = structuredClone(baseSession);
+  if (validated.execution.duplicateBaseline) {
+    candidate = dispatchPlaygroundAction(candidate, { type: 'DUPLICATE_EXPERIMENT', actor: 'agent' });
+  }
+  const baselineId = validated.baseline.experimentId;
+  const worldOperations = [];
+  for (const change of validated.change) {
+    if (change.operation === 'SET_CONTROL') {
+      candidate = dispatchPlaygroundAction(candidate, {
+        type: 'SET_CONTROL',
+        actor: 'agent',
+        key: change.parameters.key,
+        value: change.parameters.value,
+      });
+    } else if (change.operation === 'REPEAT_EXPERIMENT') {
+      candidate = dispatchPlaygroundAction(candidate, {
+        type: 'REPEAT_EXPERIMENT',
+        actor: 'agent',
+        trials: change.parameters.trials,
+      });
+    } else if (change.operation === 'UNDO_WORLD_ACTION') {
+      if (candidate.worldHistory?.past?.at(-1)?.record?.id !== change.parameters.actionId) {
+        throw scenarioError('EXPLORATION_SCENARIO_POINT_NOT_FOUND', { actionId: change.parameters.actionId, reason: 'action-is-not-latest' });
+      }
+      candidate = dispatchPlaygroundAction(candidate, {
+        type: 'UNDO_WORLD_ACTION',
+        actor: 'agent',
+        actionId: change.parameters.actionId,
+      });
+    } else if (['DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS'].includes(change.operation)) {
+      candidate = dispatchPlaygroundAction(candidate, {
+        type: change.operation,
+        actor: 'agent',
+        ...change.parameters,
+      });
+    } else {
+      worldOperations.push({ type: change.operation, ...change.parameters });
+    }
+  }
+  if (worldOperations.length) {
+    candidate = dispatchPlaygroundAction(candidate, {
+      type: 'APPLY_WORLD_TRANSACTION',
+      transaction: {
+        id: `${candidate.sessionId}-agent-scenario-${candidate.worldActionCounter + 1}`,
+        actor: 'agent',
+        intent: 'exploration-scenario',
+        operations: worldOperations,
+      },
+    });
+  }
+  if (validated.execution.run) candidate = dispatchPlaygroundAction(candidate, { type: 'RUN', actor: 'agent' });
+  if (validated.execution.compare) {
+    candidate = dispatchPlaygroundAction(candidate, {
+      type: 'SET_COMPARE',
+      actor: 'agent',
+      enabled: true,
+      againstExperimentId: baselineId,
+    });
+  }
+  if (validated.execution.repeat !== null) {
+    candidate = dispatchPlaygroundAction(candidate, {
+      type: 'REPEAT_EXPERIMENT',
+      actor: 'agent',
+      trials: validated.execution.repeat,
+    });
+  }
+  candidate = dispatchPlaygroundAction(candidate, { type: 'SET_VISUAL', patch: { evidenceFocus: validated.observe } });
+  const snapshot = derivePlaygroundSnapshot(candidate);
+  const mutationDiff = snapshot.experimentWorkspace?.comparison?.diff ?? null;
+  const fidelity = evaluateScenarioFidelity(validated, mutationDiff);
+  return { session: candidate, snapshot, mutationDiff, fidelity };
 }
 
 function resolveSource(playground, dataset) {
@@ -391,6 +478,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const adapter = getModelAdapter(session.adapterId);
       const playground = getPlayground(session.playgroundId);
+      const controlPlayground = getPlayground(session.modelPlaygroundId ?? session.playgroundId) ?? playground;
       const snapshot = derivePlaygroundSnapshot(session);
       const data = snapshot.dataState ?? {};
       const statistics = {};
@@ -453,6 +541,14 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           affordances: [...AFFORDANCE_IDS],
           worldOperations,
           transactionActions,
+          recentWorldActions: (session.worldHistory?.past ?? []).slice(-10).map((entry) => ({
+            id: entry.record.id,
+            actor: entry.record.actor,
+            intent: entry.record.intent,
+            mutationSummary: structuredClone(entry.record.mutationSummary ?? {}),
+            operationTypes: [...new Set((entry.forward?.operations ?? []).map((operation) => operation.type))],
+            reversible: Boolean(entry.inverse?.operations?.length),
+          })),
           viewActions,
           experimentOperations,
           operations: [
@@ -462,7 +558,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
             ...experimentOperations,
           ],
         },
-        controlSchemas: (playground?.controls ?? []).map((control) => ({
+        controlSchemas: (controlPlayground?.controls ?? []).map((control) => ({
           key: control.key,
           type: control.type,
           ...(control.domain ? { domain: control.domain } : {}),
@@ -501,12 +597,87 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         },
         teachingCapabilities: adapter?.teachingCapabilities ?? {},
       };
+      context.recentWorldActions = structuredClone(context.exploration.recentWorldActions);
+      context.conditionFingerprint = conditionFingerprintForSession({
+        world: snapshot.world,
+        adapterId: snapshot.experiment?.model?.adapterId ?? session.adapterId,
+        experiment: snapshot.experiment,
+      });
       context.teaching = {
         objectives: [...TEACHING_OBJECTIVES],
         supportedObjectives: getSupportedTeachingObjectives(context),
         capabilities: context.teachingCapabilities,
       };
+      context.explorationAgent = {
+        scenarioSpecVersion: SCENARIO_SPEC_VERSION,
+        fidelityStatuses: [...SCENARIO_FIDELITY_STATUSES],
+        proposalLifecycle: ['propose', 'accept', 'execute', 'inspect'],
+      };
       return context;
+    },
+
+    proposeExploration({ request, intent } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const context = this.inspectContext();
+      const planned = intent
+        ? planExplorationIntent(intent, request ?? String(intent), context)
+        : planExplorationRequest(request, context);
+      if (planned.kind !== 'proposal') return planned;
+      const validated = validateScenarioSpec(planned.scenario, context);
+      const assessment = this.preflightExplorationScenario({ scenario: validated });
+      return { ...planned, scenario: validated, assessment };
+    },
+
+    preflightExplorationScenario({ scenario } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      if (!scenario) throw scenarioError('EXPLORATION_SCENARIO_NOT_PROPOSAL');
+      const context = this.inspectContext();
+      const validated = validateScenarioSpec(scenario, context);
+      const currentFingerprint = sessionConditionFingerprint(session);
+      if (validated.baseline.conditionFingerprint !== currentFingerprint
+        || validated.baseline.experimentId !== session.experiment.id) {
+        throw scenarioError('EXPLORATION_PROPOSAL_STALE', {
+          baseline: validated.baseline,
+          current: { experimentId: session.experiment.id, conditionFingerprint: currentFingerprint },
+        });
+      }
+      const result = executeExplorationOnDetachedSession(session, validated);
+      return {
+        scenario: validated,
+        fidelity: result.fidelity,
+        predictedSemanticDiff: result.mutationDiff,
+        snapshot: result.snapshot,
+      };
+    },
+
+    async executeExploration({ scenario } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      if (!scenario) throw scenarioError('EXPLORATION_SCENARIO_NOT_PROPOSAL');
+      // Preflight is also the transaction boundary. No live commit occurs
+      // until every operation, runtime validation, comparison, and fidelity
+      // assessment has succeeded on the detached candidate.
+      const assessment = this.preflightExplorationScenario({ scenario });
+      const validated = assessment.scenario;
+      const candidate = executeExplorationOnDetachedSession(session, validated);
+      const proposalFidelity = assessment.fidelity;
+      const executionFidelity = candidate.fidelity;
+      const fidelityMismatch = JSON.stringify(proposalFidelity) !== JSON.stringify(executionFidelity);
+      commit(candidate.session);
+      const result = candidate.snapshot;
+      const followUps = [];
+        if (candidate.mutationDiff?.changed?.includes('world')) followUps.push({ id: 'repeat-condition' });
+        if (result.observations?.some((notice) => notice.id === 'SLOPE_MOVED_STRONGLY')) followUps.push({ id: 'smaller-change' });
+      return {
+        snapshot: present(result),
+        scenario: validated,
+        fidelity: executionFidelity,
+        proposalFidelity,
+        executionFidelity,
+        fidelityMismatch,
+        mutationDiff: candidate.mutationDiff,
+        evidenceFocus: [...validated.observe],
+        followUps: followUps.slice(0, 2),
+      };
     },
 
     listPresets() {

@@ -1,9 +1,30 @@
 // `preserves` names semantic configuration domains only. They do not promise
 // that derived fitted parameters, metrics, or results remain numerically
 // unchanged after the World is edited.
+const GENERATOR_PARAMETER_CAPABILITIES = Object.freeze([
+  { path: 'train.input.type', type: 'enum', options: ['uniform', 'gaussian', 'two-cluster'], semanticTarget: 'train-input-distribution' },
+  { path: 'test.input.type', type: 'enum', options: ['uniform', 'gaussian', 'two-cluster'], semanticTarget: 'test-input-distribution' },
+  ...['train', 'test'].flatMap((split) => [
+    { path: `${split}.input.params.min`, type: 'number', semanticTarget: `${split}-input-support` },
+    { path: `${split}.input.params.max`, type: 'number', semanticTarget: `${split}-input-support` },
+    { path: `${split}.input.params.mean`, type: 'number', semanticTarget: `${split}-input-support` },
+    { path: `${split}.input.params.spread`, type: 'number', min: 0, semanticTarget: `${split}-input-support` },
+    { path: `${split}.input.params.centerA`, type: 'number', semanticTarget: `${split}-input-support` },
+    { path: `${split}.input.params.centerB`, type: 'number', semanticTarget: `${split}-input-support` },
+    { path: `${split}.samples`, type: 'integer', min: 0, max: 500, semanticTarget: `${split}-sample-count` },
+  ]),
+  { path: 'relation.slope', type: 'number', semanticTarget: 'latent-relation' },
+  { path: 'relation.bias', type: 'number', semanticTarget: 'latent-relation' },
+  { path: 'noise.amount', type: 'number', min: 0, semanticTarget: 'noise' },
+  { path: 'outliers.count', type: 'integer', min: 0, max: 500, semanticTarget: 'outliers' },
+]);
+
+const GENERATOR_PARAMETER_SCHEMA = Object.freeze({ parameters: GENERATOR_PARAMETER_CAPABILITIES });
+
 const PUBLIC_WORLD_OPERATIONS = [
   {
     type: 'SET_WORLD_GENERATOR',
+    capability: 'world.generator.configure',
     domain: 'world-generator',
     category: 'configure-generator',
     changes: ['generator-specification'],
@@ -11,9 +32,12 @@ const PUBLIC_WORLD_OPERATIONS = [
     undoable: true,
     agentDiscoverable: true,
     humanAccessible: true,
+    semanticTarget: 'generator-specification',
+    parameterSchema: GENERATOR_PARAMETER_SCHEMA,
   },
   {
     type: 'SET_GENERATOR_PARAMETER',
+    capability: 'world.generator.parameter',
     domain: 'world-generator',
     category: 'configure-generator-parameter',
     changes: ['generator-specification'],
@@ -21,9 +45,12 @@ const PUBLIC_WORLD_OPERATIONS = [
     undoable: true,
     agentDiscoverable: true,
     humanAccessible: true,
+    semanticTarget: 'generator-specification',
+    parameterSchema: GENERATOR_PARAMETER_SCHEMA,
   },
   {
     type: 'SET_GENERATOR_SEED',
+    capability: 'world.generator.seed',
     domain: 'world-generator',
     category: 'configure-generator-seed',
     changes: ['seed-policy'],
@@ -34,6 +61,7 @@ const PUBLIC_WORLD_OPERATIONS = [
   },
   {
     type: 'REGENERATE_WORLD',
+    capability: 'world.generator.regenerate',
     domain: 'world-generator',
     category: 'regenerate-observations',
     changes: ['observations', 'generator-realization', 'provenance'],
@@ -44,6 +72,7 @@ const PUBLIC_WORLD_OPERATIONS = [
   },
   {
     type: 'FREEZE_AS_SAMPLES',
+    capability: 'world.generator.freeze',
     domain: 'world-generator',
     category: 'freeze-generated-world',
     changes: ['world-mode'],
@@ -54,6 +83,7 @@ const PUBLIC_WORLD_OPERATIONS = [
   },
   {
     type: 'ADD_POINTS',
+    capability: 'world.observations.add',
     domain: 'world-state',
     category: 'create-observations',
     changes: ['observations', 'observation-values'],
@@ -64,6 +94,7 @@ const PUBLIC_WORLD_OPERATIONS = [
   },
   {
     type: 'MOVE_POINT',
+    capability: 'world.observations.move',
     domain: 'world-state',
     category: 'edit-observation',
     changes: ['observation-values'],
@@ -74,6 +105,7 @@ const PUBLIC_WORLD_OPERATIONS = [
   },
   {
     type: 'REMOVE_POINT',
+    capability: 'world.observations.remove',
     domain: 'world-state',
     category: 'remove-observations',
     changes: ['observations'],
@@ -84,6 +116,7 @@ const PUBLIC_WORLD_OPERATIONS = [
   },
   {
     type: 'REMOVE_POINTS',
+    capability: 'world.observations.remove',
     domain: 'world-state',
     category: 'remove-observations',
     changes: ['observations'],
@@ -94,6 +127,7 @@ const PUBLIC_WORLD_OPERATIONS = [
   },
   {
     type: 'SET_FEATURE_VALUES',
+    capability: 'world.observations.set-values',
     domain: 'world-state',
     category: 'edit-feature-values',
     changes: ['feature-values'],
@@ -104,6 +138,7 @@ const PUBLIC_WORLD_OPERATIONS = [
   },
   {
     type: 'TRANSFORM_FEATURE_VALUES',
+    capability: 'world.observations.transform',
     domain: 'world-state',
     category: 'transform-feature-values',
     changes: ['feature-values', 'intervention'],
@@ -114,6 +149,7 @@ const PUBLIC_WORLD_OPERATIONS = [
   },
   {
     type: 'SET_TRAIN_TEST_MEMBERSHIP',
+    capability: 'world.observations.membership',
     domain: 'world-state',
     category: 'assign-membership',
     changes: ['membership'],
@@ -135,6 +171,10 @@ export function listWorldOperations() {
 export function getWorldOperation(type) {
   const operation = byType.get(type);
   return operation ? copy(operation) : null;
+}
+
+export function listGeneratorParameterCapabilities() {
+  return GENERATOR_PARAMETER_CAPABILITIES.map(copy);
 }
 
 export function isPublicWorldOperation(type) {
