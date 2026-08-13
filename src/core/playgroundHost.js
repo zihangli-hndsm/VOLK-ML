@@ -434,6 +434,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         experimentWorkspace: snapshot.experimentWorkspace ?? null,
         exploration: {
           version: 1,
+          worldMode: snapshot.world?.mode ?? 'sample',
+          generator: snapshot.world?.generator ?? null,
           worldOperations,
           transactionActions,
           viewActions,

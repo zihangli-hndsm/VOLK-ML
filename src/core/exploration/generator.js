@@ -26,7 +26,7 @@ function integer(value, field) {
   return number;
 }
 
-function boundedSamples(value, field = 'sampling.samples') {
+function boundedSamples(value, field = 'samples') {
   const samples = integer(value, field);
   if (samples < MIN_GENERATOR_SAMPLES || samples > MAX_GENERATOR_SAMPLES) {
     throw generatorError('EXPLORATION_RESOURCE_LIMIT', { field, min: MIN_GENERATOR_SAMPLES, max: MAX_GENERATOR_SAMPLES, value: samples });
@@ -72,14 +72,28 @@ function normalizeSplit(split, fallback, field) {
 
 export function normalizeGeneratorSpec(spec = {}) {
   const source = spec ?? {};
-  const input = normalizeInput(source.input ?? source.distribution);
-  const samples = boundedSamples(source.sampling?.samples ?? source.samples ?? 40);
-  const train = normalizeSplit(source.train, input, 'train');
-  const test = normalizeSplit(source.test, input, 'test');
+  // `input` and `sampling.samples` were accepted by the first Phase 3 slice.
+  // They remain input aliases only; the normalized form has one authoritative
+  // input and sample count for each split.
+  const legacyInput = normalizeInput(source.input ?? source.distribution);
+  const legacySamples = source.sampling?.samples ?? source.samples ?? 40;
+  const trainSource = source.train ?? {};
+  const testSource = source.test ?? {};
+  const train = normalizeSplit(
+    trainSource,
+    trainSource.input ?? legacyInput,
+    'train',
+  );
+  const test = normalizeSplit(
+    testSource,
+    testSource.input ?? legacyInput,
+    'test',
+  );
+  if (train.samples === 0 && test.samples === 0) train.samples = boundedSamples(legacySamples, 'train.samples');
+  else if (train.samples === 0 && source.train === undefined) train.samples = boundedSamples(legacySamples, 'train.samples');
   if (train.samples < 0 || train.samples > MAX_GENERATOR_SAMPLES || test.samples < 0 || test.samples > MAX_GENERATOR_SAMPLES) {
     throw generatorError('EXPLORATION_RESOURCE_LIMIT', { field: 'split.samples', max: MAX_GENERATOR_SAMPLES });
   }
-  if (train.samples === 0 && test.samples === 0) train.samples = samples;
   const total = train.samples + test.samples;
   if (total < MIN_GENERATOR_SAMPLES || total > MAX_GENERATOR_SAMPLES) {
     throw generatorError('EXPLORATION_RESOURCE_LIMIT', { field: 'sampling.total', min: MIN_GENERATOR_SAMPLES, max: MAX_GENERATOR_SAMPLES, value: total });
@@ -97,10 +111,8 @@ export function normalizeGeneratorSpec(spec = {}) {
   }
   return {
     version: GENERATOR_VERSION,
-    input,
     relation: { type: 'linear', slope, bias },
     noise: { type: 'gaussian-additive', amount: noiseAmount },
-    sampling: { samples },
     train: { input: train.input, samples: train.samples },
     test: { input: test.input, samples: test.samples },
     outliers: { type: 'count', count: outlierCount },
@@ -177,7 +189,6 @@ export function generatorInputLabel(input) {
 export function generatorSemanticDetails(spec) {
   const value = normalizeGeneratorSpec(spec);
   return {
-    input: generatorInputLabel(value.input),
     trainInput: generatorInputLabel(value.train.input),
     testInput: generatorInputLabel(value.test.input),
     relation: `y = ${value.relation.slope}x + ${value.relation.bias}`,

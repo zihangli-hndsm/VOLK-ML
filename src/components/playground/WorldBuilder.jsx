@@ -2,10 +2,9 @@ import { useMemo } from 'react';
 import { normalizeGeneratorSpec } from '../../core/exploration/generator.js';
 
 const DEFAULT_SPEC = normalizeGeneratorSpec({
-  input: { type: 'uniform', params: { min: -2, max: 2 } },
   relation: { slope: 2, bias: 1 },
   noise: { amount: 0.5 },
-  train: { samples: 40 },
+  train: { input: { type: 'uniform', params: { min: -2, max: 2 } }, samples: 40 },
   test: { samples: 0 },
   outliers: { count: 0 },
 });
@@ -15,29 +14,32 @@ function numberValue(value, fallback) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function fieldsForInput(input) {
+  return input.type === 'uniform'
+    ? [['min', input.params.min], ['max', input.params.max]]
+    : input.type === 'gaussian'
+      ? [['mean', input.params.mean], ['spread', input.params.spread]]
+      : [['centerA', input.params.centerA], ['centerB', input.params.centerB], ['spread', input.params.spread]];
+}
+
 export default function WorldBuilder({ snapshot, onDispatch, t }) {
   const world = snapshot.world;
   const activeSpec = world?.generator?.spec ?? DEFAULT_SPEC;
   const spec = useMemo(() => normalizeGeneratorSpec(activeSpec), [activeSpec]);
   const input = spec.train.input;
-  const seed = world?.randomness?.seed ?? snapshot.seed ?? 42;
+  const testInput = spec.test.input;
+  const seed = world?.generator?.seed ?? world?.randomness?.seed ?? snapshot.seed ?? 42;
   const dispatchTransaction = (operations, intent = 'world-generator') => onDispatch({
     type: 'APPLY_WORLD_TRANSACTION',
     transaction: { id: `world-builder-${crypto.randomUUID()}`, actor: 'human', intent, operations },
   });
   const setParameter = (path, value) => {
     const operations = [{ type: 'SET_GENERATOR_PARAMETER', path, value }];
-    if (path.startsWith('train.input.params.')) {
-      operations.unshift({ type: 'SET_GENERATOR_PARAMETER', path: path.replace('train.', ''), value });
-    }
     if (!world.generator) operations.unshift({ type: 'SET_WORLD_GENERATOR', spec });
     dispatchTransaction(operations, 'set-generator-parameter');
   };
   const setInputType = (value) => {
-    const operations = [
-      { type: 'SET_GENERATOR_PARAMETER', path: 'input.type', value },
-      { type: 'SET_GENERATOR_PARAMETER', path: 'train.input.type', value },
-    ];
+    const operations = [{ type: 'SET_GENERATOR_PARAMETER', path: 'train.input.type', value }];
     if (!world.generator) operations.unshift({ type: 'SET_WORLD_GENERATOR', spec });
     dispatchTransaction(operations, 'set-generator-input');
   };
@@ -47,14 +49,16 @@ export default function WorldBuilder({ snapshot, onDispatch, t }) {
       : [{ type: 'SET_WORLD_GENERATOR', spec }, { type: 'REGENERATE_WORLD', seed: Number(seed) }];
     dispatchTransaction(operations, 'regenerate-world');
   };
-  const inputFields = input.type === 'uniform'
-    ? [['min', input.params.min], ['max', input.params.max]]
-    : input.type === 'gaussian'
-      ? [['mean', input.params.mean], ['spread', input.params.spread]]
-      : [['centerA', input.params.centerA], ['centerB', input.params.centerB], ['spread', input.params.spread]];
-  const status = world?.mode === 'generated'
-    ? world.generator?.status === 'modified' ? t('playground.worldBuilder.modified') : t('playground.worldBuilder.generated')
-    : t('playground.worldBuilder.sample');
+  const inputFields = fieldsForInput(input);
+  const testInputFields = fieldsForInput(testInput);
+  const statusKey = world?.mode === 'generated'
+    ? world.generator?.status === 'modified' ? 'playground.worldBuilder.modified'
+      : world.generator?.status === 'dirty' ? 'playground.worldBuilder.dirty'
+        : 'playground.worldBuilder.generated'
+    : world?.generator && !world.generator.realization
+      ? 'playground.worldBuilder.configured'
+      : 'playground.worldBuilder.sample';
+  const status = t(statusKey);
   return <section className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3" aria-label={t('playground.worldBuilder.ariaLabel')}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>
@@ -62,7 +66,7 @@ export default function WorldBuilder({ snapshot, onDispatch, t }) {
         <p className="mt-1 text-xs text-slate-600">{t('playground.worldBuilder.instructions')}</p>
       </div>
       <div className="flex flex-wrap items-center gap-2 text-xs font-black">
-        <span className={`rounded-full px-2 py-1 ${world?.mode === 'generated' ? 'bg-indigo-700 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'}`}>{status}</span>
+        <span className={`rounded-full px-2 py-1 ${world?.mode === 'generated' && world.generator?.status === 'clean' ? 'bg-indigo-700 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'}`}>{status}</span>
         <span className="rounded-full bg-white px-2 py-1 text-slate-600 ring-1 ring-slate-200">{t('playground.worldBuilder.seedBadge', { seed })}</span>
         <span className="rounded-full bg-white px-2 py-1 text-slate-600 ring-1 ring-slate-200">{t('playground.worldBuilder.samplesBadge', { count: world?.observations?.length ?? 0 })}</span>
       </div>
@@ -89,15 +93,20 @@ export default function WorldBuilder({ snapshot, onDispatch, t }) {
       <label className="text-xs font-bold text-slate-700">{t('playground.worldBuilder.seed')}<input type="number" step="1" value={seed} onChange={(event) => onDispatch({ type: 'SET_GENERATOR_SEED', seed: Math.trunc(numberValue(event.target.value, seed)) })} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2" /></label>
       <div className="rounded-xl bg-white/80 p-2 ring-1 ring-indigo-100">
         <p className="text-xs font-bold text-slate-700">{t('playground.worldBuilder.testConfig')}</p>
-        <div className="mt-1 grid grid-cols-2 gap-2">
+        <div className="mt-1 grid gap-2">
           <label className="text-[11px] font-bold text-slate-500">{t('playground.worldBuilder.testInput')}<select value={spec.test.input.type} onChange={(event) => setParameter('test.input.type', event.target.value)} className="mt-1 w-full rounded-lg border p-1.5 text-sm text-slate-800"><option value="uniform">{t('playground.worldBuilder.uniform')}</option><option value="gaussian">{t('playground.worldBuilder.gaussian')}</option><option value="two-cluster">{t('playground.worldBuilder.twoCluster')}</option></select></label>
           <label className="text-[11px] font-bold text-slate-500">{t('playground.worldBuilder.testSamples')}<input type="number" min="0" max="500" value={spec.test.samples} onChange={(event) => setParameter('test.samples', Math.trunc(numberValue(event.target.value, spec.test.samples)))} className="mt-1 w-full rounded-lg border p-1.5 text-sm text-slate-800" /></label>
+          <div className="grid grid-cols-2 gap-2">
+            {testInputFields.map(([key, value]) => <label key={key} className="text-[11px] font-bold text-slate-500">{key}<input type="number" step="0.1" value={value} onChange={(event) => setParameter(`test.input.params.${key}`, numberValue(event.target.value, value))} className="mt-1 w-full rounded-lg border p-1.5 text-sm text-slate-800" /></label>)}
+          </div>
         </div>
       </div>
     </div>
     <div className="mt-3 flex flex-wrap gap-2">
       <button type="button" onClick={generate} className="rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white">{t('playground.worldBuilder.regenerate')}</button>
       {world?.mode === 'generated' && <button type="button" onClick={() => onDispatch({ type: 'FREEZE_AS_SAMPLES' })} className="rounded-xl bg-white px-4 py-2 text-xs font-black text-slate-700 ring-1 ring-indigo-200">{t('playground.worldBuilder.freeze')}</button>}
+      {world?.mode === 'generated' && world.generator?.status === 'dirty' && <span className="self-center text-xs font-bold text-amber-700">{t('playground.worldBuilder.dirtyHint')}</span>}
+      {world?.mode === 'sample' && world.generator && !world.generator.realization && <span className="self-center text-xs font-bold text-slate-600">{t('playground.worldBuilder.configuredHint')}</span>}
     </div>
   </section>;
 }

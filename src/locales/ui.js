@@ -7,6 +7,11 @@ export const languages = [
 // Keep dataset column names, port identifiers, model types, and user file names
 // untranslated because they are project data rather than interface copy.
 export const messages = {
+  'playground.experiment.generator.trainInputDistribution': { en: 'Train input distribution', zh: '训练输入分布' },
+  'playground.worldBuilder.configured': { en: 'Generator configured — generate to create samples', zh: '生成器已配置——点击生成以创建样本' },
+  'playground.worldBuilder.dirty': { en: 'Generator changed — regenerate to apply', zh: '生成器已更改——重新生成后生效' },
+  'playground.worldBuilder.configuredHint': { en: 'Generator configured; current points are still Sample World observations.', zh: '生成器已配置；当前点仍是 Sample World 观测。' },
+  'playground.worldBuilder.dirtyHint': { en: 'Generator changed; regenerate to apply it to the displayed points.', zh: '生成器已更改；重新生成后才会应用到当前点。' },
   'app.tagline': { en: 'Visual bridges for PyTorch & TensorFlow', zh: '连接 PyTorch 与 TensorFlow 的可视化桥梁' },
   'nav.blocks': { en: 'Blocks', zh: '组件' },
   'nav.playground': { en: 'Playground', zh: '实验台' },

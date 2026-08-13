@@ -71,6 +71,28 @@ function normalizeObservation(input, index, defaultProvenance) {
   return observation;
 }
 
+function normalizeGeneratorState(generator, { mode, seed }) {
+  if (!generator || typeof generator !== 'object' || Array.isArray(generator) || !generator.spec) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator' });
+  }
+  const spec = cloneGeneratorSpec(generator.spec);
+  const desiredSeed = generator.seed ?? generator.lastSeed ?? seed ?? null;
+  const legacyRealization = mode === 'generated' && !generator.realization && generator.status === 'clean'
+    ? { spec, seed: generator.lastSeed ?? seed ?? null }
+    : null;
+  const realization = generator.realization ?? legacyRealization;
+  return {
+    version: generator.version ?? GENERATOR_VERSION,
+    active: Boolean(generator.active ?? mode === 'generated'),
+    status: ['clean', 'dirty', 'modified'].includes(generator.status) ? generator.status : 'dirty',
+    spec,
+    seed: desiredSeed,
+    realization: realization
+      ? { spec: cloneGeneratorSpec(realization.spec), seed: realization.seed ?? null }
+      : null,
+  };
+}
+
 export function createWorld({
   id = 'world-1',
   name = 'Untitled sample world',
@@ -102,13 +124,7 @@ export function createWorld({
   if (!['sample', 'generated'].includes(mode)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'mode', value: mode });
   }
-  const normalizedGenerator = generator ? {
-    version: generator.version ?? GENERATOR_VERSION,
-    active: generator.active ?? mode === 'generated',
-    status: generator.status ?? 'clean',
-    spec: cloneGeneratorSpec(generator.spec),
-    lastSeed: generator.lastSeed ?? seed ?? null,
-  } : null;
+  const normalizedGenerator = generator ? normalizeGeneratorState(generator, { mode, seed }) : null;
   if (mode === 'generated' && !normalizedGenerator) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator' });
   }
@@ -149,18 +165,12 @@ export function validateWorld(world) {
   if (!['sample', 'generated'].includes(mode)) throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'mode', value: mode });
   let generator = null;
   if (world.generator) {
-    if (typeof world.generator !== 'object' || Array.isArray(world.generator) || !world.generator.spec) {
-      throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator' });
-    }
-    generator = {
-      version: world.generator.version ?? GENERATOR_VERSION,
-      active: Boolean(world.generator.active ?? mode === 'generated'),
-      status: ['clean', 'dirty', 'modified'].includes(world.generator.status) ? world.generator.status : 'modified',
-      spec: cloneGeneratorSpec(world.generator.spec),
-      lastSeed: world.generator.lastSeed ?? world.randomness?.seed ?? null,
-    };
+    generator = normalizeGeneratorState(world.generator, {
+      mode,
+      seed: world.randomness?.seed ?? null,
+    });
   }
-  if (mode === 'generated' && (!generator || !generator.active)) {
+  if (mode === 'generated' && (!generator || !generator.active || !generator.realization)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator.active' });
   }
   const defaultProvenance = world.observations[0]?.provenance ?? 'manual';

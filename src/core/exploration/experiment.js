@@ -30,6 +30,7 @@ export function createExperiment({
   mutations = [],
 } = {}) {
   const validatedWorld = validateWorld(world);
+  const effectiveSeed = validatedWorld.randomness?.seed ?? seed ?? null;
   if (adapterId !== null && adapterId !== undefined && (typeof adapterId !== 'string' || !adapterId)) {
     throw explorationError('EXPLORATION_INVALID_EXPERIMENT', { field: 'adapterId' });
   }
@@ -40,7 +41,7 @@ export function createExperiment({
     model: { adapterId: adapterId ?? null, ...configuration(model) },
     learning: configuration(learning),
     evaluation: configuration(evaluation),
-    randomness: { seed: seed ?? null, policy: seed === null || seed === undefined ? 'unspecified' : 'fixed-seed' },
+    randomness: { seed: effectiveSeed, policy: effectiveSeed === null || effectiveSeed === undefined ? 'unspecified' : 'fixed-seed' },
     result: result === null ? null : clone(result),
     traces: clone(traces),
     lineage: {
@@ -66,6 +67,10 @@ export function validateExperiment(experiment) {
   }
   if (!experiment.randomness || !('seed' in experiment.randomness)) {
     throw explorationError('EXPLORATION_INVALID_EXPERIMENT', { field: 'randomness' });
+  }
+  const worldSeed = experiment.world.randomness?.seed;
+  if (worldSeed !== null && worldSeed !== undefined && experiment.randomness.seed !== worldSeed) {
+    throw explorationError('EXPLORATION_INVALID_EXPERIMENT', { field: 'randomness.seed', reason: 'must agree with World seed' });
   }
   return clone(experiment);
 }

@@ -15,7 +15,7 @@ function mutation(type, details = {}) {
 
 function worldWithObservations(world, observations, details) {
   const modifiedPointIds = new Set((details.modifiedPointIds ?? []).map(String));
-  const nextObservations = observations.map((point) => world.mode === 'generated' && modifiedPointIds.has(point.id)
+  const nextObservations = observations.map((point) => modifiedPointIds.has(point.id) && point.generation
     ? { ...point, provenance: 'manual' }
     : point);
   const generator = world.generator
@@ -39,39 +39,78 @@ function worldWithObservations(world, observations, details) {
 
 function setWorldGenerator(world, spec, seed = world.randomness?.seed ?? null) {
   const normalized = normalizeGeneratorSpec(spec);
+  const existing = world.generator;
+  const hasRealization = Boolean(existing?.realization);
+  const active = world.mode === 'generated' && Boolean(existing?.active && hasRealization);
   return {
     world: createWorld({
       ...world,
-      mode: 'generated',
+      // Configuring a generator on a Sample World creates a draft. Existing
+      // observations remain samples until REGENERATE_WORLD is dispatched.
+      mode: active ? 'generated' : 'sample',
       seed,
       generator: {
         version: normalized.version,
-        active: true,
-        status: 'dirty',
+        active,
+        status: existing?.status === 'modified' ? 'modified' : 'dirty',
         spec: normalized,
-        lastSeed: seed,
+        seed,
+        realization: existing?.realization
+          ? {
+            spec: cloneGeneratorSpec(existing.realization.spec),
+            seed: existing.realization.seed ?? null,
+          }
+          : null,
       },
     }),
     mutation: mutation('world.setGenerator', { type: 'world.setGenerator', seed }),
   };
 }
 
+const GENERATOR_PARAMETER_ALIASES = {
+  'input.type': 'train.input.type',
+  'input.params.min': 'train.input.params.min',
+  'input.params.max': 'train.input.params.max',
+  'input.params.mean': 'train.input.params.mean',
+  'input.params.spread': 'train.input.params.spread',
+  'input.params.centerA': 'train.input.params.centerA',
+  'input.params.centerB': 'train.input.params.centerB',
+  'sampling.samples': 'train.samples',
+};
+
+const GENERATOR_PARAMETER_PATHS = new Set([
+  'train.input.type', 'train.input.params.min', 'train.input.params.max', 'train.input.params.mean',
+  'train.input.params.spread', 'train.input.params.centerA', 'train.input.params.centerB', 'train.samples',
+  'test.input.type', 'test.input.params.min', 'test.input.params.max', 'test.input.params.mean',
+  'test.input.params.spread', 'test.input.params.centerA', 'test.input.params.centerB', 'test.samples',
+  'relation.slope', 'relation.bias', 'noise.amount', 'outliers.count',
+]);
+
+function canonicalGeneratorParameterPath(path) {
+  const canonicalPath = GENERATOR_PARAMETER_ALIASES[path] ?? path;
+  if (!GENERATOR_PARAMETER_PATHS.has(canonicalPath)) {
+    throw explorationError('EXPLORATION_INVALID_GENERATOR', { field: 'path', value: path });
+  }
+  return canonicalPath;
+}
+
 function setGeneratorParameter(world, path, value) {
-  const allowed = new Set([
-    'input.type', 'input.params.min', 'input.params.max', 'input.params.mean', 'input.params.spread',
-    'input.params.centerA', 'input.params.centerB', 'relation.slope', 'relation.bias',
-    'noise.amount', 'sampling.samples', 'outliers.count',
-    'train.input.type', 'train.input.params.min', 'train.input.params.max', 'train.input.params.mean',
-    'train.input.params.spread', 'train.input.params.centerA', 'train.input.params.centerB', 'train.samples',
-    'test.input.type', 'test.input.params.min', 'test.input.params.max', 'test.input.params.mean',
-    'test.input.params.spread', 'test.input.params.centerA', 'test.input.params.centerB', 'test.samples',
-  ]);
-  if (!allowed.has(path)) throw explorationError('EXPLORATION_INVALID_GENERATOR', { field: 'path', value: path });
+  const canonicalPath = canonicalGeneratorParameterPath(path);
+  return setGeneratorParameterValues(world, [{ path: canonicalPath, value }]);
+}
+
+function setGeneratorParameterValues(world, parameters) {
   const spec = cloneGeneratorSpec(world.generator?.spec ?? {});
-  const segments = path.split('.');
-  let cursor = spec;
-  for (const segment of segments.slice(0, -1)) cursor = cursor[segment];
-  cursor[segments.at(-1)] = value;
+  for (const { path, value } of parameters) {
+    const canonicalPath = canonicalGeneratorParameterPath(path);
+    const segments = canonicalPath.split('.');
+    let cursor = spec;
+    for (const segment of segments.slice(0, -1)) cursor = cursor[segment];
+    cursor[segments.at(-1)] = value;
+  }
+  // Normalize once for a parameter batch so a learner/Agent can update both
+  // ends of a range in one transaction (e.g. min=3, max=5) without exposing
+  // an invalid intermediate specification.
   return setWorldGenerator(world, spec, world.randomness?.seed ?? null);
 }
 
@@ -83,7 +122,8 @@ function setGeneratorSeed(world, seed) {
 
 function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
   if (!world.generator?.spec) throw explorationError('EXPLORATION_INVALID_GENERATOR', { reason: 'World has no generator specification' });
-  const generated = generateObservations(world.generator.spec, seed, { worldId: world.id });
+  const effectiveSeed = seed ?? world.generator.seed ?? world.randomness?.seed ?? null;
+  const generated = generateObservations(world.generator.spec, effectiveSeed, { worldId: world.id });
   return {
     world: createWorld({
       ...world,
@@ -95,7 +135,8 @@ function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
         active: true,
         status: 'clean',
         spec: generated.spec,
-        lastSeed: generated.seed,
+        seed: generated.seed,
+        realization: { spec: generated.spec, seed: generated.seed },
       },
     }),
     mutation: mutation('world.regenerate', { type: 'world.regenerate', seed: generated.seed, count: generated.observations.length }),
@@ -496,7 +537,26 @@ export function applyWorldTransaction(world, transaction) {
   const forward = [];
   const inverse = [];
   const mutations = [];
-  for (const requestedOperation of requested) {
+  for (let operationIndex = 0; operationIndex < requested.length;) {
+    const requestedOperation = requested[operationIndex];
+    if (requestedOperation?.type === 'SET_GENERATOR_PARAMETER') {
+      const parameters = [];
+      while (requested[operationIndex]?.type === 'SET_GENERATOR_PARAMETER') {
+        const prepared = prepareOperation(next, requested[operationIndex], id);
+        parameters.push({
+          path: prepared.path,
+          value: prepared.value,
+        });
+        operationIndex += 1;
+      }
+      const undo = inverseFor(next, { type: 'SET_GENERATOR_PARAMETER' });
+      const result = setGeneratorParameterValues(next, parameters);
+      next = result.world;
+      forward.push(...parameters.map(({ path, value }) => ({ type: 'SET_GENERATOR_PARAMETER', path, value })));
+      inverse.unshift(...(Array.isArray(undo) ? undo : [undo]));
+      mutations.push(result.mutation);
+      continue;
+    }
     const operation = prepareOperation(next, requestedOperation, id);
     const undo = inverseFor(next, operation);
     const result = applyWorldOperation(next, operation);
@@ -504,6 +564,7 @@ export function applyWorldTransaction(world, transaction) {
     forward.push(operation);
     inverse.unshift(...(Array.isArray(undo) ? undo : [undo]));
     mutations.push(result.mutation);
+    operationIndex += 1;
   }
   const record = {
     id,
@@ -596,7 +657,10 @@ export function synchronizeExperiment(experiment, {
     : runtimeSource
       ? worldFromPlaygroundSource(runtimeSource, { id: current.world.id, seed })
       : current.world;
-  const effectiveSeed = seed ?? world.randomness?.seed ?? null;
+  // The active World's seed is the authority. The explicit argument is only
+  // an initialization fallback for legacy/sample sources without a World
+  // seed; it must never overwrite a generator operation's resulting seed.
+  const effectiveSeed = world.randomness?.seed ?? seed ?? null;
   const sections = partitionControls(controls, controlDescriptors);
   const nextMutation = runtimeMutation(action, controlDescriptors);
   return validateExperiment({

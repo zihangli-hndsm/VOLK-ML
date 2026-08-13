@@ -174,6 +174,54 @@ clarity factor. The Data Lab World Builder exposes the same distinction with
 Generated World / Sample World / Modified after generation badges, while the
 existing direct drawing, move, erase, precise edit, membership, and World
 Undo/Redo tools remain available.
+
+The normalized generator schema is canonical and split-oriented:
+
+```js
+{
+  version,
+  relation: { type: 'linear', slope, bias },
+  noise: { type: 'gaussian-additive', amount },
+  train: { input: { type, params }, samples },
+  test: { input: { type, params }, samples },
+  outliers: { type: 'count', count },
+}
+```
+
+Legacy top-level `input` and `sampling.samples` fields are accepted only as
+normalization aliases. They are not returned as independent mutable values.
+The generator state separates the desired specification from the realization
+currently shown on screen:
+
+```js
+generator: {
+  active,
+  status: 'clean' | 'dirty' | 'modified',
+  spec,       // desired next realization
+  seed,       // desired/current World seed
+  realization: { spec, seed } | null,
+}
+```
+
+`REGENERATE_WORLD` is the only operation that updates `realization` and makes
+the generated World clean. Parameter or seed edits preserve the observations
+and old realization while marking the generator dirty. Manual point edits
+preserve each point's generation metadata and mark the point `manual`; this
+represents “generated, then manually changed” without erasing provenance.
+`FREEZE_AS_SAMPLES` keeps the observations and historical realization for
+inspection but disables generator authority and returns `world.mode` to
+`sample`. Configuring a Sample World creates a generator draft; it never
+claims that existing samples were produced by that draft.
+
+The World seed is the single authority for an active realization. Runtime
+session seed, `world.randomness.seed`, `experiment.randomness.seed`, desired
+generator seed, and (after regeneration) realization seed agree. A dirty seed
+edit intentionally keeps the old realization seed until regeneration. The
+same generator operations are exposed through `inspectContext()` and used by
+the World Builder UI and Agent, including separate train/test distribution
+parameters. Comparison keeps World as one Phase 2 factor while exposing
+nested train input, test input, relation, noise, counts, outliers, and seed
+details; shared A/B bounds remain a union frame rather than per-World auto-fit.
 - The validator rejects `show`/`hide`/`highlight` targets that are not declared primitives (`SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE`) and requires exactly one annotation primitive for `annotate` steps (`SCRIPT_ANNOTATION_TARGET_MISSING` / `SCRIPT_ANNOTATION_TARGET_AMBIGUOUS`).
 - KNN teaching/fallback `$data` rows include the `label` target column and the schema declares it, so `$data.targetColumn` always exists in `$data.rows`.
 - Script contract errors are centralized in `visualization/scriptErrors.js` (`SCRIPT_ERROR_CODES`) and pass through the Canvas Agent with their stable codes instead of `OPERATION_FAILED`.

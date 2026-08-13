@@ -30,14 +30,16 @@ const generatorSemantic = (world) => {
   const spec = world.generator?.spec;
   if (!spec) return null;
   return {
-    input: spec.input,
     trainInput: spec.train?.input,
     testInput: spec.test?.input,
     relation: spec.relation,
     noise: spec.noise,
     samples: { train: spec.train?.samples ?? 0, test: spec.test?.samples ?? 0 },
     outliers: spec.outliers,
-    seedPolicy: world.randomness?.policy ?? 'unspecified',
+    seedPolicy: {
+      policy: world.randomness?.policy ?? 'unspecified',
+      seed: world.randomness?.seed ?? null,
+    },
   };
 };
 
@@ -46,7 +48,7 @@ function worldGeneratorDetails(left, right) {
   const b = generatorSemantic(right);
   if (!a && !b) return { changed: [], left: null, right: null };
   const fields = [
-    ['inputDistribution', a?.trainInput, b?.trainInput],
+    ['trainInputDistribution', a?.trainInput, b?.trainInput],
     ['testInputDistribution', a?.testInput, b?.testInput],
     ['linearRelation', a?.relation, b?.relation],
     ['noise', a?.noise, b?.noise],

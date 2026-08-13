@@ -250,7 +250,7 @@ function applyModelAction(session, action) {
       controls: merged.controls,
       controlDescriptors: modelControlsFor(session),
       adapterId: session.adapterId,
-      seed: session.seed,
+      seed: session.experiment.world.randomness?.seed ?? session.seed,
       action,
       traces: recorder.list(),
       result: resultForSession(merged),
@@ -478,19 +478,25 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
     : { modelState: null, timeline: { step: 0, totalSteps: 0 } };
   const merged = mergePatches(session, patch);
   const dataState = buildDataState({ source: sourceData, workspaceDataset: null });
+  const effectiveSeed = transactionResult.world.randomness?.seed ?? session.seed ?? null;
+  const worldMutationChangesObservations = JSON.stringify(transactionResult.world.observations)
+    !== JSON.stringify(session.experiment.world.observations);
   const synced = synchronizeExperiment(session.experiment, {
     world: transactionResult.world,
     source: sourceData,
     controls: merged.controls,
     controlDescriptors: modelControlsFor(session),
     adapterId: session.adapterId,
-    seed: session.seed,
+    seed: effectiveSeed,
     traces: recorder.list(),
-    result: resultForSession(merged),
+    // A World mutation invalidates the previous model evidence. The model
+    // state is retained for inspection/reset, but no old result is presented
+    // as evidence for the new observation set.
+    result: worldMutationChangesObservations ? null : resultForSession(merged),
   });
   return {
     ...merged,
-    seed: transactionResult.world.randomness?.seed ?? session.seed,
+    seed: effectiveSeed,
     sourceData,
     dataState,
     experiment: {
@@ -1147,6 +1153,7 @@ export function deriveRuntimeSnapshot(session) {
       }))
       : [],
     status: session.status,
+    seed: session.seed ?? session.experiment?.randomness?.seed ?? null,
     source: jsonSafe(session.source),
     controls: jsonSafe(session.controls),
     timeline: jsonSafe(session.timeline),

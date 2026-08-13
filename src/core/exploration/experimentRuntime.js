@@ -233,6 +233,7 @@ function comparisonBoundsFor(leftState, rightState) {
 export function resetActiveExperiment(session) {
   const prepared = syncActiveExperiment(session);
   const baseline = prepared.baseline ?? {};
+  const baselineSeed = baseline.seed ?? baseline.experiment?.randomness?.seed ?? prepared.seed ?? null;
   return {
     ...prepared,
     sourceData: clone(baseline.source ?? prepared.sourceData),
@@ -246,6 +247,7 @@ export function resetActiveExperiment(session) {
     viewState: clone(baseline.viewState ?? prepared.viewState),
     timeline: { step: 0, totalSteps: 0, speed: prepared.timeline.speed ?? 1 },
     traces: clone(baseline.traces ?? []),
+    seed: baselineSeed,
     visualState: {},
     status: 'paused',
     experimentUndo: [],
