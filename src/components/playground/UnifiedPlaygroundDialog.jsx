@@ -8,6 +8,7 @@ import PlaygroundAgentPanel from './PlaygroundAgentPanel.jsx';
 import DataWorkspace from './DataWorkspace.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import PresentationMode from './PresentationMode.jsx';
+import ExperimentBar from './ExperimentBar.jsx';
 import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model' }) {
@@ -98,6 +99,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     <section className="max-h-[94vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
       <div className="space-y-4">
         <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} />
+        <ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} />
         <div role="tablist" aria-label={t('playground.lab.tabs')} className="flex gap-2 border-b border-slate-200 pb-2">
           {['data', 'model'].map((tab) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => setActiveTab(tab)} className={`rounded-xl px-4 py-2 text-sm font-black ${activeTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{t(`playground.lab.${tab}`)}</button>)}
         </div>

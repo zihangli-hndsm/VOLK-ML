@@ -4,6 +4,7 @@
 import { validateExperiment } from './experiment.js';
 
 const FACTORS = ['world', 'trainTest', 'model', 'learning', 'evaluation', 'randomness'];
+const DERIVED_MODEL_CONTROLS = new Set(['weight', 'bias']);
 
 const stable = (value) => {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
@@ -23,14 +24,19 @@ const worldSemantic = (world) => ({
   metadata: world.metadata,
 });
 
-const trainTestSemantic = (world) => world.observations.map(({ id, membership }) => ({ id, membership }));
+const trainTestSemantic = (world, sharedIds = null) => world.observations
+  .filter(({ id }) => !sharedIds || sharedIds.has(id))
+  .map(({ id, membership }) => ({ id, membership: membership === 'test' ? 'test' : 'train' }));
 
-export function semanticFactors(experiment) {
+export function semanticFactors(experiment, { sharedObservationIds = null } = {}) {
   const value = validateExperiment(experiment);
+  const modelControls = Object.fromEntries(
+    Object.entries(value.model?.controls ?? {}).filter(([key]) => !DERIVED_MODEL_CONTROLS.has(key)),
+  );
   return {
     world: worldSemantic(value.world),
-    trainTest: trainTestSemantic(value.world),
-    model: value.model,
+    trainTest: trainTestSemantic(value.world, sharedObservationIds),
+    model: { adapterId: value.model.adapterId, controls: modelControls },
     learning: value.learning,
     evaluation: value.evaluation,
     randomness: value.randomness,
@@ -38,8 +44,13 @@ export function semanticFactors(experiment) {
 }
 
 export function compareExperiments(left, right) {
-  const a = semanticFactors(left);
-  const b = semanticFactors(right);
+  const leftValue = validateExperiment(left);
+  const rightValue = validateExperiment(right);
+  const leftIds = new Set(leftValue.world.observations.map(({ id }) => id));
+  const rightIds = new Set(rightValue.world.observations.map(({ id }) => id));
+  const sharedObservationIds = new Set([...leftIds].filter((id) => rightIds.has(id)));
+  const a = semanticFactors(leftValue, { sharedObservationIds });
+  const b = semanticFactors(rightValue, { sharedObservationIds });
   const factors = Object.fromEntries(FACTORS.map((factor) => [factor, {
     changed: stable(a[factor]) !== stable(b[factor]),
     left: a[factor],

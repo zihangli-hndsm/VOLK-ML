@@ -92,6 +92,50 @@ Since the PR B follow-up, **Visualization Scripts own visualization composition*
 - The UI uses one scheduler decision for both modes: a playing Visualization Script dispatches `SCRIPT_STEP`; when no script is actively playing, model `PLAY` dispatches finite `STEP` actions until the model timeline completes. Operation metadata (`playback.revealCountControl`) maps sparse teaching reveals onto sampled model progress, so a three-step linear-regression explanation can expose the full declared training trajectory without conflating the script and model timelines.
 - Timeline patches use a defined-value merge: `undefined` means the adapter did not supply that field and the previous value is preserved; an explicit value replaces it. This keeps playback speed valid when `START_TRAINING` returns only `step` and `totalSteps`.
 - The browser scheduler cancels its timer generation before rescheduling, catches rejected dispatches, pauses automatic playback, and renders a localized failure with the action, script step, operation and reason. It does not retry a failed action; the last valid semantic snapshot remains authoritative.
+
+### Phase 2 Experiment Bar and controlled comparison
+
+The runtime keeps one active semantic Experiment and a bounded workspace of
+JSON-safe experiment records. Each record has an identity, learner-facing
+name, parent/baseline lineage, the existing Experiment semantic bundle, and the
+small runtime state needed to restore the World, controls, model result,
+timeline, traces, and existing Undo boundary. `DUPLICATE_EXPERIMENT` deep
+clones the exact current runtime record and gives it a new identity; its World,
+source, model/data state, Experiment baseline, and script baseline are all
+captured from that same duplication-time state. Later actions continue to
+dispatch through the same unified runtime, so World and model mutations affect
+only the active record. `SWITCH_EXPERIMENT` restores the full record while
+leaving presentation-only state such as hover, temporary selection, dialog
+visibility, and browser viewport outside the Experiment contract.
+
+`SET_COMPARE` exposes one active record and one comparison target. The semantic
+diff uses World/Dataset, train-test relationship, model configuration, learning
+configuration, evaluation configuration, and randomness policy. Learned Linear
+Regression weight/bias are result fields, not model factors. Comparison Clarity
+is `identical` for zero changed factors, `high` for one, and `mixed` for more
+than one. Result rows are shown only when both records have truthful runtime
+metrics/results. Duplicate experiments retain the current deterministic seed;
+the UI reports that relationship as Matched or Unspecified. `REPEAT_EXPERIMENT`
+is the bounded manual repeat entry point: it reruns the current World/model
+under the existing seed policy without creating a new trial system.
+Switching between A/B roles also swaps the comparison target, so the runtime
+never exposes a self-comparison. When Compare is enabled for compatible 2D
+Worlds, Data Lab uses a union of both projected bounds as a shared view frame;
+the frame is comparison/view state and never part of the semantic Experiment
+diff. The Experiment Bar's Undo setting change is intentionally distinct from
+Data Lab World Undo.
+
+Experiment lineage has one canonical source: `experiment.lineage`. Workspace
+and Agent summaries derive `parentExperimentId` and `baselineExperimentId`
+from that semantic lineage, so a branch such as A -> B -> C remains consistent
+across all inspection surfaces.
+
+The Agent's `inspectContext()` exposes the same `experimentWorkspace` summary
+used by the human Experiment Bar, including identities, ancestry, active
+comparison, semantic diff, clarity, result availability, and Repeat seed
+policy. Experiment snapshots are runtime-only; they are intentionally not
+inserted into project JSON in Phase 2, so existing project persistence and
+version migrations remain unchanged.
 - The validator rejects `show`/`hide`/`highlight` targets that are not declared primitives (`SCRIPT_UNKNOWN_PRIMITIVE_REFERENCE`) and requires exactly one annotation primitive for `annotate` steps (`SCRIPT_ANNOTATION_TARGET_MISSING` / `SCRIPT_ANNOTATION_TARGET_AMBIGUOUS`).
 - KNN teaching/fallback `$data` rows include the `label` target column and the schema declares it, so `$data.targetColumn` always exists in `$data.rows`.
 - Script contract errors are centralized in `visualization/scriptErrors.js` (`SCRIPT_ERROR_CODES`) and pass through the Canvas Agent with their stable codes instead of `OPERATION_FAILED`.

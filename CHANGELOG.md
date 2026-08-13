@@ -446,3 +446,17 @@
 - Captured the attached model's initialized controls and semantic state as the explanation script baseline, so Restart explanation preserves learning-rate/training-step controls and can recover cleanly.
 - Added regression coverage for attached-model script training/reveal progress and documented the split between Data Lab World-action validation and attached-model action validation.
 - Validation: focused playback regression, core/exploration/render checks, `node scripts/generate-examples.mjs --check`, browser acceptance, `npm.cmd run build`, and `git diff --check` passed. The build retains the existing large-chunk warning.
+
+## 2026-08-13 - Phase 2 Experiment Bar acceptance fixes
+
+- Duplicate now captures one coherent current runtime state for the branch's World, source, model/data state, Experiment baseline, and script baseline.
+- A/B switching normalizes comparison roles to prevent self-comparison, and compatible 2D Worlds share a union comparison view frame without changing semantic Experiment state.
+- Workspace and Agent lineage summaries now derive from canonical `experiment.lineage`; the Experiment Bar labels its control undo separately from Data Lab World Undo and exposes Reset experiment.
+- Added reset/restart, result freshness, role switching, self-comparison, shared-bounds, lineage, Agent parity, and KNN regression coverage. Validation: full `npm.cmd run check`, `npm.cmd run build`, `git diff --check`, and clean-tab browser acceptance passed.
+
+## 2026-08-13 - Phase 2 experiment bar and A/B comparison
+
+- Added runtime-backed Experiment Bar controls for duplicate, switch, repeat, reset, and grouped experiment undo, with stable lineage and baseline identity.
+- Added semantic A/B comparison for World, train/test assignment, model, learning, evaluation, and randomness factors; learned Linear Regression weight/bias are treated as results rather than configuration.
+- Added comparison clarity and result-difference summaries, Agent operation parity, Linear Regression coverage, KNN compatibility checks, and runtime-only experiment workspace documentation.
+- Validation: full `npm.cmd run check`, focused experiment runtime checks, browser A/B/undo acceptance, `npm.cmd run build`, and `git diff --check` passed.
