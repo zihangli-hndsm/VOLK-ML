@@ -439,3 +439,10 @@
 - Renamed the ambiguous timeline reset to `Restart explanation`; visualization restart, script seek, and playback reset preserve current World observations and history, while `RESTORE_ORIGINAL_DATA` remains the explicit destructive action.
 - Added train/test-distinguished distribution rendering, localized Data Lab/model-empty/restart copy, semantic regression coverage, model-attachment coverage, and browser acceptance for model-optional entry and attachment.
 - Validation: `node scripts/check-core.mjs`, `node scripts/check-exploration.mjs`, `node scripts/check-playground-render.mjs`, `node scripts/generate-examples.mjs --check`, `npm run build`, and `git diff --check` passed. The build retains the existing large-chunk warning.
+
+## 2026-08-13 - Data Lab attached-model playback recovery
+
+- Fixed Data Lab model attachment playback so model-specific script actions, including `traceFit`/`START_TRAINING`, are validated against the attached model descriptor instead of the outer Data Lab descriptor.
+- Captured the attached model's initialized controls and semantic state as the explanation script baseline, so Restart explanation preserves learning-rate/training-step controls and can recover cleanly.
+- Added regression coverage for attached-model script training/reveal progress and documented the split between Data Lab World-action validation and attached-model action validation.
+- Validation: focused playback regression, core/exploration/render checks, `node scripts/generate-examples.mjs --check`, browser acceptance, `npm.cmd run build`, and `git diff --check` passed. The build retains the existing large-chunk warning.

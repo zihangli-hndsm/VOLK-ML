@@ -47,7 +47,10 @@ opens from the current workspace dataset (or the registered teaching sample),
 supports Point, Brush, Spray, Select/Move, Erase, Train/Test authoring, precise
 coordinate entry, Fit view, and visible Undo/Redo, then offers compatible model
 descriptors from the registry. Model attachment keeps the same World and only
-adds model controls, semantic state, and visualization playback.
+adds model controls, semantic state, and visualization playback. The Data Lab
+remains the outer session after attachment: World actions are validated against
+the Data Lab descriptor, while model-specific actions emitted by the attached
+model's script are validated against that model's descriptor.
 
 Projection semantics are centralized in
 `src/core/exploration/projection.js`. Scatter, distribution, hit testing,

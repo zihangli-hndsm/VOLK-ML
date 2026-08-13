@@ -341,6 +341,7 @@ function attachModelSession(session, modelPlaygroundId) {
     traces: recorder.list(),
   });
   const preset = getPreset(adapter.defaultVisualizationPreset);
+  const dataState = buildDataState({ source, workspaceDataset: null });
   return {
     ...session,
     modelPlaygroundId,
@@ -349,11 +350,22 @@ function attachModelSession(session, modelPlaygroundId) {
     source: { ...session.source, name: source.name, fingerprint: source.fingerprint, stale: false },
     controls: initialized.controls,
     modelState: initialized.modelState,
-    dataState: buildDataState({ source, workspaceDataset: null }),
+    dataState,
     experiment,
     script: preset ? structuredClone(preset) : null,
     scriptState: preset ? { status: 'ready', step: 0, totalSteps: preset.steps.length } : { status: 'idle', step: 0, totalSteps: 0 },
-    scriptBaseline: null,
+    scriptBaseline: preset ? {
+      controls: structuredClone(initialized.controls),
+      modelState: structuredClone(initialized.modelState),
+      dataState: structuredClone(dataState),
+      experiment: structuredClone(experiment),
+      source: structuredClone(source),
+      seed: session.seed,
+      traces: structuredClone(recorder.list()),
+      worldHistory: structuredClone(session.worldHistory),
+      worldActionCounter: session.worldActionCounter,
+      viewState: structuredClone(session.viewState),
+    } : null,
     timeline: { step: 0, totalSteps: initialized.totalSteps ?? 0, speed: session.timeline.speed ?? 1 },
     traces: recorder.list(),
     visualState: {},
@@ -704,10 +716,17 @@ export function dispatchRuntimeAction(session, action) {
   validateActionShape(action);
   const playground = getPlayground(session.playgroundId);
   if (!playground) throw playgroundError('PLAYGROUND_NOT_FOUND', { playgroundId: session.playgroundId });
+  // A Data Lab session remains the outer shell after a model is attached, but
+  // model-specific actions belong to the attached model descriptor. Keeping
+  // the two identities separate lets World actions stay Data Lab-scoped while
+  // script invocations such as START_TRAINING pass the model action contract.
+  const actionPlayground = session.modelPlaygroundId
+    ? getPlayground(session.modelPlaygroundId) ?? playground
+    : playground;
   if (!GENERIC_ACTIONS.includes(action.type)
     && !isPublicWorldOperation(action.type)
-    && !playground.actions.includes(action.type)) {
-    throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, playgroundId: playground.id });
+    && !actionPlayground.actions.includes(action.type)) {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, playgroundId: actionPlayground.id });
   }
 
   if (action.type === 'RESET') {
