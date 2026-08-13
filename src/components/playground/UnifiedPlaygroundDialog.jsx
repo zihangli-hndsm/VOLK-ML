@@ -13,6 +13,7 @@ import ExperimentBar from './ExperimentBar.jsx';
 import ExplorationEvidence from './ExplorationEvidence.jsx';
 import GuidedExplore from './GuidedExplore.jsx';
 import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
+import ExplorationThreadPanel from './ExplorationThreadPanel.jsx';
 import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model' }) {
@@ -107,6 +108,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
         <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />
         <ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />
         <GuidedExplore snapshot={snapshot} onDispatch={dispatchAction} onGuidanceChange={setGuidance} t={t} />
+        {agent && <ExplorationThreadPanel agent={agent} snapshot={snapshot} t={t} />}
         <ExplorationEvidence snapshot={snapshot} t={t} />
         <div role="tablist" aria-label={t('playground.lab.tabs')} className="flex gap-2 border-b border-slate-200 pb-2">
           {['data', 'model'].map((tab) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => setActiveTab(tab)} className={`rounded-xl px-4 py-2 text-sm font-black ${activeTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{t(`playground.lab.${tab}`)}</button>)}

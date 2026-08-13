@@ -59,6 +59,8 @@ export default function ExplorationAgentPanel({ agent, snapshot, t }) {
   const [request, setRequest] = useState('');
   const [proposal, setProposal] = useState(null);
   const [runResult, setRunResult] = useState(null);
+  const [prediction, setPrediction] = useState('');
+  const [recorded, setRecorded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [aiMode, setAiMode] = useState('ai');
@@ -69,6 +71,7 @@ export default function ExplorationAgentPanel({ agent, snapshot, t }) {
     setBusy(true);
     setError(null);
     setRunResult(null);
+    setRecorded(false);
     try {
       let next;
       setAiNotice(null);
@@ -97,6 +100,10 @@ export default function ExplorationAgentPanel({ agent, snapshot, t }) {
     setBusy(true);
     setError(null);
     try {
+      if (prediction.trim() && snapshot.activeExplorationThread) {
+        await agent.addExplorationThreadPrediction({ text: prediction.trim(), scenario: proposal.scenario, actor: 'human' });
+        setPrediction('');
+      }
       const result = await agent.executeExploration(proposal.scenario);
       setRunResult(result);
       setProposal(null);
@@ -105,6 +112,32 @@ export default function ExplorationAgentPanel({ agent, snapshot, t }) {
     } finally {
       setBusy(false);
     }
+  };
+
+  const recordResult = async () => {
+    if (!runResult || !snapshot.activeExplorationThread || busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      await agent.recordExplorationThreadExperiment({ scenario: runResult.scenario, actor: 'agent' });
+      await agent.recordExplorationThreadObservation({ scenario: runResult.scenario, actor: 'agent' });
+      setRecorded(true);
+    } catch (caught) { setError(caught); }
+    finally { setBusy(false); }
+  };
+
+  const chooseFollowUp = async (item) => {
+    const prompts = {
+      'repeat-condition': 'Repeat this condition with the existing Repeat control.',
+      'smaller-change': 'Try a smaller World change and compare again.',
+    };
+    const prompt = prompts[item.id];
+    if (!prompt) return;
+    if (snapshot.activeExplorationThread) {
+      try { await agent.addExplorationThreadQuestion({ text: prompt, actor: 'human', source: 'agent-follow-up' }); }
+      catch (caught) { setError(caught); return; }
+    }
+    setRequest(prompt);
   };
 
   const scenario = proposal?.scenario;
@@ -146,6 +179,7 @@ export default function ExplorationAgentPanel({ agent, snapshot, t }) {
         {proposal.assessment?.fidelity?.approximations?.map((item) => <span key={item} className="text-amber-800">{item}</span>)}
         <button type="button" disabled={busy} onClick={run} className="rounded-xl bg-emerald-600 px-3 py-2 font-black text-white disabled:opacity-40">{t('playground.explorationAgent.runProposal')}</button>
       </div>
+      {snapshot.activeExplorationThread && <label className="mt-3 block text-xs font-bold text-slate-700">{t('playground.thread.predictionPlaceholder')}<input value={prediction} onChange={(event) => setPrediction(event.target.value)} className="mt-1 w-full rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-normal outline-none focus:border-violet-500" /></label>}
       <details className="mt-3 text-[10px] text-slate-500"><summary className="cursor-pointer font-bold">{t('playground.explorationAgent.advanced')}</summary><pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-slate-950 p-2 text-slate-200">{JSON.stringify(scenario, null, 2)}</pre></details>
     </div>}
     {runResult && <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs text-emerald-950">
@@ -156,6 +190,8 @@ export default function ExplorationAgentPanel({ agent, snapshot, t }) {
       <p className="mt-1">{t('playground.explorationAgent.proposalFidelity')}: {fidelityLabel(runResult.proposalFidelity?.status, t)}</p>
       <p className="mt-1">{t('playground.explorationAgent.executionFidelity')}: {fidelityLabel(runResult.executionFidelity?.status, t)}</p>
       {runResult.fidelityMismatch && <p role="alert" className="mt-2 rounded-lg bg-red-100 p-2 font-black text-red-800">{t('playground.explorationAgent.fidelityMismatch')}</p>}
+      {runResult.followUps?.length > 0 && <div className="mt-2"><p className="font-black">{t('playground.explorationAgent.followUps')}</p><div className="mt-1 flex flex-wrap gap-2">{runResult.followUps.map((item) => <button type="button" key={item.id} onClick={() => chooseFollowUp(item)} className="rounded-lg bg-white px-2 py-1 text-left font-bold text-emerald-900 ring-1 ring-emerald-200">{t(`playground.explorationAgent.followUp.${item.id}`)}</button>)}</div></div>}
+      {snapshot.activeExplorationThread && <button type="button" disabled={busy || recorded} onClick={recordResult} className="mt-3 rounded-xl bg-cyan-700 px-3 py-2 font-black text-white disabled:opacity-40">{recorded ? t('playground.thread.recorded') : t('playground.thread.addResult')}</button>}
       {runResult.followUps?.length > 0 && <div className="mt-2"><p className="font-black">{t('playground.explorationAgent.followUps')}</p><ul className="mt-1 space-y-1">{runResult.followUps.map((item) => <li key={item.id}>• {t(`playground.explorationAgent.followUp.${item.id}`)}</li>)}</ul></div>}
     </div>}
     {aiNotice && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-900">{aiNotice}</p>}

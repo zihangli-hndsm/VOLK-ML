@@ -36,6 +36,7 @@ import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
 import { planExplorationIntent, planExplorationRequest } from './exploration/scenarioPlanner.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
+import { captureThreadExperiment, captureThreadObservation } from './exploration/threadEvidence.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -525,6 +526,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         observations: snapshot.observations ?? [],
         repeatEvidence: snapshot.repeatEvidence ?? null,
         experimentWorkspace: snapshot.experimentWorkspace ?? null,
+        explorationThreads: snapshot.explorationThreads ?? [],
+        activeExplorationThread: snapshot.activeExplorationThread ?? null,
         recipes: structuredClone(EXPLORATION_RECIPES),
         thingsToTry: structuredClone(THINGS_TO_TRY),
         affordances: [...AFFORDANCE_IDS],
@@ -557,6 +560,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
             ...viewActions,
             ...experimentOperations,
           ],
+          threads: snapshot.explorationThreads ?? [],
+          activeThread: snapshot.activeExplorationThread ?? null,
         },
         controlSchemas: (controlPlayground?.controls ?? []).map((control) => ({
           key: control.key,
@@ -614,6 +619,73 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         proposalLifecycle: ['propose', 'accept', 'execute', 'inspect'],
       };
       return context;
+    },
+
+    createExplorationThread({ title, question, actor = 'human', source, activate = true } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      commit(dispatchPlaygroundAction(session, {
+        type: 'CREATE_EXPLORATION_THREAD',
+        actor,
+        activate,
+        thread: { title, question, actor, source },
+      }));
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    setActiveExplorationThread(threadId) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      commit(dispatchPlaygroundAction(session, { type: 'SET_ACTIVE_EXPLORATION_THREAD', threadId }));
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    addExplorationThreadQuestion({ text, actor = 'human', source } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      commit(dispatchPlaygroundAction(session, { type: 'ADD_THREAD_QUESTION', actor, entry: { text, actor, source } }));
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    addExplorationThreadPrediction({ text, scenario, actor = 'human' } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      commit(dispatchPlaygroundAction(session, {
+        type: 'ADD_THREAD_PREDICTION',
+        actor,
+        entry: {
+          text,
+          actor,
+          baselineConditionFingerprint: sessionConditionFingerprint(session),
+          scenarioSummary: scenario?.interpretation?.summary,
+          scenarioReference: scenario ? { version: scenario.version ?? 1, change: (scenario.change ?? []).map(({ semanticTarget, operation }) => ({ semanticTarget, operation })), hold: [...(scenario.hold ?? [])], observe: [...(scenario.observe ?? [])] } : undefined,
+        },
+      }));
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    recordExplorationThreadExperiment({ scenario, actor = 'human' } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const snapshot = derivePlaygroundSnapshot(session);
+      const entry = captureThreadExperiment({ session, snapshot, scenario, actor });
+      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_EXPERIMENT', actor, entry }));
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    recordExplorationThreadObservation({ scenario, note, actor = 'human' } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const snapshot = derivePlaygroundSnapshot(session);
+      const entry = captureThreadObservation({ session, snapshot, scenario, note, actor });
+      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_OBSERVATION', actor, entry }));
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    removeExplorationThreadEntry(entryId) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      commit(dispatchPlaygroundAction(session, { type: 'REMOVE_THREAD_ENTRY', entryId, actor: 'human' }));
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    resumeExplorationThreadExperiment(entryId) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      commit(dispatchPlaygroundAction(session, { type: 'RESUME_THREAD_EXPERIMENT', entryId, actor: 'human' }));
+      return present(derivePlaygroundSnapshot(session));
     },
 
     proposeExploration({ request, intent } = {}) {
