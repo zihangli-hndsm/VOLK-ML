@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-14 - Phase 7 Big-Idea exploration entrances
+
+- Added a deterministic BigIdeaEntrance v1 registry for Finding Patterns, Noise and Robustness, Generalization, Distribution Shift, and Model Capacity.
+- Added atomic concept-first initialization over ordinary World, model, Experiment Workspace, Run, Compare, Evidence, Guided Explore, and Thread semantics, with Agent inspection provenance and no AI requirement.
+- Added localized, keyboard-accessible entrance cards and a non-blocking starter question with explicit optional Thread creation and restart.
+- Added Distribution Shift manual Test-support acceptance coverage, immediate-divergence coverage, real MLP hidden-unit evidence, architecture documentation, and integrated registry/runtime checks into `npm run check`.
+- Acceptance fix: canonicalized effective entrance seeds across session creation and entrance-owned World regeneration, and strengthened registry validation for model compatibility, setup controls, World transactions, affordances, and malformed declarations.
+
 ## 2026-08-13 - Phase 5 Exploration Agent learner mode
 
 - Added a capability-grounded ScenarioSpec v1 proposal pipeline with deterministic intent fallback, change/hold/observe validation, fidelity reporting, and stale-proposal rejection.

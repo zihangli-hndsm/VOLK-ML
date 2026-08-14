@@ -38,6 +38,7 @@ export const RAW_OBSERVABLES = [
   )),
   descriptor('model.slope', 'MODEL', 'playground.evidence.slope', 'number', ({ result }) => finite(result?.model?.weight)),
   descriptor('model.bias', 'MODEL', 'playground.evidence.bias', 'number', ({ result }) => finite(result?.model?.bias)),
+  descriptor('model.hiddenUnits', 'MODEL', 'playground.evidence.hiddenUnits', 'number', ({ result }) => finite(result?.model?.hiddenUnits)),
   descriptor('outcome.trainMse', 'OUTCOME', 'playground.evidence.trainMse', 'number', ({ result }) => finite(result?.metrics?.trainMse ?? result?.metrics?.mse)),
   descriptor('outcome.testMse', 'OUTCOME', 'playground.evidence.testMse', 'number', ({ result }) => finite(result?.metrics?.testMse)),
   descriptor('learning.currentStep', 'LEARNING', 'playground.evidence.currentStep', 'number', ({ result }) => finite(result?.model?.trainingStep)),
@@ -46,6 +47,18 @@ export const RAW_OBSERVABLES = [
   )),
   descriptor('comparison.clarity', 'EVIDENCE', 'playground.evidence.clarity', 'string', ({ comparison }) => comparison?.diff?.clarity ?? null),
 ];
+
+export const OBSERVABLE_IDS = Object.freeze([
+  ...RAW_OBSERVABLES.map((item) => item.id),
+  'generalizationGap',
+  'coverageMismatch',
+  'slopeDifference',
+  'trainErrorRatio',
+  'testErrorRatio',
+  'repeatSlopeSpread',
+  'repeatTrainMseSpread',
+  'repeatTestMseSpread',
+]);
 
 function valueRecord(item, value) {
   return {

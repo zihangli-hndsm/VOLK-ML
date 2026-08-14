@@ -36,6 +36,7 @@ import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
 import { listPlaygrounds } from './core/playgrounds/registry.js';
+import { getBigIdeaEntrance } from './core/exploration/bigIdeaRegistry.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
@@ -46,6 +47,7 @@ import { resolveLanguagePreference } from './core/languagePolicy.js';
 import PlaygroundDialog from './components/playgrounds/PlaygroundDialog';
 import VisualGlyph from './components/VisualGlyph';
 import AiSettingsDialog from './components/AiSettingsDialog.jsx';
+import BigIdeaEntrancePanel from './components/BigIdeaEntrancePanel.jsx';
 import { AiProvider, useAiProvider } from './components/ai/AiProviderContext.jsx';
 
 const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
@@ -1377,6 +1379,19 @@ function Workspace() {
     window.addEventListener('pointerup', stop);
   };
 
+  const openBigIdea = useCallback(async (id) => {
+    const entrance = getBigIdeaEntrance(id);
+    if (!entrance) return;
+    try {
+      await playgroundHostRef.current.openBigIdeaEntrance({ id });
+      setPlaygroundInitialTab(entrance.startingPoint.playgroundId === 'data-lab' ? 'data' : 'model');
+      setPlaygroundId(entrance.startingPoint.playgroundId);
+      setPlaygroundOpen(true);
+    } catch (error) {
+      setNotice(translateError(error, t));
+    }
+  }, [t]);
+
   const asideBase = 'fixed bottom-3 top-[76px] z-30 overflow-auto rounded-3xl border border-white/80 bg-white/95 p-4 shadow-2xl backdrop-blur transition-transform lg:static lg:z-auto lg:h-auto lg:rounded-3xl lg:bg-white/85 lg:shadow-xl';
   return <div className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-sky-50 via-white to-indigo-100">
     <header className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
@@ -1415,6 +1430,8 @@ function Workspace() {
         <button className="rounded-xl bg-emerald-600 px-3 py-2 font-bold text-white" onClick={() => setRunnerOpen(true)}>▶ <span className="hidden sm:inline">{t('nav.run')}</span></button>
       </nav>
     </header>
+
+    <BigIdeaEntrancePanel onOpen={openBigIdea} t={t} />
 
     <main className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
       <motion.aside initial={false} animate={{ x: leftOpen ? 0 : '-110%' }} style={{ width: `min(${leftWidth}px, calc(100vw - 24px))` }} className={`${asideBase} left-3 lg:transform-none ${leftOpen ? 'lg:block' : 'lg:hidden'}`}>

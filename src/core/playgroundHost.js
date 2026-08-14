@@ -32,6 +32,7 @@ import { MAX_WORLD_OBSERVATIONS } from './exploration/world.js';
 import { TRACE_EVENTS, TRACE_PAYLOAD_SCHEMAS } from './playground/trace/traceTypes.js';
 import { AFFORDANCE_IDS, EXPLORATION_RECIPES, THINGS_TO_TRY } from './exploration/guidedExploration.js';
 import { conditionFingerprintForSession } from './exploration/observables.js';
+import { getBigIdeaEntrance, listBigIdeaEntrances, resolveBigIdeaInitialization } from './exploration/bigIdeaRegistry.js';
 import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
 import { planExplorationIntent, planExplorationRequest } from './exploration/scenarioPlanner.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
@@ -380,6 +381,31 @@ function resolveSource(playground, dataset) {
   throw playgroundError('INVALID_PLAYGROUND_SOURCE', { playgroundId: playground.id });
 }
 
+function initializeBigIdeaSession(entrance, { getDataset: readDataset, seed } = {}) {
+  const initialization = resolveBigIdeaInitialization(entrance, { seed });
+  const playground = getPlayground(entrance.startingPoint.playgroundId);
+  if (!playground) throw playgroundError('PLAYGROUND_NOT_FOUND', { playgroundId: entrance.startingPoint.playgroundId });
+  const dataset = typeof readDataset === 'function' ? readDataset() : undefined;
+  let candidate = createPlaygroundSession(playground, {
+    source: resolveSource(playground, dataset),
+    controls: initialization.controls,
+    seed: initialization.effectiveSeed,
+    dataset,
+  });
+  for (const action of initialization.resolvedSetup) {
+    candidate = dispatchPlaygroundAction(candidate, structuredClone(action));
+  }
+  return {
+    ...candidate,
+    bigIdea: {
+      id: entrance.id,
+      version: entrance.version,
+      starterQuestionKey: entrance.questionKey,
+      relevantObservableIds: [...entrance.focus.observables],
+    },
+  };
+}
+
 export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
   let session = null;
   // Where the active script came from: 'preset' | 'generated' | 'composed' |
@@ -404,6 +430,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
 
   return {
     list: () => listPlaygrounds(),
+    listBigIdeaEntrances: () => listBigIdeaEntrances(),
 
     async open(request = {}) {
       if (session) throw playgroundError('PLAYGROUND_ALREADY_OPEN', { playgroundId: session.playgroundId });
@@ -561,6 +588,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           ],
           threads: snapshot.explorationThreads ?? [],
           activeThread: snapshot.activeExplorationThread ?? null,
+          bigIdea: snapshot.bigIdea ?? null,
         },
         controlSchemas: (controlPlayground?.controls ?? []).map((control) => ({
           key: control.key,
@@ -628,6 +656,27 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         activate,
         thread: { title, question, actor, source },
       }));
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    async openBigIdeaEntrance({ id, seed } = {}) {
+      if (session) throw playgroundError('PLAYGROUND_ALREADY_OPEN', { playgroundId: session.playgroundId });
+      const entrance = getBigIdeaEntrance(id);
+      if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: id });
+      const candidate = initializeBigIdeaSession(entrance, { getDataset, seed });
+      scriptProvenance = 'preset';
+      commit(candidate);
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    async restartBigIdeaEntrance({ id, seed } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const activeId = id ?? session.bigIdea?.id;
+      const entrance = getBigIdeaEntrance(activeId);
+      if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: activeId });
+      const candidate = initializeBigIdeaSession(entrance, { getDataset, seed });
+      scriptProvenance = 'preset';
+      commit(candidate);
       return present(derivePlaygroundSnapshot(session));
     },
 
