@@ -648,13 +648,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       commit(dispatchPlaygroundAction(session, {
         type: 'ADD_THREAD_PREDICTION',
         actor,
-        entry: {
-          text,
-          actor,
-          baselineConditionFingerprint: sessionConditionFingerprint(session),
-          scenarioSummary: scenario?.interpretation?.summary,
-          scenarioReference: scenario ? { version: scenario.version ?? 1, change: (scenario.change ?? []).map(({ semanticTarget, operation }) => ({ semanticTarget, operation })), hold: [...(scenario.hold ?? [])], observe: [...(scenario.observe ?? [])] } : undefined,
-        },
+        text,
+        scenario,
       }));
       return present(derivePlaygroundSnapshot(session));
     },

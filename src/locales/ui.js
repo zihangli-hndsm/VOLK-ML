@@ -26,6 +26,8 @@ export const messages = {
   'playground.thread.unavailable': { en: 'Experiment unavailable', zh: '实验不可用' },
   'playground.thread.resume': { en: 'Resume comparison', zh: '恢复比较' },
   'playground.thread.historical': { en: 'Recorded observation · historical evidence', zh: '已记录观测 · 历史证据' },
+  'playground.thread.side.active': { en: 'Active', zh: '当前' },
+  'playground.thread.side.baseline': { en: 'Baseline', zh: '基线' },
   'playground.thread.nextQuestionPlaceholder': { en: 'Next question', zh: '下一个问题' },
   'playground.thread.predictionPlaceholder': { en: 'Optional prediction', zh: '可选预测' },
   'playground.thread.addQuestion': { en: 'Add question', zh: '添加问题' },

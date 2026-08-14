@@ -11,6 +11,10 @@ await agent.open({ playgroundId: 'linear-regression', seed: 919 });
 
 let snapshot = agent.createExplorationThread({ title: 'Outliers', question: 'What happens after an outlier?', source: 'manual' });
 assert.equal(snapshot.activeExplorationThread.entries[0].kind, 'question');
+await assert.rejects(() => agent.dispatch({
+  type: 'ADD_THREAD_PREDICTION',
+  entry: { text: 'The slope will move.', baselineConditionFingerprint: 'forged-condition' },
+}), (error) => error.code === 'EXPLORATION_THREAD_INVALID', 'generic Agent dispatch cannot forge Prediction identity');
 const predictionFingerprint = agent.inspectContext().conditionFingerprint;
 agent.addExplorationThreadPrediction({ text: 'The fitted slope will move.' });
 assert.equal(agent.inspectContext().activeExplorationThread.entries.at(-1).baselineConditionFingerprint, predictionFingerprint);
@@ -49,6 +53,29 @@ assert.deepEqual(inspection.activeExplorationThread, snapshot.activeExplorationT
 assert.deepEqual(inspection.exploration.threads, inspection.explorationThreads);
 assert.doesNotThrow(() => JSON.stringify(inspection.explorationThreads));
 await agent.close();
+
+const scenarioHost = createPlaygroundHost({ getDataset: () => null });
+const scenarioAgent = createPlaygroundAgentApi(scenarioHost);
+await scenarioAgent.open({ playgroundId: 'data-lab', seed: 42 });
+await scenarioAgent.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: 'linear-regression' });
+await scenarioAgent.dispatch({ type: 'RUN' });
+const scenarioProposal = scenarioAgent.proposeExploration('What happens if I add some outliers?');
+assert.equal(scenarioProposal.kind, 'proposal');
+scenarioAgent.createExplorationThread({ title: 'Scenario prediction', question: 'Will the outliers move the line?' });
+const scenarioSnapshot = scenarioAgent.addExplorationThreadPrediction({
+  text: 'The outliers will move the fitted line.',
+  scenario: scenarioProposal.scenario,
+  actor: 'agent',
+});
+const scenarioPrediction = scenarioSnapshot.activeExplorationThread.entries.at(-1);
+assert.equal(scenarioPrediction.baselineConditionFingerprint, scenarioProposal.scenario.baseline.conditionFingerprint);
+assert.equal(scenarioPrediction.scenarioSummary, scenarioProposal.scenario.interpretation.summary);
+assert.deepEqual(Object.keys(scenarioPrediction.scenarioReference).sort(), ['change', 'hold', 'observe', 'version']);
+const detachedScenarioPrediction = JSON.stringify(scenarioPrediction);
+scenarioProposal.scenario.interpretation.summary = 'caller mutation';
+scenarioProposal.scenario.change[0].operation = 'SET_CONTROL';
+assert.equal(JSON.stringify(scenarioAgent.inspectContext().activeExplorationThread.entries.at(-1)), detachedScenarioPrediction, 'Scenario-linked Prediction must be detached from caller mutation');
+await scenarioAgent.close();
 
 const playground = getPlayground('linear-regression');
 const source = { kind: 'example', name: 'test', fingerprint: 'test', task: 'regression', points: [{ id: 'p1', x: 0, y: 0 }, { id: 'p2', x: 1, y: 1 }] };

@@ -22,6 +22,17 @@ function scenarioReference(scenario) {
   };
 }
 
+export function captureThreadPrediction({ session, text, scenario, actor = 'human' } = {}) {
+  return {
+    kind: 'prediction',
+    actor,
+    text,
+    baselineConditionFingerprint: fingerprintForState(session),
+    ...(scenario?.interpretation?.summary ? { scenarioSummary: String(scenario.interpretation.summary).slice(0, 320) } : {}),
+    ...(scenario ? { scenarioReference: scenarioReference(scenario) } : {}),
+  };
+}
+
 function compactSemanticDiff(diff) {
   if (!diff) return undefined;
   return {

@@ -51,7 +51,7 @@ import {
   normalizeExplorationThreadState,
   removeExplorationThreadEntry,
 } from '../exploration/explorationThread.js';
-import { captureThreadExperiment, captureThreadObservation } from '../exploration/threadEvidence.js';
+import { captureThreadExperiment, captureThreadObservation, captureThreadPrediction } from '../exploration/threadEvidence.js';
 
 // The unified playground runtime. This module owns the session reducer: the
 // UI, the Agent and the visualization script runtime all dispatch the same
@@ -1412,14 +1412,29 @@ function dispatchExplorationThreadAction(session, action) {
   }
   const current = activeExplorationThread(state);
   if (!current) throw explorationThreadError('EXPLORATION_THREAD_NOT_ACTIVE');
-  if (action.type === 'ADD_THREAD_QUESTION' || action.type === 'ADD_THREAD_PREDICTION') {
+  if (action.type === 'ADD_THREAD_QUESTION') {
     const entry = {
       ...action.entry,
-      kind: action.type === 'ADD_THREAD_QUESTION' ? 'question'
-        : action.type === 'ADD_THREAD_PREDICTION' ? 'prediction'
-          : action.type === 'RECORD_THREAD_EXPERIMENT' ? 'experiment' : 'observation',
+      kind: 'question',
       actor: action.entry?.actor ?? action.actor ?? 'human',
     };
+    const nextThread = appendExplorationThreadEntry(current, entry, now);
+    return {
+      ...session,
+      ...state,
+      explorationThreads: state.explorationThreads.map((thread) => thread.id === current.id ? nextThread : thread),
+    };
+  }
+  if (action.type === 'ADD_THREAD_PREDICTION') {
+    if (Object.hasOwn(action, 'entry')) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry', reason: 'runtime-capture-required' });
+    }
+    const entry = captureThreadPrediction({
+      session,
+      text: action.text,
+      scenario: action.scenario,
+      actor: action.actor ?? 'human',
+    });
     const nextThread = appendExplorationThreadEntry(current, entry, now);
     return {
       ...session,
