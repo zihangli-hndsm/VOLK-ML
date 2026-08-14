@@ -41,6 +41,17 @@ import {
   validateActionShape,
   validateControlValue,
 } from '../playgrounds/session.js';
+import {
+  activeExplorationThread,
+  appendExplorationThreadEntry,
+  createExplorationThread,
+  createExplorationThreadState,
+  EXPLORATION_THREAD_LIMITS,
+  explorationThreadError,
+  normalizeExplorationThreadState,
+  removeExplorationThreadEntry,
+} from '../exploration/explorationThread.js';
+import { captureThreadExperiment, captureThreadObservation, captureThreadPrediction } from '../exploration/threadEvidence.js';
 
 // The unified playground runtime. This module owns the session reducer: the
 // UI, the Agent and the visualization script runtime all dispatch the same
@@ -81,6 +92,14 @@ const GENERIC_ACTIONS = [
   'SCRIPT_RESET',
   'SCRIPT_CAPTURE',
   'SCRIPT_RESTORE_CAPTURE',
+  'CREATE_EXPLORATION_THREAD',
+  'SET_ACTIVE_EXPLORATION_THREAD',
+  'ADD_THREAD_QUESTION',
+  'ADD_THREAD_PREDICTION',
+  'RECORD_THREAD_EXPERIMENT',
+  'RECORD_THREAD_OBSERVATION',
+  'REMOVE_THREAD_ENTRY',
+  'RESUME_THREAD_EXPERIMENT',
 ];
 
 export const MIN_REPEAT_TRIALS = 2;
@@ -219,6 +238,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     visualState: {},
     metrics: {},
     experimentUndo: [],
+    ...createExplorationThreadState(),
   };
   return ensureExperimentWorkspace(session);
 }
@@ -970,6 +990,10 @@ export function dispatchRuntimeAction(session, action) {
     throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, playgroundId: actionPlayground.id });
   }
 
+  if (action.type.startsWith('THREAD_') || action.type.endsWith('_EXPLORATION_THREAD') || action.type.includes('THREAD_')) {
+    return dispatchExplorationThreadAction(session, action);
+  }
+
   if (action.type === 'RESET') {
     return resetActiveExperiment(session);
   }
@@ -1352,5 +1376,106 @@ export function deriveRuntimeSnapshot(session) {
       future: session.worldHistory.future.map((entry) => jsonSafe(entry.record)),
     },
     primitives: primitives.map((primitive) => jsonSafe(primitive)),
+    explorationThreads: jsonSafe(session.explorationThreads ?? []),
+    activeExplorationThread: jsonSafe(activeExplorationThread(session)),
   };
+}
+
+function dispatchExplorationThreadAction(session, action) {
+  const state = normalizeExplorationThreadState(session);
+  const now = action.now ?? new Date().toISOString();
+  if (action.type === 'CREATE_EXPLORATION_THREAD') {
+    if (state.explorationThreads.length >= EXPLORATION_THREAD_LIMITS.maxThreads) {
+      throw explorationThreadError('EXPLORATION_THREAD_RESOURCE_LIMIT', { field: 'explorationThreads', max: EXPLORATION_THREAD_LIMITS.maxThreads });
+    }
+    const thread = createExplorationThread({
+      id: action.thread?.id,
+      title: action.thread?.title,
+      question: action.thread?.question,
+      actor: action.thread?.actor ?? action.actor ?? 'human',
+      source: action.thread?.source,
+      now,
+    });
+    return {
+      ...session,
+      ...state,
+      explorationThreads: [...state.explorationThreads, thread],
+      activeExplorationThreadId: action.activate === false ? state.activeExplorationThreadId : thread.id,
+    };
+  }
+  if (action.type === 'SET_ACTIVE_EXPLORATION_THREAD') {
+    const id = action.threadId === null ? null : String(action.threadId);
+    if (id && !state.explorationThreads.some((thread) => thread.id === id)) {
+      throw explorationThreadError('EXPLORATION_THREAD_NOT_FOUND', { threadId: id });
+    }
+    return { ...session, ...state, activeExplorationThreadId: id };
+  }
+  const current = activeExplorationThread(state);
+  if (!current) throw explorationThreadError('EXPLORATION_THREAD_NOT_ACTIVE');
+  if (action.type === 'ADD_THREAD_QUESTION') {
+    const entry = {
+      ...action.entry,
+      kind: 'question',
+      actor: action.entry?.actor ?? action.actor ?? 'human',
+    };
+    const nextThread = appendExplorationThreadEntry(current, entry, now);
+    return {
+      ...session,
+      ...state,
+      explorationThreads: state.explorationThreads.map((thread) => thread.id === current.id ? nextThread : thread),
+    };
+  }
+  if (action.type === 'ADD_THREAD_PREDICTION') {
+    if (Object.hasOwn(action, 'entry')) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry', reason: 'runtime-capture-required' });
+    }
+    const entry = captureThreadPrediction({
+      session,
+      text: action.text,
+      scenario: action.scenario,
+      actor: action.actor ?? 'human',
+    });
+    const nextThread = appendExplorationThreadEntry(current, entry, now);
+    return {
+      ...session,
+      ...state,
+      explorationThreads: state.explorationThreads.map((thread) => thread.id === current.id ? nextThread : thread),
+    };
+  }
+  if (action.type === 'RECORD_THREAD_EXPERIMENT' || action.type === 'RECORD_THREAD_OBSERVATION') {
+    if (Object.hasOwn(action, 'entry')) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry', reason: 'runtime-capture-required' });
+    }
+    const snapshot = deriveRuntimeSnapshot(session);
+    const entry = action.type === 'RECORD_THREAD_EXPERIMENT'
+      ? captureThreadExperiment({ session, snapshot, scenario: action.scenario, actor: action.actor ?? 'human' })
+      : captureThreadObservation({ session, snapshot, scenario: action.scenario, note: action.note, actor: action.actor ?? 'human' });
+    const nextThread = appendExplorationThreadEntry(current, entry, now);
+    return {
+      ...session,
+      ...state,
+      explorationThreads: state.explorationThreads.map((thread) => thread.id === current.id ? nextThread : thread),
+    };
+  }
+  if (action.type === 'REMOVE_THREAD_ENTRY') {
+    const nextThread = removeExplorationThreadEntry(current, action.entryId, now);
+    return {
+      ...session,
+      ...state,
+      explorationThreads: state.explorationThreads.map((thread) => thread.id === current.id ? nextThread : thread),
+    };
+  }
+  if (action.type === 'RESUME_THREAD_EXPERIMENT') {
+    const entry = current.entries.find((item) => item.id === action.entryId && item.kind === 'experiment');
+    if (!entry) throw explorationThreadError('EXPLORATION_THREAD_ENTRY_NOT_FOUND', { entryId: action.entryId });
+    const ids = new Set(Object.keys(session.experimentWorkspace?.entries ?? {}));
+    const unavailable = entry.experimentIds.find((id) => !ids.has(id));
+    if (unavailable) throw explorationThreadError('EXPLORATION_THREAD_EXPERIMENT_UNAVAILABLE', { experimentId: unavailable });
+    let next = switchExperiment(session, entry.activeExperimentId);
+    if (entry.comparison?.enabled) {
+      next = setExperimentComparison(next, { enabled: true, againstExperimentId: entry.comparison.againstExperimentId ?? entry.baselineExperimentId });
+    }
+    return next;
+  }
+  throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type });
 }
