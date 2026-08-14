@@ -349,6 +349,7 @@ function resultForSession(session) {
     model: {
       weight: Number.isFinite(Number(session.modelState.weight)) ? Number(session.modelState.weight) : undefined,
       bias: Number.isFinite(Number(session.modelState.bias)) ? Number(session.modelState.bias) : undefined,
+      hiddenUnits: Number.isFinite(Number(session.modelState.hiddenSize)) ? Number(session.modelState.hiddenSize) : undefined,
       trainingStep: Number.isFinite(Number(session.modelState.training?.currentStep))
         ? Number(session.modelState.training.currentStep)
         : undefined,
@@ -1353,6 +1354,7 @@ export function deriveRuntimeSnapshot(session) {
     controls: jsonSafe(session.controls),
     timeline: jsonSafe(session.timeline),
     scenario: session.scenario ? jsonSafe(session.scenario) : null,
+    bigIdea: session.bigIdea ? jsonSafe(session.bigIdea) : null,
     scene: jsonSafe(scene),
     metrics: jsonSafe(metrics),
     observation: observation ? jsonSafe(observation) : null,

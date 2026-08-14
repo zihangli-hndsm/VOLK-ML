@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { getPlayground } from '../../core/playgrounds/registry.js';
+import { getBigIdeaEntrance } from '../../core/exploration/bigIdeaRegistry.js';
 import PlaygroundToolbar from './PlaygroundToolbar.jsx';
 import PlaygroundStage from './PlaygroundStage.jsx';
 import PlaygroundInspector from './PlaygroundInspector.jsx';
@@ -15,6 +16,7 @@ import GuidedExplore from './GuidedExplore.jsx';
 import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
 import ExplorationThreadPanel from './ExplorationThreadPanel.jsx';
 import { createPlaybackScheduler } from '../../core/playgroundHost.js';
+import BigIdeaPrompt from './BigIdeaPrompt.jsx';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model' }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -26,6 +28,10 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const modelPlayground = useMemo(
     () => getPlayground(snapshot?.modelPlaygroundId ?? snapshot?.playgroundId ?? playgroundId) ?? playground,
     [snapshot?.modelPlaygroundId, snapshot?.playgroundId, playgroundId, playground],
+  );
+  const bigIdea = useMemo(
+    () => getBigIdeaEntrance(snapshot?.bigIdea?.id),
+    [snapshot?.bigIdea?.id],
   );
 
   useEffect(() => {
@@ -106,6 +112,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     <section className="max-h-[94vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
       <div className="space-y-4">
         <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />
+        <BigIdeaPrompt entry={bigIdea} snapshot={snapshot} agent={agent} host={host} onRestart={() => host.restartBigIdeaEntrance({ id: snapshot.bigIdea.id })} t={t} />
         <ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />
         <GuidedExplore snapshot={snapshot} onDispatch={dispatchAction} onGuidanceChange={setGuidance} t={t} />
         {agent && <ExplorationThreadPanel agent={agent} snapshot={snapshot} t={t} />}

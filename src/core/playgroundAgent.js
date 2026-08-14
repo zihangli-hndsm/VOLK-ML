@@ -44,7 +44,10 @@ export function createPlaygroundAgentApi(host) {
   return Object.freeze({
     apiVersion: 1,
     list: () => invoke('list', () => copy(host.list())),
+    listBigIdeaEntrances: () => invoke('listBigIdeaEntrances', () => copy(host.listBigIdeaEntrances())),
     open: (request) => invokeAsync('open', async () => copy(await host.open(copy(request ?? {})))),
+    openBigIdeaEntrance: (request) => invokeAsync('openBigIdeaEntrance', async () => copy(await host.openBigIdeaEntrance(copy(request ?? {})))),
+    restartBigIdeaEntrance: (request) => invokeAsync('restartBigIdeaEntrance', async () => copy(await host.restartBigIdeaEntrance(copy(request ?? {})))),
     getState: () => invoke('getState', () => copy(host.getState())),
     dispatch: (action) => invokeAsync('dispatch', async () => copy(await host.dispatch(agentAction(action)))),
     play: () => invokeAsync('play', async () => copy(await host.play())),
