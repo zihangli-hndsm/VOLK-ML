@@ -8,15 +8,22 @@ without opening it.
 ## Runtime contract
 
 The first complete adapter is Linear Regression. Its actual training loop in
-`linearRegressionAdapter` emits one `training.step` trace event for each
-finite update. Each event contains the run identity, loss, gradient, learning
-rate, normalized-space delta, raw slope/intercept delta, and raw parameter
-state before and after the update. The trace is emitted beside the update
-calculation, not reconstructed by React.
+`linearRegressionAdapter` emits one `training.step` trace event for every
+finite update that enters visible `training.history`, including the terminal
+learning-rate-too-high step. Each event contains the run identity, objective
+before and after the update, gradient evaluated at the before parameters,
+learning rate, normalized-space delta, raw slope/intercept delta, raw
+parameter state before and after the update, and an outcome/status. A stopped
+terminal update remains visible because STEP/SEEK exposes it; the trace
+describes that exact runtime behavior rather than calling it rejected. The
+trace is emitted beside the update calculation, not reconstructed by React.
 
 The optimizer operates in standardized feature/target space. The microscope
 therefore labels the gradient/update space and also records raw parameters so
-the visible fitted line can be checked against the `after` state.
+the visible fitted line can be checked against the `after` state. The
+learner-facing loss trajectory uses the post-update objective, matching the
+model state revealed by STEP/SEEK; a selected record shows both pre-update
+and post-update normalized loss.
 
 ## View model and lifecycle
 

@@ -78,6 +78,7 @@ export const TRACE_PAYLOAD_SCHEMAS = {
       objective: 'object',
       gradients: 'object',
       update: 'object',
+      outcome: 'object',
     },
     optional: {},
   },

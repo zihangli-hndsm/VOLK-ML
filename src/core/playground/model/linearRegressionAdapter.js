@@ -385,14 +385,7 @@ export const linearRegressionAdapter = {
           bias: next.gradient.bias,
           magnitude: next.gradient.magnitude,
         });
-        if (lossGrew) {
-          history.push(entry);
-          stopReason = 'learning-rate-too-high';
-          break;
-        }
-        previousLoss = next.nextLossNormalized;
         history.push(entry);
-        recorder.emit('parameters.updated', { step, weight: entry.weight, bias: entry.bias });
         recorder.emit('training.step', {
           step,
           runId: String(runId),
@@ -403,7 +396,10 @@ export const linearRegressionAdapter = {
             normalizedBefore: { weight: current.weights[0], bias: current.bias },
             normalizedAfter: { weight: normalizedParameters.weights[0], bias: normalizedParameters.bias },
           },
-          objective: { loss: entry.loss, lossNormalized: entry.lossNormalized },
+          objective: {
+            before: { lossNormalized: next.lossNormalized },
+            after: { loss: entry.loss, lossNormalized: entry.lossNormalized },
+          },
           gradients: {
             weight: next.gradient.weights[0],
             bias: next.gradient.bias,
@@ -416,7 +412,16 @@ export const linearRegressionAdapter = {
             delta: normalizedDelta,
             rawDelta,
           },
+          outcome: lossGrew
+            ? { status: 'stopped', stopReason: 'learning-rate-too-high' }
+            : { status: 'applied' },
         });
+        if (lossGrew) {
+          stopReason = 'learning-rate-too-high';
+          break;
+        }
+        previousLoss = next.nextLossNormalized;
+        recorder.emit('parameters.updated', { step, weight: entry.weight, bias: entry.bias });
         current = { weights: normalizedParameters.weights, bias: normalizedParameters.bias };
       }
       if (stopReason) {

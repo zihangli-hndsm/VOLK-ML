@@ -7,6 +7,10 @@ export const languages = [
 // Keep dataset column names, port identifiers, model types, and user file names
 // untranslated because they are project data rather than interface copy.
 export const messages = {
+  'playground.trainingMicroscope.lossBefore': { en: 'Loss before update', zh: '更新前损失' },
+  'playground.trainingMicroscope.lossAfter': { en: 'Loss after update', zh: '更新后损失' },
+  'playground.trainingMicroscope.stepOutcome': { en: 'Step outcome', zh: '步骤结果' },
+  'playground.trainingMicroscope.trainingStopped': { en: 'Training stopped after this update because the runtime reported increased loss.', zh: '运行时报告损失增加，因此训练在这次更新后停止。' },
   'bigIdea.ariaLabel': { en: 'Explore an idea', zh: '探索一个想法' },
   'bigIdea.sectionTitle': { en: 'Explore an idea', zh: '探索一个想法' },
   'bigIdea.sectionSubtitle': { en: 'Start with a question, then change the World and see what moves.', zh: '从一个问题开始，改变 World，看看什么发生变化。' },

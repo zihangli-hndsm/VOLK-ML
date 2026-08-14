@@ -2,6 +2,14 @@ import { useEffect, useMemo, useState } from 'react';
 
 const numberText = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(5) : '—';
 
+function ObjectiveTiming({ objective, t }) {
+  if (!objective) return null;
+  return <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+    <div><dt className="text-slate-500">{t('playground.trainingMicroscope.lossBefore')}</dt><dd className="font-mono font-bold">{numberText(objective.before?.lossNormalized)}</dd></div>
+    <div><dt className="text-slate-500">{t('playground.trainingMicroscope.lossAfter')}</dt><dd className="font-mono font-bold">{numberText(objective.after?.lossNormalized)}</dd></div>
+  </dl>;
+}
+
 function ParameterPair({ value, t }) {
   if (!value) return <p className="text-sm text-slate-500">{t('playground.trainingMicroscope.unavailable')}</p>;
   return <dl className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
@@ -33,6 +41,7 @@ export default function TrainingMicroscopePanel({ snapshot, onDispatch, t }) {
           <span className="text-xs font-bold text-slate-500">{t('playground.trainingMicroscope.currentStep')}: {microscope.currentRuntimeStep} / {microscope.totalSteps}</span>
           {canStep && <button type="button" onClick={() => onDispatch({ type: 'STEP' })} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white">{t('playground.trainingMicroscope.nextStep')}</button>}
         </div>
+        {selected?.objective && <section className="rounded-xl bg-white p-3"><h4 className="text-xs font-black uppercase text-slate-500">{t('playground.trainingMicroscope.stepOutcome')}</h4><ObjectiveTiming objective={selected.objective} t={t} />{selected.outcome?.status === 'stopped' && <p role="status" className="mt-2 text-xs font-bold text-amber-800">{t('playground.trainingMicroscope.trainingStopped')}</p>}</section>}
         {microscope.lossTrace.length ? <div className="flex max-w-full gap-1 overflow-x-auto pb-1" aria-label={t('playground.trainingMicroscope.lossTrace')}>
           {microscope.lossTrace.map((point) => <button key={point.step} type="button" aria-label={`${t('playground.trainingMicroscope.recordedStep')} ${point.step}`} aria-pressed={selectedStep === point.step} onClick={() => setSelectedStep(point.step)} className={`min-w-16 rounded-lg border px-2 py-2 text-left text-[11px] ${selectedStep === point.step ? 'border-blue-500 bg-blue-100' : 'border-slate-200 bg-white'}`}>
             <span className="block font-black">{point.step}</span><span className="font-mono text-slate-600">{numberText(point.loss)}</span>

@@ -74,10 +74,13 @@ function stepSummary(event) {
   const payload = event.payload;
   return {
     step: payload.step,
+    runId: payload.runId,
+    conditionFingerprint: payload.conditionFingerprint,
     objective: clone(payload.objective),
     parameters: clone(payload.parameters),
     gradients: clone(payload.gradients),
     update: clone(payload.update),
+    outcome: clone(payload.outcome),
   };
 }
 
@@ -110,7 +113,13 @@ export function deriveTrainingMicroscope({ session, adapter, traces = [], condit
     selectedStep: selected,
     steps,
     lossTrace: capabilities.lossTrace
-      ? steps.map((step) => ({ step: step.step, loss: finite(step.objective?.loss), lossNormalized: finite(step.objective?.lossNormalized) }))
+      ? steps.map((step) => ({
+        step: step.step,
+        // The visible trajectory follows the post-update state revealed by
+        // STEP/SEEK; selected records retain both objective timings.
+        loss: finite(step.objective?.after?.loss),
+        lossNormalized: finite(step.objective?.after?.lossNormalized),
+      }))
       : [],
     currentModel: {
       weight: finite(session?.modelState?.weight),
