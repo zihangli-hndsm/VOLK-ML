@@ -46,10 +46,12 @@ import {
   appendExplorationThreadEntry,
   createExplorationThread,
   createExplorationThreadState,
+  EXPLORATION_THREAD_LIMITS,
   explorationThreadError,
   normalizeExplorationThreadState,
   removeExplorationThreadEntry,
 } from '../exploration/explorationThread.js';
+import { captureThreadExperiment, captureThreadObservation } from '../exploration/threadEvidence.js';
 
 // The unified playground runtime. This module owns the session reducer: the
 // UI, the Agent and the visualization script runtime all dispatch the same
@@ -1383,8 +1385,8 @@ function dispatchExplorationThreadAction(session, action) {
   const state = normalizeExplorationThreadState(session);
   const now = action.now ?? new Date().toISOString();
   if (action.type === 'CREATE_EXPLORATION_THREAD') {
-    if (state.explorationThreads.length >= 20) {
-      throw explorationThreadError('EXPLORATION_THREAD_RESOURCE_LIMIT', { field: 'explorationThreads', max: 20 });
+    if (state.explorationThreads.length >= EXPLORATION_THREAD_LIMITS.maxThreads) {
+      throw explorationThreadError('EXPLORATION_THREAD_RESOURCE_LIMIT', { field: 'explorationThreads', max: EXPLORATION_THREAD_LIMITS.maxThreads });
     }
     const thread = createExplorationThread({
       id: action.thread?.id,
@@ -1410,8 +1412,7 @@ function dispatchExplorationThreadAction(session, action) {
   }
   const current = activeExplorationThread(state);
   if (!current) throw explorationThreadError('EXPLORATION_THREAD_NOT_ACTIVE');
-  if (action.type === 'ADD_THREAD_QUESTION' || action.type === 'ADD_THREAD_PREDICTION'
-    || action.type === 'RECORD_THREAD_EXPERIMENT' || action.type === 'RECORD_THREAD_OBSERVATION') {
+  if (action.type === 'ADD_THREAD_QUESTION' || action.type === 'ADD_THREAD_PREDICTION') {
     const entry = {
       ...action.entry,
       kind: action.type === 'ADD_THREAD_QUESTION' ? 'question'
@@ -1419,6 +1420,21 @@ function dispatchExplorationThreadAction(session, action) {
           : action.type === 'RECORD_THREAD_EXPERIMENT' ? 'experiment' : 'observation',
       actor: action.entry?.actor ?? action.actor ?? 'human',
     };
+    const nextThread = appendExplorationThreadEntry(current, entry, now);
+    return {
+      ...session,
+      ...state,
+      explorationThreads: state.explorationThreads.map((thread) => thread.id === current.id ? nextThread : thread),
+    };
+  }
+  if (action.type === 'RECORD_THREAD_EXPERIMENT' || action.type === 'RECORD_THREAD_OBSERVATION') {
+    if (Object.hasOwn(action, 'entry')) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry', reason: 'runtime-capture-required' });
+    }
+    const snapshot = deriveRuntimeSnapshot(session);
+    const entry = action.type === 'RECORD_THREAD_EXPERIMENT'
+      ? captureThreadExperiment({ session, snapshot, scenario: action.scenario, actor: action.actor ?? 'human' })
+      : captureThreadObservation({ session, snapshot, scenario: action.scenario, note: action.note, actor: action.actor ?? 'human' });
     const nextThread = appendExplorationThreadEntry(current, entry, now);
     return {
       ...session,

@@ -11,7 +11,11 @@ await agent.open({ playgroundId: 'linear-regression', seed: 919 });
 
 let snapshot = agent.createExplorationThread({ title: 'Outliers', question: 'What happens after an outlier?', source: 'manual' });
 assert.equal(snapshot.activeExplorationThread.entries[0].kind, 'question');
+const predictionFingerprint = agent.inspectContext().conditionFingerprint;
 agent.addExplorationThreadPrediction({ text: 'The fitted slope will move.' });
+assert.equal(agent.inspectContext().activeExplorationThread.entries.at(-1).baselineConditionFingerprint, predictionFingerprint);
+await agent.dispatch({ type: 'SET_CONTROL', key: 'learningRate', value: 0.1 });
+assert.equal(agent.inspectContext().activeExplorationThread.entries.at(-1).baselineConditionFingerprint, predictionFingerprint, 'prediction baseline must remain historical after condition changes');
 
 await agent.dispatch({ type: 'DUPLICATE_EXPERIMENT' });
 await agent.dispatch({ type: 'SET_COMPARE', enabled: true });
@@ -48,20 +52,47 @@ await agent.close();
 
 const playground = getPlayground('linear-regression');
 const source = { kind: 'example', name: 'test', fingerprint: 'test', task: 'regression', points: [{ id: 'p1', x: 0, y: 0 }, { id: 'p2', x: 1, y: 1 }] };
-// The missing-reference check uses the canonical reducer fixture, not a UI-only state.
+// The missing-reference check records a normal canonical Experiment entry, then
+// removes only its runtime reference to simulate workspace loss.
 let session = createPlaygroundSession(playground, { source, seed: 3 });
 session = dispatchPlaygroundAction(session, { type: 'CREATE_EXPLORATION_THREAD', thread: { id: 'fixture-thread', title: 'Fixture' } });
 session = dispatchPlaygroundAction(session, {
   type: 'RECORD_THREAD_EXPERIMENT',
-  entry: {
-    id: 'fixture-entry', kind: 'experiment', experimentIds: ['missing'], activeExperimentId: 'missing', baselineExperimentId: 'missing',
-    comparison: { enabled: false, againstExperimentId: null }, conditionFingerprints: {},
-  },
 });
+const fixtureEntry = session.explorationThreads[0].entries.at(-1);
+assert.ok(fixtureEntry.conditionFingerprints[fixtureEntry.activeExperimentId]);
 assert.throws(() => dispatchPlaygroundAction({
   ...session,
-  experimentWorkspace: { ...session.experimentWorkspace, entries: {} },
-}, { type: 'RESUME_THREAD_EXPERIMENT', entryId: 'fixture-entry' }), (error) => error.code === 'EXPLORATION_THREAD_EXPERIMENT_UNAVAILABLE');
+  experimentWorkspace: {
+    ...session.experimentWorkspace,
+    entries: Object.fromEntries(Object.entries(session.experimentWorkspace.entries).filter(([id]) => id !== fixtureEntry.experimentIds[0])),
+  },
+}, { type: 'RESUME_THREAD_EXPERIMENT', entryId: fixtureEntry.id }), (error) => error.code === 'EXPLORATION_THREAD_EXPERIMENT_UNAVAILABLE');
+assert.equal(session.explorationThreads[0].entries.at(-1).id, fixtureEntry.id, 'historical thread entry remains readable after workspace loss');
+
+assert.throws(() => dispatchPlaygroundAction(session, {
+  type: 'RECORD_THREAD_OBSERVATION',
+  entry: {
+    experimentIds: fixtureEntry.experimentIds,
+    conditionFingerprints: fixtureEntry.conditionFingerprints,
+    evidence: { observables: { 'outcome.testMse': { active: -999 } } },
+  },
+}), (error) => error.code === 'EXPLORATION_THREAD_INVALID', 'generic dispatch cannot inject observation evidence');
+assert.throws(() => dispatchPlaygroundAction(session, {
+  type: 'RECORD_THREAD_EXPERIMENT',
+  entry: { experimentIds: ['forged'], conditionFingerprints: { forged: 'fake' }, semanticDiff: { changed: ['world'] } },
+}), (error) => error.code === 'EXPLORATION_THREAD_INVALID', 'generic dispatch cannot inject Experiment identity');
+assert.throws(() => dispatchPlaygroundAction(session, {
+  type: 'RECORD_THREAD_OBSERVATION',
+  entry: { evidence: { repeatEvidence: { aggregates: { slope: { mean: -999 } } } } },
+}), (error) => error.code === 'EXPLORATION_THREAD_INVALID', 'generic dispatch cannot inject Repeat evidence');
+
+assert.throws(() => validateExplorationThread({ version: 1, id: 'bad-prediction', title: 'Bad', entries: [{ id: 'p', kind: 'prediction', text: 'p' }] }), (error) => error.code === 'EXPLORATION_THREAD_INVALID');
+const validFingerprint = 'condition-a';
+const validExperiment = { id: 'x', kind: 'experiment', experimentIds: ['a', 'b'], activeExperimentId: 'a', baselineExperimentId: 'b', comparison: { enabled: true, againstExperimentId: 'b' }, conditionFingerprints: { a: validFingerprint, b: 'condition-b' } };
+assert.throws(() => validateExplorationThread({ version: 1, id: 'bad-active', title: 'Bad', entries: [{ ...validExperiment, activeExperimentId: 'missing' }] }), (error) => error.code === 'EXPLORATION_THREAD_INVALID');
+assert.throws(() => validateExplorationThread({ version: 1, id: 'bad-compare', title: 'Bad', entries: [{ ...validExperiment, comparison: { enabled: true, againstExperimentId: 'missing' } }] }), (error) => error.code === 'EXPLORATION_THREAD_INVALID');
+assert.throws(() => validateExplorationThread({ version: 1, id: 'bad-observation', title: 'Bad', entries: [{ id: 'o', kind: 'observation', experimentIds: ['a'], conditionFingerprints: {}, evidence: {} }] }), (error) => error.code === 'EXPLORATION_THREAD_INVALID');
 
 const base = createExplorationThread({ id: 'bounds', title: 'Bounds' });
 const entries = Array.from({ length: 100 }, (_, index) => ({ id: `q-${index}`, kind: 'question', text: `Question ${index}` }));

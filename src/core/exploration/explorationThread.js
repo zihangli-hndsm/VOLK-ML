@@ -48,6 +48,14 @@ function safeJson(value, field) {
   }
 }
 
+function safeRecord(value, field) {
+  const copyValue = safeJson(value, field);
+  if (!copyValue || typeof copyValue !== 'object' || Array.isArray(copyValue)) {
+    throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field, reason: 'record-required' });
+  }
+  return copyValue;
+}
+
 function validateEntry(entry) {
   if (!entry || typeof entry !== 'object' || Array.isArray(entry)) {
     throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry' });
@@ -64,10 +72,10 @@ function validateEntry(entry) {
     normalized.text = text(entry.text, EXPLORATION_THREAD_LIMITS.maxTextLength, 'entry.text');
   }
   if (kind === 'prediction') {
-    if (entry.baselineConditionFingerprint !== undefined && entry.baselineConditionFingerprint !== null
-      && typeof entry.baselineConditionFingerprint !== 'string') {
+    if (typeof entry.baselineConditionFingerprint !== 'string' || !entry.baselineConditionFingerprint.trim()) {
       throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.baselineConditionFingerprint' });
     }
+    normalized.baselineConditionFingerprint = entry.baselineConditionFingerprint.trim();
     if (entry.scenarioSummary !== undefined) normalized.scenarioSummary = text(entry.scenarioSummary, 320, 'entry.scenarioSummary');
     if (entry.scenarioReference !== undefined) normalized.scenarioReference = safeJson(entry.scenarioReference, 'entry.scenarioReference');
   }
@@ -75,23 +83,60 @@ function validateEntry(entry) {
     if (!Array.isArray(entry.experimentIds) || entry.experimentIds.length === 0 || entry.experimentIds.length > 4) {
       throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.experimentIds' });
     }
-    normalized.experimentIds = [...new Set(entry.experimentIds.map((id) => safeId(id, 'entry.experimentIds')))].slice(0, 4);
+    const experimentIds = entry.experimentIds.map((id) => safeId(id, 'entry.experimentIds'));
+    if (new Set(experimentIds).size !== experimentIds.length) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.experimentIds', reason: 'duplicate' });
+    }
+    normalized.experimentIds = experimentIds.slice(0, 4);
     normalized.activeExperimentId = safeId(entry.activeExperimentId, 'entry.activeExperimentId');
     normalized.baselineExperimentId = safeId(entry.baselineExperimentId ?? entry.activeExperimentId, 'entry.baselineExperimentId');
+    if (!normalized.experimentIds.includes(normalized.activeExperimentId)) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.activeExperimentId', reason: 'not-referenced' });
+    }
+    if (!normalized.experimentIds.includes(normalized.baselineExperimentId)) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.baselineExperimentId', reason: 'not-referenced' });
+    }
     normalized.comparison = {
       enabled: Boolean(entry.comparison?.enabled),
       againstExperimentId: entry.comparison?.againstExperimentId ? safeId(entry.comparison.againstExperimentId, 'entry.comparison.againstExperimentId') : null,
     };
-    normalized.conditionFingerprints = safeJson(entry.conditionFingerprints ?? {}, 'entry.conditionFingerprints');
+    if (normalized.comparison.enabled
+      && (!normalized.comparison.againstExperimentId || !normalized.experimentIds.includes(normalized.comparison.againstExperimentId))) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.comparison.againstExperimentId', reason: 'not-referenced' });
+    }
+    normalized.conditionFingerprints = safeRecord(entry.conditionFingerprints ?? {}, 'entry.conditionFingerprints');
+    for (const id of normalized.experimentIds) {
+      if (typeof normalized.conditionFingerprints[id] !== 'string' || !normalized.conditionFingerprints[id].trim()) {
+        throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: `entry.conditionFingerprints.${id}` });
+      }
+    }
     if (entry.semanticDiff !== undefined) normalized.semanticDiff = safeJson(entry.semanticDiff, 'entry.semanticDiff');
     if (entry.scenarioSummary !== undefined) normalized.scenarioSummary = text(entry.scenarioSummary, 320, 'entry.scenarioSummary');
     if (entry.scenarioReference !== undefined) normalized.scenarioReference = safeJson(entry.scenarioReference, 'entry.scenarioReference');
   }
   if (kind === 'observation') {
-    normalized.experimentIds = [...new Set((entry.experimentIds ?? []).map((id) => safeId(id, 'entry.experimentIds')))].slice(0, 4);
+    if (!Array.isArray(entry.experimentIds) || entry.experimentIds.length === 0 || entry.experimentIds.length > 4) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.experimentIds' });
+    }
+    const experimentIds = entry.experimentIds.map((id) => safeId(id, 'entry.experimentIds'));
+    if (new Set(experimentIds).size !== experimentIds.length) {
+      throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.experimentIds', reason: 'duplicate' });
+    }
+    normalized.experimentIds = experimentIds.slice(0, 4);
     if (!normalized.experimentIds.length) throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.experimentIds' });
-    normalized.conditionFingerprints = safeJson(entry.conditionFingerprints ?? {}, 'entry.conditionFingerprints');
-    normalized.evidence = safeJson(entry.evidence ?? {}, 'entry.evidence');
+    normalized.conditionFingerprints = safeRecord(entry.conditionFingerprints ?? {}, 'entry.conditionFingerprints');
+    for (const id of normalized.experimentIds) {
+      if (typeof normalized.conditionFingerprints[id] !== 'string' || !normalized.conditionFingerprints[id].trim()) {
+        throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: `entry.conditionFingerprints.${id}` });
+      }
+    }
+    normalized.evidence = safeRecord(entry.evidence ?? {}, 'entry.evidence');
+    for (const field of ['observables', 'derivedObservables', 'repeatEvidence']) {
+      if (normalized.evidence[field] !== undefined
+        && (!normalized.evidence[field] || typeof normalized.evidence[field] !== 'object' || Array.isArray(normalized.evidence[field]))) {
+        throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: `entry.evidence.${field}`, reason: 'record-required' });
+      }
+    }
     const observableCount = Object.keys(normalized.evidence.observables ?? {}).length
       + Object.keys(normalized.evidence.derivedObservables ?? {}).length;
     if (observableCount > EXPLORATION_THREAD_LIMITS.maxObservablesPerObservation) {

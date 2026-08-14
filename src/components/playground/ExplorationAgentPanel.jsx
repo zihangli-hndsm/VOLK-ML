@@ -127,11 +127,11 @@ export default function ExplorationAgentPanel({ agent, snapshot, t }) {
   };
 
   const chooseFollowUp = async (item) => {
-    const prompts = {
-      'repeat-condition': 'Repeat this condition with the existing Repeat control.',
-      'smaller-change': 'Try a smaller World change and compare again.',
+    const promptKeys = {
+      'repeat-condition': 'playground.explorationAgent.followUpPrompt.repeatCondition',
+      'smaller-change': 'playground.explorationAgent.followUpPrompt.smallerChange',
     };
-    const prompt = prompts[item.id];
+    const prompt = promptKeys[item.id] ? t(promptKeys[item.id]) : null;
     if (!prompt) return;
     if (snapshot.activeExplorationThread) {
       try { await agent.addExplorationThreadQuestion({ text: prompt, actor: 'human', source: 'agent-follow-up' }); }
@@ -192,7 +192,6 @@ export default function ExplorationAgentPanel({ agent, snapshot, t }) {
       {runResult.fidelityMismatch && <p role="alert" className="mt-2 rounded-lg bg-red-100 p-2 font-black text-red-800">{t('playground.explorationAgent.fidelityMismatch')}</p>}
       {runResult.followUps?.length > 0 && <div className="mt-2"><p className="font-black">{t('playground.explorationAgent.followUps')}</p><div className="mt-1 flex flex-wrap gap-2">{runResult.followUps.map((item) => <button type="button" key={item.id} onClick={() => chooseFollowUp(item)} className="rounded-lg bg-white px-2 py-1 text-left font-bold text-emerald-900 ring-1 ring-emerald-200">{t(`playground.explorationAgent.followUp.${item.id}`)}</button>)}</div></div>}
       {snapshot.activeExplorationThread && <button type="button" disabled={busy || recorded} onClick={recordResult} className="mt-3 rounded-xl bg-cyan-700 px-3 py-2 font-black text-white disabled:opacity-40">{recorded ? t('playground.thread.recorded') : t('playground.thread.addResult')}</button>}
-      {runResult.followUps?.length > 0 && <div className="mt-2"><p className="font-black">{t('playground.explorationAgent.followUps')}</p><ul className="mt-1 space-y-1">{runResult.followUps.map((item) => <li key={item.id}>• {t(`playground.explorationAgent.followUp.${item.id}`)}</li>)}</ul></div>}
     </div>}
     {aiNotice && <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-bold text-amber-900">{aiNotice}</p>}
     <div className="mt-2 flex items-center gap-2 text-[10px] text-slate-500"><span>{t('playground.explorationAgent.interpreter')}</span><button type="button" onClick={() => setAiMode('local')} className={aiMode === 'local' ? 'font-black text-violet-700' : ''}>{t('playground.explorationAgent.local')}</button><button type="button" disabled={!isConfigured} onClick={() => setAiMode('ai')} className={aiMode === 'ai' ? 'font-black text-violet-700' : 'disabled:opacity-40'}>{t('playground.explorationAgent.ai')}</button></div>

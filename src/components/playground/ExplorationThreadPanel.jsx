@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 
-function readableId(id) {
+function fallbackLabel(id) {
   return String(id).split('.').at(-1).replace(/[A-Z]/g, (letter) => ` ${letter.toLowerCase()}`);
 }
 
@@ -19,6 +19,7 @@ export default function ExplorationThreadPanel({ agent, snapshot, t }) {
   const active = snapshot?.activeExplorationThread;
   const threads = snapshot?.explorationThreads ?? [];
   const workspaceIds = useMemo(() => new Set((snapshot?.experimentWorkspace?.experiments ?? []).map((item) => item.id)), [snapshot?.experimentWorkspace?.experiments]);
+  const observableMetadata = useMemo(() => ({ ...(snapshot?.observables ?? {}), ...(snapshot?.derivedObservables ?? {}) }), [snapshot?.observables, snapshot?.derivedObservables]);
 
   const call = async (operation) => {
     setError(null);
@@ -52,7 +53,7 @@ export default function ExplorationThreadPanel({ agent, snapshot, t }) {
             <div className="flex items-start justify-between gap-2"><span className="font-black uppercase tracking-wide text-cyan-800">{t(`playground.thread.kind.${entry.kind}`)}</span><button type="button" onClick={() => call(() => agent.removeExplorationThreadEntry(entry.id))} className="rounded px-1 font-bold text-slate-500 hover:bg-slate-200" aria-label={t('playground.thread.removeEntry')}>×</button></div>
             {(entry.kind === 'question' || entry.kind === 'prediction') && <p className="mt-1 text-slate-800">{entry.text}</p>}
             {entry.kind === 'experiment' && <><p className="mt-1 text-slate-800">{entry.experimentIds.join(' ↔ ')}</p><p className="mt-1 text-[10px] text-slate-500">{entry.semanticDiff?.changed?.join(', ') || t('playground.thread.noDiff')}</p><button type="button" disabled={entry.experimentIds.some((id) => !workspaceIds.has(id))} onClick={() => call(() => agent.resumeExplorationThreadExperiment(entry.id))} className="mt-2 rounded-lg bg-violet-700 px-2 py-1 font-black text-white disabled:cursor-not-allowed disabled:bg-slate-300">{entry.experimentIds.some((id) => !workspaceIds.has(id)) ? t('playground.thread.unavailable') : t('playground.thread.resume')}</button></>}
-            {entry.kind === 'observation' && <><p className="mt-1 font-bold text-slate-700">{t('playground.thread.historical')}</p><div className="mt-1 grid gap-1 sm:grid-cols-2">{Object.entries(entry.evidence?.observables ?? {}).slice(0, 6).map(([id, values]) => <span key={id} className="rounded bg-white px-2 py-1 text-[10px] text-slate-700 ring-1 ring-slate-200">{readableId(id)}: {Object.entries(values).map(([side, value]) => `${side} ${compactValue(value)}`).join(' / ')}</span>)}</div>{entry.note && <p className="mt-1 italic text-slate-600">{entry.note}</p>}</>}
+            {entry.kind === 'observation' && <><p className="mt-1 font-bold text-slate-700">{t('playground.thread.historical')}</p><div className="mt-1 grid gap-1 sm:grid-cols-2">{Object.entries(entry.evidence?.observables ?? {}).slice(0, 6).map(([id, values]) => { const metadata = observableMetadata[id]; return <span key={id} className="rounded bg-white px-2 py-1 text-[10px] text-slate-700 ring-1 ring-slate-200">{metadata?.labelKey ? t(metadata.labelKey) : fallbackLabel(id)}: {Object.entries(values).map(([side, value]) => `${side} ${compactValue(value)}`).join(' / ')}</span>; })}</div>{entry.note && <p className="mt-1 italic text-slate-600">{entry.note}</p>}</>}
           </li>)}
         </ol>
       </div>

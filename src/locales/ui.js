@@ -43,6 +43,8 @@ export const messages = {
   'playground.explorationAgent.none': { en: 'none', zh: '无' },
   'playground.explorationAgent.followUp.repeat-condition': { en: 'Repeat this condition with the existing Repeat control.', zh: '使用现有的重复控件再次运行此条件。' },
   'playground.explorationAgent.followUp.smaller-change': { en: 'Try a smaller World change and compare again.', zh: '尝试更小的 World 变化并再次比较。' },
+  'playground.explorationAgent.followUpPrompt.repeatCondition': { en: 'Repeat this condition with the existing Repeat control.', zh: '使用现有重复控件重新运行这个条件。' },
+  'playground.explorationAgent.followUpPrompt.smallerChange': { en: 'Try a smaller World change and compare again.', zh: '尝试更小的 World 变化并再次比较。' },
   'playground.explorationAgent.fidelity.exact': { en: 'Exact', zh: '精确' },
   'playground.explorationAgent.fidelity.partial': { en: 'Partial', zh: '部分' },
   'playground.explorationAgent.fidelity.approximate': { en: 'Approximate', zh: '近似' },

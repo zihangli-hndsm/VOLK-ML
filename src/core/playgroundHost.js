@@ -36,7 +36,6 @@ import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
 import { planExplorationIntent, planExplorationRequest } from './exploration/scenarioPlanner.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
-import { captureThreadExperiment, captureThreadObservation } from './exploration/threadEvidence.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -662,17 +661,13 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
 
     recordExplorationThreadExperiment({ scenario, actor = 'human' } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      const snapshot = derivePlaygroundSnapshot(session);
-      const entry = captureThreadExperiment({ session, snapshot, scenario, actor });
-      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_EXPERIMENT', actor, entry }));
+      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_EXPERIMENT', actor, scenario }));
       return present(derivePlaygroundSnapshot(session));
     },
 
     recordExplorationThreadObservation({ scenario, note, actor = 'human' } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      const snapshot = derivePlaygroundSnapshot(session);
-      const entry = captureThreadObservation({ session, snapshot, scenario, note, actor });
-      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_OBSERVATION', actor, entry }));
+      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_OBSERVATION', actor, scenario, note }));
       return present(derivePlaygroundSnapshot(session));
     },
 
