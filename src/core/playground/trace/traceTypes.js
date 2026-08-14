@@ -17,6 +17,7 @@ export const TRACE_EVENTS = {
     'loss.measured',
     'gradient.computed',
     'parameters.updated',
+    'training.step',
     'training.completed',
   ],
   'knn': [
@@ -68,6 +69,18 @@ export const TRACE_PAYLOAD_SCHEMAS = {
   'loss.measured': { required: { step: 'integer', loss: 'number' }, optional: { lossNormalized: 'number' } },
   'gradient.computed': { required: { step: 'integer', magnitude: 'number' }, optional: { weight: 'number', bias: 'number' } },
   'parameters.updated': { required: { weight: 'number', bias: 'number' }, optional: { step: 'integer' } },
+  'training.step': {
+    required: {
+      step: 'integer',
+      runId: 'string',
+      conditionFingerprint: 'string',
+      parameters: 'object',
+      objective: 'object',
+      gradients: 'object',
+      update: 'object',
+    },
+    optional: {},
+  },
   'training.completed': { required: { steps: 'integer', requestedSteps: 'integer' }, optional: { stoppedReason: 'string' } },
   'knn.samplesStored': { required: { count: 'integer' }, optional: { trainIds: 'array' } },
   'query.received': { required: { x: 'number', y: 'number' }, optional: { vector: 'array<number>' } },

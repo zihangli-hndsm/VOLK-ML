@@ -52,6 +52,7 @@ import {
   removeExplorationThreadEntry,
 } from '../exploration/explorationThread.js';
 import { captureThreadExperiment, captureThreadObservation, captureThreadPrediction } from '../exploration/threadEvidence.js';
+import { deriveTrainingMicroscope } from '../exploration/trainingMicroscope.js';
 
 // The unified playground runtime. This module owns the session reducer: the
 // UI, the Agent and the visualization script runtime all dispatch the same
@@ -268,10 +269,17 @@ function applyModelAction(session, action) {
   const adapter = modelAdapterFor(session);
   if (!adapter) throw playgroundError('PLAYGROUND_MODEL_REQUIRED', { action: action.type });
   const recorder = createTraceRecorder(session.traces);
+  const priorTrainingSteps = session.traces.filter((event) => event.type === 'training.step').length;
   const patch = adapter.applyModelAction(session.modelState, action, {
     controls: session.controls,
     recorder,
     source: session.sourceData,
+    runId: `training-run-${priorTrainingSteps + 1}`,
+    conditionFingerprint: conditionFingerprintForSession({
+      world: session.experiment?.world,
+      adapterId: session.adapterId,
+      experiment: session.experiment,
+    }),
   });
   const merged = mergePatches(session, patch);
   const points = Array.isArray(merged.modelState?.points) ? merged.modelState.points : undefined;
@@ -1361,6 +1369,16 @@ export function deriveRuntimeSnapshot(session) {
     formula: formula ? jsonSafe(formula) : null,
     capabilities,
     traces: jsonSafe(session.traces),
+    trainingMicroscope: deriveTrainingMicroscope({
+      session,
+      adapter,
+      traces: session.traces,
+      conditionFingerprint: conditionFingerprintForSession({
+        world: session.experiment?.world,
+        adapterId: session.adapterId,
+        experiment: session.experiment,
+      }),
+    }),
     script: session.script ? jsonSafe(session.script) : null,
     scriptState: jsonSafe(session.scriptState),
     visualState: jsonSafe(session.visualState),

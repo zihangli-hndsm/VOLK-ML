@@ -17,6 +17,7 @@ import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
 import ExplorationThreadPanel from './ExplorationThreadPanel.jsx';
 import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 import BigIdeaPrompt from './BigIdeaPrompt.jsx';
+import TrainingMicroscopePanel from './TrainingMicroscopePanel.jsx';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model' }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -136,6 +137,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
           <PlaygroundInspector playground={modelPlayground} snapshot={snapshot} onDispatch={dispatchAction} t={t} />
         </div>
         <PlaygroundTimeline snapshot={snapshot} onDispatch={dispatchAction} t={t} />
+        <TrainingMicroscopePanel snapshot={snapshot} onDispatch={dispatchAction} t={t} />
         <div className="rounded-2xl bg-slate-950 p-4 text-center">
           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('playground.formulaTitle')}</p>
           <div className="mt-2">
