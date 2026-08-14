@@ -12,7 +12,9 @@ Distribution Shift, or Model Capacity.
 starting playground/model, an explicit seed, semantic setup actions, focused
 observable IDs, affordances, and suggested actions. The registry validates
 playgrounds, model adapters, controls, generator specs, World operations,
-observables, and seed values during development/import.
+observables, affordances, setup action shape, and seed values during
+development/import. Setup remains a small registry-grounded vocabulary:
+`ATTACH_MODEL`, `SET_CONTROL`, `RUN`, and `APPLY_WORLD_TRANSACTION`.
 
 The registry is product content, not a curriculum or an Agent-generated
 catalog. React renders the registered declarations and does not contain
@@ -28,9 +30,15 @@ lightweight provenance (`id`, `version`, starter question key, and relevant
 observable IDs); World, model, Experiment Workspace, and evidence remain the
 authoritative state.
 
-All generated starts use explicit seeds. Restart is an explicit fresh
-initialization operation. The host never reapplies the defaults after the
-learner changes a World, control, experiment, or comparison.
+All generated starts use explicit seeds. The registered `startingPoint.seed` is
+the default authority, and the public `openBigIdeaEntrance({ id, seed })` /
+`restartBigIdeaEntrance({ id, seed })` override is optional. The initializer
+derives an execution plan without mutating the registry; only a setup
+`REGENERATE_WORLD` explicitly marked `seedSource: 'entrance'` receives the
+effective seed. Operation-specific seeds remain independent. Restart is an
+explicit fresh initialization operation. The host never reapplies the
+defaults after the learner changes a World, control, experiment, or
+comparison.
 
 ## Exploration modes and Threads
 

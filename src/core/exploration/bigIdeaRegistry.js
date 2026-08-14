@@ -1,10 +1,11 @@
 import { getModelAdapter } from '../playground/model/modelRegistry.js';
-import { getPlayground } from '../playgrounds/registry.js';
+import { getPlayground, listPlaygroundDescriptors } from '../playgrounds/registry.js';
 import { normalizeGeneratorSpec } from './generator.js';
 import { listWorldOperations } from './operationRegistry.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { OBSERVABLE_IDS } from './observables.js';
 import { validateCanonicalControlValue } from '../playground/controlValidation.js';
+import { AFFORDANCE_IDS } from './guidedExploration.js';
 
 export const BIG_IDEA_VERSION = 1;
 
@@ -43,7 +44,7 @@ const dataLabSetup = ({ id, seed, generator }) => ({
         intent: 'big-idea-start',
         operations: [
           { type: 'SET_WORLD_GENERATOR', spec: generator },
-          { type: 'REGENERATE_WORLD', seed },
+          { type: 'REGENERATE_WORLD', seed, seedSource: 'entrance' },
         ],
       },
     },
@@ -205,6 +206,102 @@ function invalid(reason, details = {}) {
   throw error;
 }
 
+const SETUP_ACTION_TYPES = new Set(['ATTACH_MODEL', 'SET_CONTROL', 'RUN', 'APPLY_WORLD_TRANSACTION']);
+const ACTORS = new Set(['human', 'agent', 'system']);
+const modelPlaygroundForAdapter = (adapterId) => listPlaygroundDescriptors()
+  .find((playground) => playground.kind !== 'session' && playground.adapterId === adapterId) ?? null;
+
+function assertPlainObject(value, reason, details = {}) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) invalid(reason, details);
+}
+
+function assertAllowedKeys(value, allowed, reason, details = {}) {
+  for (const key of Object.keys(value)) {
+    if (!allowed.has(key)) invalid(reason, { ...details, key });
+  }
+}
+
+function assertActor(value, reason = 'setup-actor') {
+  if (value !== undefined && !ACTORS.has(value)) invalid(reason, { actor: value });
+}
+
+function validateSetupAction(action, { controls, modelAdapterId, worldOperationTypes }) {
+  assertPlainObject(action, 'setup-action');
+  if (!SETUP_ACTION_TYPES.has(action.type)) invalid('unsupported-setup-action', { type: action.type });
+  assertActor(action.actor);
+
+  if (action.type === 'ATTACH_MODEL') {
+    assertAllowedKeys(action, new Set(['type', 'modelPlaygroundId', 'actor']), 'malformed-attach-model');
+    if (typeof action.modelPlaygroundId !== 'string' || !action.modelPlaygroundId) {
+      invalid('invalid-model-playground', { modelPlaygroundId: action.modelPlaygroundId });
+    }
+    const modelPlayground = getPlayground(action.modelPlaygroundId);
+    if (!modelPlayground || modelPlayground.kind === 'session' || !modelPlayground.adapterId) {
+      invalid('unknown-model-playground', { modelPlaygroundId: action.modelPlaygroundId });
+    }
+    if (!getModelAdapter(modelPlayground.adapterId)) {
+      invalid('unknown-model-adapter', { modelAdapterId: modelPlayground.adapterId });
+    }
+    if (modelPlayground.adapterId !== modelAdapterId) {
+      invalid('model-adapter-mismatch', {
+        declared: modelAdapterId,
+        attached: modelPlayground.adapterId,
+      });
+    }
+    if (modelPlaygroundForAdapter(modelAdapterId)?.id !== modelPlayground.id) {
+      invalid('unregistered-model-playground', { modelPlaygroundId: modelPlayground.id });
+    }
+    return;
+  }
+
+  if (action.type === 'SET_CONTROL') {
+    assertAllowedKeys(action, new Set(['type', 'key', 'value', 'actor']), 'malformed-set-control');
+    if (typeof action.key !== 'string' || !action.key) invalid('invalid-control-key', { key: action.key });
+    const control = controls.get(action.key);
+    if (!control) invalid('unsupported-control', { key: action.key });
+    if (!Object.prototype.hasOwnProperty.call(action, 'value')) invalid('missing-control-value', { key: action.key });
+    try {
+      validateCanonicalControlValue(control, action.value);
+    } catch (error) {
+      invalid('invalid-control-value', { key: action.key, cause: error.code });
+    }
+    return;
+  }
+
+  if (action.type === 'RUN') {
+    assertAllowedKeys(action, new Set(['type', 'actor']), 'malformed-run');
+    return;
+  }
+
+  assertAllowedKeys(action, new Set(['type', 'transaction', 'actor']), 'malformed-world-transaction');
+  const transaction = action.transaction;
+  assertPlainObject(transaction, 'setup-world-transaction');
+  assertAllowedKeys(transaction, new Set(['id', 'actor', 'intent', 'operations']), 'malformed-world-transaction');
+  if (typeof transaction.id !== 'string' || !transaction.id) invalid('setup-world-transaction-id');
+  if (typeof transaction.intent !== 'string' || !transaction.intent) invalid('setup-world-transaction-intent');
+  assertActor(transaction.actor, 'setup-transaction-actor');
+  if (!Array.isArray(transaction.operations) || transaction.operations.length === 0) invalid('setup-world-transaction');
+  for (const operation of transaction.operations) {
+    assertPlainObject(operation, 'world-operation');
+    if (!worldOperationTypes.has(operation.type)) invalid('unsupported-world-operation', { type: operation.type });
+    if (operation.type === 'SET_WORLD_GENERATOR') {
+      assertAllowedKeys(operation, new Set(['type', 'spec']), 'malformed-world-operation', { type: operation.type });
+      try {
+        normalizeGeneratorSpec(operation.spec);
+      } catch (error) {
+        invalid('invalid-generator-spec', { cause: error.code });
+      }
+    }
+    if (operation.type === 'REGENERATE_WORLD') {
+      assertAllowedKeys(operation, new Set(['type', 'seed', 'seedSource']), 'malformed-world-operation', { type: operation.type });
+      if (!finiteInteger(operation.seed)) invalid('invalid-regenerate-seed');
+      if (operation.seedSource !== undefined && operation.seedSource !== 'entrance') {
+        invalid('invalid-seed-source', { seedSource: operation.seedSource });
+      }
+    }
+  }
+}
+
 export function validateBigIdeaEntrance(entrance) {
   if (!entrance || typeof entrance !== 'object' || Array.isArray(entrance)) invalid('declaration');
   if (!isJsonSafe(entrance)) invalid('not-json-safe');
@@ -214,44 +311,37 @@ export function validateBigIdeaEntrance(entrance) {
     if (typeof entrance[key] !== 'string' || !entrance[key]) invalid('localization-key', { key });
   }
   const point = entrance.startingPoint;
-  if (!point || typeof point !== 'object') invalid('starting-point');
+  assertPlainObject(point, 'starting-point');
   const playground = getPlayground(point.playgroundId);
   if (!playground) invalid('unknown-playground', { playgroundId: point.playgroundId });
-  const modelPlaygroundId = point.modelAdapterId === playground.adapterId
-    ? playground.id
-    : point.modelAdapterId === 'linear-regression' || point.modelAdapterId === 'mlp'
-      ? (point.modelAdapterId === 'linear-regression' ? 'linear-regression' : 'mlp-classification')
-      : null;
-  if (!modelPlaygroundId || !getModelAdapter(point.modelAdapterId)) {
+  if (typeof point.modelAdapterId !== 'string' || !point.modelAdapterId || !getModelAdapter(point.modelAdapterId)) {
     invalid('unknown-model-adapter', { modelAdapterId: point.modelAdapterId });
   }
+  if (playground.adapterId && playground.adapterId !== point.modelAdapterId) {
+    invalid('starting-point-model-adapter-mismatch', { modelAdapterId: point.modelAdapterId, playgroundId: playground.id });
+  }
+  const modelPlayground = modelPlaygroundForAdapter(point.modelAdapterId);
+  if (!modelPlayground) invalid('unregistered-model-playground', { modelAdapterId: point.modelAdapterId });
   if (!finiteInteger(point.seed)) invalid('seed', { seed: point.seed });
   if (!Array.isArray(point.setup)) invalid('setup');
   const worldOperationTypes = new Set(listWorldOperations().map((item) => item.type));
   const generatorParameterPaths = new Set(listGeneratorParameterCapabilities().map((item) => item.path));
-  const controls = new Map((getPlayground(modelPlaygroundId)?.controls ?? []).map((control) => [control.key, control]));
-  for (const [key, value] of Object.entries(point.controls ?? {})) {
+  const controls = new Map((modelPlayground.controls ?? []).map((control) => [control.key, control]));
+  const declaredControls = point.controls ?? {};
+  assertPlainObject(declaredControls, 'starting-point-controls');
+  for (const [key, value] of Object.entries(declaredControls)) {
     const control = controls.get(key);
     if (!control) invalid('unsupported-control', { key });
     try { validateCanonicalControlValue(control, value); } catch (error) { invalid('invalid-control-value', { key, cause: error.code }); }
   }
-  for (const action of point.setup) {
-    if (!action || typeof action.type !== 'string') invalid('setup-action');
-    if (action.type === 'APPLY_WORLD_TRANSACTION') {
-      const operations = action.transaction?.operations;
-      if (!Array.isArray(operations) || operations.length === 0) invalid('setup-world-transaction');
-      for (const operation of operations) {
-        if (!worldOperationTypes.has(operation.type)) invalid('unsupported-world-operation', { type: operation.type });
-        if (operation.type === 'SET_WORLD_GENERATOR') normalizeGeneratorSpec(operation.spec);
-        if (operation.type === 'REGENERATE_WORLD' && !finiteInteger(operation.seed)) invalid('invalid-regenerate-seed');
-      }
-    } else if (!['ATTACH_MODEL', 'SET_CONTROL', 'RUN'].includes(action.type)) {
-      invalid('unsupported-setup-action', { type: action.type });
-    }
-  }
-  if (!entrance.focus || !Array.isArray(entrance.focus.observables) || !Array.isArray(entrance.focus.affordances)) invalid('focus');
+  for (const action of point.setup) validateSetupAction(action, { controls, modelAdapterId: point.modelAdapterId, worldOperationTypes });
+  assertPlainObject(entrance.focus, 'focus');
+  if (!Array.isArray(entrance.focus.observables) || !Array.isArray(entrance.focus.affordances)) invalid('focus');
   for (const observableId of entrance.focus.observables) {
     if (!OBSERVABLE_IDS.includes(observableId)) invalid('unsupported-observable', { observableId });
+  }
+  for (const affordanceId of entrance.focus.affordances) {
+    if (!AFFORDANCE_IDS.includes(affordanceId)) invalid('unsupported-affordance', { affordanceId });
   }
   if (!Array.isArray(entrance.suggestedActions)) invalid('suggested-actions');
   for (const suggestion of entrance.suggestedActions) {
@@ -266,6 +356,31 @@ export function validateBigIdeaEntrance(entrance) {
     }
   }
   return true;
+}
+
+export function resolveBigIdeaInitialization(entrance, { seed } = {}) {
+  validateBigIdeaEntrance(entrance);
+  const effectiveSeed = seed === undefined ? entrance.startingPoint.seed : seed;
+  if (!finiteInteger(effectiveSeed)) invalid('seed', { seed: effectiveSeed });
+  const resolvedSetup = entrance.startingPoint.setup.map((action) => {
+    if (action.type !== 'APPLY_WORLD_TRANSACTION') return clone(action);
+    return {
+      ...clone(action),
+      transaction: {
+        ...clone(action.transaction),
+        operations: action.transaction.operations.map((operation) => (
+          operation.type === 'REGENERATE_WORLD' && operation.seedSource === 'entrance'
+            ? { ...clone(operation), seed: effectiveSeed }
+            : clone(operation)
+        )),
+      },
+    };
+  });
+  return {
+    effectiveSeed,
+    controls: clone(entrance.startingPoint.controls ?? {}),
+    resolvedSetup,
+  };
 }
 
 for (const entry of entries) validateBigIdeaEntrance(entry);
