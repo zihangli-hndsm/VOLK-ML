@@ -7,6 +7,7 @@ import {
 import {
   createLinearRegressionTrainer,
   fitLinearNormalization,
+  denormalizeLinearParameters,
   normalizeLinearParameters,
   stepLinearRegressionTrainer,
 } from '../../linearRegressionMath.js';
@@ -92,6 +93,13 @@ export const linearRegressionAdapter = {
     tracePredict: true,
     parameterSurface: true,
   },
+  trainingMicroscopeCapabilities: {
+    lossTrace: true,
+    parameters: ['weight', 'bias'],
+    gradients: ['weight', 'bias'],
+    updates: true,
+    preprocessing: ['train-test-split', 'feature-target-normalization'],
+  },
   defaultVisualizationPreset: 'linear-regression.intuition',
   // Declarative teaching capabilities (PR E.2.1). The model owns the failure
   // signal contract: show_failure_case is only supportable because the
@@ -143,7 +151,7 @@ export const linearRegressionAdapter = {
       // START_TRAINING emits normalization/initialization and per-step events
       // while the step is finite; divergence or early stop skips some of them.
       alwaysProducesTrace: ['normalization.fitted', 'regression.initialized', 'training.completed'],
-      mayProduceTrace: ['loss.measured', 'gradient.computed', 'parameters.updated'],
+      mayProduceTrace: ['loss.measured', 'gradient.computed', 'parameters.updated', 'training.step'],
       // prediction.updated / residuals.computed are produced by later STEP
       // playback, not by the traceFit invocation itself.
       enablesTrace: ['prediction.updated', 'residuals.computed'],
@@ -250,6 +258,13 @@ export const linearRegressionAdapter = {
       trainRows: train.length,
       testRows: test.length,
     });
+    const normalization = fitLinearNormalization(train.map((point) => ({ x: [point.x], y: point.y })), 1);
+    recorder.emit('normalization.fitted', {
+      xMean: normalization.xMeans[0],
+      xStd: normalization.xStds[0],
+      yMean: normalization.yMean,
+      yStd: normalization.yStd,
+    });
     emitLineUpdate(recorder, next);
     return { modelState: next, timeline: { step: 0, totalSteps: 0 } };
   },
@@ -266,7 +281,7 @@ export const linearRegressionAdapter = {
     };
   },
 
-  applyModelAction(modelState, action, { controls, recorder }) {
+  applyModelAction(modelState, action, { controls, recorder, runId = 'unknown-run', conditionFingerprint = 'unknown-condition' }) {
     if (action.type === 'SET_CONTROL' || action.type === 'SET_PARAMETERS') {
       if (action.key === 'weight' || action.type === 'SET_PARAMETERS') {
         const weight = action.type === 'SET_PARAMETERS' ? finiteOrNull(action.weight) : finiteOrNull(action.value);
@@ -283,6 +298,11 @@ export const linearRegressionAdapter = {
         return { controls: { bias }, modelState: next };
       }
       if (action.key === 'learningRate' || action.key === 'trainingSteps' || action.key === 'showResiduals' || action.key === 'showBestFit') {
+        if (action.key === 'learningRate' || action.key === 'trainingSteps') {
+          const next = clearTraining(modelState);
+          emitLineUpdate(recorder, next);
+          return { controls: { [action.key]: action.value }, modelState: next };
+        }
         return { controls: { [action.key]: action.value } };
       }
       throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
@@ -333,6 +353,19 @@ export const linearRegressionAdapter = {
           stopReason = 'diverged';
           break;
         }
+        const rawBefore = denormalizeLinearParameters({
+          weights: current.weights,
+          bias: current.bias,
+          normalization: trainer.normalization,
+        });
+        const normalizedDelta = {
+          weight: normalizedParameters.weights[0] - current.weights[0],
+          bias: normalizedParameters.bias - current.bias,
+        };
+        const rawDelta = {
+          weight: rawParameters.weights[0] - rawBefore.weights[0],
+          bias: rawParameters.bias - rawBefore.bias,
+        };
         const entry = {
           step,
           weight: rawParameters.weights[0],
@@ -352,13 +385,42 @@ export const linearRegressionAdapter = {
           bias: next.gradient.bias,
           magnitude: next.gradient.magnitude,
         });
+        history.push(entry);
+        recorder.emit('training.step', {
+          step,
+          runId: String(runId),
+          conditionFingerprint: String(conditionFingerprint),
+          parameters: {
+            before: { weight: rawBefore.weights[0], bias: rawBefore.bias },
+            after: { weight: rawParameters.weights[0], bias: rawParameters.bias },
+            normalizedBefore: { weight: current.weights[0], bias: current.bias },
+            normalizedAfter: { weight: normalizedParameters.weights[0], bias: normalizedParameters.bias },
+          },
+          objective: {
+            before: { lossNormalized: next.lossNormalized },
+            after: { loss: entry.loss, lossNormalized: entry.lossNormalized },
+          },
+          gradients: {
+            weight: next.gradient.weights[0],
+            bias: next.gradient.bias,
+            magnitude: next.gradient.magnitude,
+            space: 'normalized',
+          },
+          update: {
+            learningRate,
+            space: 'normalized',
+            delta: normalizedDelta,
+            rawDelta,
+          },
+          outcome: lossGrew
+            ? { status: 'stopped', stopReason: 'learning-rate-too-high' }
+            : { status: 'applied' },
+        });
         if (lossGrew) {
-          history.push(entry);
           stopReason = 'learning-rate-too-high';
           break;
         }
         previousLoss = next.nextLossNormalized;
-        history.push(entry);
         recorder.emit('parameters.updated', { step, weight: entry.weight, bias: entry.bias });
         current = { weights: normalizedParameters.weights, bias: normalizedParameters.bias };
       }
@@ -380,6 +442,8 @@ export const linearRegressionAdapter = {
             totalSteps: history.length,
             stopReason,
             normalization: trainer.normalization,
+            runId: String(runId),
+            conditionFingerprint: String(conditionFingerprint),
           },
         },
         timeline: { step: 0, totalSteps: history.length, speed: undefined },

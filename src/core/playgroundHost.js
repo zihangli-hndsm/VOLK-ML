@@ -635,6 +635,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         adapterId: snapshot.experiment?.model?.adapterId ?? session.adapterId,
         experiment: snapshot.experiment,
       });
+      context.trainingMicroscope = structuredClone(snapshot.trainingMicroscope ?? null);
       context.teaching = {
         objectives: [...TEACHING_OBJECTIVES],
         supportedObjectives: getSupportedTeachingObjectives(context),

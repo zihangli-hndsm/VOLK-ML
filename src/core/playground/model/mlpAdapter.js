@@ -168,6 +168,13 @@ export const mlpAdapter = {
     tracePredict: true,
     decisionSurface: true,
   },
+  trainingMicroscopeCapabilities: {
+    lossTrace: true,
+    parameters: [],
+    gradients: [],
+    updates: false,
+    preprocessing: [],
+  },
   defaultVisualizationPreset: 'mlp.intro',
   // Declarative teaching capabilities (PR F.1): the MLP owns its evidence
   // contract, the generic taxonomy/fidelity layers never special-case it.
