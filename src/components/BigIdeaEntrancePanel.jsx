@@ -1,14 +1,15 @@
 import { listBigIdeaEntrances } from '../core/exploration/bigIdeaRegistry.js';
 
-export default function BigIdeaEntrancePanel({ onOpen, t }) {
+export default function BigIdeaEntrancePanel({ onOpen, t, variant = 'strip' }) {
   const entries = listBigIdeaEntrances();
-  return <section aria-label={t('bigIdea.ariaLabel')} className="relative z-50 max-h-[38vh] shrink-0 overflow-auto border-b border-white/70 bg-white/95 px-3 py-3 backdrop-blur sm:px-5">
-    <div className="mx-auto max-w-[1600px]">
+  const isHome = variant === 'home';
+  return <section data-big-idea-panel={variant} aria-label={t('bigIdea.ariaLabel')} className={isHome ? 'rounded-2xl' : 'relative z-50 max-h-[38vh] shrink-0 overflow-auto border-b border-white/70 bg-white/95 px-3 py-3 backdrop-blur sm:px-5'}>
+    <div className={isHome ? '' : 'mx-auto max-w-[1600px]'}>
       <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="text-base font-black text-slate-950 sm:text-lg">{t('bigIdea.sectionTitle')}</h2>
-        <p className="text-xs text-slate-600">{t('bigIdea.sectionSubtitle')}</p>
+        <p className="text-xs text-slate-600 sm:max-w-md sm:text-right">{t('bigIdea.sectionSubtitle')}</p>
       </div>
-      <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         {entries.map((entry) => <button
           key={entry.id}
           type="button"

@@ -35,8 +35,9 @@ import {
 import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
-import { listPlaygrounds } from './core/playgrounds/registry.js';
 import { getBigIdeaEntrance } from './core/exploration/bigIdeaRegistry.js';
+import { UI_SURFACES } from './core/ui/uiArchitecture.js';
+import { createBuildPanelPresentation, toggleBuildPanel } from './core/ui/buildSurfacePresentation.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
@@ -47,7 +48,8 @@ import { resolveLanguagePreference } from './core/languagePolicy.js';
 import PlaygroundDialog from './components/playgrounds/PlaygroundDialog';
 import VisualGlyph from './components/VisualGlyph';
 import AiSettingsDialog from './components/AiSettingsDialog.jsx';
-import BigIdeaEntrancePanel from './components/BigIdeaEntrancePanel.jsx';
+import ExploreHome from './components/ExploreHome.jsx';
+import BuildToolbar from './components/BuildToolbar.jsx';
 import { AiProvider, useAiProvider } from './components/ai/AiProviderContext.jsx';
 
 const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
@@ -468,14 +470,16 @@ function Workspace() {
   const { primary, secondary, setLanguages, t } = useVividTranslation();
   const { openSettings } = useAiProvider();
   const initialGraph = useMemo(() => makeDefaultGraph(), []);
+  const initialBuildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth: window.innerWidth }), []);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialGraph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialGraph.edges);
   const [selectedId, setSelectedId] = useState(nodes[0]?.id);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [leftOpen, setLeftOpen] = useState(initialBuildPresentation.leftOpen);
+  const [rightOpen, setRightOpen] = useState(initialBuildPresentation.rightOpen);
   const [leftWidth, setLeftWidth] = useState(300);
-  const [rightWidth, setRightWidth] = useState(() => Math.min(640, Math.max(320, Math.round(window.innerWidth * 0.3))));
+  const [rightWidth, setRightWidth] = useState(initialBuildPresentation.rightWidth);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [libraryMode, setLibraryMode] = useState('detailed');
   const [viewMode, setViewMode] = useState('canvas');
   const [query, setQuery] = useState('');
@@ -488,6 +492,8 @@ function Workspace() {
   const [playgroundOpen, setPlaygroundOpen] = useState(false);
   const [playgroundId, setPlaygroundId] = useState(null);
   const [playgroundInitialTab, setPlaygroundInitialTab] = useState('model');
+  const [surface, setSurface] = useState(UI_SURFACES.EXPLORE);
+  const [globalMoreOpen, setGlobalMoreOpen] = useState(false);
   const [tutorialManifest, setTutorialManifest] = useState(null);
   const [projectName, setProjectName] = useState(() => t('project.sampleName'));
   const [customComponents, setCustomComponents] = useState([]);
@@ -501,6 +507,18 @@ function Workspace() {
   const [pendingConnection, setPendingConnection] = useState(null);
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [notice, setNotice] = useState('');
+  const buildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth, leftOpen, rightOpen, rightWidth }), [viewportWidth, leftOpen, rightOpen, rightWidth]);
+  const toggleLeftPanel = useCallback(() => {
+    const next = toggleBuildPanel(buildPresentation, 'left');
+    setLeftOpen(next.leftOpen);
+    setRightOpen(next.rightOpen);
+  }, [buildPresentation]);
+  const toggleRightPanel = useCallback(() => {
+    const next = toggleBuildPanel(buildPresentation, 'right');
+    setLeftOpen(next.leftOpen);
+    setRightOpen(next.rightOpen);
+  }, [buildPresentation]);
+  const wasCompactBuildRef = useRef(initialBuildPresentation.compact);
   const instanceIdRef = useRef(`workspace-${crypto.randomUUID()}`);
   const agentSubscribersRef = useRef(new Set());
   const importRef = useRef(null);
@@ -629,6 +647,20 @@ function Workspace() {
     pendingFitRef.current = true;
     return project;
   }, [setNodes, setEdges, setLanguages, t]);
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (buildPresentation.compact && !wasCompactBuildRef.current) {
+      setLeftOpen(false);
+      setRightOpen(false);
+    }
+    wasCompactBuildRef.current = buildPresentation.compact;
+  }, [buildPresentation.compact]);
 
   useEffect(() => {
     let active = true;
@@ -1394,46 +1426,22 @@ function Workspace() {
 
   const asideBase = 'fixed bottom-3 top-[76px] z-30 overflow-auto rounded-3xl border border-white/80 bg-white/95 p-4 shadow-2xl backdrop-blur transition-transform lg:static lg:z-auto lg:h-auto lg:rounded-3xl lg:bg-white/85 lg:shadow-xl';
   return <div className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-sky-50 via-white to-indigo-100">
-    <header className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
-      <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><label className="hidden min-w-0 md:block"><span className="sr-only">{t('project.name')}</span><input value={projectName} onChange={(event) => setProjectName(event.target.value)} className="w-44 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 lg:w-56" /><span className="mt-0.5 block text-[10px] text-slate-400">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span></label></div>
-      <nav className="flex items-center gap-1.5 overflow-x-auto text-sm">
-        <button className="rounded-xl bg-indigo-100 px-3 py-2 font-bold text-indigo-700" onClick={openSettings}>⚙<span className="hidden xl:inline">{t('nav.aiSettings')}</span></button>
-        <label className="flex items-center rounded-xl bg-slate-100 px-2 py-2">
-          <span className="sr-only">{t('nav.playground')}</span>
-          <select aria-label={t('nav.playground')} value="" onChange={(event) => {
-            const id = event.target.value;
-            if (id) {
-              setPlaygroundInitialTab('model');
-              setPlaygroundId(id);
-              setPlaygroundOpen(true);
-            }
-          }} className="bg-transparent text-sm font-bold outline-none">
-            <option value="">{t('nav.playground')}</option>
-            {listPlaygrounds().map((playground) => (
-              <option key={playground.id} value={playground.id}>{t(playground.titleKey)}</option>
-            ))}
-          </select>
-        </label>
-        <button className="rounded-xl bg-emerald-100 px-3 py-2 font-bold text-emerald-700" onClick={() => { setPlaygroundInitialTab('data'); setPlaygroundId('data-lab'); setPlaygroundOpen(true); }}>{t('nav.exploreData')}</button>
-        <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setLeftOpen((value) => !value)}>☰ <span className="hidden sm:inline">{t('nav.blocks')}</span></button>
-        <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setRightOpen((value) => !value)}>⚙ <span className="hidden sm:inline">{t('nav.parameters')}</span></button>
-        <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setViewMode((value) => value === 'canvas' ? 'architecture' : 'canvas')}>{viewMode === 'canvas' ? '⌘' : '⌁'} <span className="hidden lg:inline">{t(`nav.${viewMode === 'canvas' ? 'architecture' : 'canvas'}`)}</span></button>
-        <button className="rounded-xl bg-violet-100 px-3 py-2 font-bold text-violet-700" onClick={() => setExplanationOpen(true)}>✦ <span className="hidden xl:inline">{t('nav.explain')}</span></button>
-        <button disabled={selectedNodes.length < 2} className="rounded-xl bg-blue-100 px-3 py-2 font-bold text-blue-700 disabled:opacity-40" onClick={() => setCompositeOpen(true)}>▣ <span className="hidden xl:inline">{t('nav.group')}</span></button>
-        <button aria-pressed={multiSelectMode} className={`rounded-xl px-3 py-2 font-bold ${multiSelectMode ? 'bg-blue-600 text-white' : 'bg-slate-100'}`} onClick={() => setMultiSelectMode((value) => !value)}>☑ <span className="hidden xl:inline">{t('nav.multiSelect')}</span></button>
-        <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setExamplesOpen(true)}>◇ <span className="hidden xl:inline">{t('nav.examples')}</span></button>
-        <button className={`rounded-xl px-3 py-2 font-bold ${dataset ? 'bg-blue-100 text-blue-700' : 'bg-slate-100'}`} onClick={() => setDataOpen(true)}>▦ <span className="hidden sm:inline">{t('nav.data')}</span></button>
-        <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={exportProject}>↓ <span className="hidden md:inline">JSON</span></button>
-        <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => importRef.current?.click()}>↑ <span className="hidden md:inline">{t('nav.import')}</span></button>
-        <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={importProject} />
-        <button className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setLanguageOpen(true)}>文</button>
-        <button className="rounded-xl bg-emerald-600 px-3 py-2 font-bold text-white" onClick={() => setRunnerOpen(true)}>▶ <span className="hidden sm:inline">{t('nav.run')}</span></button>
+    <header data-top-level-surface={surface} className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
+      <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><span className="hidden text-xs font-bold text-slate-400 sm:inline">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span></div>
+      <nav aria-label={t('surface.navigation')} className="flex items-center gap-1.5 text-sm">
+        <button type="button" aria-pressed={surface === UI_SURFACES.EXPLORE} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.EXPLORE ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setSurface(UI_SURFACES.EXPLORE)}>{t('ui.surface.explore')}</button>
+        <button type="button" aria-pressed={surface === UI_SURFACES.BUILD} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.BUILD ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setSurface(UI_SURFACES.BUILD)}>{t('ui.surface.build')}</button>
+        <div className="relative">
+          <button type="button" aria-expanded={globalMoreOpen} aria-controls="global-more-actions" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setGlobalMoreOpen((value) => !value)}>⋯ <span className="hidden sm:inline">{t('surface.more')}</span></button>
+          {globalMoreOpen && <div id="global-more-actions" className="absolute right-0 top-full z-50 mt-2 grid min-w-48 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"><button type="button" className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { openSettings(); setGlobalMoreOpen(false); }}>⚙ {t('nav.aiSettings')}</button><button type="button" className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { setLanguageOpen(true); setGlobalMoreOpen(false); }}>文 {t('language.title')}</button></div>}
+        </div>
       </nav>
     </header>
 
-    <BigIdeaEntrancePanel onOpen={openBigIdea} t={t} />
+    {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={(id) => { setPlaygroundInitialTab(id === 'data-lab' ? 'data' : 'model'); setPlaygroundId(id); setPlaygroundOpen(true); }} t={t} /> : <>
+      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} setPlaygroundInitialTab={setPlaygroundInitialTab} setPlaygroundId={setPlaygroundId} setPlaygroundOpen={setPlaygroundOpen} setRunnerOpen={setRunnerOpen} t={t} />
 
-    <main className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
+    <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
       <motion.aside initial={false} animate={{ x: leftOpen ? 0 : '-110%' }} style={{ width: `min(${leftWidth}px, calc(100vw - 24px))` }} className={`${asideBase} left-3 lg:transform-none ${leftOpen ? 'lg:block' : 'lg:hidden'}`}>
         <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-black">{t('library.title')}</h2><button aria-label={t('common.close')} className="rounded-lg p-2 hover:bg-slate-100" onClick={() => setLeftOpen(false)}>✕</button></div>
         <div className="mt-3 flex gap-2"><div className="relative min-w-0 flex-1"><span className="absolute left-3 top-2.5">⌕</span><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder={t('library.search')} className="w-full rounded-xl border border-slate-200 py-2 pl-9 pr-3 text-sm outline-none focus:border-blue-500" /></div><button className="rounded-xl border px-3 text-sm font-bold" onClick={() => setLibraryMode((mode) => mode === 'compact' ? 'detailed' : 'compact')}>{libraryMode === 'compact' ? '☷' : '≡'}</button></div>
@@ -1456,6 +1464,7 @@ function Workspace() {
         <div className="absolute bottom-8 left-0 top-8 hidden w-2 cursor-col-resize touch-none lg:block" onPointerDown={(event) => startResize('right', event)} />
       </motion.aside>
     </main>
+    </>}
     {notice && <button onClick={() => setNotice('')} className="fixed bottom-5 left-1/2 z-50 -translate-x-1/2 rounded-full bg-slate-950 px-5 py-3 text-sm font-bold text-white shadow-2xl">{notice} · ✕</button>}
     {restoreCandidate && <div className="fixed inset-0 z-[80] grid place-items-center bg-slate-950/60 p-4"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 className="text-xl font-black">{t('project.restoreTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('project.restoreDescription')}</p><p className="mt-3 rounded-xl bg-slate-100 p-3 font-bold">{restoreCandidate.name || t('project.sampleName')}</p><div className="mt-5 grid grid-cols-2 gap-2"><button onClick={() => { applyProject(restoreCandidate); setRestoreCandidate(null); setLocalReady(true); }} className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white">{t('project.restore')}</button><button onClick={() => { platformServices.projects.remove().finally(() => { setRestoreCandidate(null); setLocalReady(true); }); }} className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700">{t('project.startFresh')}</button></div></section></div>}
     {pendingDeletion && <DeletionConfirmDialog summary={deletionSummary({ nodes, edges, pendingDeletion })} onCancel={() => setPendingDeletion(null)} onConfirm={confirmDeletion} t={t} />}
