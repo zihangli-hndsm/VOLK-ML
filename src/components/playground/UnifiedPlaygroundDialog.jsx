@@ -5,7 +5,13 @@ import PresentationMode from './PresentationMode.jsx';
 import ExperimentBar from './ExperimentBar.jsx';
 import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 import PlaygroundPresentationBoundary from './PlaygroundPresentationBoundary.jsx';
-import { createExplorationOpenTracker, NOOP_EXPLORATION_TELEMETRY, safeTrackExplorationEvent } from '../../core/telemetry/explorationTelemetry.js';
+import {
+  createExplorationOpenTracker,
+  createFirstMeaningfulManipulationTracker,
+  dispatchWithFirstMeaningfulManipulation,
+  NOOP_EXPLORATION_TELEMETRY,
+  safeTrackExplorationEvent,
+} from '../../core/telemetry/explorationTelemetry.js';
 import { derivePhenomenonCapabilities } from '../../core/ui/phenomenon.js';
 import ExploreShell from './ExploreShell.jsx';
 import ExploreContextBar from './ExploreContextBar.jsx';
@@ -21,7 +27,8 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [guidance, setGuidance] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
-  const meaningfulManipulationTrackedRef = useRef(false);
+  const meaningfulManipulationTrackerRef = useRef(null);
+  if (!meaningfulManipulationTrackerRef.current) meaningfulManipulationTrackerRef.current = createFirstMeaningfulManipulationTracker();
   const openTrackerRef = useRef(null);
   if (!openTrackerRef.current) openTrackerRef.current = createExplorationOpenTracker();
   const playground = useMemo(() => (playgroundId ? getPlayground(playgroundId) : null), [playgroundId]);
@@ -41,7 +48,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     }
     const sessionKey = `${++sessionSequenceRef.current}:${playgroundId}`;
     readySessionRef.current = null;
-    meaningfulManipulationTrackedRef.current = false;
+    meaningfulManipulationTrackerRef.current.reset();
     let active = true;
     let unsubscribe = () => {};
     setSnapshot(null);
@@ -115,20 +122,15 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   }, [snapshot, host, playbackError, t]);
 
   const dispatchAction = (action) => {
-    if (!meaningfulManipulationTrackedRef.current
-      && action.type === 'APPLY_WORLD_TRANSACTION'
-      && action.transaction?.actor === 'human') {
-      meaningfulManipulationTrackedRef.current = true;
-      safeTrackExplorationEvent({
-        version: 1,
-        type: 'first_meaningful_manipulation',
-        payload: { domain: 'world' },
-      }, telemetry);
-    }
     if (['PLAY', 'SCRIPT_PLAY', 'STEP', 'SCRIPT_STEP', 'RESET', 'SCRIPT_RESET'].includes(action.type)) {
       setPlaybackError(null);
     }
-    return host.dispatch(action);
+    return dispatchWithFirstMeaningfulManipulation({
+      action,
+      dispatch: (nextAction) => host.dispatch(nextAction),
+      tracker: meaningfulManipulationTrackerRef.current,
+      telemetry,
+    });
   };
 
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;

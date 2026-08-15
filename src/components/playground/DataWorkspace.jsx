@@ -14,6 +14,7 @@ import {
   clientToLocalPoint,
   clientToSvgPoint,
   nearestPointInLocal,
+  selectScatterBounds,
 } from './dataWorkspaceGeometry.js';
 import { getVisiblePrimitives } from './motion.js';
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
@@ -134,11 +135,12 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   }, [phenomenonPoints]);
   const effectiveViewMode = phenomenonMode ? 'scatter' : viewMode;
   const bounds = effectiveViewMode === 'scatter'
-    ? (phenomenonMode
-      ? phenomenonRanges
-      : comparisonBounds?.xFeature === xFeature && comparisonBounds?.yFeature === yFeature
-        ? comparisonBounds
-        : projectedViewBounds)
+    ? selectScatterBounds({
+      comparisonBounds,
+      xFeature,
+      yFeature,
+      autoBounds: phenomenonMode ? phenomenonRanges : projectedViewBounds,
+    })
     : baseBounds;
   const canCreateObservation = Boolean(snapshot.capabilities?.canCreateObservationFromProjection);
   const highlight = (id) => highlightedAffordances.includes(id) ? ' ring-2 ring-amber-400 ring-offset-1' : '';

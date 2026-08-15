@@ -36,6 +36,14 @@ model-response primitive retain the existing Data/Model compatibility path.
 Compact presentation uses the same responsive capability contract and the
 same World coordinates and transaction semantics as the full workspace.
 
+When Compare is enabled, both the Phenomenon and full Data surfaces select the
+runtime comparison bounds whenever their x/y projection matches. Outside a
+matching comparison frame, each surface may use its own presentation-specific
+auto-bounds. First-manipulation telemetry is committed only after a human
+World transaction resolves successfully; rejected transactions, Agent
+actions, previews, and telemetry-adapter failures do not claim the session's
+single event.
+
 The question is localized and uses a registered Big Idea question when the
 Playground was entered through a Big Idea. Big Idea initialization, provenance,
 seeds, Agent inspection, evidence, and Experiment runtime remain unchanged.

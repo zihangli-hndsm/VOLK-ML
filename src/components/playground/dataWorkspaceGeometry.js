@@ -3,6 +3,17 @@ import { getProjectedValue } from '../../core/exploration/projection.js';
 export const DATA_WORKSPACE_VIEWBOX = Object.freeze({ width: 640, height: 360 });
 export const DATA_WORKSPACE_PLOT = Object.freeze({ left: 42, right: 620, top: 18, bottom: 320 });
 
+// Compare owns the coordinate frame when both experiments use the same
+// projected features.  The Phenomenon and full Data surfaces intentionally
+// provide different normal auto-bounds, but they must select the same shared
+// frame while a semantic comparison is active.
+export function selectScatterBounds({ comparisonBounds, xFeature, yFeature, autoBounds }) {
+  if (comparisonBounds?.xFeature === xFeature && comparisonBounds?.yFeature === yFeature) {
+    return comparisonBounds;
+  }
+  return autoBounds;
+}
+
 export function clientToSvgPoint({ clientX, clientY, rect }) {
   if (!rect?.width || !rect?.height) return null;
   return {
