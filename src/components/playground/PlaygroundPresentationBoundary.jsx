@@ -20,6 +20,9 @@ export default function PlaygroundPresentationBoundary({
   rawCapabilities,
   resolvedPresentation,
   className = '',
+  onPointerDown,
+  onMouseDown,
+  onTouchStart,
 }) {
   const measured = useMeasuredPresentationCapabilities({ rawCapabilities });
   const presentation = useMemo(
@@ -38,6 +41,9 @@ export default function PlaygroundPresentationBoundary({
       data-ui-presentation-band={presentation.responsive.band}
       data-ui-pointer={presentation.responsive.pointer}
       className={className}
+      onPointerDown={onPointerDown}
+      onMouseDown={onMouseDown}
+      onTouchStart={onTouchStart}
     >{children}</div>
   </PresentationCapabilitiesProvider>;
 }

@@ -37,6 +37,14 @@ the rest of the Explore surface remains normally scrollable. Coarse pointers
 receive larger effective point hit radii and CSS touch targets; the visible
 World representation and semantic gesture operations are unchanged.
 
+Point selection and erase hit testing project both the pointer and the World
+points into the same local canvas-pixel space. Coarse input therefore gets an
+approximately 22px screen radius regardless of World coordinate scale,
+anisotropic feature ranges, or canvas display size; fine input retains a tighter
+radius. The responsive frame itself stops
+pointer, mouse, and touch propagation before events can reach the dark
+backdrop, so only the backdrop closes the Playground.
+
 The existing Experiment Bar, World Builder, secondary disclosures, evidence,
 Agent, and Training Microscope remain the same capabilities with wrapping and
 overflow containment added for narrow layouts. UI-2 does not introduce swipe,
