@@ -124,6 +124,38 @@ export function safeTrackExplorationEvent(event, telemetry = NOOP_EXPLORATION_TE
   }
 }
 
+export function isHumanWorldTransaction(action) {
+  return action?.type === 'APPLY_WORLD_TRANSACTION'
+    && action.transaction?.actor === 'human';
+}
+
+// The host dispatch is the commit boundary.  Callers must use this wrapper
+// for the first-manipulation event so rejected transactions never claim the
+// session slot and observer failures can never reject a learner action.
+export function createFirstMeaningfulManipulationTracker() {
+  let claimed = false;
+  return Object.freeze({
+    reset() {
+      claimed = false;
+    },
+    claimAfterCommit(telemetry = NOOP_EXPLORATION_TELEMETRY) {
+      if (claimed) return false;
+      claimed = true;
+      return safeTrackExplorationEvent({
+        version: 1,
+        type: 'first_meaningful_manipulation',
+        payload: { domain: 'world' },
+      }, telemetry);
+    },
+  });
+}
+
+export async function dispatchWithFirstMeaningfulManipulation({ action, dispatch, tracker, telemetry }) {
+  const result = await dispatch(action);
+  if (isHumanWorldTransaction(action)) tracker?.claimAfterCommit(telemetry);
+  return result;
+}
+
 // Ephemeral, UI-independent session boundary for exploration_opened. A new
 // caller-provided session key means a new meaningful open; rerenders and
 // adapter replacement reuse the existing key and are ignored.

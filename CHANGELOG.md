@@ -513,3 +513,9 @@
 - Constrained the Build More disclosure to the viewport and allowed long localized action labels to wrap on narrow screens.
 - Separated the global AI and language icons into distinct accessible visual badges so the Language settings action is not visually fused with adjacent text.
 - Validation: focused UI checks, full `npm.cmd run check`, `npm.cmd run build`, `git diff --check`, and wide browser smoke passed; a compact browser viewport was unavailable in this environment.
+
+## 2026-08-15 - UI-3 phenomenon-first L0
+
+- Added a capability-driven Phenomenon surface that combines editable 2D World gestures with the existing runtime model-response primitives in one canvas.
+- Reduced the initial Playground hierarchy to question, phenomenon, Move/Draw/Erase, Undo, and a compact Experiment identity; full World tools remain reachable through the compatibility path.
+- Preserved shared World transactions, primitive rendering, Big Idea questions, Experiment semantics, responsive presentation, and fail-open semantic telemetry; deferred UI-4 through UI-7 and Phase 9.

@@ -20,7 +20,7 @@ function metricRows(results) {
   ].filter(([, value]) => value !== undefined && value !== null && Number.isFinite(Number(value)));
 }
 
-export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffordances = [] }) {
+export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffordances = [], compactInitial = false }) {
   const [repeatCount, setRepeatCount] = useState(snapshot.repeatEvidence?.trialCount ?? 5);
   const highlight = (id) => highlightedAffordances.includes(id) ? ' ring-2 ring-amber-400 ring-offset-1' : '';
   const workspace = snapshot.experimentWorkspace;
@@ -31,6 +31,7 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
   const targetId = comparison?.againstExperimentId;
   const active = workspace.experiments.find((item) => item.id === activeId);
   const target = workspace.experiments.find((item) => item.id === targetId);
+  const showCompactInitial = compactInitial && workspace.experiments.length === 1 && !comparison?.enabled;
   const changed = diff?.changed ?? [];
   const unchanged = diff?.unchanged ?? [];
   const generatorChanged = diff?.details?.worldGenerator?.changed ?? [];
@@ -42,6 +43,17 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
       against: metricRows(comparison.results.against).find(([otherKey]) => otherKey === key)?.[1],
     }))
     : [];
+  if (showCompactInitial) {
+    return <section data-experiment-compact-initial="true" className="min-w-0 rounded-2xl border border-slate-200 bg-white px-3 py-2" aria-label={t('playground.experiment.ariaLabel')}>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2 text-sm font-black text-slate-900"><span aria-hidden="true" className="rounded-lg bg-slate-900 px-2 py-1 text-xs text-white">A</span><span className="truncate">{active?.name ?? t('playground.experiment.myExperiment')}</span></div>
+        <div className="flex items-center gap-2">
+          <button data-affordance-id="experiment.duplicate" type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className={`rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white${highlight('experiment.duplicate')}`}>+ {t('playground.experiment.tryAnother')}</button>
+          <button type="button" onClick={() => onDispatch({ type: 'RESET' })} className="rounded-xl px-2 py-2 text-xs font-bold text-slate-500 hover:bg-slate-100">{t('playground.experiment.reset')}</button>
+        </div>
+      </div>
+    </section>;
+  }
   return <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-3" aria-label={t('playground.experiment.ariaLabel')}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>

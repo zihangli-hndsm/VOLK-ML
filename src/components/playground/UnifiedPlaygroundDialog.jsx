@@ -5,7 +5,14 @@ import PresentationMode from './PresentationMode.jsx';
 import ExperimentBar from './ExperimentBar.jsx';
 import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 import PlaygroundPresentationBoundary from './PlaygroundPresentationBoundary.jsx';
-import { createExplorationOpenTracker, NOOP_EXPLORATION_TELEMETRY, safeTrackExplorationEvent } from '../../core/telemetry/explorationTelemetry.js';
+import {
+  createExplorationOpenTracker,
+  createFirstMeaningfulManipulationTracker,
+  dispatchWithFirstMeaningfulManipulation,
+  NOOP_EXPLORATION_TELEMETRY,
+  safeTrackExplorationEvent,
+} from '../../core/telemetry/explorationTelemetry.js';
+import { derivePhenomenonCapabilities } from '../../core/ui/phenomenon.js';
 import ExploreShell from './ExploreShell.jsx';
 import ExploreContextBar from './ExploreContextBar.jsx';
 import ExploreWorldRegion from './ExploreWorldRegion.jsx';
@@ -20,6 +27,8 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [guidance, setGuidance] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
+  const meaningfulManipulationTrackerRef = useRef(null);
+  if (!meaningfulManipulationTrackerRef.current) meaningfulManipulationTrackerRef.current = createFirstMeaningfulManipulationTracker();
   const openTrackerRef = useRef(null);
   if (!openTrackerRef.current) openTrackerRef.current = createExplorationOpenTracker();
   const playground = useMemo(() => (playgroundId ? getPlayground(playgroundId) : null), [playgroundId]);
@@ -39,6 +48,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     }
     const sessionKey = `${++sessionSequenceRef.current}:${playgroundId}`;
     readySessionRef.current = null;
+    meaningfulManipulationTrackerRef.current.reset();
     let active = true;
     let unsubscribe = () => {};
     setSnapshot(null);
@@ -115,7 +125,12 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     if (['PLAY', 'SCRIPT_PLAY', 'STEP', 'SCRIPT_STEP', 'RESET', 'SCRIPT_RESET'].includes(action.type)) {
       setPlaybackError(null);
     }
-    return host.dispatch(action);
+    return dispatchWithFirstMeaningfulManipulation({
+      action,
+      dispatch: (nextAction) => host.dispatch(nextAction),
+      tracker: meaningfulManipulationTrackerRef.current,
+      telemetry,
+    });
   };
 
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;
@@ -129,9 +144,10 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     />;
   }
   const formulaPrimitive = snapshot.primitives.find((primitive) => primitive.type === 'formula');
-  const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
-  const worldRegion = <ExploreWorldRegion snapshot={snapshot} modelPlayground={modelPlayground} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
-  const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
+  const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
+  const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
+  const worldRegion = <ExploreWorldRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
+  const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} compactInitial={phenomenonFirst} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
   const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} bigIdea={bigIdea} agent={agent} host={host} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
