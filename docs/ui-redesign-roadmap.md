@@ -944,6 +944,28 @@ Acceptance:
 
 - open -> manipulate -> duplicate -> compare -> undo works on representative phone and desktop layouts.
 
+## UI-2.5 — Top-level Explore / Build surface split
+
+Correction before UI-3:
+
+- UI-0 through UI-2 established internal Explore seams and responsive
+  Playground presentation, but the actual application entry still rendered
+  the builder first.
+- The top-level application now has two presentation-only surfaces: Explore
+  (the default for a new session) and Build (the existing ReactFlow builder).
+- Both surfaces consume the same Workspace/runtime state. Switching surfaces
+  does not serialize, clone, reset, or otherwise change nodes, edges, data,
+  model state, selection, project name, or Playground/Experiment state.
+- Explore is question-first and uses the registered Big Idea entrances plus a
+  compact direct-playground fallback. Build retains the full builder toolbar,
+  component library, graph, parameters, runner, import/export, examples, and
+  architecture controls behind an explicit Build entry.
+- Global actions remain small presentation controls. Build-specific actions
+  are local to the Build toolbar and use ordinary disclosure semantics.
+
+This correction is intentionally limited to the actual app entry. It does not
+begin UI-3 and does not create a second semantic state tree.
+
 ## UI-3 — Phenomenon-first L0
 
 Goal:
