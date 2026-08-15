@@ -156,6 +156,22 @@ export async function dispatchWithFirstMeaningfulManipulation({ action, dispatch
   return result;
 }
 
+// Experiment telemetry is emitted only from the resolved runtime result. The
+// payload contains semantic action facts, never experiment contents or IDs.
+export function trackCommittedExperimentAction(action, snapshot, telemetry = NOOP_EXPLORATION_TELEMETRY) {
+  if (action?.type === 'DUPLICATE_EXPERIMENT') {
+    return safeTrackExplorationEvent({ version: 1, type: 'experiment_duplicated', payload: {} }, telemetry);
+  }
+  if ((action?.type === 'SET_COMPARE' || action?.type === 'COMPARE_EXPERIMENTS') && action.enabled !== false) {
+    const changedFactors = snapshot?.experimentWorkspace?.comparison?.diff?.changed ?? [];
+    return safeTrackExplorationEvent({ version: 1, type: 'experiment_compared', payload: { changedFactors } }, telemetry);
+  }
+  if (action?.type === 'REPEAT_EXPERIMENT') {
+    return safeTrackExplorationEvent({ version: 1, type: 'repeat_requested', payload: { trials: action.trials } }, telemetry);
+  }
+  return false;
+}
+
 // Ephemeral, UI-independent session boundary for exploration_opened. A new
 // caller-provided session key means a new meaningful open; rerenders and
 // adapter replacement reuse the existing key and are ignored.

@@ -11,6 +11,7 @@ import {
   dispatchWithFirstMeaningfulManipulation,
   NOOP_EXPLORATION_TELEMETRY,
   safeTrackExplorationEvent,
+  trackCommittedExperimentAction,
 } from '../../core/telemetry/explorationTelemetry.js';
 import { derivePhenomenonCapabilities } from '../../core/ui/phenomenon.js';
 import ExploreShell from './ExploreShell.jsx';
@@ -130,6 +131,9 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       dispatch: (nextAction) => host.dispatch(nextAction),
       tracker: meaningfulManipulationTrackerRef.current,
       telemetry,
+    }).then((result) => {
+      trackCommittedExperimentAction(action, result, telemetry);
+      return result;
     });
   };
 
