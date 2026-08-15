@@ -14,6 +14,8 @@ import {
   trackCommittedExperimentAction,
 } from '../../core/telemetry/explorationTelemetry.js';
 import { derivePhenomenonCapabilities } from '../../core/ui/phenomenon.js';
+import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
+import { depthTelemetryType } from '../../core/ui/exploreDepth.js';
 import ExploreShell from './ExploreShell.jsx';
 import ExploreContextBar from './ExploreContextBar.jsx';
 import ExploreWorldRegion from './ExploreWorldRegion.jsx';
@@ -26,6 +28,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [activeTab, setActiveTab] = useState(initialTab);
   const [playbackError, setPlaybackError] = useState(null);
   const [guidance, setGuidance] = useState(null);
+  const [activeDepth, setActiveDepth] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
   const meaningfulManipulationTrackerRef = useRef(null);
@@ -55,6 +58,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setSnapshot(null);
     setPlaybackError(null);
     setGuidance(null);
+    setActiveDepth(null);
     setPresentationMode(false);
     setActiveTab(initialTab);
     host.ensureOpen(playgroundId).then(() => {
@@ -137,6 +141,12 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     });
   };
 
+  const changeDepth = (nextDepth) => {
+    const telemetryType = depthTelemetryType(nextDepth);
+    if (telemetryType) safeTrackExplorationEvent({ version: 1, type: telemetryType, payload: {} }, telemetry);
+    setActiveDepth(nextDepth);
+  };
+
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;
   if (presentationMode) {
     return <PresentationMode
@@ -150,12 +160,13 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const formulaPrimitive = snapshot.primitives.find((primitive) => primitive.type === 'formula');
   const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
-  const worldRegion = <ExploreWorldRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
+  const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
-  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} bigIdea={bigIdea} agent={agent} host={host} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
+  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}
+      depth={activeDepth ?? CONCEPTUAL_DEPTHS.PHENOMENON}
       className="ui-explore-dialog-frame w-full max-w-6xl max-h-[94vh] overflow-auto rounded-3xl bg-white p-3 shadow-2xl sm:p-6"
       onPointerDown={(event) => event.stopPropagation()}
       onMouseDown={(event) => event.stopPropagation()}

@@ -17,8 +17,8 @@ const rows = [
   'outcome.trainMse', 'outcome.testMse', 'learning.currentStep', 'generalizationGap', 'coverageMismatch',
 ];
 
-export default function ExplorationEvidence({ snapshot, t }) {
-  const [open, setOpen] = useState(false);
+export default function ExplorationEvidence({ snapshot, t, openByDefault = false }) {
+  const [open, setOpen] = useState(openByDefault);
   const [dismissed, setDismissed] = useState([]);
   const notices = (snapshot.observations ?? []).filter((item) => !dismissed.includes(item.id));
   const available = rows.filter((id) => snapshot.observables?.[id]?.available || snapshot.derivedObservables?.[id]?.available);
