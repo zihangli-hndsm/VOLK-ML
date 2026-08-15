@@ -50,8 +50,12 @@ assert.match(homeSource, /surface\.openAnotherLab/);
 assert.match(buildSource, /data-build-toolbar/);
 assert.match(buildSource, /data-build-more-actions/);
 assert.match(buildSource, /aria-expanded=\{open\}/);
+assert.match(buildSource, /w-\[min\(20rem,calc\(100vw-1rem\)\)\]/, 'Build More stays within a narrow viewport');
+assert.match(buildSource, /whitespace-normal break-words/, 'Build More labels can wrap instead of clipping');
 assert.doesNotMatch(buildSource, /role="menu"|role="menuitem"/);
 assert.match(ideaSource, /className=\{isHome \? 'rounded-2xl'/, 'home variant must not be the old top-level strip');
+assert.match(mainSource, /global-more-actions/);
+assert.match(mainSource, /aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg/);
 
 const entries = listBigIdeaEntrances();
 assert.equal(entries.length, 5);

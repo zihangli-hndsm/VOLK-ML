@@ -507,3 +507,9 @@
 - Corrected the actual application entry so new sessions open to a localized, question-first Explore home with the five registered Big Idea entrances and a compact direct-playground fallback.
 - Added an explicit presentation-only Explore / Build switch. Explore does not mount the builder canvas or builder chrome; Build restores the existing ReactFlow builder and groups its secondary actions behind an ordinary disclosure.
 - Preserved one shared Workspace/runtime across surface switching, including project identity and builder state; added focused contract coverage for default Explore, builder isolation, Build restoration, shared-state identity, and localized Big Idea content.
+
+## 2026-08-15 - UI-2.5 mobile menu and language affordance fixes
+
+- Constrained the Build More disclosure to the viewport and allowed long localized action labels to wrap on narrow screens.
+- Separated the global AI and language icons into distinct accessible visual badges so the Language settings action is not visually fused with adjacent text.
+- Validation: focused UI checks, full `npm.cmd run check`, `npm.cmd run build`, `git diff --check`, and wide browser smoke passed; a compact browser viewport was unavailable in this environment.
