@@ -39,7 +39,7 @@ const HOLD_TO_GENERATOR_DETAIL = Object.freeze({
 
 export function evaluateScenarioFidelity(spec, comparison) {
   const changed = new Set(comparison?.changed ?? []);
-  const intended = new Set(spec.change.map((change) => FACTOR_BY_TARGET[change.semanticTarget] ?? change.semanticTarget));
+  const intended = new Set(spec.intendedFactors ?? spec.change.map((change) => FACTOR_BY_TARGET[change.semanticTarget] ?? change.semanticTarget));
   const held = new Set(spec.hold.map((item) => HOLD_TO_FACTOR[item] ?? item));
   const confounds = [...held].filter((factor) => changed.has(factor) && !intended.has(factor));
   const unrepresented = [...changed].filter((factor) => !intended.has(factor));

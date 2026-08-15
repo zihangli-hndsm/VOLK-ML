@@ -110,6 +110,16 @@ function validateWorldParameters(change, context) {
       throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'change.parameters' });
     }
   }
+  if (change.operation === 'SET_FEATURE_VALUES') {
+    if (!context?.world?.featureNames?.includes(parameters.feature)
+      || !Array.isArray(parameters.values)
+      || !parameters.values.length
+      || parameters.values.some((entry) => !entry?.pointId
+        || !Number.isFinite(Number(entry.value))
+        || !context?.world?.observations?.some((point) => String(point.id) === String(entry.pointId)))) {
+      throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'change.parameters' });
+    }
+  }
   if (change.operation === 'TRANSFORM_FEATURE_VALUES') {
     if (!context?.world?.featureNames?.includes(parameters.feature)
       || !['shift', 'scale', 'noise'].includes(parameters.kind)
@@ -164,6 +174,9 @@ export function validateScenarioSpec(spec, context = {}) {
     throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'baseline' });
   }
   const changes = Array.isArray(spec.change) ? spec.change.map((change) => validateChange(change, context)) : [];
+  const intendedFactors = spec.intendedFactors === undefined
+    ? null
+    : stringArray(spec.intendedFactors, 'intendedFactors');
   const operationCount = changes.reduce((count, change) => count + (Array.isArray(change.parameters?.operations) ? change.parameters.operations.length : 1), 0);
   const maxOperations = Number(context?.resourceLimits?.maxWorldTransactionOperations ?? MAX_WORLD_TRANSACTION_OPERATIONS);
   if (operationCount > maxOperations) throw scenarioError('EXPLORATION_SCENARIO_RESOURCE_LIMIT', { field: 'operations', max: maxOperations, requested: operationCount });
@@ -177,6 +190,12 @@ export function validateScenarioSpec(spec, context = {}) {
     if (!observableIds.has(id)) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OBSERVABLE', { id });
   }
   const execution = { duplicateBaseline: true, run: true, compare: true, repeat: null, ...(spec.execution ?? {}) };
+  if (execution.compareAgainstExperimentId !== undefined) {
+    const targetId = String(execution.compareAgainstExperimentId ?? '');
+    const known = (context?.experimentWorkspace?.experiments ?? []).some((entry) => String(entry.id) === targetId);
+    if (!targetId || !known) throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'execution.compareAgainstExperimentId' });
+    execution.compareAgainstExperimentId = targetId;
+  }
   if (execution.repeat !== null && (!Number.isInteger(Number(execution.repeat)) || Number(execution.repeat) < 2 || Number(execution.repeat) > 20)) {
     throw scenarioError('EXPLORATION_SCENARIO_RESOURCE_LIMIT', { field: 'execution.repeat', min: 2, max: 20 });
   }
@@ -189,6 +208,7 @@ export function validateScenarioSpec(spec, context = {}) {
     },
     baseline: { experimentId: spec.baseline.experimentId, conditionFingerprint: spec.baseline.conditionFingerprint },
     change: changes,
+    ...(intendedFactors ? { intendedFactors } : {}),
     hold,
     observe,
     execution,

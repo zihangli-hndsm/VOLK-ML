@@ -53,9 +53,14 @@ Agent guidance reads `inspectContext()` and existing deterministic snapshots.
 It does not receive DOM selectors, CSS, raw pointer coordinates, or a private
 runtime state. Mixed comparisons are reported from
 `comparison.diff.clarity === 'mixed'`; the optional cleaner comparison is a
-normal proposal and never mutates automatically. The compact guide has a
-bounded local fallback; the existing advanced AI interpreter remains available
-in the advanced tools. No thread is created automatically and Agent-generated
+deterministic proposal derived from the active/against experiment conditions.
+It restores non-selected changed dimensions with registered World/control
+operations, preflights each supported factor, and compares against the actual
+`againstExperimentId` (not an assumed first experiment). If no exact
+single-factor reconstruction is possible, no cleaner-action button is shown;
+the guide only states the ambiguity. The compact guide has a bounded local
+fallback; the existing advanced AI interpreter remains available in the
+advanced tools. No thread is created automatically and Agent-generated
 observations retain the existing Phase 6 authority rules.
 
 KNN uses the existing decision mechanism label and does not display Training

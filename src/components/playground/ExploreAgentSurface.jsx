@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, deriveAgentSemanticExplanation, routeAgentAiInterpretation, AGENT_GUIDANCE_OUTCOMES } from '../../core/ui/agentGuide.js';
+import { deriveCleanerComparisonProposal } from '../../core/exploration/cleanerComparison.js';
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
@@ -41,7 +42,10 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [aiFallback, setAiFallback] = useState(false);
+  const [cleanerOptions, setCleanerOptions] = useState(null);
+  const [cleanerUnavailable, setCleanerUnavailable] = useState(false);
   const comparison = deriveAgentComparisonExplanation(snapshot);
+  const cleanerCandidate = deriveCleanerComparisonProposal({ snapshot, comparison: snapshot.experimentWorkspace?.comparison });
   const semanticExplanation = outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION
     ? deriveAgentSemanticExplanation(outcome.topic, snapshot)
     : null;
@@ -71,6 +75,8 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   const ask = async () => {
     if (!request.trim() || busy) return;
     setAiFallback(false);
+    setCleanerOptions(null);
+    setCleanerUnavailable(false);
     let nextOutcome = classifyAgentGuideRequest({ request, capabilities, snapshot });
     if (isConfigured && (nextOutcome.useAi || nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION)) {
       setBusy(true);
@@ -119,7 +125,31 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
 
   const proposeCleanerComparison = async () => {
     if (busy) return;
-    await loadProposal({ kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent: 'outliers' }, 'What happens if I add some outliers?');
+    setBusy(true);
+    setError(null);
+    try {
+      const result = await agent.proposeCleanerComparison();
+      if (result.kind === 'cleaner-proposals' && result.options.length) {
+        setCleanerOptions(result.options);
+        setCleanerUnavailable(false);
+      } else {
+        setCleanerOptions([]);
+        setCleanerUnavailable(true);
+      }
+    } catch (caught) {
+      setCleanerOptions([]);
+      setCleanerUnavailable(true);
+      setError(caught);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const selectCleanerProposal = (nextProposal) => {
+    setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent: 'cleaner-comparison' });
+    setProposal(nextProposal);
+    setResult(null);
+    setError(null);
   };
 
   const panelClass = compact
@@ -152,7 +182,9 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         {comparison.kind === 'mixed-comparison' && <p className="mt-1">{t('playground.agentGuide.mixedComparison')}</p>}
         {comparison.kind !== 'mixed-comparison' && <p className="mt-1">{t('playground.agentGuide.comparisonFacts')}</p>}
         <p className="mt-2 text-xs">{t('playground.experiment.changed')}: {comparison.changed.map((item) => semanticLabel(item, t)).join(', ') || t('playground.explorationAgent.none')}</p>
-        {comparison.kind === 'mixed-comparison' && <button type="button" disabled={busy} onClick={proposeCleanerComparison} className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.tryCleaner')}</button>}
+        {comparison.kind === 'mixed-comparison' && cleanerCandidate.options.length > 0 && !cleanerOptions && <button type="button" disabled={busy} onClick={proposeCleanerComparison} className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.tryCleaner')}</button>}
+        {cleanerOptions?.length > 0 && <div className="mt-2 flex flex-wrap gap-2"><span className="basis-full text-xs font-bold text-emerald-900">{t('playground.agentGuide.changeOnly')}</span>{cleanerOptions.map((option) => <button key={option.factor} type="button" onClick={() => selectCleanerProposal(option)} className="rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t(`playground.agentGuide.changeOnly.${option.factor}`)}</button>)}</div>}
+        {cleanerUnavailable && <p className="mt-2 text-xs">{t('playground.agentGuide.cleanerUnavailable')}</p>}
         <button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-2 ml-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button>
       </> : <p className="mt-1">{semanticExplanation?.available ? t(`playground.agentGuide.explain.${outcome.topic}`) : t('playground.agentGuide.clarification')}</p>}
     </div>}

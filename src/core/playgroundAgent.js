@@ -70,6 +70,7 @@ export function createPlaygroundAgentApi(host) {
       return context;
     }),
     proposeExploration: (request) => invoke('proposeExploration', () => copy(host.proposeExploration(typeof request === 'string' ? { request } : copy(request ?? {})))),
+    proposeCleanerComparison: () => invoke('proposeCleanerComparison', () => copy(host.proposeCleanerComparison())),
     preflightExplorationScenario: (scenario) => invoke('preflightExplorationScenario', () => copy(host.preflightExplorationScenario({ scenario: copy(scenario) }))),
     executeExploration: (scenario) => invokeAsync('executeExploration', async () => copy(await host.executeExploration({ scenario: copy(scenario) }))),
     createExplorationThread: (request) => invoke('createExplorationThread', () => copy(host.createExplorationThread(copy(request ?? {})))),

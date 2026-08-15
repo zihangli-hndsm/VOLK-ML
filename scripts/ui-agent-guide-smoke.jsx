@@ -130,8 +130,50 @@ export async function runUiAgentGuideSmoke() {
     const mixedSnapshot = host.getState();
     const mixedOutcome = classifyAgentGuideRequest({ request: 'Is this a clean comparison?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot: mixedSnapshot });
     assert.deepEqual(mixedOutcome, { kind: AGENT_GUIDANCE_OUTCOMES.EXPLANATION, topic: 'comparison' });
+    assert.deepEqual(mixedSnapshot.experimentWorkspace.comparison.diff.changed, ['world', 'learning']);
     assert.equal(mixedSnapshot.experimentWorkspace.comparison.diff.clarity, 'mixed', 'mixed guidance reads the runtime comparison clarity');
     assert.deepEqual(deriveAgentComparisonExplanation(mixedSnapshot).changed, mixedSnapshot.experimentWorkspace.comparison.diff.changed);
+
+    const cleaner = agent.proposeCleanerComparison();
+    assert.equal(cleaner.kind, 'cleaner-proposals', 'mixed comparison exposes only preflighted cleaner proposals');
+    assert.ok(cleaner.options.some((option) => option.factor === 'world'));
+    assert.ok(cleaner.options.every((option) => option.scenario.execution.compareAgainstExperimentId === baselineId));
+    assert.ok(cleaner.options.every((option) => !option.scenario.change.some((change) => change.semanticTarget === 'outliers')), 'cleaner comparison is not hard-coded to outliers');
+    const worldCleaner = cleaner.options.find((option) => option.factor === 'world');
+    assert.ok(worldCleaner.scenario.hold.includes('learning-configuration'));
+    const cleaned = await agent.executeExploration(worldCleaner.scenario);
+    assert.deepEqual(cleaned.mutationDiff.changed, ['world'], 'cleaner execution leaves exactly one changed runtime factor');
+    assert.equal(cleaned.mutationDiff.clarity, 'high');
+
+    const alternateHost = createPlaygroundHost({ getDataset: () => null });
+    try {
+      await alternateHost.open({ playgroundId: 'linear-regression', seed: 603 });
+      const alternateAgent = createPlaygroundAgentApi(alternateHost);
+      const original = alternateAgent.getState();
+      const originalId = original.experimentWorkspace.activeExperimentId;
+      const point = original.world.observations[0];
+      await alternateAgent.dispatch({ type: 'DUPLICATE_EXPERIMENT' });
+      const branchB = alternateAgent.getState().experimentWorkspace.activeExperimentId;
+      await alternateAgent.dispatch({ type: 'APPLY_WORLD_TRANSACTION', transaction: { operations: [{ type: 'MOVE_POINT', pointId: point.id, x: point.x + 1, y: point.y + 1 }] } });
+      await alternateAgent.dispatch({ type: 'SET_CONTROL', key: 'learningRate', value: 0.2 });
+      await alternateAgent.dispatch({ type: 'DUPLICATE_EXPERIMENT' });
+      const branchC = alternateAgent.getState().experimentWorkspace.activeExperimentId;
+      await alternateAgent.dispatch({ type: 'APPLY_WORLD_TRANSACTION', transaction: { operations: [{ type: 'MOVE_POINT', pointId: point.id, x: point.x + 2, y: point.y + 2 }] } });
+      await alternateAgent.dispatch({ type: 'SET_CONTROL', key: 'learningRate', value: 0.3 });
+      await alternateAgent.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: branchB });
+      const alternateComparison = alternateAgent.getState().experimentWorkspace.comparison;
+      assert.equal(alternateComparison.againstExperimentId, branchB);
+      assert.deepEqual(alternateComparison.diff.changed, ['world', 'learning']);
+      const alternateCleaner = alternateAgent.proposeCleanerComparison();
+      assert.equal(alternateCleaner.kind, 'cleaner-proposals');
+      assert.ok(alternateCleaner.options.every((option) => option.scenario.execution.compareAgainstExperimentId === branchB), 'cleaner proposal uses the explicit C versus B target');
+      const alternateResult = await alternateAgent.executeExploration(alternateCleaner.options.find((option) => option.factor === 'learning').scenario);
+      assert.deepEqual(alternateResult.mutationDiff.changed, ['learning']);
+      assert.equal(alternateAgent.getState().experimentWorkspace.comparison.againstExperimentId, branchB);
+      assert.notEqual(branchC, originalId);
+    } finally {
+      await alternateHost.close();
+    }
 
     const comparisonSnapshot = host.getState();
     const explanation = deriveAgentComparisonExplanation(comparisonSnapshot);
