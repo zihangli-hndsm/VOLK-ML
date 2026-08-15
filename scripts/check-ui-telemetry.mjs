@@ -3,6 +3,7 @@ import {
   createFirstMeaningfulManipulationTracker,
   createMemoryExplorationTelemetry,
   dispatchWithFirstMeaningfulManipulation,
+  trackCommittedExperimentAction,
 } from '../src/core/telemetry/explorationTelemetry.js';
 
 const humanAction = { type: 'APPLY_WORLD_TRANSACTION', transaction: { actor: 'human' } };
@@ -44,4 +45,20 @@ await assert.doesNotReject(
 const secondCommit = await dispatchThrough(tracker, throwingTelemetry, humanAction, async () => ({ committed: true }));
 assert.deepEqual(secondCommit, { committed: true }, 'tracker remains claimed after a successful transaction even when telemetry fails');
 
-console.log('UI-3 telemetry checks passed: commit-gated, human-only, deduplicated, and fail-open.');
+const experimentTelemetry = createMemoryExplorationTelemetry();
+trackCommittedExperimentAction({ type: 'DUPLICATE_EXPERIMENT' }, {}, experimentTelemetry);
+trackCommittedExperimentAction({ type: 'SET_COMPARE', enabled: true }, {
+  experimentWorkspace: { comparison: { diff: { changed: ['world'] } } },
+}, experimentTelemetry);
+trackCommittedExperimentAction({ type: 'SET_COMPARE', enabled: false }, {
+  experimentWorkspace: { comparison: { diff: { changed: ['world'] } } },
+}, experimentTelemetry);
+trackCommittedExperimentAction({ type: 'REPEAT_EXPERIMENT', trials: 5 }, {}, experimentTelemetry);
+assert.deepEqual(
+  experimentTelemetry.getEvents().map((event) => event.type),
+  ['experiment_duplicated', 'experiment_compared', 'repeat_requested'],
+  'experiment telemetry is emitted only for committed semantic actions',
+);
+assert.deepEqual(experimentTelemetry.getEvents()[1].payload, { changedFactors: ['world'] }, 'compare telemetry uses runtime diff facts');
+
+console.log('UI-4 telemetry checks passed: commit-gated, human-only, deduplicated, semantic, and fail-open.');

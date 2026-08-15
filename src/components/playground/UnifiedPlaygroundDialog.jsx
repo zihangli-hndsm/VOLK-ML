@@ -11,6 +11,7 @@ import {
   dispatchWithFirstMeaningfulManipulation,
   NOOP_EXPLORATION_TELEMETRY,
   safeTrackExplorationEvent,
+  trackCommittedExperimentAction,
 } from '../../core/telemetry/explorationTelemetry.js';
 import { derivePhenomenonCapabilities } from '../../core/ui/phenomenon.js';
 import ExploreShell from './ExploreShell.jsx';
@@ -130,6 +131,9 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       dispatch: (nextAction) => host.dispatch(nextAction),
       tracker: meaningfulManipulationTrackerRef.current,
       telemetry,
+    }).then((result) => {
+      trackCommittedExperimentAction(action, result, telemetry);
+      return result;
     });
   };
 
@@ -147,7 +151,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
-  const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} compactInitial={phenomenonFirst} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
+  const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
   const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} bigIdea={bigIdea} agent={agent} host={host} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
