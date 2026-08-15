@@ -15,9 +15,15 @@ import {
   clientToSvgPoint,
   nearestPointInLocal,
 } from './dataWorkspaceGeometry.js';
+import { getVisiblePrimitives } from './motion.js';
+import { rendererByPrimitiveType } from './rendererRegistry.jsx';
+import { buildLabelColorMap } from './visualEncoding.js';
 
 const PLOT = { left: 42, right: 620, top: 18, bottom: 320 };
+const PHENOMENON_PLOT = { left: 58, right: 620, top: 20, bottom: 320 };
 const TOOLS = ['point', 'brush', 'spray', 'select', 'erase'];
+const PHENOMENON_TOOLS = ['select', 'point', 'erase'];
+const PHENOMENON_PRIMITIVES = new Set(['scatter', 'regression-line', 'reference-line', 'residual-lines', 'decision-region', 'neighbor-links', 'query-point', 'vote-bars']);
 
 function initialBounds(snapshot) {
   return snapshot.viewState?.bounds ?? snapshot.scene?.ranges ?? {
@@ -64,14 +70,16 @@ function DistributionView({ points, feature, t }) {
   </svg>;
 }
 
-export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffordances = [] }) {
+export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffordances = [], variant = 'full', question, onOpenFullWorkspace }) {
+  const phenomenonMode = variant === 'phenomenon';
+  const plot = phenomenonMode ? PHENOMENON_PLOT : PLOT;
   const { responsive } = usePresentationCapabilities();
   const touchInput = responsive.pointer === 'coarse' || responsive.band === 'compact';
   const svgRef = useRef(null);
   const gestureRef = useRef(null);
   const dragRef = useRef(null);
   const counterRef = useRef(0);
-  const [tool, setTool] = useState('point');
+  const [tool, setTool] = useState(phenomenonMode ? 'select' : 'point');
   const [layer, setLayer] = useState('train');
   const [spread, setSpread] = useState(0.12);
   const [density, setDensity] = useState(6);
@@ -105,10 +113,32 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const projectedViewBounds = projectedBounds(points, xFeature, yFeature);
   const comparisonBounds = snapshot.experimentWorkspace?.comparison?.enabled
     && snapshot.experimentWorkspace.comparison.bounds;
-  const bounds = viewMode === 'scatter'
-    ? comparisonBounds?.xFeature === xFeature && comparisonBounds?.yFeature === yFeature
-      ? comparisonBounds
-      : projectedViewBounds
+  const phenomenonPrimitives = useMemo(
+    () => getVisiblePrimitives(snapshot, 'stage').filter((primitive) => PHENOMENON_PRIMITIVES.has(primitive.type)),
+    [snapshot],
+  );
+  const phenomenonScatter = phenomenonPrimitives.find((primitive) => primitive.type === 'scatter');
+  const phenomenonPoints = phenomenonScatter?.props?.points ?? [];
+  const phenomenonColorByLabel = buildLabelColorMap(phenomenonPoints);
+  const phenomenonRanges = useMemo(() => {
+    const xs = phenomenonPoints.map((point) => point.x).filter(Number.isFinite);
+    const ys = phenomenonPoints.map((point) => point.y).filter(Number.isFinite);
+    const xSpan = Math.max(0.5, xs.length ? Math.max(...xs) - Math.min(...xs) : 1);
+    const ySpan = Math.max(0.5, ys.length ? Math.max(...ys) - Math.min(...ys) : 1);
+    return {
+      xMin: xs.length ? Math.min(...xs) - xSpan * 0.1 : -1,
+      xMax: xs.length ? Math.max(...xs) + xSpan * 0.1 : 1,
+      yMin: ys.length ? Math.min(...ys) - ySpan * 0.1 : -1,
+      yMax: ys.length ? Math.max(...ys) + ySpan * 0.1 : 1,
+    };
+  }, [phenomenonPoints]);
+  const effectiveViewMode = phenomenonMode ? 'scatter' : viewMode;
+  const bounds = effectiveViewMode === 'scatter'
+    ? (phenomenonMode
+      ? phenomenonRanges
+      : comparisonBounds?.xFeature === xFeature && comparisonBounds?.yFeature === yFeature
+        ? comparisonBounds
+        : projectedViewBounds)
     : baseBounds;
   const canCreateObservation = Boolean(snapshot.capabilities?.canCreateObservationFromProjection);
   const highlight = (id) => highlightedAffordances.includes(id) ? ' ring-2 ring-amber-400 ring-offset-1' : '';
@@ -126,8 +156,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
 
   if (!canEdit) return null;
 
-  const xToSvg = (x) => PLOT.left + ((x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (PLOT.right - PLOT.left);
-  const yToSvg = (y) => PLOT.bottom - ((y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (PLOT.bottom - PLOT.top);
+  const xToSvg = (x) => plot.left + ((x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (plot.right - plot.left);
+  const yToSvg = (y) => plot.bottom - ((y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (plot.bottom - plot.top);
   const hitRadiusPx = touchInput ? 22 : 10;
   const svgToWorld = (event) => {
     const rect = svgRef.current?.getBoundingClientRect();
@@ -135,8 +165,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     if (!pixel) return null;
     const { x, y } = pixel;
     return {
-      x: bounds.xMin + ((x - PLOT.left) / (PLOT.right - PLOT.left)) * (bounds.xMax - bounds.xMin),
-      y: bounds.yMax - ((y - PLOT.top) / (PLOT.bottom - PLOT.top)) * (bounds.yMax - bounds.yMin),
+      x: bounds.xMin + ((x - plot.left) / (plot.right - plot.left)) * (bounds.xMax - bounds.xMin),
+      y: bounds.yMax - ((y - plot.top) / (plot.bottom - plot.top)) * (bounds.yMax - bounds.yMin),
     };
   };
   const svgToPixel = (event) => clientToLocalPoint({
@@ -284,7 +314,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
             type: 'SET_FEATURE_VALUES',
             feature: xFeature,
             values: [{ pointId: drag.id, value: position.x }],
-          }, ...(viewMode === 'scatter' ? [{
+          }, ...(effectiveViewMode === 'scatter' ? [{
             type: 'SET_FEATURE_VALUES',
             feature: yFeature,
             values: [{ pointId: drag.id, value: position.y }],
@@ -313,7 +343,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
       if (selectedId) {
         dispatchTransaction({
           id: nextGestureId('precise-move'), actor: 'human', intent: 'move',
-          operations: [{ type: 'SET_FEATURE_VALUES', feature: xFeature, values: [{ pointId: selectedId, value: x }] }, ...(viewMode === 'scatter'
+          operations: [{ type: 'SET_FEATURE_VALUES', feature: xFeature, values: [{ pointId: selectedId, value: x }] }, ...(effectiveViewMode === 'scatter'
             ? [{ type: 'SET_FEATURE_VALUES', feature: yFeature, values: [{ pointId: selectedId, value: y }] }]
             : [])],
         });
@@ -362,8 +392,20 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const visibility = snapshot.viewState?.visibility ?? 'both';
   const pathPreview = previewPath;
 
-  return <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.workspace.ariaLabel')}>
-    <div className="flex flex-wrap items-center justify-between gap-3">
+  return <section data-phenomenon-surface={phenomenonMode ? 'true' : undefined} className={`min-w-0 ${phenomenonMode ? 'rounded-2xl bg-white' : 'rounded-2xl border border-slate-200 bg-white p-3'}`} aria-label={t(phenomenonMode ? 'playground.phenomenon.ariaLabel' : 'playground.workspace.ariaLabel')}>
+    {phenomenonMode ? <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-xl font-black leading-7 text-slate-950">{question ?? t('playground.phenomenon.question')}</p>
+        <p className="mt-1 text-xs font-bold text-slate-500">{t('playground.phenomenon.hint')}</p>
+      </div>
+      <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label={t('playground.phenomenon.toolsLabel')}>
+        {PHENOMENON_TOOLS.map((item) => <button data-phenomenon-tool={item === 'select' ? 'move' : item === 'point' ? 'draw' : item} key={item} type="button" aria-pressed={tool === item}
+          aria-label={t(`playground.workspace.tool.${item === 'select' ? 'move' : item === 'point' ? 'draw' : item}`)} onClick={() => setTool(item)}
+          className={`min-h-10 rounded-xl px-3 py-2 text-sm font-black ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
+        {t(`playground.workspace.tool.${item === 'select' ? 'move' : item === 'point' ? 'draw' : item}`)}
+        </button>)}
+      </div>
+    </div> : <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h3 className="text-sm font-black text-slate-900">{t('playground.workspace.title')}</h3>
         <p className="mt-1 text-xs text-slate-500">{t('playground.workspace.instructions')}</p>
@@ -372,8 +414,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         <span>{t('playground.workspace.trainCount', { count: counts.train })}</span>
         <span>{t('playground.workspace.testCount', { count: counts.test })}</span>
       </div>
-    </div>
-    <div className="mt-3 flex flex-wrap items-center gap-2">
+    </div>}
+    {!phenomenonMode && <div className="mt-3 flex flex-wrap items-center gap-2">
       <button type="button" aria-pressed={viewMode === 'scatter'} onClick={() => selectFeatureView(xFeature, yFeature, 'scatter')} className={`rounded-xl px-3 py-2 text-xs font-bold ${viewMode === 'scatter' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}>{t('playground.workspace.scatterView')}</button>
       <button type="button" aria-pressed={viewMode === 'distribution'} onClick={() => selectFeatureView(xFeature, null, 'distribution')} className={`rounded-xl px-3 py-2 text-xs font-bold ${viewMode === 'distribution' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-700'}`}>{t('playground.workspace.distributionView')}</button>
       <label className="text-xs font-bold text-slate-500">{t('playground.workspace.xFeature')}<select value={xFeature} onChange={(event) => selectFeatureView(event.target.value, yFeature)} className="ml-1 rounded-lg border p-1"><option value="">{t('playground.workspace.chooseFeature')}</option>{featureNames.map((feature) => <option key={feature}>{feature}</option>)}</select></label>
@@ -393,19 +435,25 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         onClick={() => setLayer(item)} className={`rounded-xl px-3 py-2 text-xs font-bold ${layer === item ? 'bg-emerald-600 text-white' : 'bg-slate-100 text-slate-700'}${highlight('world.trainTestLayer')}`}>
         {t(`playground.workspace.layer.${item}`)}
       </button>)}
-    </div>
-    <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+    </div>}
+    <div className={`mt-3 min-w-0 ${phenomenonMode ? 'space-y-3' : 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]'}`}>
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
-        {viewMode === 'distribution' ? <DistributionView points={visiblePoints} feature={xFeature} t={t} /> : <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none select-none" role="img"
+        {!phenomenonMode && viewMode === 'distribution' ? <DistributionView points={visiblePoints} feature={xFeature} t={t} /> : <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none select-none" role="img"
           aria-label={t('playground.workspace.canvasAria')} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
           onPointerUp={onPointerUp} onPointerCancel={cancelPointer}>
-          <rect x={PLOT.left} y={PLOT.top} width={PLOT.right - PLOT.left} height={PLOT.bottom - PLOT.top} fill="white" />
+          <rect x={plot.left} y={plot.top} width={plot.right - plot.left} height={plot.bottom - plot.top} fill="white" />
+          {phenomenonMode && phenomenonPrimitives.map((primitive) => {
+            const Renderer = rendererByPrimitiveType[primitive.type];
+            if (!Renderer) return null;
+            return <Renderer key={primitive.id} props={primitive.props} variant={primitive.type}
+              xToSvg={xToSvg} yToSvg={yToSvg} colorByLabel={phenomenonColorByLabel} plot={plot} t={t} />;
+          })}
           {[0, 0.25, 0.5, 0.75, 1].map((ratio) => <g key={`grid-${ratio}`}>
-            <line x1={PLOT.left} y1={PLOT.top + ratio * (PLOT.bottom - PLOT.top)} x2={PLOT.right} y2={PLOT.top + ratio * (PLOT.bottom - PLOT.top)} stroke="#e2e8f0" />
-            <line x1={PLOT.left + ratio * (PLOT.right - PLOT.left)} y1={PLOT.top} x2={PLOT.left + ratio * (PLOT.right - PLOT.left)} y2={PLOT.bottom} stroke="#e2e8f0" />
+            <line x1={plot.left} y1={plot.top + ratio * (plot.bottom - plot.top)} x2={plot.right} y2={plot.top + ratio * (plot.bottom - plot.top)} stroke="#e2e8f0" />
+            <line x1={plot.left + ratio * (plot.right - plot.left)} y1={plot.top} x2={plot.left + ratio * (plot.right - plot.left)} y2={plot.bottom} stroke="#e2e8f0" />
           </g>)}
-          <path d={`M${PLOT.left} ${PLOT.top} V${PLOT.bottom} H${PLOT.right}`} fill="none" stroke="#475569" strokeWidth="2" />
-          {visiblePoints.map((point) => {
+          <path d={`M${plot.left} ${plot.top} V${plot.bottom} H${plot.right}`} fill="none" stroke="#475569" strokeWidth="2" />
+          {!phenomenonMode && visiblePoints.map((point) => {
             const selected = selectedId === point.id;
             const draft = draftPoint?.id === point.id ? draftPoint : point;
             const cx = xToSvg(getProjectedValue(draft, xFeature));
@@ -414,12 +462,13 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
               ? <rect key={point.id} x={cx - 5} y={cy - 5} width="10" height="10" transform={`rotate(45 ${cx} ${cy})`} fill="white" stroke={selected ? '#f59e0b' : '#7c3aed'} strokeWidth={selected ? 3 : 2} />
               : <circle key={point.id} cx={cx} cy={cy} r={selected ? 7 : 5} fill="#16a34a" stroke={selected ? '#f59e0b' : 'white'} strokeWidth={selected ? 3 : 1.5} />;
           })}
+          {phenomenonMode && draftPoint && <circle cx={xToSvg(getProjectedValue(draftPoint, xFeature))} cy={yToSvg(getProjectedValue(draftPoint, yFeature))} r="8" fill="none" stroke="#f59e0b" strokeWidth="3" strokeDasharray="4 3" />}
           {pathPreview.length > 1 && <polyline points={pathPreview.map((point) => `${xToSvg(point.x)},${yToSvg(point.y)}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth="2" strokeDasharray="5 4" opacity="0.65" />}
           <text x="331" y="350" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">{xFeature}</text>
           <text x="14" y="170" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 14 170)">{yFeature}</text>
         </svg>}
       </div>
-      <div className="space-y-3">
+      {!phenomenonMode && <div className="space-y-3">
         <div className="rounded-xl border border-slate-200 p-3 text-xs text-slate-600">
           <div className="flex items-center justify-between gap-2"><span className="font-bold">{t('playground.workspace.visibility')}</span><select value={visibility} onChange={(event) => onDispatch({ type: 'SET_WORKSPACE_VIEW', patch: { visibility: event.target.value } })} className="rounded-lg border bg-white p-1.5 font-bold"><option value="both">{t('playground.workspace.visibility.both')}</option><option value="train">{t('playground.workspace.visibility.train')}</option><option value="test">{t('playground.workspace.visibility.test')}</option></select></div>
           <div className="mt-2 flex flex-wrap gap-2"><span><i className="mr-1 inline-block h-2.5 w-2.5 rounded-full bg-green-600" />{t('playground.workspace.layer.train')}</span><span><i className="mr-1 inline-block h-2.5 w-2.5 rotate-45 border-2 border-violet-600" />{t('playground.workspace.layer.test')}</span></div>
@@ -445,7 +494,14 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         <div className="flex gap-2"><button type="button" disabled={!snapshot.capabilities?.canUndoWorld} onClick={() => onDispatch({ type: 'UNDO_WORLD_ACTION' })} className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.workspace.undo')}</button><button type="button" disabled={!snapshot.capabilities?.canRedoWorld} onClick={() => onDispatch({ type: 'REDO_WORLD_ACTION' })} className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.workspace.redo')}</button></div>
         <button type="button" onClick={fitView} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.workspace.fitView')}</button>
         {error && <p role="alert" className="rounded-xl bg-amber-50 p-2 text-xs font-bold text-amber-800">{typeof error === 'string' ? error : t('playground.workspace.actionFailed')}</p>}
-      </div>
+      </div>}
     </div>
+    {phenomenonMode && <div className="flex flex-wrap items-center justify-between gap-2">
+      <span className="text-xs font-bold text-slate-500">{t('playground.phenomenon.worldHint')}</span>
+      <div className="flex flex-wrap items-center gap-2">
+        <button type="button" disabled={!snapshot.capabilities?.canUndoWorld} onClick={() => onDispatch({ type: 'UNDO_WORLD_ACTION' })} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.phenomenon.undo')}</button>
+        {onOpenFullWorkspace && <button type="button" onClick={onOpenFullWorkspace} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{t('playground.phenomenon.moreWorldTools')}</button>}
+      </div>
+    </div>}
   </section>;
 }

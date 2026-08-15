@@ -6,6 +6,7 @@ import ExperimentBar from './ExperimentBar.jsx';
 import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 import PlaygroundPresentationBoundary from './PlaygroundPresentationBoundary.jsx';
 import { createExplorationOpenTracker, NOOP_EXPLORATION_TELEMETRY, safeTrackExplorationEvent } from '../../core/telemetry/explorationTelemetry.js';
+import { derivePhenomenonCapabilities } from '../../core/ui/phenomenon.js';
 import ExploreShell from './ExploreShell.jsx';
 import ExploreContextBar from './ExploreContextBar.jsx';
 import ExploreWorldRegion from './ExploreWorldRegion.jsx';
@@ -20,6 +21,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [guidance, setGuidance] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
+  const meaningfulManipulationTrackedRef = useRef(false);
   const openTrackerRef = useRef(null);
   if (!openTrackerRef.current) openTrackerRef.current = createExplorationOpenTracker();
   const playground = useMemo(() => (playgroundId ? getPlayground(playgroundId) : null), [playgroundId]);
@@ -39,6 +41,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     }
     const sessionKey = `${++sessionSequenceRef.current}:${playgroundId}`;
     readySessionRef.current = null;
+    meaningfulManipulationTrackedRef.current = false;
     let active = true;
     let unsubscribe = () => {};
     setSnapshot(null);
@@ -112,6 +115,16 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   }, [snapshot, host, playbackError, t]);
 
   const dispatchAction = (action) => {
+    if (!meaningfulManipulationTrackedRef.current
+      && action.type === 'APPLY_WORLD_TRANSACTION'
+      && action.transaction?.actor === 'human') {
+      meaningfulManipulationTrackedRef.current = true;
+      safeTrackExplorationEvent({
+        version: 1,
+        type: 'first_meaningful_manipulation',
+        payload: { domain: 'world' },
+      }, telemetry);
+    }
     if (['PLAY', 'SCRIPT_PLAY', 'STEP', 'SCRIPT_STEP', 'RESET', 'SCRIPT_RESET'].includes(action.type)) {
       setPlaybackError(null);
     }
@@ -129,9 +142,10 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     />;
   }
   const formulaPrimitive = snapshot.primitives.find((primitive) => primitive.type === 'formula');
-  const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
-  const worldRegion = <ExploreWorldRegion snapshot={snapshot} modelPlayground={modelPlayground} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
-  const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
+  const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
+  const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
+  const worldRegion = <ExploreWorldRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
+  const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} compactInitial={phenomenonFirst} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
   const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} bigIdea={bigIdea} agent={agent} host={host} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
