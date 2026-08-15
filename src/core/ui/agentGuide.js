@@ -7,32 +7,88 @@ export const AGENT_GUIDANCE_OUTCOMES = Object.freeze({
   CLARIFICATION: 'clarification',
 });
 
-const depthPatterns = Object.freeze([
-  { depth: CONCEPTUAL_DEPTHS.EVIDENCE, match: /what changed|what happened|show evidence|发生了什么|哪里变了|证据/i },
-  { depth: CONCEPTUAL_DEPTHS.MECHANISM, match: /how does it learn|how did.*(learn|change)|why did.*(change|move)|how does it decide|如何学习|怎么学|为什么.*(变化|移动)|如何判断/i },
-  { depth: CONCEPTUAL_DEPTHS.REPRESENTATION, match: /inspect|control|parameter|learning rate|model settings|检查模型|控制|参数|学习率|模型设置/i },
-]);
+const NAVIGATION_RE = /where can i|how do i|show me|open .*settings|model settings|inspect|control|parameter|learning rate|noise|在哪里.*(改|调|设置)|怎么.*(改|调|设置)|模型设置|检查模型|控制|参数|学习率|噪声/i;
+const EXPERIMENT_RE = /what happens if|what if|try (a|an|the)?\s*|could we see whether|increase|decrease|lower|raise|larger|smaller|make .* (more|less)|add .*noise|add .*outlier|如果.*(增加|减少|提高|降低)|尝试|增加|减少|提高|降低|添加|噪声|异常点/i;
+const COMPARISON_RE = /clean comparison|what caused|comparison|compare|clarity|干净.*比较|什么导致|比较|对照|清晰/i;
 
-const proposalPattern = /what happens if|try|increase|decrease|add|move|change|noise|outlier|distribution|test data|如果|尝试|增加|减少|添加|移动|改变|噪声|异常|分布|测试数据/i;
+function has(snapshot, key) {
+  return snapshot?.[key] !== undefined && snapshot?.[key] !== null;
+}
+
+function proposalIntent(text) {
+  if (/learning\s*rate|learning-rate|学习率/i.test(text)) {
+    return /lower|decrease|smaller|slower|减少|降低|变小/i.test(text)
+      ? 'learning-rate-decrease'
+      : 'learning-rate-increase';
+  }
+  if (/noise|噪声/i.test(text)) return 'harder-noise';
+  if (/outlier|anomal|异常点|离群点/i.test(text)) return 'outliers';
+  if (/test|distribution|support|range|测试|分布|范围/i.test(text)) return 'test-shift';
+  if (/line|slope|point|直线|斜率|点/i.test(text)) return 'line-move';
+  return null;
+}
+
+function semanticTopic(text) {
+  if (/slope|斜率/i.test(text)) return 'slope';
+  if (/bias|intercept|截距|偏置/i.test(text)) return 'bias';
+  if (/training step|step|训练步|步骤/i.test(text)) return 'training-step';
+  if (/test error|test mse|测试误差|测试损失/i.test(text)) return 'test-error';
+  if (/repeat|stability|stable|variance|重复|稳定|波动/i.test(text)) return 'repeat-stability';
+  return null;
+}
 
 export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot = {} } = {}) {
   const text = String(request ?? '').trim();
   if (!text) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'empty-request' };
 
-  const depth = depthPatterns.find((candidate) => candidate.match.test(text));
-  if (depth && capabilities[depth.depth] !== false) {
-    return { kind: AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH, depth: depth.depth };
+  // Speech act wins over the noun that follows it. “Where can I change X?”
+  // is navigation; “What happens if I change X?” is an experiment.
+  const isExperiment = EXPERIMENT_RE.test(text) && !/^where can i|^how do i|^show me where|^在哪里|^怎么/i.test(text);
+  const intent = isExperiment ? proposalIntent(text) : null;
+  if (intent && has(snapshot, 'model')) {
+    return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent };
   }
 
-  if (proposalPattern.test(text) && snapshot.model) {
-    return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL };
+  if (NAVIGATION_RE.test(text)) {
+    if (/noise|outlier|异常|噪声/i.test(text)) {
+      return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'world-control', target: 'world-tools' };
+    }
+    if (capabilities[CONCEPTUAL_DEPTHS.REPRESENTATION] !== false) {
+      return { kind: AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH, depth: CONCEPTUAL_DEPTHS.REPRESENTATION };
+    }
   }
 
-  if (snapshot.experimentWorkspace?.comparison?.enabled && /compare|comparison|clarity|比较|对照|清晰/i.test(text)) {
+  if (/what changed|what happened|show evidence|发生了什么|哪里变了|证据/i.test(text)
+    && capabilities[CONCEPTUAL_DEPTHS.EVIDENCE] !== false) {
+    return { kind: AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH, depth: CONCEPTUAL_DEPTHS.EVIDENCE };
+  }
+  if (/how does it learn|how did.*(learn|change)|why did.*(change|move)|how does it decide|如何学习|怎么学|为什么.*(变化|移动)|如何判断/i.test(text)
+    && capabilities[CONCEPTUAL_DEPTHS.MECHANISM] !== false) {
+    return { kind: AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH, depth: CONCEPTUAL_DEPTHS.MECHANISM };
+  }
+
+  const topic = semanticTopic(text);
+  if (topic) return { kind: AGENT_GUIDANCE_OUTCOMES.EXPLANATION, topic };
+  if (snapshot.experimentWorkspace?.comparison?.enabled && COMPARISON_RE.test(text)) {
     return { kind: AGENT_GUIDANCE_OUTCOMES.EXPLANATION, topic: 'comparison' };
   }
 
-  return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'unsupported-request' };
+  if (isExperiment) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'unsupported-experiment', useAi: true };
+  return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'unsupported-request', useAi: true };
+}
+
+export function routeAgentAiInterpretation({ interpretation, request, snapshot = {} } = {}) {
+  const intent = interpretation?.intent;
+  if (!['outliers', 'test-shift', 'two-distributions', 'harder-noise', 'line-move'].includes(intent)) return null;
+  if (!snapshot.model) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'model-unavailable' };
+  return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent, source: 'ai', request };
+}
+
+export function deriveAgentSemanticExplanation(topic, snapshot = {}) {
+  const supported = new Set(['slope', 'bias', 'training-step', 'test-error', 'repeat-stability', 'comparison']);
+  if (!supported.has(topic)) return { topic, available: false };
+  if (topic === 'comparison' && !snapshot.experimentWorkspace?.comparison?.enabled) return { topic, available: false };
+  return { topic, available: true };
 }
 
 export function deriveAgentComparisonExplanation(snapshot = {}) {

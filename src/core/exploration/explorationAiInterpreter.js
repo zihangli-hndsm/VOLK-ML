@@ -37,6 +37,7 @@ function validateInterpretation(value) {
 }
 
 function promptFor({ request, context }) {
+  const comparison = context?.experimentWorkspace?.comparison;
   return [
     'Interpret the learner request into one high-level VOLK-ML exploration intent.',
     'Return JSON only. Never return runtime operations, operation IDs, control IDs, observable IDs, code, or a ScenarioSpec.',
@@ -48,6 +49,13 @@ function promptFor({ request, context }) {
       generator: context?.exploration?.generator ?? null,
       capabilities: context?.exploration?.worldOperations ?? [],
       recentWorldActions: context?.recentWorldActions ?? [],
+      presentation: {
+        currentDepth: context?.presentation?.currentDepth ?? null,
+        comparisonActive: Boolean(context?.presentation?.comparisonActive ?? comparison?.enabled),
+        availableDepths: context?.presentation?.availableDepths ?? [],
+        changedDimensions: comparison?.diff?.changed ?? [],
+        modelKind: context?.playground?.modelAdapterId ?? context?.playground?.modelAdapter ?? null,
+      },
     })}`,
     'Shape: {"intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
     `Learner request: ${String(request ?? '').trim()}`,

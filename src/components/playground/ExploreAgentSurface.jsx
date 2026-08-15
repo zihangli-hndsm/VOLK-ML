@@ -1,6 +1,8 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
-import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, AGENT_GUIDANCE_OUTCOMES } from '../../core/ui/agentGuide.js';
+import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, deriveAgentSemanticExplanation, routeAgentAiInterpretation, AGENT_GUIDANCE_OUTCOMES } from '../../core/ui/agentGuide.js';
+import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
+import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
 
 function semanticLabel(value, t) {
@@ -30,13 +32,19 @@ function compactProposal(proposal, t) {
 }
 
 export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, host, t }) {
+  const { config, gateway, isConfigured } = useAiProvider();
+  const aiInterpreter = useMemo(() => createExplorationAiInterpreter({ gateway }), [gateway]);
   const [request, setRequest] = useState('');
   const [outcome, setOutcome] = useState(null);
   const [proposal, setProposal] = useState(null);
   const [result, setResult] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
+  const [aiFallback, setAiFallback] = useState(false);
   const comparison = deriveAgentComparisonExplanation(snapshot);
+  const semanticExplanation = outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION
+    ? deriveAgentSemanticExplanation(outcome.topic, snapshot)
+    : null;
   const presentation = {
     currentDepth: null,
     comparisonActive: Boolean(snapshot.experimentWorkspace?.comparison?.enabled),
@@ -44,23 +52,49 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       .filter((depth) => capabilities[depth]),
   };
 
-  const ask = async () => {
-    if (!request.trim() || busy) return;
-    const nextOutcome = classifyAgentGuideRequest({ request, capabilities, snapshot });
+  const loadProposal = async (nextOutcome, proposalRequest = request) => {
     setOutcome(nextOutcome);
     setProposal(null);
     setResult(null);
     setError(null);
-    if (nextOutcome.kind !== AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL) return;
     setBusy(true);
     try {
-      const nextProposal = await agent.proposeExploration({ request });
+      const nextProposal = await agent.proposeExploration({ request: proposalRequest, ...(nextOutcome.intent ? { intent: nextOutcome.intent } : {}) });
       setProposal(nextProposal);
     } catch (caught) {
       setError(caught);
     } finally {
       setBusy(false);
     }
+  };
+
+  const ask = async () => {
+    if (!request.trim() || busy) return;
+    setAiFallback(false);
+    let nextOutcome = classifyAgentGuideRequest({ request, capabilities, snapshot });
+    if (isConfigured && (nextOutcome.useAi || nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION)) {
+      setBusy(true);
+      try {
+        const interpretation = await aiInterpreter.interpret({
+          request,
+          context: agent.inspectContext({ presentation }),
+          config,
+        });
+        nextOutcome = routeAgentAiInterpretation({ interpretation, request, snapshot, capabilities }) ?? nextOutcome;
+      } catch {
+        setAiFallback(true);
+      } finally {
+        setBusy(false);
+      }
+    }
+    if (nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL) {
+      await loadProposal(nextOutcome);
+      return;
+    }
+    setOutcome(nextOutcome);
+    setProposal(null);
+    setResult(null);
+    setError(null);
   };
 
   const openDepth = (depth) => {
@@ -81,6 +115,11 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     } finally {
       setBusy(false);
     }
+  };
+
+  const proposeCleanerComparison = async () => {
+    if (busy) return;
+    await loadProposal({ kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent: 'outliers' }, 'What happens if I add some outliers?');
   };
 
   const panelClass = compact
@@ -109,10 +148,13 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
 
     {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-950">
       <p className="font-black">{t('playground.agentGuide.explanationTitle')}</p>
-      {comparison.kind === 'mixed-comparison' && <p className="mt-1">{t('playground.agentGuide.mixedComparison')}</p>}
-      {comparison.kind !== 'mixed-comparison' && <p className="mt-1">{t('playground.agentGuide.comparisonFacts')}</p>}
-      <p className="mt-2 text-xs">{t('playground.experiment.changed')}: {comparison.changed.map((item) => semanticLabel(item, t)).join(', ') || t('playground.explorationAgent.none')}</p>
-      <button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button>
+      {outcome.topic === 'comparison' ? <>
+        {comparison.kind === 'mixed-comparison' && <p className="mt-1">{t('playground.agentGuide.mixedComparison')}</p>}
+        {comparison.kind !== 'mixed-comparison' && <p className="mt-1">{t('playground.agentGuide.comparisonFacts')}</p>}
+        <p className="mt-2 text-xs">{t('playground.experiment.changed')}: {comparison.changed.map((item) => semanticLabel(item, t)).join(', ') || t('playground.explorationAgent.none')}</p>
+        {comparison.kind === 'mixed-comparison' && <button type="button" disabled={busy} onClick={proposeCleanerComparison} className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.tryCleaner')}</button>}
+        <button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-2 ml-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button>
+      </> : <p className="mt-1">{semanticExplanation?.available ? t(`playground.agentGuide.explain.${outcome.topic}`) : t('playground.agentGuide.clarification')}</p>}
     </div>}
 
     {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL && proposal?.kind === 'proposal' && <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50 p-3 text-xs text-slate-800">
@@ -124,7 +166,8 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <button type="button" disabled={busy} onClick={runProposal} className="mt-3 rounded-xl bg-emerald-600 px-3 py-2 font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.tryIt')}</button>
     </div>}
 
-    {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-950">{t('playground.agentGuide.clarification')}</p>}
+    {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-950">{outcome.reason === 'world-control' ? t('playground.agentGuide.worldTools') : t('playground.agentGuide.clarification')}</p>}
+    {aiFallback && <p className="mt-2 text-xs font-bold text-slate-500">{t('playground.agentGuide.aiFallback')}</p>}
     {result && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-950"><p className="font-black">{t('playground.agentGuide.completed')}</p><p className="mt-1 text-xs">{t('playground.agentGuide.changed')}: {result.mutationDiff?.changed?.map((item) => semanticLabel(item, t)).join(', ') || t('playground.explorationAgent.none')}</p><button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button></div>}
     {error && <p role="alert" className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-800">{error.code ?? 'EXPLORATION_FAILED'}: {error.message}</p>}
 

@@ -5,7 +5,8 @@ import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
 import { getPlayground } from '../src/core/playgrounds/registry.js';
 import { CONCEPTUAL_DEPTHS } from '../src/core/ui/uiArchitecture.js';
-import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, AGENT_GUIDANCE_OUTCOMES } from '../src/core/ui/agentGuide.js';
+import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, deriveAgentSemanticExplanation, routeAgentAiInterpretation, AGENT_GUIDANCE_OUTCOMES } from '../src/core/ui/agentGuide.js';
+import { createExplorationAiInterpreter } from '../src/core/exploration/explorationAiInterpreter.js';
 import ExploreDetailsRegion from '../src/components/playground/ExploreDetailsRegion.jsx';
 import { AiProvider } from '../src/components/ai/AiProviderContext.jsx';
 import { resolveMessage } from '../src/i18n.js';
@@ -75,6 +76,33 @@ export async function runUiAgentGuideSmoke() {
     assert.deepEqual(mechanismOutcome, { kind: AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH, depth: CONCEPTUAL_DEPTHS.MECHANISM });
     const representationOutcome = classifyAgentGuideRequest({ request: 'Where can I change the learning rate?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot });
     assert.deepEqual(representationOutcome, { kind: AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH, depth: CONCEPTUAL_DEPTHS.REPRESENTATION });
+    const learningProposal = classifyAgentGuideRequest({ request: 'What happens if I increase the learning rate?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot });
+    assert.equal(learningProposal.kind, AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, 'learning-rate intervention is not mistaken for navigation');
+    assert.equal(learningProposal.intent, 'learning-rate-increase');
+    const noiseNavigation = classifyAgentGuideRequest({ request: 'Where can I change noise?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot });
+    const noiseProposal = classifyAgentGuideRequest({ request: 'What happens if I increase noise?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot });
+    assert.notEqual(noiseNavigation.kind, noiseProposal.kind, 'noise navigation and noise intervention use different speech-act routes');
+    assert.equal(noiseNavigation.reason, 'world-control');
+    assert.equal(noiseProposal.intent, 'harder-noise');
+    assert.deepEqual(classifyAgentGuideRequest({ request: 'What does slope mean here?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot }), { kind: AGENT_GUIDANCE_OUTCOMES.EXPLANATION, topic: 'slope' });
+    assert.equal(deriveAgentSemanticExplanation('slope', snapshot).available, true, 'registered semantic explanations stay bounded');
+
+    const lrProposal = agent.proposeExploration({ request: 'What happens if I increase the learning rate?', intent: learningProposal.intent });
+    assert.equal(lrProposal.kind, 'proposal', 'supported learning-rate intervention reaches the semantic planner');
+    assert.equal(lrProposal.scenario.change[0].parameters.key, 'learningRate');
+    let aiPrompt = '';
+    const aiGateway = { complete: async ({ messages }) => { aiPrompt = messages[0].content; return { protocol: 'mock', text: JSON.stringify({ intent: 'harder-noise', requestedChange: 'more noise', requestedHolds: ['model'], ambiguity: null }) }; } };
+    const aiInterpreter = createExplorationAiInterpreter({ gateway: aiGateway });
+    const aiOutcome = routeAgentAiInterpretation({
+      interpretation: await aiInterpreter.interpret({ request: 'Could we see whether this is noisier?', context: agent.inspectContext({ presentation: { currentDepth: null, comparisonActive: false, availableDepths: [] } }), config: { protocol: 'openai-compatible', apiKey: 'test', model: 'test', endpoint: 'https://example.test' } }),
+      request: 'Could we see whether this is noisier?',
+      snapshot,
+    });
+    assert.equal(aiOutcome.kind, AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, 'configured AI interpretation maps into a bounded proposal');
+    assert.equal(/"x"\s*:|"y"\s*:|e\d+/.test(aiPrompt), false, 'AI intent context does not include raw point coordinates or ids');
+    const failingInterpreter = createExplorationAiInterpreter({ gateway: { complete: async () => { throw new Error('offline'); } } });
+    await assert.rejects(() => failingInterpreter.interpret({ request: 'unclear question', context: {}, config: { protocol: 'openai-compatible', apiKey: 'test', model: 'test', endpoint: 'https://example.test' } }), /unavailable/i);
+    assert.equal(classifyAgentGuideRequest({ request: 'What happens if I increase noise?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot }).intent, 'harder-noise', 'local classifier remains useful when AI interpretation fails');
 
     const knnHost = createPlaygroundHost({ getDataset: () => null });
     try {
@@ -95,6 +123,15 @@ export async function runUiAgentGuideSmoke() {
     const result = await agent.executeExploration(proposal.scenario);
     assert.ok(result.mutationDiff.changed.includes('world'), 'explicit execution changes the runtime World');
     assert.equal(host.getState().experimentWorkspace.experiments.length, 2, 'Agent execution uses the ordinary Experiment runtime');
+
+    const baselineId = host.getState().experimentWorkspace.experiments[0].id;
+    await agent.dispatch({ type: 'SET_CONTROL', key: 'learningRate', value: 0.2 });
+    await agent.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: baselineId });
+    const mixedSnapshot = host.getState();
+    const mixedOutcome = classifyAgentGuideRequest({ request: 'Is this a clean comparison?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot: mixedSnapshot });
+    assert.deepEqual(mixedOutcome, { kind: AGENT_GUIDANCE_OUTCOMES.EXPLANATION, topic: 'comparison' });
+    assert.equal(mixedSnapshot.experimentWorkspace.comparison.diff.clarity, 'mixed', 'mixed guidance reads the runtime comparison clarity');
+    assert.deepEqual(deriveAgentComparisonExplanation(mixedSnapshot).changed, mixedSnapshot.experimentWorkspace.comparison.diff.changed);
 
     const comparisonSnapshot = host.getState();
     const explanation = deriveAgentComparisonExplanation(comparisonSnapshot);
