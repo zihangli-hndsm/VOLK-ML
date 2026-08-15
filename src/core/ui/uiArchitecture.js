@@ -21,6 +21,10 @@ export const PRESENTATION_BANDS = Object.freeze({
   WIDE: 'wide',
 });
 
+export function isCompactPresentationWidth(value) {
+  return Number.isFinite(Number(value)) && Number(value) < 640;
+}
+
 const SURFACE_DESCRIPTORS = Object.freeze({
   explore: Object.freeze({
     id: 'explore',

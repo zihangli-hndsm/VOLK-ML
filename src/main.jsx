@@ -37,6 +37,7 @@ import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
 import { getBigIdeaEntrance } from './core/exploration/bigIdeaRegistry.js';
 import { UI_SURFACES } from './core/ui/uiArchitecture.js';
+import { createBuildPanelPresentation, toggleBuildPanel } from './core/ui/buildSurfacePresentation.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
@@ -469,14 +470,16 @@ function Workspace() {
   const { primary, secondary, setLanguages, t } = useVividTranslation();
   const { openSettings } = useAiProvider();
   const initialGraph = useMemo(() => makeDefaultGraph(), []);
+  const initialBuildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth: window.innerWidth }), []);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialGraph.nodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialGraph.edges);
   const [selectedId, setSelectedId] = useState(nodes[0]?.id);
   const [multiSelectMode, setMultiSelectMode] = useState(false);
-  const [leftOpen, setLeftOpen] = useState(true);
-  const [rightOpen, setRightOpen] = useState(true);
+  const [leftOpen, setLeftOpen] = useState(initialBuildPresentation.leftOpen);
+  const [rightOpen, setRightOpen] = useState(initialBuildPresentation.rightOpen);
   const [leftWidth, setLeftWidth] = useState(300);
-  const [rightWidth, setRightWidth] = useState(() => Math.min(640, Math.max(320, Math.round(window.innerWidth * 0.3))));
+  const [rightWidth, setRightWidth] = useState(initialBuildPresentation.rightWidth);
+  const [viewportWidth, setViewportWidth] = useState(() => window.innerWidth);
   const [libraryMode, setLibraryMode] = useState('detailed');
   const [viewMode, setViewMode] = useState('canvas');
   const [query, setQuery] = useState('');
@@ -504,6 +507,18 @@ function Workspace() {
   const [pendingConnection, setPendingConnection] = useState(null);
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [notice, setNotice] = useState('');
+  const buildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth, leftOpen, rightOpen, rightWidth }), [viewportWidth, leftOpen, rightOpen, rightWidth]);
+  const toggleLeftPanel = useCallback(() => {
+    const next = toggleBuildPanel(buildPresentation, 'left');
+    setLeftOpen(next.leftOpen);
+    setRightOpen(next.rightOpen);
+  }, [buildPresentation]);
+  const toggleRightPanel = useCallback(() => {
+    const next = toggleBuildPanel(buildPresentation, 'right');
+    setLeftOpen(next.leftOpen);
+    setRightOpen(next.rightOpen);
+  }, [buildPresentation]);
+  const wasCompactBuildRef = useRef(initialBuildPresentation.compact);
   const instanceIdRef = useRef(`workspace-${crypto.randomUUID()}`);
   const agentSubscribersRef = useRef(new Set());
   const importRef = useRef(null);
@@ -632,6 +647,20 @@ function Workspace() {
     pendingFitRef.current = true;
     return project;
   }, [setNodes, setEdges, setLanguages, t]);
+
+  useEffect(() => {
+    const handleResize = () => setViewportWidth(window.innerWidth);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
+
+  useEffect(() => {
+    if (buildPresentation.compact && !wasCompactBuildRef.current) {
+      setLeftOpen(false);
+      setRightOpen(false);
+    }
+    wasCompactBuildRef.current = buildPresentation.compact;
+  }, [buildPresentation.compact]);
 
   useEffect(() => {
     let active = true;
@@ -1410,7 +1439,7 @@ function Workspace() {
     </header>
 
     {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={(id) => { setPlaygroundInitialTab(id === 'data-lab' ? 'data' : 'model'); setPlaygroundId(id); setPlaygroundOpen(true); }} t={t} /> : <>
-      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} leftOpen={leftOpen} setLeftOpen={setLeftOpen} rightOpen={rightOpen} setRightOpen={setRightOpen} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} setPlaygroundInitialTab={setPlaygroundInitialTab} setPlaygroundId={setPlaygroundId} setPlaygroundOpen={setPlaygroundOpen} setRunnerOpen={setRunnerOpen} t={t} />
+      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} setPlaygroundInitialTab={setPlaygroundInitialTab} setPlaygroundId={setPlaygroundId} setPlaygroundOpen={setPlaygroundOpen} setRunnerOpen={setRunnerOpen} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
       <motion.aside initial={false} animate={{ x: leftOpen ? 0 : '-110%' }} style={{ width: `min(${leftWidth}px, calc(100vw - 24px))` }} className={`${asideBase} left-3 lg:transform-none ${leftOpen ? 'lg:block' : 'lg:hidden'}`}>

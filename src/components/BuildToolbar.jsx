@@ -5,10 +5,8 @@ export default function BuildToolbar({
   projectName,
   setProjectName,
   autosavedAt,
-  leftOpen,
-  setLeftOpen,
-  rightOpen,
-  setRightOpen,
+  onToggleLeft,
+  onToggleRight,
   viewMode,
   setViewMode,
   setExplanationOpen,
@@ -35,8 +33,8 @@ export default function BuildToolbar({
         <input value={projectName} onChange={(event) => setProjectName(event.target.value)} className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm font-bold outline-none focus:border-blue-500 sm:w-56" />
         <span className="mt-0.5 block text-[10px] text-slate-400">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span>
       </label>
-      <button type="button" data-build-primary="blocks" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setLeftOpen((value) => !value)}>☰ <span className="hidden sm:inline">{t('nav.blocks')}</span></button>
-      <button type="button" data-build-primary="parameters" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setRightOpen((value) => !value)}>⚙ <span className="hidden sm:inline">{t('nav.parameters')}</span></button>
+      <button type="button" data-build-primary="blocks" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={onToggleLeft}>☰ <span className="hidden sm:inline">{t('nav.blocks')}</span></button>
+      <button type="button" data-build-primary="parameters" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={onToggleRight}>⚙ <span className="hidden sm:inline">{t('nav.parameters')}</span></button>
       <button type="button" data-build-primary="run" className="rounded-xl bg-emerald-600 px-3 py-2 font-bold text-white" onClick={() => setRunnerOpen(true)}>▶ <span className="hidden sm:inline">{t('nav.run')}</span></button>
       <BuildMoreDisclosure
         viewMode={viewMode}
