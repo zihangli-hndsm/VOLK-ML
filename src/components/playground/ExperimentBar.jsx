@@ -42,7 +42,7 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
       against: metricRows(comparison.results.against).find(([otherKey]) => otherKey === key)?.[1],
     }))
     : [];
-  return <section className="rounded-2xl border border-slate-200 bg-slate-50 p-3" aria-label={t('playground.experiment.ariaLabel')}>
+  return <section className="min-w-0 rounded-2xl border border-slate-200 bg-slate-50 p-3" aria-label={t('playground.experiment.ariaLabel')}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{t('playground.experiment.title')}</p>

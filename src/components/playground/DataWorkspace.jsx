@@ -9,6 +9,7 @@ import {
   projectObservation,
   projectedBounds,
 } from '../../core/exploration/projection.js';
+import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 
 const PLOT = { left: 42, right: 620, top: 18, bottom: 320 };
 const TOOLS = ['point', 'brush', 'spray', 'select', 'erase'];
@@ -59,6 +60,8 @@ function DistributionView({ points, feature, t }) {
 }
 
 export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffordances = [] }) {
+  const { responsive } = usePresentationCapabilities();
+  const touchInput = responsive.pointer === 'coarse' || responsive.band === 'compact';
   const svgRef = useRef(null);
   const gestureRef = useRef(null);
   const dragRef = useRef(null);
@@ -130,7 +133,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
       y: bounds.yMax - ((y - PLOT.top) / (PLOT.bottom - PLOT.top)) * (bounds.yMax - bounds.yMin),
     };
   };
-  const hitRadius = Math.max(bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin) * 0.035;
+  const hitRadius = Math.max(bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin) * (touchInput ? 0.06 : 0.035);
   const nearestPoint = (position) => visiblePoints
     .map((point) => {
       const projected = projectObservation(point, xFeature, yFeature);
@@ -352,7 +355,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const visibility = snapshot.viewState?.visibility ?? 'both';
   const pathPreview = previewPath;
 
-  return <section className="rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.workspace.ariaLabel')}>
+  return <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.workspace.ariaLabel')}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h3 className="text-sm font-black text-slate-900">{t('playground.workspace.title')}</h3>
@@ -384,7 +387,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         {t(`playground.workspace.layer.${item}`)}
       </button>)}
     </div>
-    <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+    <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
         {viewMode === 'distribution' ? <DistributionView points={visiblePoints} feature={xFeature} t={t} /> : <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none select-none" role="img"
           aria-label={t('playground.workspace.canvasAria')} onPointerDown={onPointerDown} onPointerMove={onPointerMove}

@@ -4,6 +4,10 @@ import {
   UI_SURFACES,
   deriveUiPresentation,
 } from '../../core/ui/uiArchitecture.js';
+import {
+  PresentationCapabilitiesProvider,
+  useMeasuredPresentationCapabilities,
+} from './usePresentationCapabilities.jsx';
 
 // Presentation-only seam. The runtime snapshot remains the single semantic
 // state object; this wrapper only exposes stable surface metadata to future
@@ -15,14 +19,25 @@ export default function PlaygroundPresentationBoundary({
   depth = CONCEPTUAL_DEPTHS.PHENOMENON,
   rawCapabilities,
   resolvedPresentation,
+  className = '',
 }) {
+  const measured = useMeasuredPresentationCapabilities({ rawCapabilities });
   const presentation = useMemo(
-    () => deriveUiPresentation({ snapshot, surface, depth, rawCapabilities, resolvedPresentation }),
-    [snapshot, surface, depth, rawCapabilities, resolvedPresentation],
+    () => deriveUiPresentation({ snapshot, surface, depth, resolvedPresentation: resolvedPresentation ?? measured.responsive }),
+    [snapshot, surface, depth, resolvedPresentation, measured.responsive],
   );
-  return <div
-    data-ui-surface={presentation.surface}
-    data-ui-depth={presentation.depth}
-    data-ui-presentation-band={presentation.responsive.band}
-  >{children}</div>;
+  const value = useMemo(() => ({
+    rawCapabilities: measured.rawCapabilities,
+    responsive: presentation.responsive,
+  }), [measured.rawCapabilities, presentation.responsive]);
+  return <PresentationCapabilitiesProvider value={value}>
+    <div
+      ref={measured.containerRef}
+      data-ui-surface={presentation.surface}
+      data-ui-depth={presentation.depth}
+      data-ui-presentation-band={presentation.responsive.band}
+      data-ui-pointer={presentation.responsive.pointer}
+      className={className}
+    >{children}</div>
+  </PresentationCapabilitiesProvider>;
 }

@@ -10,3 +10,30 @@
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input { font: inherit; }
 .react-flow__node { white-space: normal; }
+
+.ui-explore-dialog-frame {
+  box-sizing: border-box;
+  min-width: 0;
+}
+
+[data-ui-presentation-band="compact"].ui-explore-dialog-frame {
+  width: 100%;
+  max-width: none;
+  height: 100vh;
+  max-height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  border-radius: 0;
+}
+
+[data-ui-pointer="coarse"] button,
+[data-ui-pointer="coarse"] select,
+[data-ui-pointer="coarse"] input:not([type="hidden"]):not([type="checkbox"]),
+[data-ui-pointer="coarse"] input[type="range"] {
+  min-height: 2.75rem;
+}
+
+[data-ui-pointer="coarse"] input[type="checkbox"] {
+  min-width: 1.5rem;
+  min-height: 1.5rem;
+}

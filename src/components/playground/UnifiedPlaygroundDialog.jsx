@@ -133,16 +133,16 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} modelPlayground={modelPlayground} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
   const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} bigIdea={bigIdea} agent={agent} host={host} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
-  return <div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-3 sm:p-5" onMouseDown={onClose}>
-    <section className="max-h-[94vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
-      <PlaygroundPresentationBoundary snapshot={snapshot}>
+  return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
+    <PlaygroundPresentationBoundary snapshot={snapshot} className="ui-explore-dialog-frame w-full max-w-6xl max-h-[94vh] overflow-auto rounded-3xl bg-white p-3 shadow-2xl sm:p-6" >
+      <section className="relative min-w-0" onMouseDown={(event) => event.stopPropagation()}>
       <ExploreShell contextBar={contextBar} worldRegion={worldRegion} experimentRegion={experimentRegion} detailsRegion={detailsRegion} />
         {playbackError && <div role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
           <p className="font-black">{t('playground.playback.errorTitle')}</p>
           <p className="mt-1">{t('playground.playback.errorBody', playbackError)}</p>
           <p className="mt-1 text-xs">{t('playground.playback.errorStatePreserved')}</p>
         </div>}
-      </PlaygroundPresentationBoundary>
-    </section>
+      </section>
+    </PlaygroundPresentationBoundary>
   </div>;
 }

@@ -101,6 +101,7 @@ function normalizeEnum(value, allowed, fallback) {
 
 export function classifyPresentationCapabilities({
   containerWidth,
+  containerHeight,
   availableWidth,
   pointer = 'unknown',
   hover = 'unknown',
@@ -117,12 +118,17 @@ export function classifyPresentationCapabilities({
   const normalizedPointer = normalizeEnum(pointer, ['coarse', 'fine', 'unknown'], 'unknown');
   const normalizedHover = normalizeEnum(hover, ['available', 'none', 'unknown'], 'unknown');
   const normalizedOrientation = normalizeEnum(orientation, ['portrait', 'landscape', 'unknown'], 'unknown');
+  const derivedOrientation = normalizedOrientation !== 'unknown'
+    ? normalizedOrientation
+    : Number.isFinite(Number(containerHeight)) && width !== null && width > 0
+      ? Number(containerHeight) >= width ? 'portrait' : 'landscape'
+      : 'unknown';
   return Object.freeze({
     band,
     containerWidth: width,
     pointer: normalizedPointer,
     hover: normalizedHover,
-    orientation: normalizedOrientation,
+    orientation: derivedOrientation,
     inspectorPresentation: band === PRESENTATION_BANDS.COMPACT
       ? 'bottom-sheet'
       : band === PRESENTATION_BANDS.UNKNOWN ? 'unresolved' : 'drawer-or-sidebar',
