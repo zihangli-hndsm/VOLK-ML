@@ -81,20 +81,20 @@ function BuildMoreDisclosure({
   const [open, setOpen] = React.useState(false);
   return <div className="relative">
     <button type="button" aria-expanded={open} aria-controls="build-more-actions" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setOpen((value) => !value)}>⋯ <span className="hidden sm:inline">{t('surface.more')}</span></button>
-    {open && <div id="build-more-actions" data-build-more-actions className="absolute right-0 top-full z-50 mt-2 grid min-w-64 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
-      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => setViewMode((value) => value === 'canvas' ? 'architecture' : 'canvas')}>{viewMode === 'canvas' ? '⌘' : '⌁'} {t(`nav.${viewMode === 'canvas' ? 'architecture' : 'canvas'}`)}</button>
-      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { setExplanationOpen(true); setOpen(false); }}>✦ {t('nav.explain')}</button>
-      <button type="button" disabled={selectedNodes.length < 2} className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100 disabled:opacity-40" onClick={() => { setCompositeOpen(true); setOpen(false); }}>▣ {t('nav.group')}</button>
-      <button type="button" aria-pressed={multiSelectMode} className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => setMultiSelectMode((value) => !value)}>☑ {t('nav.multiSelect')}</button>
-      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { setExamplesOpen(true); setOpen(false); }}>◇ {t('nav.examples')}</button>
-      <button type="button" className={`rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100 ${dataset ? 'text-blue-700' : ''}`} onClick={() => { setDataOpen(true); setOpen(false); }}>▦ {t('nav.data')}</button>
-      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { setPlaygroundInitialTab('data'); setPlaygroundId('data-lab'); setPlaygroundOpen(true); setOpen(false); }}>▤ {t('nav.exploreData')}</button>
-      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { exportProject(); setOpen(false); }}>↓ JSON</button>
-      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => importRef.current?.click()}>↑ {t('nav.import')}</button>
+    {open && <div id="build-more-actions" data-build-more-actions className="absolute right-0 top-full z-50 mt-2 grid w-[min(20rem,calc(100vw-1rem))] max-w-[calc(100vw-1rem)] gap-1 overflow-hidden rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl">
+      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold whitespace-normal break-words hover:bg-slate-100" onClick={() => setViewMode((value) => value === 'canvas' ? 'architecture' : 'canvas')}>{viewMode === 'canvas' ? '⌘' : '⌁'} {t(`nav.${viewMode === 'canvas' ? 'architecture' : 'canvas'}`)}</button>
+      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold whitespace-normal break-words hover:bg-slate-100" onClick={() => { setExplanationOpen(true); setOpen(false); }}>✦ {t('nav.explain')}</button>
+      <button type="button" disabled={selectedNodes.length < 2} className="rounded-xl px-3 py-2 text-left font-bold whitespace-normal break-words hover:bg-slate-100 disabled:opacity-40" onClick={() => { setCompositeOpen(true); setOpen(false); }}>▣ {t('nav.group')}</button>
+      <button type="button" aria-pressed={multiSelectMode} className="rounded-xl px-3 py-2 text-left font-bold whitespace-normal break-words hover:bg-slate-100" onClick={() => setMultiSelectMode((value) => !value)}>☑ {t('nav.multiSelect')}</button>
+      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold whitespace-normal break-words hover:bg-slate-100" onClick={() => { setExamplesOpen(true); setOpen(false); }}>◇ {t('nav.examples')}</button>
+      <button type="button" className={`rounded-xl px-3 py-2 text-left font-bold whitespace-normal break-words hover:bg-slate-100 ${dataset ? 'text-blue-700' : ''}`} onClick={() => { setDataOpen(true); setOpen(false); }}>▦ {t('nav.data')}</button>
+      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold whitespace-normal break-words hover:bg-slate-100" onClick={() => { setPlaygroundInitialTab('data'); setPlaygroundId('data-lab'); setPlaygroundOpen(true); setOpen(false); }}>▤ {t('nav.exploreData')}</button>
+      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold whitespace-normal break-words hover:bg-slate-100" onClick={() => { exportProject(); setOpen(false); }}>↓ JSON</button>
+      <button type="button" className="rounded-xl px-3 py-2 text-left font-bold whitespace-normal break-words hover:bg-slate-100" onClick={() => importRef.current?.click()}>↑ {t('nav.import')}</button>
       <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { importProject(event); setOpen(false); }} />
       <label className="mt-1 border-t border-slate-100 px-3 pt-2">
         <span className="sr-only">{t('nav.playground')}</span>
-        <select defaultValue="" aria-label={t('nav.playground')} onChange={(event) => { const id = event.target.value; if (id) { setPlaygroundInitialTab('model'); setPlaygroundId(id); setPlaygroundOpen(true); } event.target.value = ''; }} className="w-full rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm font-bold">
+        <select defaultValue="" aria-label={t('nav.playground')} onChange={(event) => { const id = event.target.value; if (id) { setPlaygroundInitialTab('model'); setPlaygroundId(id); setPlaygroundOpen(true); } event.target.value = ''; }} className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm font-bold">
           <option value="">{t('nav.playground')}</option>
           {listPlaygrounds().map((playground) => <option key={playground.id} value={playground.id}>{t(playground.titleKey)}</option>)}
         </select>
