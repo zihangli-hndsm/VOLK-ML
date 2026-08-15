@@ -43,14 +43,19 @@ const ENUMS = Object.freeze({
   domain: ['world', 'experiment', 'evidence', 'mechanism'],
 });
 
+const STABLE_IDENTIFIER_PATTERN = /^[A-Za-z0-9_.:-]{1,96}$/;
+const MAX_FACTOR_COUNT = 16;
+
 function isPlainObject(value) {
   return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
 }
 
-function validateField(name, value, kind) {
-  if (kind === 'id') return typeof value === 'string' && Boolean(value.trim());
+function validateField(value, kind) {
+  if (kind === 'id') return typeof value === 'string' && STABLE_IDENTIFIER_PATTERN.test(value);
   if (kind === 'surface' || kind === 'scope' || kind === 'domain') return ENUMS[kind].includes(value);
-  if (kind === 'factor-list') return Array.isArray(value) && value.every((item) => typeof item === 'string' && item.length > 0);
+  if (kind === 'factor-list') return Array.isArray(value)
+    && value.length <= MAX_FACTOR_COUNT
+    && value.every((item) => typeof item === 'string' && STABLE_IDENTIFIER_PATTERN.test(item));
   if (kind === 'positive-integer') return Number.isInteger(value) && value > 0;
   return false;
 }
@@ -67,7 +72,7 @@ export function validateExplorationEvent(event) {
     }
   }
   for (const [key, value] of Object.entries(event.payload)) {
-    if (!Object.prototype.hasOwnProperty.call(fields, key) || !validateField(key, value, fields[key])) {
+    if (!Object.prototype.hasOwnProperty.call(fields, key) || !validateField(value, fields[key])) {
       throw new TypeError(`Invalid exploration telemetry field: ${event.type}.${key}`);
     }
   }
@@ -105,4 +110,33 @@ export function trackExplorationEvent(event, telemetry = NOOP_EXPLORATION_TELEME
   if (!telemetry || typeof telemetry.track !== 'function') throw new TypeError('Telemetry adapter must provide track(event).');
   telemetry.track(structuredClone(event));
   return event;
+}
+
+// Telemetry is an observer, never a prerequisite for learner interaction.
+// Keep failure handling here so future callers do not each need their own
+// vendor/network try/catch boundary.
+export function safeTrackExplorationEvent(event, telemetry = NOOP_EXPLORATION_TELEMETRY) {
+  try {
+    trackExplorationEvent(event, telemetry);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+// Ephemeral, UI-independent session boundary for exploration_opened. A new
+// caller-provided session key means a new meaningful open; rerenders and
+// adapter replacement reuse the existing key and are ignored.
+export function createExplorationOpenTracker() {
+  let openedSessionKey = null;
+  return Object.freeze({
+    claim(sessionKey) {
+      if (typeof sessionKey !== 'string' || !sessionKey.trim()) {
+        throw new TypeError('Exploration session key must be a non-empty string.');
+      }
+      if (openedSessionKey === sessionKey) return false;
+      openedSessionKey = sessionKey;
+      return true;
+    },
+  });
 }

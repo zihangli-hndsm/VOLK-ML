@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getPlayground } from '../../core/playgrounds/registry.js';
 import { getBigIdeaEntrance } from '../../core/exploration/bigIdeaRegistry.js';
 import PlaygroundToolbar from './PlaygroundToolbar.jsx';
@@ -19,7 +19,7 @@ import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 import BigIdeaPrompt from './BigIdeaPrompt.jsx';
 import TrainingMicroscopePanel from './TrainingMicroscopePanel.jsx';
 import PlaygroundPresentationBoundary from './PlaygroundPresentationBoundary.jsx';
-import { createExplorationEvent, NOOP_EXPLORATION_TELEMETRY, trackExplorationEvent } from '../../core/telemetry/explorationTelemetry.js';
+import { createExplorationOpenTracker, NOOP_EXPLORATION_TELEMETRY, safeTrackExplorationEvent } from '../../core/telemetry/explorationTelemetry.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -27,6 +27,10 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [activeTab, setActiveTab] = useState(initialTab);
   const [playbackError, setPlaybackError] = useState(null);
   const [guidance, setGuidance] = useState(null);
+  const sessionSequenceRef = useRef(0);
+  const readySessionRef = useRef(null);
+  const openTrackerRef = useRef(null);
+  if (!openTrackerRef.current) openTrackerRef.current = createExplorationOpenTracker();
   const playground = useMemo(() => (playgroundId ? getPlayground(playgroundId) : null), [playgroundId]);
   const modelPlayground = useMemo(
     () => getPlayground(snapshot?.modelPlaygroundId ?? snapshot?.playgroundId ?? playgroundId) ?? playground,
@@ -38,7 +42,12 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   );
 
   useEffect(() => {
-    if (!open || !playgroundId || !host) return undefined;
+    if (!open || !playgroundId || !host) {
+      readySessionRef.current = null;
+      return undefined;
+    }
+    const sessionKey = `${++sessionSequenceRef.current}:${playgroundId}`;
+    readySessionRef.current = null;
     let active = true;
     let unsubscribe = () => {};
     setSnapshot(null);
@@ -51,14 +60,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       try {
         const nextSnapshot = host.getState();
         setSnapshot(nextSnapshot);
-        if (nextSnapshot) {
-          const bigIdeaId = nextSnapshot.bigIdea?.id;
-          trackExplorationEvent(createExplorationEvent('exploration_opened', {
-            surface: 'explore',
-            playgroundId,
-            ...(bigIdeaId ? { bigIdeaId } : {}),
-          }), telemetry);
-        }
+        readySessionRef.current = sessionKey;
       } catch {
         setSnapshot(null);
       }
@@ -71,7 +73,23 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       unsubscribe();
       host.close().catch(() => {});
     };
-  }, [open, playgroundId, host, telemetry]);
+  }, [open, playgroundId, host]);
+
+  useEffect(() => {
+    if (!open || !snapshot || snapshot.playgroundId !== playgroundId || !readySessionRef.current) return;
+    const sessionKey = readySessionRef.current;
+    if (!openTrackerRef.current.claim(sessionKey)) return;
+    const bigIdeaId = snapshot.bigIdea?.id;
+    safeTrackExplorationEvent({
+      version: 1,
+      type: 'exploration_opened',
+      payload: {
+        surface: 'explore',
+        playgroundId,
+        ...(bigIdeaId ? { bigIdeaId } : {}),
+      },
+    }, telemetry);
+  }, [open, playgroundId, snapshot, telemetry]);
 
   useEffect(() => {
     if (!snapshot || playbackError) return undefined;

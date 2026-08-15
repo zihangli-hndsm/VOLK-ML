@@ -13,11 +13,12 @@ export default function PlaygroundPresentationBoundary({
   children,
   surface = UI_SURFACES.EXPLORE,
   depth = CONCEPTUAL_DEPTHS.PHENOMENON,
-  capabilities,
+  rawCapabilities,
+  resolvedPresentation,
 }) {
   const presentation = useMemo(
-    () => deriveUiPresentation({ snapshot, surface, depth, capabilities }),
-    [snapshot, surface, depth, capabilities],
+    () => deriveUiPresentation({ snapshot, surface, depth, rawCapabilities, resolvedPresentation }),
+    [snapshot, surface, depth, rawCapabilities, resolvedPresentation],
   );
   return <div
     data-ui-surface={presentation.surface}

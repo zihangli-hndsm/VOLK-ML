@@ -72,9 +72,13 @@ deeper panel simultaneously.
 `classifyPresentationCapabilities()` uses container width and optional pointer,
 hover, and orientation capabilities. It classifies `compact` (<640 px),
 `medium` (640–1023 px), or `wide` (1024 px and above). These are presentation
-contracts, not device branches. The descriptor suggests future inspector and
-compare presentations, but it never changes semantic state, World coordinates,
-Experiment conditions, or action history.
+contracts, not device branches. When no measurement is available it returns
+`unknown`; the current Playground boundary intentionally emits that unresolved
+state rather than guessing `medium`. The public flow is explicit:
+`rawCapabilities → classifyPresentationCapabilities() → resolvedPresentation`.
+The descriptor suggests future inspector and compare presentations, but it
+never changes semantic state, World coordinates, Experiment conditions, or
+action history.
 
 The representative acceptance widths are 390, 844, 768, 1024, and 1440 px;
 orientation and input capabilities are metadata, not alternate runtime paths.
@@ -89,10 +93,15 @@ JSON-safe semantic event contract. The vocabulary includes:
 `experiment_compared`, `repeat_requested`, `depth_evidence_opened`,
 `depth_mechanism_opened`, and `guided_prompt_accepted`.
 
-The default adapter is no-op. The memory adapter is intended for tests and
-development. Events reject DOM-style names, unknown payload fields, raw
-coordinates, arbitrary text, and other unbounded data. No vendor is integrated
-in UI-0, and Agent conversations or imported dataset contents are not tracked.
+The default adapter is no-op, and tracking is fail-open: an adapter failure is
+contained at the telemetry boundary and cannot interrupt Playground lifecycle
+or learner actions. The memory adapter is intended for tests and development.
+Stable IDs and factor lists are bounded identifier values; events reject
+DOM-style names, unknown payload fields, raw coordinates, arbitrary text, and
+other unbounded data. `exploration_opened` is claimed once per ephemeral open
+session, so rerenders, snapshot updates, and adapter replacement do not
+duplicate it. No vendor is integrated in UI-0, and Agent conversations or
+imported dataset contents are not tracked.
 
 ## Intentionally deferred coupling
 
