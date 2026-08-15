@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { getPlayground } from '../../core/playgrounds/registry.js';
 import { getBigIdeaEntrance } from '../../core/exploration/bigIdeaRegistry.js';
 import PlaygroundToolbar from './PlaygroundToolbar.jsx';
@@ -18,13 +18,19 @@ import ExplorationThreadPanel from './ExplorationThreadPanel.jsx';
 import { createPlaybackScheduler } from '../../core/playgroundHost.js';
 import BigIdeaPrompt from './BigIdeaPrompt.jsx';
 import TrainingMicroscopePanel from './TrainingMicroscopePanel.jsx';
+import PlaygroundPresentationBoundary from './PlaygroundPresentationBoundary.jsx';
+import { createExplorationOpenTracker, NOOP_EXPLORATION_TELEMETRY, safeTrackExplorationEvent } from '../../core/telemetry/explorationTelemetry.js';
 
-export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model' }) {
+export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
   const [presentationMode, setPresentationMode] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab);
   const [playbackError, setPlaybackError] = useState(null);
   const [guidance, setGuidance] = useState(null);
+  const sessionSequenceRef = useRef(0);
+  const readySessionRef = useRef(null);
+  const openTrackerRef = useRef(null);
+  if (!openTrackerRef.current) openTrackerRef.current = createExplorationOpenTracker();
   const playground = useMemo(() => (playgroundId ? getPlayground(playgroundId) : null), [playgroundId]);
   const modelPlayground = useMemo(
     () => getPlayground(snapshot?.modelPlaygroundId ?? snapshot?.playgroundId ?? playgroundId) ?? playground,
@@ -36,7 +42,12 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   );
 
   useEffect(() => {
-    if (!open || !playgroundId || !host) return undefined;
+    if (!open || !playgroundId || !host) {
+      readySessionRef.current = null;
+      return undefined;
+    }
+    const sessionKey = `${++sessionSequenceRef.current}:${playgroundId}`;
+    readySessionRef.current = null;
     let active = true;
     let unsubscribe = () => {};
     setSnapshot(null);
@@ -47,7 +58,9 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     host.ensureOpen(playgroundId).then(() => {
       if (!active) return;
       try {
-        setSnapshot(host.getState());
+        const nextSnapshot = host.getState();
+        setSnapshot(nextSnapshot);
+        readySessionRef.current = sessionKey;
       } catch {
         setSnapshot(null);
       }
@@ -61,6 +74,22 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       host.close().catch(() => {});
     };
   }, [open, playgroundId, host]);
+
+  useEffect(() => {
+    if (!open || !snapshot || snapshot.playgroundId !== playgroundId || !readySessionRef.current) return;
+    const sessionKey = readySessionRef.current;
+    if (!openTrackerRef.current.claim(sessionKey)) return;
+    const bigIdeaId = snapshot.bigIdea?.id;
+    safeTrackExplorationEvent({
+      version: 1,
+      type: 'exploration_opened',
+      payload: {
+        surface: 'explore',
+        playgroundId,
+        ...(bigIdeaId ? { bigIdeaId } : {}),
+      },
+    }, telemetry);
+  }, [open, playgroundId, snapshot, telemetry]);
 
   useEffect(() => {
     if (!snapshot || playbackError) return undefined;
@@ -111,6 +140,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const formulaPrimitive = snapshot.primitives.find((primitive) => primitive.type === 'formula');
   return <div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-3 sm:p-5" onMouseDown={onClose}>
     <section className="max-h-[94vh] w-full max-w-6xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
+      <PlaygroundPresentationBoundary snapshot={snapshot}>
       <div className="space-y-4">
         <PlaygroundToolbar playground={playground} snapshot={snapshot} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />
         <BigIdeaPrompt entry={bigIdea} snapshot={snapshot} agent={agent} host={host} onRestart={() => host.restartBigIdeaEntrance({ id: snapshot.bigIdea.id })} t={t} />
@@ -147,6 +177,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
           </div>
         </div></>}</>}
       </div>
+      </PlaygroundPresentationBoundary>
     </section>
   </div>;
 }
