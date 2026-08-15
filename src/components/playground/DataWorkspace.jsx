@@ -9,6 +9,12 @@ import {
   projectObservation,
   projectedBounds,
 } from '../../core/exploration/projection.js';
+import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
+import {
+  clientToLocalPoint,
+  clientToSvgPoint,
+  nearestPointInLocal,
+} from './dataWorkspaceGeometry.js';
 
 const PLOT = { left: 42, right: 620, top: 18, bottom: 320 };
 const TOOLS = ['point', 'brush', 'spray', 'select', 'erase'];
@@ -59,6 +65,8 @@ function DistributionView({ points, feature, t }) {
 }
 
 export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffordances = [] }) {
+  const { responsive } = usePresentationCapabilities();
+  const touchInput = responsive.pointer === 'coarse' || responsive.band === 'compact';
   const svgRef = useRef(null);
   const gestureRef = useRef(null);
   const dragRef = useRef(null);
@@ -120,24 +128,23 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
 
   const xToSvg = (x) => PLOT.left + ((x - bounds.xMin) / (bounds.xMax - bounds.xMin)) * (PLOT.right - PLOT.left);
   const yToSvg = (y) => PLOT.bottom - ((y - bounds.yMin) / (bounds.yMax - bounds.yMin)) * (PLOT.bottom - PLOT.top);
+  const hitRadiusPx = touchInput ? 22 : 10;
   const svgToWorld = (event) => {
     const rect = svgRef.current?.getBoundingClientRect();
-    if (!rect || !rect.width || !rect.height) return null;
-    const x = (event.clientX - rect.left) / rect.width * 640;
-    const y = (event.clientY - rect.top) / rect.height * 360;
+    const pixel = clientToSvgPoint({ clientX: event.clientX, clientY: event.clientY, rect });
+    if (!pixel) return null;
+    const { x, y } = pixel;
     return {
       x: bounds.xMin + ((x - PLOT.left) / (PLOT.right - PLOT.left)) * (bounds.xMax - bounds.xMin),
       y: bounds.yMax - ((y - PLOT.top) / (PLOT.bottom - PLOT.top)) * (bounds.yMax - bounds.yMin),
     };
   };
-  const hitRadius = Math.max(bounds.xMax - bounds.xMin, bounds.yMax - bounds.yMin) * 0.035;
-  const nearestPoint = (position) => visiblePoints
-    .map((point) => {
-      const projected = projectObservation(point, xFeature, yFeature);
-      return { point, distance: Math.hypot(projected.x - position.x, projected.y - position.y) };
-    })
-    .filter(({ distance }) => Number.isFinite(distance))
-    .sort((a, b) => a.distance - b.distance)[0];
+  const svgToPixel = (event) => clientToLocalPoint({
+    clientX: event.clientX,
+    clientY: event.clientY,
+    rect: svgRef.current?.getBoundingClientRect(),
+  });
+  const nearestPoint = (position) => nearestPointInLocal({ points: visiblePoints, position, xFeature, yFeature, bounds, rect: svgRef.current?.getBoundingClientRect() });
   const dispatchTransaction = (transaction) => {
     setError(null);
     Promise.resolve(onDispatch({ type: 'APPLY_WORLD_TRANSACTION', transaction })).catch((nextError) => setError(nextError));
@@ -145,6 +152,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const nextGestureId = (name) => `workspace-${name}-${counterRef.current++}`;
   const finishGesture = (event) => {
     const position = svgToWorld(event);
+    const pixelPosition = svgToPixel(event);
     const gesture = gestureRef.current;
     gestureRef.current = null;
     setPreviewPath([]);
@@ -164,12 +172,11 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
           existingPointCount: points.length,
         }));
       } else if (gesture.tool === 'erase') {
-        const ids = new Set(points.filter((point) => path.some((sample) => (
-          Math.hypot(
-            getProjectedValue(point, xFeature) - sample.x,
-            getProjectedValue(point, yFeature) - sample.y,
-          ) <= hitRadius
-        ))).map((point) => point.id));
+        const pixelPath = [...gesture.pixelPath, ...(pixelPosition ? [pixelPosition] : [])];
+        const ids = new Set(points.filter((point) => pixelPath.some((sample) => {
+          const projected = nearestPointInLocal({ points: [point], position: sample, xFeature, yFeature, bounds, rect: svgRef.current?.getBoundingClientRect() });
+          return projected && projected.distancePx <= hitRadiusPx;
+        })).map((point) => point.id));
         if (ids.size) {
           dispatchTransaction({
             id: gesture.id,
@@ -219,8 +226,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     event.currentTarget.setPointerCapture?.(event.pointerId);
     setError(null);
     if (tool === 'select') {
-      const hit = nearestPoint(position);
-      if (!hit || hit.distance > hitRadius) {
+      const hit = nearestPoint(svgToPixel(event));
+      if (!hit || hit.distancePx > hitRadiusPx) {
         setSelectedId(null);
         return;
       }
@@ -234,6 +241,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
       id: nextGestureId(tool),
       tool,
       path: [position],
+      pixelPath: svgToPixel(event) ? [svgToPixel(event)] : [],
       failed: false,
     };
     setPreviewPath([position]);
@@ -255,6 +263,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     const previous = gestureRef.current.path.at(-1);
     if (!previous || Math.hypot(previous.x - position.x, previous.y - position.y) > 0.001) {
       gestureRef.current.path.push(position);
+      const pixelPosition = svgToPixel(event);
+      if (pixelPosition) gestureRef.current.pixelPath.push(pixelPosition);
       setPreviewPath([...gestureRef.current.path]);
     }
   };
@@ -352,7 +362,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const visibility = snapshot.viewState?.visibility ?? 'both';
   const pathPreview = previewPath;
 
-  return <section className="rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.workspace.ariaLabel')}>
+  return <section className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.workspace.ariaLabel')}>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h3 className="text-sm font-black text-slate-900">{t('playground.workspace.title')}</h3>
@@ -384,7 +394,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         {t(`playground.workspace.layer.${item}`)}
       </button>)}
     </div>
-    <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
+    <div className="mt-3 grid min-w-0 gap-3 lg:grid-cols-[minmax(0,1fr)_220px]">
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
         {viewMode === 'distribution' ? <DistributionView points={visiblePoints} feature={xFeature} t={t} /> : <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none select-none" role="img"
           aria-label={t('playground.workspace.canvasAria')} onPointerDown={onPointerDown} onPointerMove={onPointerMove}

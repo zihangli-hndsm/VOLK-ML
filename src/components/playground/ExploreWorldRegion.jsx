@@ -3,10 +3,16 @@ import PlaygroundStage from './PlaygroundStage.jsx';
 import PlaygroundInspector from './PlaygroundInspector.jsx';
 import DataWorkspace from './DataWorkspace.jsx';
 import WorldBuilder from './WorldBuilder.jsx';
+import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 
 export default function ExploreWorldRegion({ snapshot, modelPlayground, activeTab, onTabChange, onDispatch, t, highlightedAffordances = [] }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
-  return <section data-ui-region="world-region" aria-label={t('playground.explore.worldRegionLabel')} className="space-y-3">
+  const { responsive } = usePresentationCapabilities();
+  const compact = responsive.band === 'compact';
+  const detailsPanelClass = compact
+    ? 'fixed inset-x-0 bottom-0 z-[90] max-h-[78dvh] overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-3 shadow-2xl'
+    : 'absolute right-0 top-0 z-20 max-h-full w-[min(300px,calc(100%-1rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl';
+  return <section data-ui-region="world-region" aria-label={t('playground.explore.worldRegionLabel')} className="relative min-w-0 space-y-3">
     <div role="tablist" aria-label={t('playground.lab.tabs')} className="flex gap-2 border-b border-slate-200 pb-2">
       {['data', 'model'].map((tab) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => onTabChange(tab)} className={`rounded-xl px-4 py-2 text-sm font-black focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{t(`playground.lab.${tab}`)}</button>)}
     </div>
@@ -18,7 +24,13 @@ export default function ExploreWorldRegion({ snapshot, modelPlayground, activeTa
         <div className="flex items-center justify-end">
           <button type="button" aria-expanded={detailsOpen} aria-controls="explore-model-details" onClick={() => setDetailsOpen((open) => !open)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">{detailsOpen ? t('playground.explore.hideDetails') : t('playground.explore.details')}</button>
         </div>
-        {detailsOpen && <div id="explore-model-details" className="rounded-2xl border border-slate-200 bg-slate-50 p-3"><PlaygroundInspector playground={modelPlayground} snapshot={snapshot} onDispatch={onDispatch} t={t} /></div>}
+        {detailsOpen && <div id="explore-model-details" role="dialog" aria-label={t('playground.controlsTitle')} className={detailsPanelClass}>
+          <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-200 pb-2">
+            <h3 className="text-sm font-black text-slate-900">{t('playground.controlsTitle')}</h3>
+            <button type="button" onClick={() => setDetailsOpen(false)} className="min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">{t('playground.explore.hideDetails')}</button>
+          </div>
+          <PlaygroundInspector playground={modelPlayground} snapshot={snapshot} onDispatch={onDispatch} t={t} />
+        </div>}
       </>}
     </div>}
   </section>;

@@ -9,7 +9,7 @@ import TrainingMicroscopePanel from './TrainingMicroscopePanel.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 
 export default function ExploreDetailsRegion({ snapshot, bigIdea, agent, host, onDispatch, onGuidanceChange, formulaPrimitive, t }) {
-  return <details data-ui-region="details-region" className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+  return <details data-ui-region="details-region" className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-slate-50 p-3">
     <summary className="cursor-pointer list-none rounded-xl px-2 py-2 text-sm font-black text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500">{t('playground.explore.secondary')}</summary>
     <div className="mt-4 space-y-4">
       <p className="text-xs text-slate-500">{t('playground.explore.secondaryHint')}</p>
