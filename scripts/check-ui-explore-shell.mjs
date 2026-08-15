@@ -40,5 +40,15 @@ if (!shellSource.includes('contextBar') || !shellSource.includes('worldRegion') 
 if (!worldSource.includes('aria-expanded={detailsOpen}') || !worldSource.includes('<PlaygroundInspector')) {
   throw new Error('Inspector is not explicitly reachable through the details disclosure.');
 }
+const contextSource = readFileSync(new URL('../src/components/playground/ExploreContextBar.jsx', import.meta.url), 'utf8');
+if (!contextSource.includes('aria-controls="explore-more-actions"') || !contextSource.includes('aria-expanded={moreOpen}')) {
+  throw new Error('More does not expose the native disclosure contract.');
+}
+if (contextSource.includes('aria-haspopup="menu"') || contextSource.includes('role="menu"') || contextSource.includes('role="menuitem"')) {
+  throw new Error('More retains incomplete ARIA menu semantics.');
+}
+if (!contextSource.includes('aria-label={t(\'common.close\')}') || !contextSource.includes('>×</button>')) {
+  throw new Error('Close affordance visual and accessible semantics are inconsistent.');
+}
 
 console.log('UI-1 Explore shell checks passed');
