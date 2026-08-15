@@ -17,7 +17,6 @@ assert.ok(workspaceSource.includes('getVisiblePrimitives'), 'phenomenon renderin
 assert.ok(workspaceSource.includes('rendererByPrimitiveType'), 'phenomenon rendering reuses the shared primitive renderer registry');
 assert.ok(workspaceSource.includes('APPLY_WORLD_TRANSACTION'), 'phenomenon gestures commit through the canonical World transaction');
 assert.ok(!workspaceSource.includes('weight *') && !workspaceSource.includes('calculateSlope'), 'phenomenon UI does not recompute model math');
-assert.ok(dialogSource.includes('compactInitial={phenomenonFirst}'), 'initial Experiment presentation is capability-aware');
 assert.ok(experimentSource.includes('data-experiment-compact-initial'), 'initial Experiment identity has a compact presentation');
 
 const host = createPlaygroundHost({ getDataset: () => null });

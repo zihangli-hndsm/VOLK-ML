@@ -8,6 +8,9 @@ const source = readFileSync(new URL('../src/components/playground/ExperimentBar.
 for (const required of ['DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'REPEAT_EXPERIMENT', 'UNDO_EXPERIMENT_ACTION', 'aria-pressed', 'aria-expanded', 'overflow-x-auto']) {
   if (!source.includes(required)) throw new Error(`Experiment Bar is missing ${required}`);
 }
+const compactStart = source.indexOf('if (showCompactInitial)');
+const compactSource = source.slice(compactStart, source.indexOf('\n\n  return <section', compactStart));
+if (!compactSource.includes('canUndoExperiment') || !compactSource.includes('UNDO_EXPERIMENT_ACTION')) throw new Error('Compact More actions do not retain canonical Undo');
 if (source.includes('role="menu"') || source.includes("role='menu'")) throw new Error('Experiment Bar uses incomplete menu semantics');
 
 const dir = mkdtempSync(path.join(tmpdir(), 'volk-ui4-experiment-bar-'));

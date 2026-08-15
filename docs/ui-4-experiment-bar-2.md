@@ -21,6 +21,15 @@ the secondary results disclosure. Repeat, Undo, and Reset are secondary
 actions; Repeat remains the existing `REPEAT_EXPERIMENT` operation and keeps
 its condition-fingerprint lifecycle.
 
+The compact one-experiment disclosure retains canonical Undo whenever the
+runtime exposes `canUndoExperiment`. With three or more experiments, the bar
+adds an explicit `Compare with` target chooser using presentation aliases;
+`againstExperimentId`, the resulting diff, and comparison bounds remain owned
+by the runtime. Learner-facing names progress from `A My experiment`, to
+`A Original / B My experiment`, then `A Original / B Experiment 2 / C
+Experiment 3` (and so on) without mutating experiment IDs. Mixed comparisons
+are presented from the runtime clarity signal and changed-factor list.
+
 ## Responsive behavior
 
 Wide and medium layouts use compact learner-facing branch chips. Compact

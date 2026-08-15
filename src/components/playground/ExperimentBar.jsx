@@ -25,9 +25,10 @@ function aliasFor(index) {
   return String.fromCharCode(65 + index);
 }
 
-function learnerName(index, t) {
+function learnerName(index, count, t) {
+  if (count === 1) return t('playground.experiment.myExperiment');
   if (index === 0) return t('playground.experiment.original');
-  if (index === 1) return t('playground.experiment.myExperiment');
+  if (count === 2 && index === 1) return t('playground.experiment.myExperiment');
   return t('playground.experiment.experimentNumber', { number: index + 1 });
 }
 
@@ -37,7 +38,7 @@ function clarityLabel(diff, t) {
   return t('playground.experiment.claritySignal.identical');
 }
 
-export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffordances = [], compactInitial = false }) {
+export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffordances = [] }) {
   const { responsive } = usePresentationCapabilities();
   const compact = responsive.band === 'compact';
   const [repeatCount, setRepeatCount] = useState(snapshot.repeatEvidence?.trialCount ?? 5);
@@ -85,7 +86,8 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
         </div>
       </div>
       {moreOpen && <div id="experiment-more-actions" className="mt-2 flex flex-wrap gap-2 border-t border-slate-100 pt-2">
-        <button type="button" onClick={() => dispatchSecondary({ type: 'RESET' })} className="rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100">{t('playground.experiment.reset')}</button>
+          {snapshot.capabilities?.canUndoExperiment && <button type="button" onClick={() => dispatchSecondary({ type: 'UNDO_EXPERIMENT_ACTION' })} className="rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100">{t('playground.experiment.undo')}</button>}
+          <button type="button" onClick={() => dispatchSecondary({ type: 'RESET' })} className="rounded-xl px-3 py-2 text-xs font-bold text-slate-600 hover:bg-slate-100">{t('playground.experiment.reset')}</button>
       </div>}
     </section>;
   }
@@ -108,15 +110,31 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
         key={experiment.id}
         type="button"
         aria-pressed={experiment.id === activeId}
-        aria-label={`${aliasFor(index)} ${learnerName(index, t)}`}
+        aria-label={`${aliasFor(index)} ${learnerName(index, workspace.experiments.length, t)}`}
         onClick={() => onDispatch({ type: 'SWITCH_EXPERIMENT', experimentId: experiment.id })}
         className={`flex min-w-max items-center gap-2 rounded-xl px-3 py-2 text-xs font-black ${experiment.id === activeId ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'}`}
       >
         <span aria-hidden="true" className={`rounded-md px-1.5 py-0.5 text-[10px] ${experiment.id === activeId ? 'bg-white/20' : 'bg-slate-100'}`}>{aliasFor(index)}</span>
-        <span>{learnerName(index, t)}</span>
+        <span>{learnerName(index, workspace.experiments.length, t)}</span>
       </button>)}
       {hasBranches && <span className="min-w-0 truncate text-xs font-bold text-slate-500">{aliasFor(activeIndex)} {target ? `${t('playground.experiment.comparingWith')} ${aliasFor(workspace.experiments.findIndex((item) => item.id === target.id))}` : ''}</span>}
     </div>
+
+    {workspace.experiments.length >= 3 && <div className="mt-3 flex flex-wrap items-center gap-2" role="group" aria-label={t('playground.experiment.compareTargetLabel')}>
+      <span className="text-xs font-black text-slate-600">{t('playground.experiment.compareWith')}</span>
+      {workspace.experiments.filter((experiment) => experiment.id !== activeId).map((experiment) => {
+        const index = workspace.experiments.findIndex((item) => item.id === experiment.id);
+        const selected = experiment.id === targetId;
+        return <button
+          key={`target-${experiment.id}`}
+          type="button"
+          aria-pressed={selected}
+          aria-label={`${t('playground.experiment.compareWith')} ${aliasFor(index)} ${learnerName(index, workspace.experiments.length, t)}`}
+          onClick={() => onDispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: experiment.id })}
+          className={`rounded-lg px-2.5 py-1.5 text-xs font-black ${selected ? 'bg-violet-700 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'}`}
+        >{aliasFor(index)}</button>;
+      })}
+    </div>}
 
     {moreOpen && <div id="experiment-more-actions" className="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
       <button type="button" onClick={() => dispatchSecondary({ type: 'RESET' })} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.experiment.reset')}</button>

@@ -587,6 +587,8 @@ export const messages = {
   'playground.experiment.compareOn': { en: 'Comparing', zh: '比较中' },
   'playground.experiment.moreActions': { en: 'More actions', zh: '更多操作' },
   'playground.experiment.switchLabel': { en: 'Switch experiment', zh: '切换实验' },
+  'playground.experiment.compareWith': { en: 'Compare with', zh: '比较对象' },
+  'playground.experiment.compareTargetLabel': { en: 'Choose comparison target', zh: '选择比较对象' },
   'playground.experiment.comparingWith': { en: 'vs', zh: '对比' },
   'playground.experiment.changed': { en: 'Changed', zh: '已改变' },
   'playground.experiment.heldConstant': { en: 'Held constant', zh: '保持不变' },
