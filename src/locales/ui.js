@@ -7,6 +7,13 @@ export const languages = [
 // Keep dataset column names, port identifiers, model types, and user file names
 // untranslated because they are project data rather than interface copy.
 export const messages = {
+  'ui.surface.explore': { en: 'Explore', zh: '探索' },
+  'ui.surface.build': { en: 'Build', zh: '构建' },
+  'ui.depth.phenomenon': { en: 'Phenomenon', zh: '现象' },
+  'ui.depth.evidence': { en: 'Evidence', zh: '证据' },
+  'ui.depth.mechanism': { en: 'Mechanism', zh: '机制' },
+  'ui.depth.representation': { en: 'Representation', zh: '表示' },
+  'ui.depth.builder': { en: 'Builder', zh: '构建器' },
   'playground.trainingMicroscope.lossBefore': { en: 'Loss before update', zh: '更新前损失' },
   'playground.trainingMicroscope.lossAfter': { en: 'Loss after update', zh: '更新后损失' },
   'playground.trainingMicroscope.stepOutcome': { en: 'Step outcome', zh: '步骤结果' },
