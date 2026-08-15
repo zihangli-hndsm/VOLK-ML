@@ -2,6 +2,7 @@ import { conditionFingerprintForSession } from './observables.js';
 import { interpretExplorationRequest } from './explorationInterpreter.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { scenarioError, validateScenarioSpec } from './scenarioSpec.js';
+import { EXPLORATION_INTENTS } from './explorationIntents.js';
 
 const clone = (value) => structuredClone(value);
 
@@ -152,10 +153,10 @@ function intentSpec(intent, request, context) {
     hold: ['model-configuration', 'learning-configuration', 'latent-relation'],
     observe: ['world.generatorNoise', 'model.slope', 'outcome.trainMse', 'outcome.testMse'],
   };
-  if (intent === 'learning-rate-increase' || intent === 'learning-rate-decrease') return {
+  if (intent === EXPLORATION_INTENTS.LEARNING_RATE_INCREASE || intent === EXPLORATION_INTENTS.LEARNING_RATE_DECREASE) return {
     ...common,
     interpretation: { summary: 'Change only the learning rate while holding the World and model configuration fixed.', ambiguity: null },
-    change: [{ semanticTarget: 'learning-configuration', operation: 'SET_CONTROL', parameters: learningRateChange(context, intent.endsWith('decrease') ? 'decrease' : 'increase') }],
+    change: [{ semanticTarget: 'learning-configuration', operation: 'SET_CONTROL', parameters: learningRateChange(context, intent === EXPLORATION_INTENTS.LEARNING_RATE_DECREASE ? 'decrease' : 'increase') }],
     hold: ['world', 'model-configuration', 'evaluation-configuration'],
     observe: ['model.slope', 'model.bias', 'outcome.trainMse', 'outcome.testMse'],
   };

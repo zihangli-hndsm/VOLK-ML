@@ -1,4 +1,5 @@
 import { CONCEPTUAL_DEPTHS } from './uiArchitecture.js';
+import { isExplorationIntent } from '../exploration/explorationIntents.js';
 
 export const AGENT_GUIDANCE_OUTCOMES = Object.freeze({
   OPEN_DEPTH: 'open-depth',
@@ -79,7 +80,7 @@ export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot
 
 export function routeAgentAiInterpretation({ interpretation, request, snapshot = {} } = {}) {
   const intent = interpretation?.intent;
-  if (!['outliers', 'test-shift', 'two-distributions', 'harder-noise', 'line-move'].includes(intent)) return null;
+  if (!isExplorationIntent(intent)) return null;
   if (!snapshot.model) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'model-unavailable' };
   return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent, source: 'ai', request };
 }

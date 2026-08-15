@@ -79,6 +79,8 @@ export async function runUiAgentGuideSmoke() {
     const learningProposal = classifyAgentGuideRequest({ request: 'What happens if I increase the learning rate?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot });
     assert.equal(learningProposal.kind, AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, 'learning-rate intervention is not mistaken for navigation');
     assert.equal(learningProposal.intent, 'learning-rate-increase');
+    const slowerProposal = classifyAgentGuideRequest({ request: 'Would a slower learning rate make this more stable?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot });
+    assert.deepEqual(slowerProposal, { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent: 'learning-rate-decrease' });
     const noiseNavigation = classifyAgentGuideRequest({ request: 'Where can I change noise?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot });
     const noiseProposal = classifyAgentGuideRequest({ request: 'What happens if I increase noise?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot });
     assert.notEqual(noiseNavigation.kind, noiseProposal.kind, 'noise navigation and noise intervention use different speech-act routes');
@@ -90,16 +92,37 @@ export async function runUiAgentGuideSmoke() {
     const lrProposal = agent.proposeExploration({ request: 'What happens if I increase the learning rate?', intent: learningProposal.intent });
     assert.equal(lrProposal.kind, 'proposal', 'supported learning-rate intervention reaches the semantic planner');
     assert.equal(lrProposal.scenario.change[0].parameters.key, 'learningRate');
+    const movedPoint = host.getState().world.observations[0];
+    const transactionId = 'ui6-ai-safe-transaction';
+    await host.dispatch({ type: 'APPLY_WORLD_TRANSACTION', transaction: {
+      id: transactionId,
+      actor: 'human',
+      intent: 'edit',
+      operations: [{ type: 'MOVE_POINT', pointId: movedPoint.id, x: movedPoint.x + 0.25, y: movedPoint.y + 0.25 }],
+    } });
+    const internalMoveContext = agent.inspectContext();
+    assert.equal(internalMoveContext.recentWorldActions.at(-1).id, transactionId, 'canonical transaction ID exists internally');
+    assert.ok(internalMoveContext.world.observations.some((point) => point.id === movedPoint.id), 'canonical point ID exists internally');
     let aiPrompt = '';
-    const aiGateway = { complete: async ({ messages }) => { aiPrompt = messages[0].content; return { protocol: 'mock', text: JSON.stringify({ intent: 'harder-noise', requestedChange: 'more noise', requestedHolds: ['model'], ambiguity: null }) }; } };
+    const aiGateway = { complete: async ({ messages }) => { aiPrompt = messages[0].content; return { protocol: 'mock', text: JSON.stringify({ intent: 'learning-rate-decrease', requestedChange: 'slower learning', requestedHolds: ['world'], ambiguity: null }) }; } };
     const aiInterpreter = createExplorationAiInterpreter({ gateway: aiGateway });
     const aiOutcome = routeAgentAiInterpretation({
       interpretation: await aiInterpreter.interpret({ request: 'Could we see whether this is noisier?', context: agent.inspectContext({ presentation: { currentDepth: null, comparisonActive: false, availableDepths: [] } }), config: { protocol: 'openai-compatible', apiKey: 'test', model: 'test', endpoint: 'https://example.test' } }),
-      request: 'Could we see whether this is noisier?',
-      snapshot,
+      request: 'Would a slower learning rate make this more stable?',
+      snapshot: host.getState(),
     });
     assert.equal(aiOutcome.kind, AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, 'configured AI interpretation maps into a bounded proposal');
-    assert.equal(/"x"\s*:|"y"\s*:|e\d+/.test(aiPrompt), false, 'AI intent context does not include raw point coordinates or ids');
+    assert.equal(aiOutcome.intent, 'learning-rate-decrease');
+    assert.equal(aiPrompt.includes(transactionId), false, 'provider prompt omits the transaction ID');
+    assert.equal(aiPrompt.includes(movedPoint.id), false, 'provider prompt omits the point ID');
+    assert.equal(aiPrompt.includes('"observations"'), false, 'provider prompt omits raw observations');
+    assert.equal(aiPrompt.includes('MOVE_POINT'), true, 'provider prompt retains the semantic operation type');
+    const aiProposalBefore = identity(host.getState());
+    const aiScenario = agent.proposeExploration({ request: 'Would a slower learning rate make this more stable?', intent: aiOutcome.intent });
+    assert.equal(aiScenario.kind, 'proposal');
+    assert.equal(aiScenario.scenario.change[0].operation, 'SET_CONTROL');
+    assert.equal(aiScenario.scenario.change[0].parameters.key, 'learningRate');
+    assert.deepEqual(identity(host.getState()), aiProposalBefore, 'AI interpretation and proposal remain non-mutating');
     const failingInterpreter = createExplorationAiInterpreter({ gateway: { complete: async () => { throw new Error('offline'); } } });
     await assert.rejects(() => failingInterpreter.interpret({ request: 'unclear question', context: {}, config: { protocol: 'openai-compatible', apiKey: 'test', model: 'test', endpoint: 'https://example.test' } }), /unavailable/i);
     assert.equal(classifyAgentGuideRequest({ request: 'What happens if I increase noise?', capabilities: { evidence: true, mechanism: true, representation: true }, snapshot }).intent, 'harder-noise', 'local classifier remains useful when AI interpretation fails');

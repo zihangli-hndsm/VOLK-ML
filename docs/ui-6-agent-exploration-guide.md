@@ -35,9 +35,12 @@ noise interventions use the existing bounded ScenarioSpec planner.
 When an AI provider is configured, ambiguous local requests are sent through
 `createExplorationAiInterpreter()` with only bounded semantic context: model
 kind, available depths, comparison status/dimensions, registered capabilities,
-and recent action summaries. Raw observations, coordinates, IDs, and imported
-data are not included. The AI response is validated against the existing
-exploration intent IDs and then routed into the same bounded outcomes. Provider
+and recent action summaries containing only actor, intent, operation types, and
+reversibility. Raw observations, coordinates, transaction IDs, point IDs,
+experiment IDs, condition fingerprints, mutation summaries, thread history,
+and imported data are not included. The AI response is validated against the
+single exploration intent registry, including the learning-rate increase and
+decrease intents, and then routed into the same bounded outcomes. Provider
 failure falls back to the local classifier.
 
 Depth transitions call the same `onDepthChange` boundary used by UI-5 and
