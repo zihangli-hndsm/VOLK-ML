@@ -25,9 +25,9 @@ export function runUiExploreShellSmoke() {
   };
   const snapshot = derivePlaygroundSnapshot(createPlaygroundSession(playground, { source, seed: 7, sessionId: 'ui1-shell' }));
   const context = renderToStaticMarkup(<ExploreContextBar playground={playground} snapshot={snapshot} onDispatch={noop} onPresent={noop} onClose={noop} t={t} />);
-  const world = renderToStaticMarkup(<ExploreWorldRegion snapshot={snapshot} modelPlayground={playground} activeTab="model" onTabChange={noop} onDispatch={noop} t={t} />);
+  const world = renderToStaticMarkup(<ExploreWorldRegion snapshot={snapshot} activeTab="model" onTabChange={noop} onDispatch={noop} onOpenDepth={noop} t={t} />);
   const experiment = renderToStaticMarkup(<ExploreExperimentRegion t={t}><span>experiment</span></ExploreExperimentRegion>);
-  const details = renderToStaticMarkup(<ExploreDetailsRegion snapshot={snapshot} bigIdea={null} agent={null} host={null} onDispatch={noop} onGuidanceChange={noop} formulaPrimitive={snapshot.primitives.find((primitive) => primitive.type === 'formula')} t={t} />);
+  const details = renderToStaticMarkup(<ExploreDetailsRegion snapshot={snapshot} modelPlayground={playground} bigIdea={null} agent={null} host={null} activeDepth={null} onDepthChange={noop} onDispatch={noop} onGuidanceChange={noop} formulaPrimitive={snapshot.primitives.find((primitive) => primitive.type === 'formula')} t={t} />);
   const shell = renderToStaticMarkup(<ExploreShell contextBar={<div dangerouslySetInnerHTML={{ __html: context }} />} worldRegion={<div dangerouslySetInnerHTML={{ __html: world }} />} experimentRegion={<div dangerouslySetInnerHTML={{ __html: experiment }} />} detailsRegion={<div dangerouslySetInnerHTML={{ __html: details }} />} />);
 
   assert.ok(shell.includes('data-ui-region="context-bar"'), 'Context Bar renders');
@@ -39,7 +39,9 @@ export function runUiExploreShellSmoke() {
   assert.ok(shell.indexOf('data-ui-region="experiment-region"') < shell.indexOf('data-ui-region="details-region"'), 'Experiment precedes Details');
   assert.ok(context.includes('playground.lifecycle.run'), 'Run remains a visible semantic action');
   assert.ok(context.includes('playground.explore.more'), 'Low-frequency actions use the overflow entry');
-  assert.ok(world.includes('playground.explore.details'), 'Inspector disclosure is reachable');
+  assert.ok(details.includes('playground.depth.inspectModel'), 'Inspect-model depth is reachable');
+  assert.ok(details.includes('playground.depth.whatChanged'), 'Evidence depth entrance renders');
+  assert.equal(details.includes('role="dialog"'), false, 'No depth panel opens by default');
   assert.equal(details.includes('playground.explorationAgent.title'), false, 'Agent-disabled mode does not render Agent UI');
 
   return { passed: true, runtimeIdentity: snapshot.experimentWorkspace.activeExperimentId };

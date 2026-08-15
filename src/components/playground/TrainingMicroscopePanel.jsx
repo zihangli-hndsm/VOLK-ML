@@ -18,18 +18,20 @@ function ParameterPair({ value, t }) {
   </dl>;
 }
 
-export default function TrainingMicroscopePanel({ snapshot, onDispatch, t }) {
+export default function TrainingMicroscopePanel({ snapshot, onDispatch, t, openByDefault = false }) {
   const microscope = snapshot?.trainingMicroscope;
   const [selectedStep, setSelectedStep] = useState(null);
+  const [open, setOpen] = useState(openByDefault);
   const identity = microscope?.runIdentity?.conditionFingerprint ?? null;
   useEffect(() => setSelectedStep(null), [identity]);
+  useEffect(() => setOpen(openByDefault), [identity, openByDefault]);
   const selected = useMemo(
     () => microscope?.steps?.find((step) => step.step === selectedStep) ?? microscope?.selectedStep ?? null,
     [microscope, selectedStep],
   );
   if (!microscope) return null;
   const canStep = Boolean(snapshot.capabilities?.canStep);
-  return <details className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+  return <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
     <summary className="cursor-pointer font-black text-slate-900">{t('playground.trainingMicroscope.title')}</summary>
     <div className="mt-3 space-y-4">
       <p className="text-sm text-slate-600">{t('playground.trainingMicroscope.description')}</p>

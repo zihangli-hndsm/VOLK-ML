@@ -7,6 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 const source = readFileSync(new URL('../src/components/playground/UnifiedPlaygroundDialog.jsx', import.meta.url), 'utf8');
 const shellSource = readFileSync(new URL('../src/components/playground/ExploreShell.jsx', import.meta.url), 'utf8');
 const worldSource = readFileSync(new URL('../src/components/playground/ExploreWorldRegion.jsx', import.meta.url), 'utf8');
+const depthSource = readFileSync(new URL('../src/components/playground/ExploreDetailsRegion.jsx', import.meta.url), 'utf8');
 const dir = mkdtempSync(path.join(tmpdir(), 'volk-ui1-shell-'));
 const outfile = path.join(dir, 'smoke.cjs');
 const entry = fileURLToPath(new URL('./ui-explore-shell-smoke.jsx', import.meta.url));
@@ -37,8 +38,11 @@ if (source.includes('<PlaygroundInspector') || source.includes('<PlaygroundStage
 if (!shellSource.includes('contextBar') || !shellSource.includes('worldRegion') || !shellSource.includes('experimentRegion') || !shellSource.includes('detailsRegion')) {
   throw new Error('ExploreShell is missing a required UI-1 region boundary.');
 }
-if (!worldSource.includes('aria-expanded={detailsOpen}') || !worldSource.includes('<PlaygroundInspector')) {
-  throw new Error('Inspector is not explicitly reachable through the details disclosure.');
+if (!depthSource.includes('playground.depth.inspectModel') || !depthSource.includes('PlaygroundInspector')) {
+  throw new Error('Inspect-model depth is not explicitly reachable from the Explore depth region.');
+}
+if (!depthSource.includes('activeDepth') || !depthSource.includes('PlaygroundInspector')) {
+  throw new Error('Explore depth does not own the presentation-only inspector transition.');
 }
 const contextSource = readFileSync(new URL('../src/components/playground/ExploreContextBar.jsx', import.meta.url), 'utf8');
 if (!contextSource.includes('aria-controls="explore-more-actions"') || !contextSource.includes('aria-expanded={moreOpen}')) {
