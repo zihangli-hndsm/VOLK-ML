@@ -5,7 +5,7 @@ import BigIdeaPrompt from './BigIdeaPrompt.jsx';
 import GuidedExplore from './GuidedExplore.jsx';
 import ExplorationThreadPanel from './ExplorationThreadPanel.jsx';
 import ExplorationEvidence from './ExplorationEvidence.jsx';
-import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
+import ExploreAgentSurface from './ExploreAgentSurface.jsx';
 import PlaygroundAgentPanel from './PlaygroundAgentPanel.jsx';
 import PlaygroundTimeline from './PlaygroundTimeline.jsx';
 import TrainingMicroscopePanel from './TrainingMicroscopePanel.jsx';
@@ -13,7 +13,7 @@ import PlaygroundInspector from './PlaygroundInspector.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 
-export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, onDispatch, onGuidanceChange, formulaPrimitive, t }) {
+export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, t }) {
   const { responsive } = usePresentationCapabilities();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
   const compact = responsive.band === 'compact';
@@ -48,6 +48,13 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
       </div>
     </section>
 
+    {agent && <>
+      <button type="button" aria-expanded={Boolean(agentOpen)} aria-controls="explore-agent-guide" onClick={onAgentOpen} className="w-full rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2 text-left text-sm font-black text-violet-900 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
+        {t('playground.agentGuide.entry')}
+      </button>
+      {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} host={host} t={t} /></div>}
+    </>}
+
     {activeDepth && <div id={`explore-depth-${activeDepth}`} role="dialog" aria-modal="false" aria-label={depthTitle(activeDepth, mechanismTitle, t)} className={panelClass}>
       <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div>
@@ -76,7 +83,6 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
           <summary className="cursor-pointer text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">{t('playground.depth.otherTools')}</summary>
           <div className="mt-3 space-y-3">
             <ExplorationThreadPanel agent={agent} snapshot={snapshot} t={t} />
-            {snapshot.model && <ExplorationAgentPanel agent={agent} snapshot={snapshot} t={t} />}
             {snapshot.model && <details className="rounded-2xl border border-slate-200 bg-white p-3"><summary className="cursor-pointer text-xs font-black text-slate-600 focus:outline-none focus:ring-2 focus:ring-blue-500">{t('playground.explorationAgent.advancedTeaching')}</summary><div className="mt-3"><PlaygroundAgentPanel host={host} agent={agent} snapshot={snapshot} t={t} /></div></details>}
           </div>
         </details>}
