@@ -35,6 +35,7 @@ import { conditionFingerprintForSession } from './exploration/observables.js';
 import { getBigIdeaEntrance, listBigIdeaEntrances, resolveBigIdeaInitialization } from './exploration/bigIdeaRegistry.js';
 import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
 import { planExplorationIntent, planExplorationRequest } from './exploration/scenarioPlanner.js';
+import { deriveCleanerComparisonProposal } from './exploration/cleanerComparison.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
@@ -117,7 +118,7 @@ function executeExplorationOnDetachedSession(baseSession, validated) {
       type: 'SET_COMPARE',
       actor: 'agent',
       enabled: true,
-      againstExperimentId: baselineId,
+      againstExperimentId: validated.execution.compareAgainstExperimentId ?? baselineId,
     });
   }
   if (validated.execution.repeat !== null) {
@@ -738,6 +739,34 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       const validated = validateScenarioSpec(planned.scenario, context);
       const assessment = this.preflightExplorationScenario({ scenario: validated });
       return { ...planned, scenario: validated, assessment };
+    },
+
+    proposeCleanerComparison() {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const snapshot = derivePlaygroundSnapshot(session);
+      const context = this.inspectContext();
+      const comparison = snapshot.experimentWorkspace?.comparison;
+      const derived = deriveCleanerComparisonProposal({ snapshot, comparison, context });
+      const options = [];
+      for (const option of derived.options) {
+        try {
+          const validated = validateScenarioSpec(option.scenario, context);
+          const assessment = this.preflightExplorationScenario({ scenario: validated });
+          if (assessment.fidelity?.status === 'partial' || assessment.fidelity?.status === 'approximate') continue;
+          options.push({
+            kind: 'proposal',
+            factor: option.factor,
+            summary: option.summary,
+            scenario: validated,
+            assessment,
+          });
+        } catch {
+          // An unavailable operation is not presented as a cleaner action.
+        }
+      }
+      return options.length
+        ? { kind: 'cleaner-proposals', againstExperimentId: comparison?.againstExperimentId ?? null, options }
+        : { kind: 'clarification', reason: 'cleaner-comparison-unavailable' };
     },
 
     preflightExplorationScenario({ scenario } = {}) {

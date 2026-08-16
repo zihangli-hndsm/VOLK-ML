@@ -1,7 +1,8 @@
 import { normalizeAiConfig } from '../ai/aiSettings.js';
 import { createProviderGateway } from '../ai/providerRegistry.js';
+import { EXPLORATION_INTENT_IDS } from './explorationIntents.js';
 
-const INTENTS = ['outliers', 'test-shift', 'two-distributions', 'harder-noise', 'line-move'];
+const INTENTS = EXPLORATION_INTENT_IDS;
 
 function interpreterError(code, message) {
   const error = new Error(message);
@@ -36,19 +37,37 @@ function validateInterpretation(value) {
   };
 }
 
+export function projectExplorationAiContext(context = {}) {
+  const comparison = context?.experimentWorkspace?.comparison;
+  const recentActions = (context?.recentWorldActions ?? context?.exploration?.recentWorldActions ?? [])
+    .slice(-10)
+    .map((action) => ({
+      actor: action.actor ?? null,
+      intent: action.intent ?? null,
+      operationTypes: Array.isArray(action.operationTypes) ? [...action.operationTypes] : [],
+      reversible: Boolean(action.reversible),
+    }));
+  return {
+    modelKind: context?.playground?.modelAdapter ?? context?.playground?.modelAdapterId ?? null,
+    task: context?.data?.task ?? context?.playground?.task ?? null,
+    currentDepth: context?.presentation?.currentDepth ?? null,
+    comparisonActive: Boolean(context?.presentation?.comparisonActive ?? comparison?.enabled),
+    availableDepths: Array.isArray(context?.presentation?.availableDepths) ? [...context.presentation.availableDepths] : [],
+    changedSemanticDimensions: [
+      ...(context?.presentation?.changedSemanticDimensions ?? comparison?.diff?.changed ?? []),
+    ],
+    supportedOperationTypes: [...new Set((context?.exploration?.worldOperations ?? []).map((operation) => operation.type))],
+    recentActions,
+  };
+}
+
 function promptFor({ request, context }) {
   return [
     'Interpret the learner request into one high-level VOLK-ML exploration intent.',
     'Return JSON only. Never return runtime operations, operation IDs, control IDs, observable IDs, code, or a ScenarioSpec.',
     `Allowed intents: ${INTENTS.join(', ')}`,
     'The deterministic planner and capability registry will choose all executable operations after this response.',
-    `Bounded semantic context: ${JSON.stringify({
-      playground: context?.playground ?? null,
-      task: context?.data?.task ?? null,
-      generator: context?.exploration?.generator ?? null,
-      capabilities: context?.exploration?.worldOperations ?? [],
-      recentWorldActions: context?.recentWorldActions ?? [],
-    })}`,
+    `Bounded semantic context: ${JSON.stringify(projectExplorationAiContext(context))}`,
     'Shape: {"intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
     `Learner request: ${String(request ?? '').trim()}`,
   ].join('\n\n');

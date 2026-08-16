@@ -29,6 +29,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [playbackError, setPlaybackError] = useState(null);
   const [guidance, setGuidance] = useState(null);
   const [activeDepth, setActiveDepth] = useState(null);
+  const [agentOpen, setAgentOpen] = useState(false);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
   const meaningfulManipulationTrackerRef = useRef(null);
@@ -59,6 +60,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setPlaybackError(null);
     setGuidance(null);
     setActiveDepth(null);
+    setAgentOpen(false);
     setPresentationMode(false);
     setActiveTab(initialTab);
     host.ensureOpen(playgroundId).then(() => {
@@ -142,9 +144,15 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   };
 
   const changeDepth = (nextDepth) => {
+    setAgentOpen(false);
     const telemetryType = depthTelemetryType(nextDepth);
     if (telemetryType) safeTrackExplorationEvent({ version: 1, type: telemetryType, payload: {} }, telemetry);
     setActiveDepth(nextDepth);
+  };
+
+  const openAgent = () => {
+    setActiveDepth(null);
+    setAgentOpen(true);
   };
 
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;
@@ -162,7 +170,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
-  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
+  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => setAgentOpen(false)} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}

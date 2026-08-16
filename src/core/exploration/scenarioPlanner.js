@@ -2,6 +2,7 @@ import { conditionFingerprintForSession } from './observables.js';
 import { interpretExplorationRequest } from './explorationInterpreter.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { scenarioError, validateScenarioSpec } from './scenarioSpec.js';
+import { EXPLORATION_INTENTS } from './explorationIntents.js';
 
 const clone = (value) => structuredClone(value);
 
@@ -78,6 +79,22 @@ function generatorChanges(context, target) {
       ];
     }
   }
+  if (target === 'harder-noise') {
+    const pointIds = context.world?.observations?.map((point) => point.id) ?? [];
+    if (!pointIds.length) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'observations-required' });
+    return [{
+      semanticTarget: 'noise',
+      operation: worldOperationType(context, 'world.observations.transform'),
+      parameters: {
+        feature: context.world.featureNames.at(-1),
+        kind: 'noise',
+        amount: 0.5,
+        pointIds,
+        scope: 'all-observations',
+        seed: context.world.randomness?.seed ?? 42,
+      },
+    }];
+  }
   const testIds = context.world?.observations?.filter((point) => point.membership === 'test').map((point) => point.id) ?? [];
   if (testIds.length) {
     return [{ semanticTarget: 'test-input-support', operation: worldOperationType(context, 'world.observations.transform'), parameters: { feature: context.world.featureNames[0], kind: 'shift', amount: 2, pointIds: testIds, scope: 'test-observations' } }];
@@ -88,6 +105,18 @@ function generatorChanges(context, target) {
     { semanticTarget: 'existing-train-test-setup', operation: worldOperationType(context, 'world.observations.membership'), parameters: { pointIds: fallbackTestIds, membership: 'test' } },
     { semanticTarget: 'test-input-support', operation: worldOperationType(context, 'world.observations.transform'), parameters: { feature: context.world.featureNames[0], kind: 'shift', amount: 2, pointIds: fallbackTestIds, scope: 'test-observations' } },
   ];
+}
+
+function learningRateChange(context, direction) {
+  const schema = (context.controlSchemas ?? []).find((item) => item.key === 'learningRate');
+  if (!schema) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_CONTROL', { key: 'learningRate' });
+  const current = Number(context.controls?.learningRate ?? schema.default ?? schema.min);
+  const step = Number(schema.step ?? 0.001);
+  const delta = Math.max(step, Math.abs(current) * 0.5);
+  const raw = direction === 'decrease' ? current - delta : current + delta;
+  const value = Math.min(Number(schema.max), Math.max(Number(schema.min), raw));
+  if (value === current) throw scenarioError('EXPLORATION_SCENARIO_CONTROL_OUT_OF_RANGE', { key: 'learningRate' });
+  return { key: 'learningRate', value: Number(value.toFixed(6)) };
 }
 
 function intentSpec(intent, request, context) {
@@ -123,6 +152,13 @@ function intentSpec(intent, request, context) {
     change: generatorChanges(context, intent),
     hold: ['model-configuration', 'learning-configuration', 'latent-relation'],
     observe: ['world.generatorNoise', 'model.slope', 'outcome.trainMse', 'outcome.testMse'],
+  };
+  if (intent === EXPLORATION_INTENTS.LEARNING_RATE_INCREASE || intent === EXPLORATION_INTENTS.LEARNING_RATE_DECREASE) return {
+    ...common,
+    interpretation: { summary: 'Change only the learning rate while holding the World and model configuration fixed.', ambiguity: null },
+    change: [{ semanticTarget: 'learning-configuration', operation: 'SET_CONTROL', parameters: learningRateChange(context, intent === EXPLORATION_INTENTS.LEARNING_RATE_DECREASE ? 'decrease' : 'increase') }],
+    hold: ['world', 'model-configuration', 'evaluation-configuration'],
+    observe: ['model.slope', 'model.bias', 'outcome.trainMse', 'outcome.testMse'],
   };
   if (intent === 'line-move') {
     const action = [...(context.recentWorldActions ?? [])].at(-1);

@@ -57,8 +57,20 @@ export function createPlaygroundAgentApi(host) {
     reset: () => invokeAsync('reset', async () => copy(await host.reset())),
     runScenario: (scenarioId) => invokeAsync('runScenario', async () => copy(await host.runScenario(String(scenarioId)))),
     getCapabilities: () => invoke('getCapabilities', () => copy(host.getCapabilities())),
-    inspectContext: () => invoke('inspectContext', () => copy(host.inspectContext())),
+    inspectContext: (options = {}) => invoke('inspectContext', () => {
+      const context = copy(host.inspectContext());
+      const presentation = options?.presentation;
+      if (presentation && typeof presentation === 'object' && !Array.isArray(presentation)) {
+        context.presentation = {
+          currentDepth: presentation.currentDepth ?? null,
+          comparisonActive: Boolean(presentation.comparisonActive),
+          availableDepths: Array.isArray(presentation.availableDepths) ? [...presentation.availableDepths] : [],
+        };
+      }
+      return context;
+    }),
     proposeExploration: (request) => invoke('proposeExploration', () => copy(host.proposeExploration(typeof request === 'string' ? { request } : copy(request ?? {})))),
+    proposeCleanerComparison: () => invoke('proposeCleanerComparison', () => copy(host.proposeCleanerComparison())),
     preflightExplorationScenario: (scenario) => invoke('preflightExplorationScenario', () => copy(host.preflightExplorationScenario({ scenario: copy(scenario) }))),
     executeExploration: (scenario) => invokeAsync('executeExploration', async () => copy(await host.executeExploration({ scenario: copy(scenario) }))),
     createExplorationThread: (request) => invoke('createExplorationThread', () => copy(host.createExplorationThread(copy(request ?? {})))),

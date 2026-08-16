@@ -53,7 +53,7 @@ function fidelityLabel(status, t) {
   return t(key);
 }
 
-export default function ExplorationAgentPanel({ agent, snapshot, t }) {
+export default function ExplorationAgentPanel({ agent, snapshot, presentation = null, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const interpreter = useMemo(() => createExplorationAiInterpreter({ gateway }), [gateway]);
   const [request, setRequest] = useState('');
@@ -77,7 +77,7 @@ export default function ExplorationAgentPanel({ agent, snapshot, t }) {
       setAiNotice(null);
       if (!intent && aiMode === 'ai' && isConfigured) {
         try {
-          const interpreted = await interpreter.interpret({ request, context: agent.inspectContext(), config });
+          const interpreted = await interpreter.interpret({ request, context: agent.inspectContext({ presentation }), config });
           next = await agent.proposeExploration({ request, intent: interpreted.intent });
         } catch (aiError) {
           setAiNotice(t('playground.explorationAgent.aiFallback'));
