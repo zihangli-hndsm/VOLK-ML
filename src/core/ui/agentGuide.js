@@ -83,7 +83,7 @@ export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot
   return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'unsupported-request', useAi: true };
 }
 
-export function routeAgentAiInterpretation({ interpretation, request, snapshot = {} } = {}) {
+export function routeAgentAiInterpretation({ interpretation, request, snapshot = {}, capabilities = {} } = {}) {
   if (interpretation?.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION) {
     return {
       kind: AGENT_GUIDANCE_OUTCOMES.EXPLANATION,
@@ -92,6 +92,13 @@ export function routeAgentAiInterpretation({ interpretation, request, snapshot =
       source: 'ai',
       request,
     };
+  }
+  if (interpretation?.kind === 'navigation') {
+    if (capabilities[interpretation.depth] === false) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'depth-unavailable', source: 'ai', request };
+    return { kind: AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH, depth: interpretation.depth, source: 'ai', request };
+  }
+  if (interpretation?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION) {
+    return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: interpretation.reason || 'unsupported-request', source: 'ai', request };
   }
   const intent = interpretation?.intent;
   if (!isExplorationIntent(intent)) return null;

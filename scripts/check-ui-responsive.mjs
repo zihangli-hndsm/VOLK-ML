@@ -66,7 +66,7 @@ assert.ok(boundarySource.includes('data-ui-pointer={presentation.responsive.poin
 assert.ok(depthSource.includes('bottom-0') && depthSource.includes('w-[min(360px,calc(100vw-2rem))]'), 'Depth/Inspector has compact sheet and larger drawer presentations');
 assert.ok(workspaceSource.includes('touch-none') && workspaceSource.includes('setPointerCapture'), 'World canvas preserves explicit touch gesture semantics');
 assert.ok(workspaceSource.includes('const finishGesture') && workspaceSource.includes('onPointerUp') && workspaceSource.includes('dispatchTransaction'), 'gesture preview commits through one pointer-up transaction boundary');
-assert.ok(dialogSource.includes('overflow-hidden bg-slate-950/55 p-0 sm:p-5'), 'dialog removes compact outer padding');
+assert.ok(dialogSource.includes('overflow-hidden') && dialogSource.includes('bg-slate-950/55') && dialogSource.includes('p-0 sm:p-5'), 'dialog removes compact outer padding');
 assert.ok(dialogSource.includes('onPointerDown={(event) => event.stopPropagation()}'), 'full responsive frame stops pointer propagation to backdrop');
 assert.ok(dialogSource.includes('onMouseDown={(event) => event.stopPropagation()}'), 'full responsive frame stops mouse propagation to backdrop');
 assert.ok(geometrySource.includes('clientToLocalPoint') && geometrySource.includes('distancePx'), 'point hit testing is represented in local screen pixels');

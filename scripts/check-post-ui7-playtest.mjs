@@ -33,6 +33,25 @@ try {
   assert.deepEqual(comparePlan.goal.values, [2, 6]);
   assert.ok(teachingContext.controlSchemas.some((schema) => schema.key === 'hiddenUnits'));
 
+  for (const request of [
+    '为什么隐藏层越大，拟合效果越好？',
+    'Why can a wider hidden layer fit the data better?',
+  ]) {
+    const capacityInterpreter = createLlmGoalInterpreter({ gateway: { complete: async ({ messages }) => {
+      assert.match(messages[0].content, /show_training/);
+      return { protocol: 'mock', text: JSON.stringify({ type: 'explain-process' }) };
+    } } });
+    const capacity = await capacityInterpreter.interpret({
+      request,
+      context: teachingContext,
+      config: { protocol: 'openai-compatible', apiKey: 'test', model: 'mock', endpoint: 'https://example.test' },
+    });
+    assert.equal(capacity.goal.type, 'explain-process');
+    assert.equal(capacity.goal.objective, 'show_training', 'capacity explanation stays about training effect');
+    const capacityPlan = await agent.plan(capacity.goal);
+    assert.equal(capacityPlan.goal.objective, 'show_training');
+  }
+
   let prompt = '';
   const interpreter = createLlmGoalInterpreter({ gateway: { complete: async ({ messages }) => {
     prompt = messages[0].content;
@@ -52,7 +71,7 @@ try {
   let repairCalls = 0;
   const repairingInterpreter = createLlmGoalInterpreter({ gateway: { complete: async ({ messages }) => {
     repairCalls += 1;
-    if (repairCalls === 1) return { protocol: 'mock', text: JSON.stringify({ compareControl: { control: 'hiddenUnits', values: [2, 6] } }) };
+    if (repairCalls === 1) return { protocol: 'mock', text: JSON.stringify({ type: 'compare-control', control: 'layers', values: [2, 6] }) };
     assert.match(messages[0].content, /expected compare-control shape|expected one of the exact top-level shapes|unsupported objective|unsupported control/);
     return { protocol: 'mock', text: JSON.stringify({ type: 'compare-control', objective: 'compare', control: 'hiddenUnits', values: [2, 6] }) };
   } } });
@@ -74,8 +93,11 @@ assert.match(agentSource, /onOpenAiSettings/);
 assert.match(advancedSource, /aiInvalidGoal/);
 assert.match(stageSource, /SUPPORTING_PRIMITIVES/);
 assert.match(stageSource, /showSupporting/);
-assert.match(buildSource, /fixed inset-x-2 inset-y-2/);
-assert.match(buildSource, /sm:absolute sm:inset-auto/);
+assert.match(buildSource, /createPortal/);
+assert.match(buildSource, /data-build-more-compact/);
+assert.match(buildSource, /fixed inset-x-2 bottom-2/);
+assert.match(buildSource, /document\.body/);
+assert.match(buildSource, /aria-label=\{t\('common\.close'\)\}/);
 assert.match(buildSource, /max-h-\[calc\(100dvh-1rem\)\]/);
 assert.match(buildSource, /overscroll-contain/);
 
