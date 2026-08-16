@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { deriveExploreDepthCapabilities } from '../../core/ui/exploreDepth.js';
+import { PRESENTATION_FOCUS_OWNERS, resolvePresentationFocusOwner } from '../../core/ui/presentationFocus.js';
 import BigIdeaPrompt from './BigIdeaPrompt.jsx';
 import GuidedExplore from './GuidedExplore.jsx';
 import ExplorationThreadPanel from './ExplorationThreadPanel.jsx';
@@ -19,10 +20,10 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
   const compact = responsive.band === 'compact';
   const panelCloseRef = useRef(null);
   const triggerRefs = useRef({});
-  const lastDepthRef = useRef(null);
   const agentTriggerRef = useRef(null);
   const agentCloseRef = useRef(null);
-  const wasAgentOpenRef = useRef(false);
+  const previousDepthRef = useRef(activeDepth);
+  const previousAgentOpenRef = useRef(agentOpen);
   const panelClass = compact
     ? 'fixed inset-x-0 bottom-0 z-[90] max-h-[78dvh] overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl'
     : 'fixed right-4 top-24 z-[90] max-h-[78vh] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl';
@@ -34,28 +35,21 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
   ].filter((entry) => entry.available);
 
   useEffect(() => {
-    if (activeDepth) {
-      lastDepthRef.current = activeDepth;
-      panelCloseRef.current?.focus();
-      return;
+    const focusOwner = resolvePresentationFocusOwner({
+      activeDepth,
+      agentOpen,
+      previousDepth: previousDepthRef.current,
+      previousAgentOpen: previousAgentOpenRef.current,
+    });
+    if (focusOwner === PRESENTATION_FOCUS_OWNERS.AGENT) agentCloseRef.current?.focus();
+    if (focusOwner === PRESENTATION_FOCUS_OWNERS.DEPTH) panelCloseRef.current?.focus();
+    if (focusOwner === PRESENTATION_FOCUS_OWNERS.AGENT_TRIGGER) agentTriggerRef.current?.focus();
+    if (focusOwner === PRESENTATION_FOCUS_OWNERS.DEPTH_TRIGGER) {
+      triggerRefs.current[previousDepthRef.current]?.focus();
     }
-    if (lastDepthRef.current) {
-      triggerRefs.current[lastDepthRef.current]?.focus();
-      lastDepthRef.current = null;
-    }
-  }, [activeDepth]);
-
-  useEffect(() => {
-    if (agentOpen) {
-      wasAgentOpenRef.current = true;
-      agentCloseRef.current?.focus();
-      return;
-    }
-    if (wasAgentOpenRef.current) {
-      agentTriggerRef.current?.focus();
-      wasAgentOpenRef.current = false;
-    }
-  }, [agentOpen]);
+    previousDepthRef.current = activeDepth;
+    previousAgentOpenRef.current = agentOpen;
+  }, [activeDepth, agentOpen]);
 
   const toggleDepth = (depth) => onDepthChange?.(activeDepth === depth ? null : depth);
 

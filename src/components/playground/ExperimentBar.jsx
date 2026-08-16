@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { deriveNewExperimentIds } from '../../core/ui/presentationMotion.js';
 import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 
 const factorKeys = {
@@ -45,17 +46,21 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
   const [moreOpen, setMoreOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
   const workspace = snapshot.experimentWorkspace;
-  const experimentCount = workspace?.experiments?.length ?? 0;
-  const previousExperimentCountRef = useRef(experimentCount);
-  const [branchEntering, setBranchEntering] = useState(false);
+  const experimentIds = workspace?.experiments?.map((experiment) => experiment.id) ?? [];
+  const experimentIdsKey = experimentIds.join('\u0000');
+  const previousExperimentIdsRef = useRef(experimentIds);
+  const [enteringExperimentId, setEnteringExperimentId] = useState(null);
   useEffect(() => {
-    const previousCount = previousExperimentCountRef.current;
-    previousExperimentCountRef.current = experimentCount;
-    if (experimentCount <= previousCount) return undefined;
-    setBranchEntering(true);
-    const timer = window.setTimeout(() => setBranchEntering(false), 420);
-    return () => window.clearTimeout(timer);
-  }, [experimentCount]);
+    const previousIds = previousExperimentIdsRef.current;
+    const newIds = deriveNewExperimentIds(previousIds, experimentIds);
+    previousExperimentIdsRef.current = experimentIds;
+    if (!newIds.length) return undefined;
+    const nextEnteringId = newIds[0];
+    // CSS owns the bounded emphasis duration; identity remains stable until
+    // the next semantic experiment-set change, so active switching cannot
+    // transfer or cancel the newly-created branch's presentation.
+    setEnteringExperimentId(nextEnteringId);
+  }, [experimentIdsKey]);
   const highlight = (id) => highlightedAffordances.includes(id) ? ' ring-2 ring-amber-400 ring-offset-1' : '';
   if (!workspace) return null;
   const comparison = workspace.comparison ?? {};
@@ -123,7 +128,7 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
         aria-pressed={experiment.id === activeId}
         aria-label={`${aliasFor(index)} ${learnerName(index, workspace.experiments.length, t)}`}
         onClick={() => onDispatch({ type: 'SWITCH_EXPERIMENT', experimentId: experiment.id })}
-        className={`ui-motion-interactive flex min-w-max items-center gap-2 rounded-xl px-3 py-2 text-xs font-black ${experiment.id === activeId ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'}${branchEntering && experiment.id === activeId ? ' ui-motion-branch-enter' : ''}`}
+        className={`ui-motion-interactive flex min-w-max items-center gap-2 rounded-xl px-3 py-2 text-xs font-black ${experiment.id === activeId ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'}${experiment.id === enteringExperimentId ? ' ui-motion-branch-enter' : ''}`}
       >
         <span aria-hidden="true" className={`rounded-md px-1.5 py-0.5 text-[10px] ${experiment.id === activeId ? 'bg-white/20' : 'bg-slate-100'}`}>{aliasFor(index)}</span>
         <span>{learnerName(index, workspace.experiments.length, t)}</span>

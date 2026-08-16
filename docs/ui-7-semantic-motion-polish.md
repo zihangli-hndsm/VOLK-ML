@@ -28,14 +28,18 @@ state, focus, and actions remain available without spatial motion.
 
 ## Semantic transitions
 
-- A → B branch entry begins only after the committed experiment count changes;
+- A → B branch entry begins only after the committed experiment ID set changes;
+  the newly-created runtime ID owns the entry motion even if the learner
+  switches active experiments during the emphasis window;
 - Compare details render only after the runtime comparison and diff exist;
 - Changed, Held constant, and clarity use small staged reveals;
 - Evidence/Mechanism/Inspector overlays use the same bounded presentation
   transition and remain mutually exclusive;
 - opening a depth focuses its close control and closing returns focus to the
   originating depth button;
-- Agent uses the same overlay transition and yields to the destination surface.
+- Agent uses the same overlay transition and yields to the destination surface;
+  normal Agent close returns focus to its trigger, while an Agent-to-depth
+  handoff leaves focus inside the destination panel.
 
 No `animationend`/`transitionend` callback dispatches a semantic operation,
 and no telemetry is emitted for animation start or completion.
