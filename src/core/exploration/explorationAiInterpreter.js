@@ -14,17 +14,46 @@ function interpreterError(code, message) {
 }
 
 function parseJsonText(text) {
-  const raw = String(text ?? '').trim().replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/, '');
-  try {
-    const value = JSON.parse(raw);
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('shape');
-    return value;
-  } catch {
-    throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
+  const raw = String(text ?? '').trim();
+  let start = -1;
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (let index = 0; index < raw.length; index += 1) {
+    const character = raw[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === '"') inString = false;
+      continue;
+    }
+    if (character === '"') {
+      if (start >= 0) inString = true;
+      continue;
+    }
+    if (character === '{') {
+      if (start < 0) start = index;
+      depth += 1;
+    } else if (character === '}' && start >= 0) {
+      depth -= 1;
+      if (depth === 0) {
+        try {
+          const value = JSON.parse(raw.slice(start, index + 1));
+          if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('shape');
+          return value;
+        } catch {
+          throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
+        }
+      }
+    }
   }
+  throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
 }
 
-function validateInterpretation(value) {
+function validateInterpretation(value, context) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
+  }
   if (value.kind === 'explanation') {
     if (!EXPLANATION_TOPICS.includes(value.topic)) {
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported explanation topic.');
@@ -36,19 +65,33 @@ function validateInterpretation(value) {
       ambiguity: value.ambiguity ?? null,
     };
   }
-  if (!INTENTS.includes(value.intent)) {
-    throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported exploration intent.');
+  if (value.kind === 'navigation') {
+    const availableDepths = Array.isArray(context?.presentation?.availableDepths) ? context.presentation.availableDepths : [];
+    if (typeof value.depth !== 'string' || !availableDepths.includes(value.depth)) {
+      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unavailable conceptual depth.');
+    }
+    return { kind: 'navigation', depth: value.depth, ambiguity: value.ambiguity ?? null };
   }
-  if (value.requestedHolds !== undefined && (!Array.isArray(value.requestedHolds) || value.requestedHolds.some((item) => typeof item !== 'string'))) {
-    throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned invalid requested holds.');
+  if (value.kind === 'clarification') {
+    const reason = typeof value.reason === 'string' ? value.reason.slice(0, 240) : '';
+    return { kind: 'clarification', reason: reason || 'unsupported-request', ambiguity: value.ambiguity ?? null };
   }
-  return {
-    ...(value.kind ? { kind: 'experiment' } : {}),
-    intent: value.intent,
-    requestedChange: typeof value.requestedChange === 'string' ? value.requestedChange : null,
-    requestedHolds: [...(value.requestedHolds ?? [])],
-    ambiguity: value.ambiguity ?? null,
-  };
+  if (value.kind === 'experiment' || (!value.kind && value.intent)) {
+    if (!INTENTS.includes(value.intent)) {
+      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported exploration intent.');
+    }
+    if (value.requestedHolds !== undefined && (!Array.isArray(value.requestedHolds) || value.requestedHolds.some((item) => typeof item !== 'string'))) {
+      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned invalid requested holds.');
+    }
+    return {
+      kind: 'experiment',
+      intent: value.intent,
+      requestedChange: typeof value.requestedChange === 'string' ? value.requestedChange.slice(0, 240) : null,
+      requestedHolds: [...(value.requestedHolds ?? [])].slice(0, 12),
+      ambiguity: value.ambiguity ?? null,
+    };
+  }
+  throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an unsupported guidance kind.');
 }
 
 export function projectExplorationAiContext(context = {}) {
@@ -85,8 +128,10 @@ function promptFor({ request, context }) {
     `Allowed explanation topics: ${EXPLANATION_TOPICS.join(', ')}`,
     'The deterministic planner and capability registry will choose all executable operations after this response.',
     `Bounded semantic context: ${JSON.stringify(projectExplorationAiContext(context))}`,
+    'Explanation shape: {"kind":"explanation","topic":"...","explanation":"short conceptual explanation"}',
+    'Navigation shape: {"kind":"navigation","depth":"one available depth"}',
     'Experiment shape: {"kind":"experiment","intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
-    'Explanation shape: {"kind":"explanation","topic":"...","explanation":"short conceptual explanation","ambiguity":null}',
+    'Clarification shape: {"kind":"clarification","reason":"short bounded reason"}',
     `Learner request: ${String(request ?? '').trim()}`,
   ].join('\n\n');
 }
@@ -104,7 +149,7 @@ export function createExplorationAiInterpreter({ gateway, fetchImpl = globalThis
           messages: [{ role: 'user', content: promptFor({ request, context }) }],
           responseMode: 'json',
         });
-        return { ...validateInterpretation(parseJsonText(response.text)), providerId: response.protocol };
+        return { ...validateInterpretation(parseJsonText(response.text), context), providerId: response.protocol };
       } catch (error) {
         if (error?.code?.startsWith('AI_')) throw error;
         throw interpreterError('AI_PROVIDER_UNAVAILABLE', 'The exploration AI interpreter is unavailable.');

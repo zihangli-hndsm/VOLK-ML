@@ -14,6 +14,7 @@ import PlaygroundInspector from './PlaygroundInspector.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
+import CompactBottomSheet from '../CompactBottomSheet.jsx';
 
 export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, t }) {
   const { responsive } = usePresentationCapabilities();
@@ -87,7 +88,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
       {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} t={t} /></div>}
     </>}
 
-    {activeDepth && <div id={`explore-depth-${activeDepth}`} data-ui-motion="depth-panel" role="dialog" aria-modal="false" aria-labelledby={`explore-depth-title-${activeDepth}`} className={`ui-motion-overlay-enter ${panelClass}`}>
+    {activeDepth && <CompactBottomSheet compact={compact} open onClose={() => onDepthChange?.(null)} id={`explore-depth-${activeDepth}`} data-ui-motion="depth-panel" role="dialog" aria-modal="false" aria-labelledby={`explore-depth-title-${activeDepth}`} className={`ui-motion-overlay-enter ${panelClass}`}>
       <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-200 pb-3">
         <div>
           <p className="text-[10px] font-black uppercase tracking-wider text-blue-700">{t('playground.depth.openLabel')}</p>
@@ -98,7 +99,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
       {activeDepth === CONCEPTUAL_DEPTHS.EVIDENCE && <ExplorationEvidence snapshot={snapshot} t={t} openByDefault />}
       {activeDepth === CONCEPTUAL_DEPTHS.MECHANISM && <MechanismContent snapshot={snapshot} capabilities={capabilities} formulaPrimitive={formulaPrimitive} onDispatch={onDispatch} t={t} />}
       {activeDepth === CONCEPTUAL_DEPTHS.REPRESENTATION && <PlaygroundInspector playground={modelPlayground} snapshot={snapshot} onDispatch={onDispatch} t={t} />}
-    </div>}
+    </CompactBottomSheet>}
 
     <details className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
       <summary className="cursor-pointer list-none rounded-xl px-2 py-2 text-sm font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500">{t('playground.explore.more')}</summary>

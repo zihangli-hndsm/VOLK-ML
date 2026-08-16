@@ -56,12 +56,28 @@ function endpointFor(config) {
 }
 
 async function readJson(response) {
-  if (!response?.ok) throw providerError('AI_PROVIDER_REQUEST_FAILED', `The AI provider request failed (HTTP ${response?.status ?? 'unknown'}).`);
+  let payload;
   try {
-    return await response.json();
+    payload = await response.json();
   } catch {
     throw providerError('AI_PROVIDER_RESPONSE_INVALID', 'The AI provider returned invalid JSON.');
   }
+  if (!response?.ok) {
+    const error = providerError('AI_PROVIDER_REQUEST_FAILED', `The AI provider request failed (HTTP ${response?.status ?? 'unknown'}).`);
+    error.details = {
+      status: Number(response?.status) || null,
+      providerMessage: String(payload?.error?.message ?? payload?.message ?? '').slice(0, 400),
+    };
+    throw error;
+  }
+  return payload;
+}
+
+function rejectsJsonResponseFormat(error) {
+  const status = error?.details?.status;
+  const message = String(error?.details?.providerMessage ?? '').toLowerCase();
+  return (status === 400 || status === 404 || status === 422)
+    && /response[_ ]format|json[_ -]?object|structured output|unknown field|unsupported.*json|does not support.*json/.test(message);
 }
 
 function textFromContent(content) {
@@ -73,17 +89,26 @@ function textFromContent(content) {
 const adapters = Object.freeze({
   'openai-compatible': Object.freeze({
     async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode }) {
-      const response = await fetchImpl(endpoint, {
+      const request = (includeJsonMode) => fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
           model,
           temperature: 0,
-          ...(responseMode === 'json' ? { response_format: { type: 'json_object' } } : {}),
+          ...(includeJsonMode ? { response_format: { type: 'json_object' } } : {}),
           messages: [{ role: 'system', content: system }, ...messages],
         }),
       });
-      const payload = await readJson(response);
+      let payload;
+      try {
+        payload = await readJson(await request(responseMode === 'json'));
+      } catch (error) {
+        if (responseMode === 'json' && rejectsJsonResponseFormat(error)) {
+          payload = await readJson(await request(false));
+        } else {
+          throw error;
+        }
+      }
       return textFromContent(payload?.choices?.[0]?.message?.content ?? payload?.output_text);
     },
   }),

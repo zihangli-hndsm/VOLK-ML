@@ -5,6 +5,7 @@ import { deriveCleanerComparisonProposal } from '../../core/exploration/cleanerC
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
+import CompactBottomSheet from '../CompactBottomSheet.jsx';
 
 function semanticLabel(value, t) {
   const keys = {
@@ -156,7 +157,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     ? 'ui-motion-overlay-enter fixed inset-x-0 bottom-0 z-[95] max-h-[78dvh] overflow-y-auto rounded-t-3xl border border-violet-200 bg-white p-4 shadow-2xl'
     : 'ui-motion-overlay-enter fixed right-4 top-24 z-[95] max-h-[78vh] w-[min(380px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-violet-200 bg-white p-4 shadow-2xl';
 
-  return <div className={panelClass} role="dialog" aria-modal="false" aria-label={t('playground.agentGuide.ariaLabel')}>
+  return <CompactBottomSheet compact={compact} open onClose={onClose} className={panelClass} role="dialog" aria-modal="false" aria-label={t('playground.agentGuide.ariaLabel')}>
     <div className="flex items-start justify-between gap-3 border-b border-violet-100 pb-3">
       <div>
         <p className="text-[10px] font-black uppercase tracking-wider text-violet-700">{t('playground.agentGuide.title')}</p>
@@ -213,5 +214,5 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <summary className="cursor-pointer text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('playground.agentGuide.advanced')}</summary>
       <div className="mt-3"><ExplorationAgentPanel agent={agent} snapshot={snapshot} presentation={presentation} t={t} /></div>
     </details>
-  </div>;
+  </CompactBottomSheet>;
 }

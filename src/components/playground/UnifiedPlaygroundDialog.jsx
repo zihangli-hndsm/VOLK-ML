@@ -172,7 +172,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
   const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => setAgentOpen(false)} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
-  return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
+  return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}
       depth={activeDepth ?? CONCEPTUAL_DEPTHS.PHENOMENON}

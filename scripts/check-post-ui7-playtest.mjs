@@ -52,7 +52,7 @@ try {
   let repairCalls = 0;
   const repairingInterpreter = createLlmGoalInterpreter({ gateway: { complete: async ({ messages }) => {
     repairCalls += 1;
-    if (repairCalls === 1) return { protocol: 'mock', text: JSON.stringify({ compareControl: { control: 'hiddenUnits', values: [2, 6] } }) };
+    if (repairCalls === 1) return { protocol: 'mock', text: JSON.stringify({ type: 'compare-control', control: 'layers', values: [2, 6] }) };
     assert.match(messages[0].content, /expected compare-control shape|expected one of the exact top-level shapes|unsupported objective|unsupported control/);
     return { protocol: 'mock', text: JSON.stringify({ type: 'compare-control', objective: 'compare', control: 'hiddenUnits', values: [2, 6] }) };
   } } });
@@ -74,8 +74,11 @@ assert.match(agentSource, /onOpenAiSettings/);
 assert.match(advancedSource, /aiInvalidGoal/);
 assert.match(stageSource, /SUPPORTING_PRIMITIVES/);
 assert.match(stageSource, /showSupporting/);
-assert.match(buildSource, /fixed inset-x-2 inset-y-2/);
-assert.match(buildSource, /sm:absolute sm:inset-auto/);
+assert.match(buildSource, /createPortal/);
+assert.match(buildSource, /data-build-more-compact/);
+assert.match(buildSource, /fixed inset-x-2 bottom-2/);
+assert.match(buildSource, /document\.body/);
+assert.match(buildSource, /aria-label=\{t\('common\.close'\)\}/);
 assert.match(buildSource, /max-h-\[calc\(100dvh-1rem\)\]/);
 assert.match(buildSource, /overscroll-contain/);
 
