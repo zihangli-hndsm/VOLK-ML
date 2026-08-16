@@ -5,11 +5,95 @@
   color: #172033;
   background: #eef4ff;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --motion-fast: 120ms;
+  --motion-normal: 220ms;
+  --motion-emphasis: 320ms;
+  --motion-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
+  --motion-ease-emphasis: cubic-bezier(0.65, 0, 0.35, 1);
 }
 
 body { margin: 0; min-width: 320px; min-height: 100vh; }
 button, input { font: inherit; }
 .react-flow__node { white-space: normal; }
+
+/* UI-7 motion is semantic and bounded. Keep high-frequency interaction paths
+   on explicit properties so layout is never animated accidentally. */
+.ui-motion-interactive {
+  transition-property: background-color, border-color, box-shadow, color, opacity, transform;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--motion-ease-standard);
+}
+
+.ui-motion-surface {
+  transition-property: opacity, transform;
+  transition-duration: var(--motion-normal);
+  transition-timing-function: var(--motion-ease-standard);
+}
+
+.ui-motion-overlay-enter {
+  animation: ui-motion-overlay-enter var(--motion-normal) var(--motion-ease-standard) both;
+}
+
+.ui-motion-reveal {
+  animation: ui-motion-reveal var(--motion-normal) var(--motion-ease-standard) both;
+}
+
+.ui-motion-stagger-1 { animation-delay: 0ms; }
+.ui-motion-stagger-2 { animation-delay: 35ms; }
+.ui-motion-stagger-3 { animation-delay: 70ms; }
+
+.ui-motion-branch-enter {
+  animation: ui-motion-branch-enter var(--motion-emphasis) var(--motion-ease-standard) both;
+}
+
+.ui-motion-working {
+  transition-property: opacity, box-shadow;
+  transition-duration: var(--motion-fast);
+  transition-timing-function: var(--motion-ease-standard);
+}
+
+.ui-motion-error {
+  animation: ui-motion-error var(--motion-fast) var(--motion-ease-standard) both;
+}
+
+@keyframes ui-motion-overlay-enter {
+  from { opacity: 0; transform: translateY(0.5rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ui-motion-reveal {
+  from { opacity: 0; transform: translateY(0.25rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ui-motion-branch-enter {
+  from { opacity: 0; transform: translateX(0.55rem) scale(0.98); }
+  to { opacity: 1; transform: translateX(0) scale(1); }
+}
+
+@keyframes ui-motion-error {
+  from { opacity: 0; transform: translateY(-0.2rem); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-fast: 0ms;
+    --motion-normal: 0ms;
+    --motion-emphasis: 0ms;
+  }
+
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+  }
+
+  .ui-motion-overlay-enter,
+  .ui-motion-reveal,
+  .ui-motion-branch-enter,
+  .ui-motion-error {
+    animation: none;
+  }
+}
 
 .ui-explore-dialog-frame {
   box-sizing: border-box;

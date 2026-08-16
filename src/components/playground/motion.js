@@ -1,9 +1,25 @@
+// One small presentation contract is shared by primitive motion and the
+// Explore shell. These are deliberately presentation values: they never
+// participate in runtime dispatch or semantic state.
+export const MOTION_TOKENS = Object.freeze({
+  fast: 120,
+  normal: 220,
+  emphasis: 320,
+});
+
+export const MOTION_EASINGS = Object.freeze({
+  standard: 'ease-out-cubic',
+  emphasis: 'ease-in-out-cubic',
+});
+
+export const REDUCED_MOTION_QUERY = '(prefers-reduced-motion: reduce)';
+
 export const DEFAULT_MOTION_POLICY = Object.freeze({
-  enter: 220,
-  update: 320,
-  exit: 180,
-  highlight: 280,
-  easing: 'ease-out-cubic',
+  enter: MOTION_TOKENS.normal,
+  update: MOTION_TOKENS.emphasis,
+  exit: MOTION_TOKENS.fast,
+  highlight: MOTION_TOKENS.normal,
+  easing: MOTION_EASINGS.standard,
 });
 
 const isObject = (value) => value !== null && typeof value === 'object';
@@ -18,15 +34,17 @@ export function clampMotionDuration(requestedMs, stepDurationMs, {
   return Math.min(requested, Math.max(0, stepDurationMs));
 }
 
-export function resolveMotionConfig(snapshot, reducedMotion = false) {
+export function resolveMotionConfig(snapshot, reducedMotion = false, { token = 'emphasis' } = {}) {
   const step = snapshot?.scriptState?.step ?? snapshot?.timeline?.step ?? 0;
   const stepDuration = snapshot?.script?.steps?.[step]?.durationMs;
   const speed = Math.max(0.25, Number(snapshot?.timeline?.speed) || 1);
   const availableDuration = Number.isFinite(stepDuration) ? stepDuration / speed : undefined;
+  const requestedDuration = MOTION_TOKENS[token] ?? DEFAULT_MOTION_POLICY.update;
   return {
     enabled: true,
-    durationMs: clampMotionDuration(DEFAULT_MOTION_POLICY.update, availableDuration, { reducedMotion }),
-    easing: DEFAULT_MOTION_POLICY.easing,
+    token,
+    durationMs: clampMotionDuration(requestedDuration, availableDuration, { reducedMotion }),
+    easing: MOTION_EASINGS.standard,
     reducedMotion,
   };
 }
