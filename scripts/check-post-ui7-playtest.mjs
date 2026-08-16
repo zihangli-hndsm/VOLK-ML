@@ -33,6 +33,25 @@ try {
   assert.deepEqual(comparePlan.goal.values, [2, 6]);
   assert.ok(teachingContext.controlSchemas.some((schema) => schema.key === 'hiddenUnits'));
 
+  for (const request of [
+    '为什么隐藏层越大，拟合效果越好？',
+    'Why can a wider hidden layer fit the data better?',
+  ]) {
+    const capacityInterpreter = createLlmGoalInterpreter({ gateway: { complete: async ({ messages }) => {
+      assert.match(messages[0].content, /show_training/);
+      return { protocol: 'mock', text: JSON.stringify({ type: 'explain-process' }) };
+    } } });
+    const capacity = await capacityInterpreter.interpret({
+      request,
+      context: teachingContext,
+      config: { protocol: 'openai-compatible', apiKey: 'test', model: 'mock', endpoint: 'https://example.test' },
+    });
+    assert.equal(capacity.goal.type, 'explain-process');
+    assert.equal(capacity.goal.objective, 'show_training', 'capacity explanation stays about training effect');
+    const capacityPlan = await agent.plan(capacity.goal);
+    assert.equal(capacityPlan.goal.objective, 'show_training');
+  }
+
   let prompt = '';
   const interpreter = createLlmGoalInterpreter({ gateway: { complete: async ({ messages }) => {
     prompt = messages[0].content;

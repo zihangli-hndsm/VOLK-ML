@@ -122,6 +122,7 @@ function diagnosticDetails(error, extra = {}) {
   const details = {};
   if (['parse', 'canonicalize', 'validate', 'provider'].includes(source.stage)) details.stage = source.stage;
   if (Number.isInteger(source.attempt)) details.attempt = source.attempt;
+  if (Number.isFinite(Number(source.status))) details.status = Number(source.status);
   if (typeof source.protocol === 'string') details.protocol = source.protocol;
   if (typeof source.model === 'string') details.model = source.model.slice(0, 120);
   if (source.candidate) details.candidate = safeCandidateSummary(source.candidate);
@@ -210,6 +211,17 @@ function validateCandidate(candidate, context) {
   return candidate;
 }
 
+function requestAwareCandidate({ request, candidate, context }) {
+  if (candidate?.type !== 'explain-process' || candidate.objective) return candidate;
+  const text = String(request ?? '').toLowerCase();
+  const capacityQuestion = /hidden[\s_-]*units?|hidden[\s_-]*layer|\bwidth\b|\bcapacity\b|wider|fit(?:s|ting)?(?: the data)? better|隐[藏层层].{0,8}(?:大|宽|单元)|拟合|学习效果/.test(text);
+  const supported = context?.teaching?.supportedObjectives ?? [];
+  if (capacityQuestion && supported.includes('show_training')) {
+    return { ...candidate, objective: 'show_training' };
+  }
+  return candidate;
+}
+
 function promptFor({ request, context, repairProblem, repairCandidate }) {
   return [
     'Interpret the user request into one typed TeachingGoal JSON object.',
@@ -221,6 +233,7 @@ function promptFor({ request, context, repairProblem, repairCandidate }) {
     'Do not include objective unless an advanced request explicitly requires it; the deterministic planner derives the default objective.',
     `Allowed controls and values: ${JSON.stringify(context.allowedControls)}`,
     `Supported objectives (planner-owned, not required output fields): ${JSON.stringify(context.teaching.supportedObjectives)}`,
+    'For a request explicitly about hidden-layer capacity or fitting/learning effect, the optional objective hint "show_training" is allowed; otherwise omit objective.',
     `Bounded playground context: ${JSON.stringify(context)}`,
     repairCandidate ? `Previous candidate (safe summary): ${JSON.stringify(repairCandidate)}` : '',
     repairProblem ? `The previous goal failed deterministic validation. Correct it using this sanitized problem: ${repairProblem}` : '',
@@ -265,6 +278,7 @@ export function createLlmGoalInterpreter({ gateway, fetchImpl = globalThis.fetch
               problem: error?.details?.problem ?? 'goal structure could not be canonicalized unambiguously',
             });
           }
+          candidate = requestAwareCandidate({ request, candidate, context });
           return {
             goal: validateCandidate(candidate, context),
             attempts: attempt + 1,

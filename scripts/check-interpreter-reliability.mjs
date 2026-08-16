@@ -28,7 +28,11 @@ assert.match(buildSource, /CompactBottomSheet/);
 assert.match(sheetSource, /onPointerDown/);
 assert.match(sheetSource, /onPointerMove/);
 assert.match(sheetSource, /onPointerCancel/);
-assert.match(sheetSource, /overscrollBehaviorY/);
+assert.match(sheetSource, /touchAction: 'none'/);
+assert.match(sheetSource, /setPointerCapture/);
+assert.match(sheetSource, /data-compact-sheet-scroll-region/);
+assert.match(sheetSource, /touchAction: 'pan-y'/);
+assert.match(sheetSource, /overscroll-y-contain/);
 assert.match(detailsSource, /CompactBottomSheet/);
 assert.match(agentSurfaceSource, /CompactBottomSheet/);
 assert.match(dialogSource, /overscroll-y-contain/);
@@ -129,6 +133,20 @@ await assert.rejects(
   (error) => error.code === 'AI_PROVIDER_REQUEST_FAILED',
 );
 assert.equal(authCalls, 1);
+
+const diagnosticInterpreter = createLlmGoalInterpreter({ gateway: { complete: async () => {
+  const error = new Error('provider rejected request');
+  error.code = 'AI_PROVIDER_REQUEST_FAILED';
+  error.details = { status: 429, providerMessage: 'rate limit' };
+  throw error;
+} } });
+await assert.rejects(
+  diagnosticInterpreter.interpret({ request: 'Explain the process', context, config }),
+  (error) => error.code === 'AI_PROVIDER_REQUEST_FAILED'
+    && error.details.stage === 'provider'
+    && error.details.status === 429
+    && !JSON.stringify(error.details).includes('apiKey'),
+);
 
 const explorationGateway = { complete: async ({ messages }) => ({
   protocol: 'mock',
