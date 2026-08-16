@@ -32,7 +32,7 @@ function compactProposal(proposal, t) {
   } : null;
 }
 
-export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, host, t }) {
+export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, host, closeRef, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const aiInterpreter = useMemo(() => createExplorationAiInterpreter({ gateway }), [gateway]);
   const [request, setRequest] = useState('');
@@ -153,8 +153,8 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   };
 
   const panelClass = compact
-    ? 'fixed inset-x-0 bottom-0 z-[95] max-h-[78dvh] overflow-y-auto rounded-t-3xl border border-violet-200 bg-white p-4 shadow-2xl'
-    : 'fixed right-4 top-24 z-[95] max-h-[78vh] w-[min(380px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-violet-200 bg-white p-4 shadow-2xl';
+    ? 'ui-motion-overlay-enter fixed inset-x-0 bottom-0 z-[95] max-h-[78dvh] overflow-y-auto rounded-t-3xl border border-violet-200 bg-white p-4 shadow-2xl'
+    : 'ui-motion-overlay-enter fixed right-4 top-24 z-[95] max-h-[78vh] w-[min(380px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-violet-200 bg-white p-4 shadow-2xl';
 
   return <div className={panelClass} role="dialog" aria-modal="false" aria-label={t('playground.agentGuide.ariaLabel')}>
     <div className="flex items-start justify-between gap-3 border-b border-violet-100 pb-3">
@@ -162,11 +162,11 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         <p className="text-[10px] font-black uppercase tracking-wider text-violet-700">{t('playground.agentGuide.title')}</p>
         <p className="mt-1 text-sm font-bold text-slate-800">{t('playground.agentGuide.subtitle')}</p>
       </div>
-      <button type="button" aria-label={t('playground.agentGuide.close')} onClick={onClose} className="min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('playground.agentGuide.close')}</button>
+      <button ref={closeRef} type="button" aria-label={t('playground.agentGuide.close')} onClick={onClose} className="ui-motion-interactive min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('playground.agentGuide.close')}</button>
     </div>
     <div className="mt-3 flex gap-2">
       <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') ask(); }} placeholder={t('playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-      <button type="button" disabled={!request.trim() || busy} onClick={ask} className="rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t('playground.agentGuide.ask')}</button>
+      <button type="button" disabled={!request.trim() || busy} onClick={ask} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t('playground.agentGuide.ask')}</button>
     </div>
 
     {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH && <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-950">
@@ -201,7 +201,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-950">{outcome.reason === 'world-control' ? t('playground.agentGuide.worldTools') : t('playground.agentGuide.clarification')}</p>}
     {aiFallback && <p className="mt-2 text-xs font-bold text-slate-500">{t('playground.agentGuide.aiFallback')}</p>}
     {result && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-950"><p className="font-black">{t('playground.agentGuide.completed')}</p><p className="mt-1 text-xs">{t('playground.agentGuide.changed')}: {result.mutationDiff?.changed?.map((item) => semanticLabel(item, t)).join(', ') || t('playground.explorationAgent.none')}</p><button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button></div>}
-    {error && <p role="alert" className="mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-800">{error.code ?? 'EXPLORATION_FAILED'}: {error.message}</p>}
+    {error && <p role="alert" className="ui-motion-error mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-800">{error.code ?? 'EXPLORATION_FAILED'}: {error.message}</p>}
 
     <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <summary className="cursor-pointer text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('playground.agentGuide.advanced')}</summary>

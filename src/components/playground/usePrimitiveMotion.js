@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { easeMotionProgress, interpolatePrimitiveList } from './motion.js';
+import { easeMotionProgress, interpolatePrimitiveList, MOTION_TOKENS, REDUCED_MOTION_QUERY } from './motion.js';
 
 const now = () => (typeof performance !== 'undefined' ? performance.now() : Date.now());
 
@@ -20,7 +20,7 @@ const cancelFrame = (frame) => {
 export function useReducedMotionPreference() {
   const [reducedMotion, setReducedMotion] = useState(false);
   useEffect(() => {
-    const media = window.matchMedia?.('(prefers-reduced-motion: reduce)');
+    const media = window.matchMedia?.(REDUCED_MOTION_QUERY);
     if (!media) return undefined;
     const update = () => setReducedMotion(media.matches);
     update();
@@ -32,7 +32,7 @@ export function useReducedMotionPreference() {
 
 export function usePrimitiveMotion(targetPrimitives, {
   enabled = true,
-  durationMs = 320,
+  durationMs = MOTION_TOKENS.emphasis,
   easing = 'ease-out-cubic',
   reducedMotion = false,
 } = {}) {

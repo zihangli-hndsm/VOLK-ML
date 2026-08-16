@@ -21,6 +21,7 @@ import ExploreContextBar from './ExploreContextBar.jsx';
 import ExploreWorldRegion from './ExploreWorldRegion.jsx';
 import ExploreExperimentRegion from './ExploreExperimentRegion.jsx';
 import ExploreDetailsRegion from './ExploreDetailsRegion.jsx';
+import { REDUCED_MOTION_QUERY } from './motion.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -103,7 +104,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     if (!snapshot || playbackError) return undefined;
     let active = true;
     const reducedMotion = typeof window !== 'undefined'
-      && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
+      && window.matchMedia?.(REDUCED_MOTION_QUERY)?.matches;
     const scheduler = createPlaybackScheduler({
       dispatch: (action) => host.dispatch(action),
       onError: ({ action, error, snapshot: scheduledSnapshot }) => {
@@ -182,7 +183,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     >
       <section className="relative min-w-0" onMouseDown={(event) => event.stopPropagation()}>
       <ExploreShell contextBar={contextBar} worldRegion={worldRegion} experimentRegion={experimentRegion} detailsRegion={detailsRegion} />
-        {playbackError && <div role="alert" className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
+        {playbackError && <div role="alert" className="ui-motion-error mt-4 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm text-red-900">
           <p className="font-black">{t('playground.playback.errorTitle')}</p>
           <p className="mt-1">{t('playground.playback.errorBody', playbackError)}</p>
           <p className="mt-1 text-xs">{t('playground.playback.errorStatePreserved')}</p>

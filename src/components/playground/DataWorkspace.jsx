@@ -16,7 +16,8 @@ import {
   nearestPointInLocal,
   selectScatterBounds,
 } from './dataWorkspaceGeometry.js';
-import { getVisiblePrimitives } from './motion.js';
+import { getVisiblePrimitives, resolveMotionConfig } from './motion.js';
+import { usePrimitiveMotion, useReducedMotionPreference } from './usePrimitiveMotion.js';
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
 import { buildLabelColorMap } from './visualEncoding.js';
 
@@ -118,6 +119,16 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     () => getVisiblePrimitives(snapshot, 'stage').filter((primitive) => PHENOMENON_PRIMITIVES.has(primitive.type)),
     [snapshot],
   );
+  const reducedMotion = useReducedMotionPreference();
+  const phenomenonMotionTargets = useMemo(
+    () => phenomenonPrimitives.filter((primitive) => primitive.type !== 'scatter'),
+    [phenomenonPrimitives],
+  );
+  const phenomenonMotion = usePrimitiveMotion(phenomenonMotionTargets, resolveMotionConfig(snapshot, reducedMotion, { token: 'normal' }));
+  const animatedPhenomenonById = new Map(phenomenonMotion.primitives.map((primitive) => [primitive.id, primitive]));
+  const renderedPhenomenonPrimitives = phenomenonPrimitives.map((primitive) => (
+    primitive.type === 'scatter' ? primitive : animatedPhenomenonById.get(primitive.id) ?? primitive
+  ));
   const phenomenonScatter = phenomenonPrimitives.find((primitive) => primitive.type === 'scatter');
   const phenomenonPoints = phenomenonScatter?.props?.points ?? [];
   const phenomenonColorByLabel = buildLabelColorMap(phenomenonPoints);
@@ -426,7 +437,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         const disabled = ['point', 'brush', 'spray'].includes(item) && !canCreateObservation;
         return <button data-affordance-id={item === 'point' || item === 'spray' ? 'world.outlier' : undefined} key={item} type="button" disabled={disabled} aria-pressed={tool === item}
           aria-label={t(`playground.workspace.tool.${item}`)} onClick={() => setTool(item)}
-          className={`rounded-xl px-3 py-2 text-xs font-bold ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}${item === 'point' || item === 'spray' ? highlight('world.outlier') : ''} disabled:cursor-not-allowed disabled:opacity-40`}>
+          className={`ui-motion-interactive rounded-xl px-3 py-2 text-xs font-bold ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}${item === 'point' || item === 'spray' ? highlight('world.outlier') : ''} disabled:cursor-not-allowed disabled:opacity-40`}>
         {t(`playground.workspace.tool.${item}`)}
         </button>;
       })}
@@ -439,12 +450,12 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
       </button>)}
     </div>}
     <div className={`mt-3 min-w-0 ${phenomenonMode ? 'space-y-3' : 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]'}`}>
-      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+      <div className="ui-motion-surface overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
         {!phenomenonMode && viewMode === 'distribution' ? <DistributionView points={visiblePoints} feature={xFeature} t={t} /> : <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none select-none" role="img"
           aria-label={t('playground.workspace.canvasAria')} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
           onPointerUp={onPointerUp} onPointerCancel={cancelPointer}>
           <rect x={plot.left} y={plot.top} width={plot.right - plot.left} height={plot.bottom - plot.top} fill="white" />
-          {phenomenonMode && phenomenonPrimitives.map((primitive) => {
+          {phenomenonMode && renderedPhenomenonPrimitives.map((primitive) => {
             const Renderer = rendererByPrimitiveType[primitive.type];
             if (!Renderer) return null;
             return <Renderer key={primitive.id} props={primitive.props} variant={primitive.type}
@@ -501,8 +512,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     {phenomenonMode && <div className="flex flex-wrap items-center justify-between gap-2">
       <span className="text-xs font-bold text-slate-500">{t('playground.phenomenon.worldHint')}</span>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={!snapshot.capabilities?.canUndoWorld} onClick={() => onDispatch({ type: 'UNDO_WORLD_ACTION' })} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.phenomenon.undo')}</button>
-        {onOpenFullWorkspace && <button type="button" onClick={onOpenFullWorkspace} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{t('playground.phenomenon.moreWorldTools')}</button>}
+        <button type="button" disabled={!snapshot.capabilities?.canUndoWorld} onClick={() => onDispatch({ type: 'UNDO_WORLD_ACTION' })} className="ui-motion-interactive rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.phenomenon.undo')}</button>
+        {onOpenFullWorkspace && <button type="button" onClick={onOpenFullWorkspace} className="ui-motion-interactive rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{t('playground.phenomenon.moreWorldTools')}</button>}
       </div>
     </div>}
   </section>;
