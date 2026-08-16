@@ -32,7 +32,7 @@ function compactProposal(proposal, t) {
   } : null;
 }
 
-export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, host, closeRef, t }) {
+export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const aiInterpreter = useMemo(() => createExplorationAiInterpreter({ gateway }), [gateway]);
   const [request, setRequest] = useState('');
@@ -168,6 +168,12 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') ask(); }} placeholder={t('playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
       <button type="button" disabled={!request.trim() || busy} onClick={ask} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t('playground.agentGuide.ask')}</button>
     </div>
+    <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
+      <span>{isConfigured ? t('ai.statusConfigured') : t('ai.statusLocalFallback')}</span>
+      <button type="button" onClick={onOpenAiSettings} className="rounded-lg px-2 py-1 font-bold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500">
+        {isConfigured ? t('ai.settings') : t('ai.configure')}
+      </button>
+    </div>
 
     {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH && <div className="mt-3 rounded-xl border border-blue-100 bg-blue-50 p-3 text-sm text-blue-950">
       <p>{t('playground.agentGuide.depthSuggestion')}</p>
@@ -186,7 +192,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         {cleanerOptions?.length > 0 && <div className="mt-2 flex flex-wrap gap-2"><span className="basis-full text-xs font-bold text-emerald-900">{t('playground.agentGuide.changeOnly')}</span>{cleanerOptions.map((option) => <button key={option.factor} type="button" onClick={() => selectCleanerProposal(option)} className="rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t(`playground.agentGuide.changeOnly.${option.factor}`)}</button>)}</div>}
         {cleanerUnavailable && <p className="mt-2 text-xs">{t('playground.agentGuide.cleanerUnavailable')}</p>}
         <button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-2 ml-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button>
-      </> : <p className="mt-1">{semanticExplanation?.available ? t(`playground.agentGuide.explain.${outcome.topic}`) : t('playground.agentGuide.clarification')}</p>}
+      </> : <p className="mt-1">{outcome.explanation || (semanticExplanation?.available ? t(`playground.agentGuide.explain.${outcome.topic}`) : t('playground.agentGuide.clarification'))}</p>}
     </div>}
 
     {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL && proposal?.kind === 'proposal' && <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50 p-3 text-xs text-slate-800">
@@ -201,7 +207,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-950">{outcome.reason === 'world-control' ? t('playground.agentGuide.worldTools') : t('playground.agentGuide.clarification')}</p>}
     {aiFallback && <p className="mt-2 text-xs font-bold text-slate-500">{t('playground.agentGuide.aiFallback')}</p>}
     {result && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-950"><p className="font-black">{t('playground.agentGuide.completed')}</p><p className="mt-1 text-xs">{t('playground.agentGuide.changed')}: {result.mutationDiff?.changed?.map((item) => semanticLabel(item, t)).join(', ') || t('playground.explorationAgent.none')}</p><button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button></div>}
-    {error && <p role="alert" className="ui-motion-error mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-xs font-bold text-red-800">{error.code ?? 'EXPLORATION_FAILED'}: {error.message}</p>}
+    {error && <div role="alert" className="ui-motion-error mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-xs text-red-800"><p className="font-bold">{t('playground.agentGuide.errorGeneric')}</p><details className="mt-1"><summary className="cursor-pointer font-mono text-[10px]">{error.code ?? 'EXPLORATION_FAILED'}</summary><p className="mt-1 font-mono text-[10px]">{error.message}</p></details></div>}
 
     <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
       <summary className="cursor-pointer text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('playground.agentGuide.advanced')}</summary>

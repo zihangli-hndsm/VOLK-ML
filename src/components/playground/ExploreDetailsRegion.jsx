@@ -13,9 +13,11 @@ import TrainingMicroscopePanel from './TrainingMicroscopePanel.jsx';
 import PlaygroundInspector from './PlaygroundInspector.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
+import { useAiProvider } from '../ai/AiProviderContext.jsx';
 
 export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, t }) {
   const { responsive } = usePresentationCapabilities();
+  const { isConfigured, openSettings } = useAiProvider();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
   const compact = responsive.band === 'compact';
   const panelCloseRef = useRef(null);
@@ -74,10 +76,15 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     </section>
 
     {agent && <>
-      <button ref={agentTriggerRef} type="button" aria-expanded={Boolean(agentOpen)} aria-controls="explore-agent-guide" onClick={onAgentOpen} className="ui-motion-interactive w-full rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2 text-left text-sm font-black text-violet-900 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
-        {t('playground.agentGuide.entry')}
-      </button>
-      {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} host={host} closeRef={agentCloseRef} t={t} /></div>}
+      <div className="flex min-w-0 items-center gap-2">
+        <button ref={agentTriggerRef} type="button" aria-expanded={Boolean(agentOpen)} aria-controls="explore-agent-guide" onClick={onAgentOpen} className="ui-motion-interactive min-w-0 flex-1 rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2 text-left text-sm font-black text-violet-900 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
+          {t('playground.agentGuide.entry')}
+        </button>
+        <button type="button" onClick={openSettings} className="shrink-0 rounded-xl px-2 py-2 text-[11px] font-bold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500">
+          {isConfigured ? t('ai.settings') : t('ai.configure')}
+        </button>
+      </div>
+      {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} t={t} /></div>}
     </>}
 
     {activeDepth && <div id={`explore-depth-${activeDepth}`} data-ui-motion="depth-panel" role="dialog" aria-modal="false" aria-labelledby={`explore-depth-title-${activeDepth}`} className={`ui-motion-overlay-enter ${panelClass}`}>

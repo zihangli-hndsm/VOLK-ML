@@ -6,25 +6,28 @@ import { getPlayground } from '../src/core/playgrounds/registry.js';
 import { CONCEPTUAL_DEPTHS } from '../src/core/ui/uiArchitecture.js';
 import { deriveExploreDepthCapabilities, depthTelemetryType } from '../src/core/ui/exploreDepth.js';
 import ExploreDetailsRegion from '../src/components/playground/ExploreDetailsRegion.jsx';
+import { AiProvider } from '../src/components/ai/AiProviderContext.jsx';
 import { resolveMessage } from '../src/i18n.js';
 
 const t = (key, params) => resolveMessage(key, 'en', params);
 const noop = () => {};
 
 function renderDepth(snapshot, activeDepth, modelPlayground = null) {
-  return renderToStaticMarkup(React.createElement(ExploreDetailsRegion, {
-    snapshot,
-    modelPlayground,
-    bigIdea: null,
-    agent: null,
-    host: null,
-    activeDepth,
-    onDepthChange: noop,
-    onDispatch: noop,
-    onGuidanceChange: noop,
-    formulaPrimitive: snapshot.primitives.find((primitive) => primitive.type === 'formula'),
-    t,
-  }));
+  return renderToStaticMarkup(React.createElement(AiProvider, null,
+    React.createElement(ExploreDetailsRegion, {
+      snapshot,
+      modelPlayground,
+      bigIdea: null,
+      agent: null,
+      host: null,
+      activeDepth,
+      onDepthChange: noop,
+      onDispatch: noop,
+      onGuidanceChange: noop,
+      formulaPrimitive: snapshot.primitives.find((primitive) => primitive.type === 'formula'),
+      t,
+    }),
+  ));
 }
 
 function semanticIdentity(snapshot) {

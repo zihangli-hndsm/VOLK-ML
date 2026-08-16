@@ -116,10 +116,10 @@ export default function PresentationMode({ playground, snapshot, onDispatch, onE
       <div ref={layoutRef} className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center gap-4">
       <section
         style={stageFit ? { width: `${stageFit.width}px`, height: `${stageFit.height}px` } : undefined}
-        className="aspect-video w-full max-w-[1280px] max-h-full shrink-0 overflow-hidden rounded-2xl bg-white shadow-2xl"
+          className="aspect-video w-full max-w-[1280px] max-h-full shrink-0 overflow-auto rounded-2xl bg-white shadow-2xl"
         aria-label={t('playground.presentation.teachingStage')}
       >
-        <PlaygroundStage snapshot={snapshot} motionFrame={motionFrame} t={t} />
+        <PlaygroundStage snapshot={snapshot} motionFrame={motionFrame} showSupporting t={t} />
       </section>
       {(hasTeachingContent || hasAnimatedTeachingContent) && <section ref={contentRef} className="grid max-h-[40%] w-full max-w-[1280px] shrink-0 gap-3 overflow-auto md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]" aria-label={t('playground.presentation.teachingContent')}>
         {animatedAnnotation && <AnnotationRenderer props={animatedAnnotation.props} t={t} />}

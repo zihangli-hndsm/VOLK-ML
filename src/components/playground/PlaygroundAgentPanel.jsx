@@ -245,10 +245,11 @@ export default function PlaygroundAgentPanel({ host, agent, snapshot, t }) {
     </p>}
 
     {preview?.error && <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-700">
-      <p className="font-black">{preview.error.code}</p>
-      <p className="mt-1">{preview.error.message}</p>
-      {Object.keys(preview.error.details ?? {}).length > 0
-        && <pre className="mt-2 overflow-auto font-mono text-[10px]">{JSON.stringify(preview.error.details, null, 2)}</pre>}
+      <p className="font-black">{preview.error.code === 'AI_INVALID_GOAL' ? t('playground.agent.aiInvalidGoal') : t('playground.agent.loadError')}</p>
+      <details className="mt-1"><summary className="cursor-pointer font-mono text-[10px]">{preview.error.code}</summary><p className="mt-1">{preview.error.message}</p>
+        {Object.keys(preview.error.details ?? {}).length > 0
+          && <pre className="mt-2 max-h-32 overflow-auto font-mono text-[10px]">{JSON.stringify(preview.error.details, null, 2)}</pre>}
+      </details>
     </div>}
 
     {preview?.revisionError && <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-xs text-amber-800">
