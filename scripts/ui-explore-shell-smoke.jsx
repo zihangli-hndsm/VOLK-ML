@@ -9,6 +9,7 @@ import ExploreContextBar from '../src/components/playground/ExploreContextBar.js
 import ExploreWorldRegion from '../src/components/playground/ExploreWorldRegion.jsx';
 import ExploreExperimentRegion from '../src/components/playground/ExploreExperimentRegion.jsx';
 import ExploreDetailsRegion from '../src/components/playground/ExploreDetailsRegion.jsx';
+import { AiProvider } from '../src/components/ai/AiProviderContext.jsx';
 
 const t = (key) => key;
 const noop = () => {};
@@ -27,7 +28,7 @@ export function runUiExploreShellSmoke() {
   const context = renderToStaticMarkup(<ExploreContextBar playground={playground} snapshot={snapshot} onDispatch={noop} onPresent={noop} onClose={noop} t={t} />);
   const world = renderToStaticMarkup(<ExploreWorldRegion snapshot={snapshot} activeTab="model" onTabChange={noop} onDispatch={noop} onOpenDepth={noop} t={t} />);
   const experiment = renderToStaticMarkup(<ExploreExperimentRegion t={t}><span>experiment</span></ExploreExperimentRegion>);
-  const details = renderToStaticMarkup(<ExploreDetailsRegion snapshot={snapshot} modelPlayground={playground} bigIdea={null} agent={null} host={null} activeDepth={null} onDepthChange={noop} onDispatch={noop} onGuidanceChange={noop} formulaPrimitive={snapshot.primitives.find((primitive) => primitive.type === 'formula')} t={t} />);
+  const details = renderToStaticMarkup(<AiProvider><ExploreDetailsRegion snapshot={snapshot} modelPlayground={playground} bigIdea={null} agent={null} host={null} activeDepth={null} onDepthChange={noop} onDispatch={noop} onGuidanceChange={noop} formulaPrimitive={snapshot.primitives.find((primitive) => primitive.type === 'formula')} t={t} /></AiProvider>);
   const shell = renderToStaticMarkup(<ExploreShell contextBar={<div dangerouslySetInnerHTML={{ __html: context }} />} worldRegion={<div dangerouslySetInnerHTML={{ __html: world }} />} experimentRegion={<div dangerouslySetInnerHTML={{ __html: experiment }} />} detailsRegion={<div dangerouslySetInnerHTML={{ __html: details }} />} />);
 
   assert.ok(shell.includes('data-ui-region="context-bar"'), 'Context Bar renders');

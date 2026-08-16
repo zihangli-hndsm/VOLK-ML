@@ -17,6 +17,8 @@ function has(snapshot, key) {
 }
 
 function proposalIntent(text) {
+  if (/hidden\s*units|hidden layer|network width|隐藏层|隐层|隐藏单元/i.test(text)
+    && /compare|比较|对比|区别|和|与/i.test(text)) return 'hidden-units-compare';
   if (/learning\s*rate|learning-rate|学习率/i.test(text)) {
     return /lower|decrease|smaller|slower|减少|降低|变小/i.test(text)
       ? 'learning-rate-decrease'
@@ -35,6 +37,8 @@ function semanticTopic(text) {
   if (/training step|step|训练步|步骤/i.test(text)) return 'training-step';
   if (/test error|test mse|测试误差|测试损失/i.test(text)) return 'test-error';
   if (/repeat|stability|stable|variance|重复|稳定|波动/i.test(text)) return 'repeat-stability';
+  if (/hidden\s*units|hidden layer|network width|wider hidden|model capacity|隐藏层|隐层|隐藏单元|模型容量/i.test(text)) return 'model-capacity';
+  if (/learning\s*rate|learning-rate|学习率/i.test(text)) return 'learning-rate';
   return null;
 }
 
@@ -44,7 +48,8 @@ export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot
 
   // Speech act wins over the noun that follows it. “Where can I change X?”
   // is navigation; “What happens if I change X?” is an experiment.
-  const isExperiment = EXPERIMENT_RE.test(text) && !/^where can i|^how do i|^show me where|^在哪里|^怎么/i.test(text);
+  const isExperiment = EXPERIMENT_RE.test(text)
+    && !/^where can i|^how do i|^show me where|^在哪里|^怎么/i.test(text);
   const intent = isExperiment ? proposalIntent(text) : null;
   if (intent && has(snapshot, 'model')) {
     return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent };
@@ -79,6 +84,15 @@ export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot
 }
 
 export function routeAgentAiInterpretation({ interpretation, request, snapshot = {} } = {}) {
+  if (interpretation?.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION) {
+    return {
+      kind: AGENT_GUIDANCE_OUTCOMES.EXPLANATION,
+      topic: interpretation.topic,
+      explanation: interpretation.explanation ?? null,
+      source: 'ai',
+      request,
+    };
+  }
   const intent = interpretation?.intent;
   if (!isExplorationIntent(intent)) return null;
   if (!snapshot.model) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'model-unavailable' };
@@ -86,7 +100,7 @@ export function routeAgentAiInterpretation({ interpretation, request, snapshot =
 }
 
 export function deriveAgentSemanticExplanation(topic, snapshot = {}) {
-  const supported = new Set(['slope', 'bias', 'training-step', 'test-error', 'repeat-stability', 'comparison']);
+  const supported = new Set(['slope', 'bias', 'training-step', 'test-error', 'repeat-stability', 'comparison', 'model-capacity', 'learning-rate']);
   if (!supported.has(topic)) return { topic, available: false };
   if (topic === 'comparison' && !snapshot.experimentWorkspace?.comparison?.enabled) return { topic, available: false };
   return { topic, available: true };

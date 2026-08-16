@@ -3,6 +3,8 @@ import { createProviderGateway } from '../ai/providerRegistry.js';
 import { EXPLORATION_INTENT_IDS } from './explorationIntents.js';
 
 const INTENTS = EXPLORATION_INTENT_IDS;
+const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
+const GUIDANCE_KINDS = Object.freeze(['explanation', 'navigation', 'experiment', 'clarification']);
 
 function interpreterError(code, message) {
   const error = new Error(message);
@@ -23,6 +25,17 @@ function parseJsonText(text) {
 }
 
 function validateInterpretation(value) {
+  if (value.kind === 'explanation') {
+    if (!EXPLANATION_TOPICS.includes(value.topic)) {
+      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported explanation topic.');
+    }
+    return {
+      kind: 'explanation',
+      topic: value.topic,
+      explanation: typeof value.explanation === 'string' ? value.explanation.slice(0, 600) : null,
+      ambiguity: value.ambiguity ?? null,
+    };
+  }
   if (!INTENTS.includes(value.intent)) {
     throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported exploration intent.');
   }
@@ -30,6 +43,7 @@ function validateInterpretation(value) {
     throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned invalid requested holds.');
   }
   return {
+    ...(value.kind ? { kind: 'experiment' } : {}),
     intent: value.intent,
     requestedChange: typeof value.requestedChange === 'string' ? value.requestedChange : null,
     requestedHolds: [...(value.requestedHolds ?? [])],
@@ -57,18 +71,22 @@ export function projectExplorationAiContext(context = {}) {
       ...(context?.presentation?.changedSemanticDimensions ?? comparison?.diff?.changed ?? []),
     ],
     supportedOperationTypes: [...new Set((context?.exploration?.worldOperations ?? []).map((operation) => operation.type))],
+    supportedConcepts: [...EXPLANATION_TOPICS],
     recentActions,
   };
 }
 
 function promptFor({ request, context }) {
   return [
-    'Interpret the learner request into one high-level VOLK-ML exploration intent.',
+    'Interpret the learner request into one bounded high-level VOLK-ML guidance outcome.',
     'Return JSON only. Never return runtime operations, operation IDs, control IDs, observable IDs, code, or a ScenarioSpec.',
-    `Allowed intents: ${INTENTS.join(', ')}`,
+    `Allowed outcome kinds: ${GUIDANCE_KINDS.join(', ')}`,
+    `Allowed exploration intents: ${INTENTS.join(', ')}`,
+    `Allowed explanation topics: ${EXPLANATION_TOPICS.join(', ')}`,
     'The deterministic planner and capability registry will choose all executable operations after this response.',
     `Bounded semantic context: ${JSON.stringify(projectExplorationAiContext(context))}`,
-    'Shape: {"intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
+    'Experiment shape: {"kind":"experiment","intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
+    'Explanation shape: {"kind":"explanation","topic":"...","explanation":"short conceptual explanation","ambiguity":null}',
     `Learner request: ${String(request ?? '').trim()}`,
   ].join('\n\n');
 }

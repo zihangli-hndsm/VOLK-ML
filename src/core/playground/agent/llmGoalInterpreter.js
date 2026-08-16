@@ -7,12 +7,23 @@ export const LLM_PROVIDERS = Object.freeze(listProviderProtocols().map((protocol
   providerId: protocol.id,
 })));
 
-const GOAL_SCHEMA = Object.freeze({
-  type: ['explain-process', 'compare-control', 'what-if'],
-  objective: 'one supported teaching objective from the provided context',
-  compareControl: { control: 'string from context.controlSchemas', values: 'exactly two numbers/options' },
-  whatIf: { control: 'string from context.controlSchemas', value: 'one value valid for that control' },
-});
+function goalSchemaFor(context = {}) {
+  const objectives = [...(context?.teaching?.supportedObjectives ?? [])];
+  const controls = (context?.controlSchemas ?? []).map((schema) => ({
+    key: schema.key,
+    type: schema.type,
+    ...(schema.min !== undefined ? { min: schema.min } : {}),
+    ...(schema.max !== undefined ? { max: schema.max } : {}),
+    ...(schema.options ? { options: [...schema.options] } : {}),
+  }));
+  return {
+    oneOf: [
+      { type: 'explain-process', objective: objectives },
+      { type: 'compare-control', objective: objectives, control: controls, values: 'exactly two valid values for control' },
+      { type: 'what-if', objective: objectives, control: controls, value: 'one valid value for control' },
+    ],
+  };
+}
 
 function finite(value) {
   return Number.isFinite(Number(value)) ? Number(value) : null;
@@ -55,15 +66,34 @@ export function buildTeachingInterpretationContext(context) {
       }])),
     },
     currentState: context?.currentState ?? null,
-    allowedGoalSchema: GOAL_SCHEMA,
+    allowedGoalSchema: goalSchemaFor(context),
   };
 }
 
-function sanitizedError(code, message) {
+function sanitizedError(code, message, details = {}) {
   const error = new Error(message);
   error.code = code;
-  error.details = {};
+  error.details = details;
   return error;
+}
+
+function validationProblem(error, context) {
+  const details = error?.details ?? {};
+  const objectiveProblem = details.objective
+    ? `unsupported objective: ${details.objective}; allowed objectives: ${(context?.teaching?.supportedObjectives ?? []).join(', ')}`
+    : '';
+  const controlProblem = details.control
+    ? `unsupported control: ${details.control}; allowed controls: ${(context?.controlSchemas ?? []).map((schema) => schema.key).join(', ')}`
+    : '';
+  const shapeProblem = details.reason === 'compare values need exactly two entries'
+    ? 'expected compare-control shape: { type: "compare-control", objective, control, values }'
+    : details.reason === 'what-if needs a value'
+      ? 'expected what-if shape: { type: "what-if", objective, control, value }'
+      : '';
+  const fallback = !objectiveProblem && !controlProblem && !shapeProblem
+    ? 'expected one of the exact top-level shapes: { type: "explain-process", objective }, { type: "compare-control", objective, control, values }, or { type: "what-if", objective, control, value }'
+    : '';
+  return [error?.code ?? 'AI_INVALID_GOAL', objectiveProblem, controlProblem, shapeProblem, fallback].filter(Boolean).join('; ');
 }
 
 export function sanitizeInterpreterError(error) {
@@ -90,7 +120,7 @@ function validateCandidate(candidate, context) {
   try {
     planTeachingGoal({ goal: candidate, context });
   } catch (error) {
-    throw sanitizedError(error?.code ?? 'AI_INVALID_GOAL', 'The AI goal was rejected by the deterministic planner.');
+    throw sanitizedError(error?.code ?? 'AI_INVALID_GOAL', 'The AI goal was rejected by the deterministic planner.', { problem: validationProblem(error, context) });
   }
   return candidate;
 }
@@ -101,7 +131,7 @@ function promptFor({ request, context, repairProblem }) {
     'Return JSON only. Never return a Visualization Script, operations, phases, code, or prose.',
     'Use only controls, values, objectives, and operation intents present in the supplied context.',
     'For unsupported or ambiguous requests, return the closest typed shape only if it is directly supported; otherwise return {"type":"explain-process"} only for a genuinely generic teaching request.',
-    `Allowed TeachingGoal schema: ${JSON.stringify(GOAL_SCHEMA)}`,
+    `Allowed TeachingGoal schema (use these exact top-level fields): ${JSON.stringify(context.allowedGoalSchema)}`,
     `Bounded playground context: ${JSON.stringify(context)}`,
     repairProblem ? `The previous goal failed deterministic validation. Correct it using this sanitized problem: ${repairProblem}` : '',
     `User request: ${String(request ?? '').trim()}`,
@@ -130,7 +160,7 @@ export function createLlmGoalInterpreter({ gateway, fetchImpl = globalThis.fetch
             throw sanitizeInterpreterError(error);
           }
           if (attempt === 1) throw sanitizeInterpreterError(error);
-          repairProblem = error?.code ?? 'invalid goal';
+            repairProblem = error?.details?.problem ?? error?.code ?? 'invalid goal';
         }
       }
       throw sanitizedError('AI_INTERPRETATION_FAILED', 'The AI interpreter request failed.');
