@@ -60,6 +60,13 @@ silently coerced or clamped. Transform patches may target `all`, `train`, or
 `test`; split-specific transforms are represented in
 `group.splitTransforms` and remain visible to comparison.
 
+The current conservative limits include 20 coordinate units, 10 scale units,
+20 radius units, 10 thickness units, 20 spiral turns, 5 position-noise units,
+30 outlier-distance units, 10 density-weight units, 16 groups, 500 points per
+group/split, 5,000 total observations, 16 local-noise rules per split, and 32
+patch changes. These are resource and numerical-safety bounds, not a second
+normalization layer.
+
 Existing legacy World Builder controls remain unchanged. Recipe Worlds show a
 localized bounded summary with regenerate/freeze actions rather than pretending
 that legacy controls edit a richer recipe.
@@ -72,9 +79,10 @@ paths, affected group IDs, and changed splits. Scenario fidelity maps recipe
 designs to the existing `world` factor and checks actual normalized recipe
 paths against declared semantic domains. A whole-recipe create explicitly
 declares `whole-recipe`; an edit declares only the domains represented by its
-validated patch. Accidental shape, transform, sampling, noise, split, or label
-changes therefore become partial fidelity rather than being hidden by a
-natural-language hold claim.
+validated patch and records the exact normalized changed paths. Exact-path
+comparison is the final fidelity boundary: an extra group, split, property, or
+component path, or a missing expected path, becomes partial fidelity rather
+than being hidden by a coarse domain or natural-language hold claim.
 
 Agent interpretation may return only a bounded `world-design` outcome carrying
 a validated recipe or recipe patch. The deterministic planner turns that into

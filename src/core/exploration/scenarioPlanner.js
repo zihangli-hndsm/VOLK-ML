@@ -1,5 +1,5 @@
 import { conditionFingerprintForSession } from './observables.js';
-import { worldRecipePatchSemanticDomains, worldRecipeSemanticDomains } from './worldRecipe.js';
+import { worldRecipePatchChangedPaths, worldRecipePatchSemanticDomains, worldRecipeSemanticDomains } from './worldRecipe.js';
 import { interpretExplorationRequest } from './explorationInterpreter.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { scenarioError, validateScenarioSpec } from './scenarioSpec.js';
@@ -182,6 +182,9 @@ function worldDesignSpec(worldDesign, request, context) {
   const intendedWorldRecipeDomains = worldDesign.mode === 'create'
     ? ['whole-recipe']
     : worldRecipePatchSemanticDomains(currentRecipe, worldDesign.patch);
+  const intendedWorldRecipePaths = worldDesign.mode === 'create'
+    ? ['whole-recipe']
+    : worldRecipePatchChangedPaths(currentRecipe, worldDesign.patch);
   const heldWorldRecipeDomains = currentRecipe
     ? worldRecipeSemanticDomains(currentRecipe).filter((domain) => !intendedWorldRecipeDomains.includes(domain))
     : [];
@@ -196,6 +199,7 @@ function worldDesignSpec(worldDesign, request, context) {
     execution: { duplicateBaseline: true, run: true, compare: true, repeat: null },
     hold: [...(worldDesign.requestedHolds ?? []), 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
     intendedWorldRecipeDomains,
+    intendedWorldRecipePaths,
     heldWorldRecipeDomains,
     observe: ['world.trainXRange', 'world.testXRange', 'outcome.trainMse', 'outcome.testMse'],
   };

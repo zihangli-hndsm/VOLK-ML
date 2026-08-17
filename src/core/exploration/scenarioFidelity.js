@@ -57,10 +57,18 @@ export function evaluateScenarioFidelity(spec, comparison) {
   const recipeChanged = comparison?.details?.worldRecipe?.changedPaths ?? [];
   const recipeDomains = new Set(recipeChanged.map(worldRecipePathSemanticDomain));
   const declaredRecipeDomains = new Set(spec.intendedWorldRecipeDomains ?? []);
+  const declaredRecipePaths = Array.isArray(spec.intendedWorldRecipePaths) ? new Set(spec.intendedWorldRecipePaths) : null;
   const recipeMissing = [];
-  if (recipeChanged.length && declaredRecipeDomains.has('whole-recipe')) {
+  if (declaredRecipePaths?.has('whole-recipe') || (!declaredRecipePaths && declaredRecipeDomains.has('whole-recipe'))) {
     // A create-world design is explicitly a whole-recipe replacement. Its many
     // path changes are intentional, not hidden confounds.
+  } else if (declaredRecipePaths) {
+    for (const path of recipeChanged) {
+      if (!declaredRecipePaths.has(path)) recipeMissing.push(`recipe:extra-path:${path}`);
+    }
+    for (const path of declaredRecipePaths) {
+      if (!recipeChanged.includes(path)) recipeMissing.push(`recipe:missing-path:${path}`);
+    }
   } else if (recipeChanged.length && !declaredRecipeDomains.size) {
     recipeMissing.push('recipe-domains-unclassified');
   } else {

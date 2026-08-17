@@ -561,7 +561,7 @@ export function applyWorldRecipePatch(recipe, patch) {
   const normalized = normalizeWorldRecipe(recipe);
   const source = plainObject(patch, 'patch');
   allowedKeys(source, ['version', 'changes'], 'patch');
-  if (source.version !== WORLD_RECIPE_VERSION || !Array.isArray(source.changes) || source.changes.length > WORLD_RECIPE_LIMITS.maxPatchChanges) {
+  if (source.version !== WORLD_RECIPE_VERSION || !Array.isArray(source.changes) || source.changes.length < 1 || source.changes.length > WORLD_RECIPE_LIMITS.maxPatchChanges) {
     throw worldRecipeError('EXPLORATION_INVALID_WORLD_RECIPE_PATCH', { field: 'patch' });
   }
   const next = clone(normalized);
@@ -581,9 +581,9 @@ export function applyWorldRecipePatch(recipe, patch) {
     }[type];
     patchAllowedKeys(change, allowed, `patch.changes[${index}]`);
     const required = type === 'TRANSLATE_GROUP'
-      ? ['groupId', 'delta']
-      : type === 'ROTATE_GROUP' ? ['groupId', 'radians']
-        : type === 'SCALE_GROUP' ? ['groupId', 'scale']
+      ? ['groupId', 'split', 'delta']
+      : type === 'ROTATE_GROUP' ? ['groupId', 'split', 'radians']
+        : type === 'SCALE_GROUP' ? ['groupId', 'split', 'scale']
       : type === 'SET_GROUP_SAMPLING' ? ['groupId', 'sampling']
         : type === 'SET_GROUP_SAMPLE_COUNT' ? ['groupId', 'count']
           : type === 'SET_NOISE' ? ['kind']
@@ -594,7 +594,7 @@ export function applyWorldRecipePatch(recipe, patch) {
     }
     const split = ['SET_NOISE', 'SET_OUTLIERS', 'SET_LOCAL_NOISE', 'SET_GROUP_SAMPLING', 'SET_GROUP_SAMPLE_COUNT'].includes(type)
       ? splitFor(change.split, `patch.changes[${index}].split`, { errorCode: 'EXPLORATION_INVALID_WORLD_RECIPE_PATCH' })
-      : splitFor(change.split ?? 'all', `patch.changes[${index}].split`, { allowAll: true, errorCode: 'EXPLORATION_INVALID_WORLD_RECIPE_PATCH' });
+      : splitFor(change.split, `patch.changes[${index}].split`, { allowAll: true, errorCode: 'EXPLORATION_INVALID_WORLD_RECIPE_PATCH' });
     const group = type === 'SET_NOISE' || type === 'SET_OUTLIERS' || type === 'SET_LOCAL_NOISE' ? null : groupFor(next, change.groupId);
     const transformPatch = ['TRANSLATE_GROUP', 'ROTATE_GROUP', 'SCALE_GROUP'].includes(type);
     const target = transformPatch && group && split !== 'all'
@@ -689,6 +689,12 @@ export function worldRecipeSemanticDomains(recipe) {
 export function worldRecipePatchSemanticDomains(recipe, patch) {
   const next = applyWorldRecipePatch(recipe, patch);
   return worldRecipeSemanticDomainsForPaths(worldRecipeDiff(recipe, next).changedPaths);
+}
+
+export function worldRecipePatchChangedPaths(recipe, patch) {
+  const normalized = normalizeWorldRecipe(recipe);
+  const next = applyWorldRecipePatch(normalized, patch);
+  return worldRecipeDiff(normalized, next).changedPaths;
 }
 
 export function worldRecipeSummary(recipe) {

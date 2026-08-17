@@ -214,6 +214,9 @@ export function validateScenarioSpec(spec, context = {}) {
   const intendedWorldRecipeDomains = spec.intendedWorldRecipeDomains === undefined
     ? null
     : worldRecipeDomainArray(spec.intendedWorldRecipeDomains, 'intendedWorldRecipeDomains');
+  const intendedWorldRecipePaths = spec.intendedWorldRecipePaths === undefined
+    ? null
+    : stringArray(spec.intendedWorldRecipePaths, 'intendedWorldRecipePaths');
   const heldWorldRecipeDomains = spec.heldWorldRecipeDomains === undefined
     ? null
     : worldRecipeDomainArray(spec.heldWorldRecipeDomains, 'heldWorldRecipeDomains');
@@ -250,6 +253,7 @@ export function validateScenarioSpec(spec, context = {}) {
     change: changes,
     ...(intendedFactors ? { intendedFactors } : {}),
     ...(intendedWorldRecipeDomains ? { intendedWorldRecipeDomains } : {}),
+    ...(intendedWorldRecipePaths ? { intendedWorldRecipePaths } : {}),
     ...(heldWorldRecipeDomains ? { heldWorldRecipeDomains } : {}),
     hold,
     observe,

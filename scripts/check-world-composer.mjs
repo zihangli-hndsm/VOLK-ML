@@ -11,6 +11,7 @@ import {
   worldRecipeDiff,
   worldRecipeJsonSchema,
   worldRecipePatchJsonSchema,
+  worldRecipePatchChangedPaths,
   worldRecipePatchSemanticDomains,
   worldRecipePathSemanticDomain,
   worldRecipeSummary,
@@ -152,6 +153,23 @@ const pathCenter = pointsFor({ type: 'arc', params: { radius: 1, startAngle: 0, 
 const pathDistanceFromEnds = (point) => Math.min(Math.atan2(point.y, point.x), Math.PI - Math.atan2(point.y, point.x));
 assert.ok(pathEdge.filter((point) => pathDistanceFromEnds(point) < 0.35).length > pathEdge.filter((point) => pathDistanceFromEnds(point) > 1.0).length * 1.3, 'edge-heavy uses path distance near both ends');
 assert.ok(pathCenter.filter((point) => pathDistanceFromEnds(point) > 1.0).length > pathCenter.filter((point) => pathDistanceFromEnds(point) < 0.35).length * 1.2, 'center-heavy uses path distance near the middle');
+const closedPathParameter = (point) => ((Math.atan2(point.y, point.x) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2);
+const centerParameterMass = (points) => points.filter((point) => Math.abs(closedPathParameter(point) - 0.5) < 0.15).length;
+const edgeParameterMass = (points) => points.filter((point) => Math.min(closedPathParameter(point), 1 - closedPathParameter(point)) < 0.15).length;
+const moonShape = { type: 'moon', params: { outerRadius: 1, innerRadius: 0.1, innerOffset: [0.8, 0], thickness: 0.05 } };
+const moonCenter = pointsFor(moonShape, 500, { type: 'center-heavy', strength: 1 });
+const moonEdge = pointsFor(moonShape, 500, { type: 'edge-heavy', strength: 1 });
+assert.ok(centerParameterMass(moonCenter) > edgeParameterMass(moonCenter) * 1.3, 'moon center-heavy concentrates normalized path position');
+assert.ok(edgeParameterMass(moonEdge) > centerParameterMass(moonEdge) * 1.3, 'moon edge-heavy concentrates normalized path endpoints');
+const moonGradient = pointsFor(moonShape, 500, { type: 'gradient', from: 5, to: 0.2, axis: 'path' });
+assert.ok(moonGradient.filter((point) => closedPathParameter(point) < 0.2).length > moonGradient.filter((point) => closedPathParameter(point) > 0.5).length, 'moon path gradient changes angular density');
+const ellipseOutline = { type: 'ellipse', params: { radii: [1.4, 0.7], fill: false, thickness: 0.05 } };
+const ellipseCenter = pointsFor(ellipseOutline, 500, { type: 'center-heavy', strength: 1 });
+const ellipseEdge = pointsFor(ellipseOutline, 500, { type: 'edge-heavy', strength: 1 });
+assert.ok(centerParameterMass(ellipseCenter) > edgeParameterMass(ellipseCenter) * 1.3, 'ellipse outline center-heavy concentrates normalized path position');
+assert.ok(edgeParameterMass(ellipseEdge) > centerParameterMass(ellipseEdge) * 1.3, 'ellipse outline edge-heavy concentrates normalized path endpoints');
+const ellipseGradient = pointsFor(ellipseOutline, 500, { type: 'gradient', from: 5, to: 0.2, axis: 'path' });
+assert.ok(ellipseGradient.filter((point) => closedPathParameter(point) < 0.2).length > ellipseGradient.filter((point) => closedPathParameter(point) > 0.5).length, 'ellipse outline path gradient changes angular density');
 const ringGradient = pointsFor({ type: 'ring', params: { radius: 1, thickness: 0.05 } }, 500, { type: 'gradient', from: 5, to: 0.2, axis: 'path' });
 assert.ok(ringGradient.filter((point) => Math.abs(Math.atan2(point.y, point.x)) < 0.35).length > ringGradient.filter((point) => Math.abs(Math.atan2(point.y, point.x) - Math.PI) < 0.35).length, 'ring path gradient changes angular density');
 const rectangleGradient = pointsFor({ type: 'rectangle', params: { width: 2, height: 1, fill: true, thickness: 0.1 } }, 500, { type: 'gradient', from: 5, to: 0.2, axis: 'x' });
@@ -179,6 +197,8 @@ assert.deepEqual(positionPoints.map((point) => point.label), basePoints.map((poi
 
 assert.throws(() => applyWorldRecipePatch(base, { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-a', split: 'all', delta: [0.1, 0], invented: true }] }), /EXPLORATION_INVALID_WORLD_RECIPE_PATCH/);
 assert.throws(() => applyWorldRecipePatch(base, { version: 1, changes: [{ type: 'ROTATE_GROUP', groupId: 'class-a', split: 'all' }] }), /EXPLORATION_INVALID_WORLD_RECIPE_PATCH/);
+assert.throws(() => applyWorldRecipePatch(base, { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-a', delta: [0.1, 0] }] }), /EXPLORATION_INVALID_WORLD_RECIPE_PATCH/);
+assert.throws(() => applyWorldRecipePatch(base, { version: 1, changes: [] }), /EXPLORATION_INVALID_WORLD_RECIPE_PATCH/);
 assert.throws(() => applyWorldRecipePatch(base, { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-a', split: 'sideways', delta: [0.1, 0] }] }), /EXPLORATION_INVALID_WORLD_RECIPE_PATCH/);
 assert.throws(() => applyWorldRecipePatch(base, { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'unknown', split: 'all', delta: [0.1, 0] }] }), /EXPLORATION_WORLD_RECIPE_GROUP_NOT_FOUND/);
 assert.throws(() => applyWorldRecipePatch(base, { version: 1, changes: [{ type: 'SET_GROUP_SAMPLE_COUNT', groupId: 'class-a', split: 'all', count: 12 }] }), /EXPLORATION_INVALID_WORLD_RECIPE_PATCH/);
@@ -191,7 +211,8 @@ const second = materializeWorldRecipe(base, 42, { worldId: 'composer-test' });
 assert.deepEqual(first.observations, second.observations, 'same recipe and seed are exactly deterministic');
 assert.notDeepEqual(first.observations, materializeWorldRecipe(base, 43, { worldId: 'composer-test' }).observations, 'different seed creates a different realization');
 
-const movedB = applyWorldRecipePatch(base, { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-b', delta: [0.7, 0] }] });
+const movedB = applyWorldRecipePatch(base, { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-b', split: 'all', delta: [0.7, 0] }] });
+assert.ok(applyWorldRecipePatch(base, { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-b', split: 'train', delta: [0.1, 0] }] }));
 const movedMaterialized = materializeWorldRecipe(movedB, 42, { worldId: 'composer-test' });
 assert.deepEqual(
   movedMaterialized.observations.filter((point) => point.generation.groupId === 'class-a'),
@@ -275,6 +296,40 @@ const splitDiff = compareExperiments(
 assert.ok(splitDiff.details.worldRecipe.changedPaths.some((path) => path.includes('splitTransforms.test')));
 assert.deepEqual(worldRecipePatchSemanticDomains(base, splitPatch), ['group-split-transform:test']);
 
+const classBTranslationPatch = { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-b', split: 'all', delta: [0.7, 0] }] };
+const classBTranslationPaths = worldRecipePatchChangedPaths(base, classBTranslationPatch);
+assert.deepEqual(classBTranslationPaths, ['.groups.class-b.transform.translate.0']);
+assert.equal(evaluateScenarioFidelity(
+  { change: [], hold: [], intendedWorldRecipePaths: classBTranslationPaths },
+  { changed: [], details: { worldRecipe: { changedPaths: classBTranslationPaths } } },
+).status, 'exact');
+assert.equal(evaluateScenarioFidelity(
+  { change: [], hold: [], intendedWorldRecipePaths: classBTranslationPaths },
+  { changed: [], details: { worldRecipe: { changedPaths: [...classBTranslationPaths, '.groups.class-a.transform.rotate'] } } },
+).status, 'partial');
+const classBTestTranslationPaths = worldRecipePatchChangedPaths(base, splitPatch);
+const classBTrainTranslationPaths = worldRecipePatchChangedPaths(base, { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-b', split: 'train', delta: [0.7, 0] }] });
+assert.equal(evaluateScenarioFidelity(
+  { change: [], hold: [], intendedWorldRecipePaths: classBTestTranslationPaths },
+  { changed: [], details: { worldRecipe: { changedPaths: [...classBTestTranslationPaths, ...classBTrainTranslationPaths] } } },
+).status, 'partial');
+const classATrainDensityPaths = worldRecipePatchChangedPaths(base, { version: 1, changes: [{ type: 'SET_GROUP_SAMPLING', groupId: 'class-a', split: 'train', sampling: { count: 12, density: { type: 'center-heavy', strength: 1 } } }] });
+const classATestDensityPaths = worldRecipePatchChangedPaths(base, { version: 1, changes: [{ type: 'SET_GROUP_SAMPLING', groupId: 'class-a', split: 'test', sampling: { count: 6, density: { type: 'center-heavy', strength: 1 } } }] });
+assert.equal(evaluateScenarioFidelity(
+  { change: [], hold: [], intendedWorldRecipePaths: classATrainDensityPaths },
+  { changed: [], details: { worldRecipe: { changedPaths: [...classATrainDensityPaths, ...classATestDensityPaths] } } },
+).status, 'partial');
+const trainPositionNoisePaths = worldRecipePatchChangedPaths(base, { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.2 }] });
+const trainSampleCountPaths = worldRecipePatchChangedPaths(base, { version: 1, changes: [{ type: 'SET_GROUP_SAMPLE_COUNT', groupId: 'class-a', split: 'train', count: 10 }] });
+assert.equal(evaluateScenarioFidelity(
+  { change: [], hold: [], intendedWorldRecipePaths: trainPositionNoisePaths },
+  { changed: [], details: { worldRecipe: { changedPaths: [...trainPositionNoisePaths, ...trainSampleCountPaths] } } },
+).status, 'partial');
+assert.equal(evaluateScenarioFidelity(
+  { change: [], hold: [], intendedWorldRecipePaths: ['.groups.class-b.transform.translate.0'] },
+  { changed: [], details: { worldRecipe: { changedPaths: ['.groups.class-a.transform.translate.0'] } } },
+).status, 'partial');
+
 const exactRecipeFidelity = evaluateScenarioFidelity(
   { change: [], hold: [], intendedWorldRecipeDomains: ['group-sampling-density'] },
   { changed: [], details: { worldRecipe: { changedPaths: ['.groups.class-a.sampling.train.density.type'] } } },
@@ -309,7 +364,7 @@ assert.deepEqual(agentComposerContext.currentRecipe.groups[0].trainDensity, { ty
 assert.equal('observations' in agentComposerContext.currentRecipe, false, 'Agent recipe summary is relative and does not include raw observations');
 await host.dispatch({ type: 'REPEAT_EXPERIMENT', trials: 2 });
 assert.equal(host.getState().repeatEvidence?.trials?.length, 2, 'recipe Worlds use the normal Repeat lifecycle');
-const editProposal = host.proposeExploration({ request: 'Move class B right', worldDesign: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'inner-blob', delta: [0.7, 0] }] }, requestedHolds: ['model-configuration'] } });
+const editProposal = host.proposeExploration({ request: 'Move class B right', worldDesign: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'inner-blob', split: 'all', delta: [0.7, 0] }] }, requestedHolds: ['model-configuration'] } });
 assert.equal(editProposal.kind, 'proposal');
 assert.equal(editProposal.assessment.fidelity.status, 'exact');
 

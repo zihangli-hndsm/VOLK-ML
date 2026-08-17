@@ -190,8 +190,9 @@ function sampleShape(shape, u, v, rng) {
     return [Math.cos(pathAngle) * radius, Math.sin(pathAngle) * radius];
   }
   if (type === 'moon') {
+    const pathAngle = u * TWO_PI;
     const radius = params.outerRadius + (v - 0.5) * params.thickness;
-    let point = [Math.cos(angle) * radius, Math.sin(angle) * radius];
+    let point = [Math.cos(pathAngle) * radius, Math.sin(pathAngle) * radius];
     const innerX = point[0] - params.innerOffset[0];
     const innerY = point[1] - params.innerOffset[1];
     if (Math.hypot(innerX, innerY) < params.innerRadius) {
@@ -214,8 +215,18 @@ function sampleShape(shape, u, v, rng) {
     return [-params.width / 2 + (v - 0.5) * params.thickness, params.height / 2 - (along - 2 * params.width - params.height)];
   }
   if (type === 'ellipse') {
-    const radius = params.fill ? Math.sqrt(u) : 1;
-    return [Math.cos(angle) * params.radii[0] * radius, Math.sin(angle) * params.radii[1] * radius + (v - 0.5) * params.thickness];
+    if (params.fill) {
+      const radius = Math.sqrt(u);
+      return [Math.cos(angle) * params.radii[0] * radius, Math.sin(angle) * params.radii[1] * radius];
+    }
+    const pathAngle = u * TWO_PI;
+    const cosine = Math.cos(pathAngle);
+    const sine = Math.sin(pathAngle);
+    const base = [cosine * params.radii[0], sine * params.radii[1]];
+    const normalLength = Math.hypot(cosine / params.radii[0], sine / params.radii[1]);
+    const normal = [(cosine / params.radii[0]) / normalLength, (sine / params.radii[1]) / normalLength];
+    const offset = (v - 0.5) * params.thickness;
+    return [base[0] + normal[0] * offset, base[1] + normal[1] * offset];
   }
   if (type === 'polygon') {
     if (params.fill) return sampleTriangle(triangulatePolygon(params.points), rng);

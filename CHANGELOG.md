@@ -8,6 +8,13 @@
 - Added Distribution Shift manual Test-support acceptance coverage, immediate-divergence coverage, real MLP hidden-unit evidence, architecture documentation, and integrated registry/runtime checks into `npm run check`.
 - Acceptance fix: canonicalized effective entrance seeds across session creation and entrance-owned World regeneration, and strengthened registry validation for model compatibility, setup controls, World transactions, affordances, and malformed declarations.
 
+## 2026-08-18 — World Composer exact-path and path-density acceptance fixes
+
+- Rebased the existing World Composer acceptance branch onto the merged PR #99 main ancestry and retained the semantic fixes without a duplicate parallel ancestor.
+- Scenario fidelity now compares exact normalized recipe paths for edits, including group, split, property, and component identity; whole-recipe creation remains an explicit exception.
+- Moon and ellipse-outline materialization now use the normalized path coordinate for density semantics, while local patch validation now matches the structured schema for non-empty patches and required transform splits.
+- Acceptance: World Composer, Exploration Agent, OpenAI Responses, World Builder, full `npm run check`, production build, and `git diff --check` pass; no browser or GitHub Actions claim is made.
+
 ## 2026-08-13 - Phase 5 Exploration Agent learner mode
 
 - Added a capability-grounded ScenarioSpec v1 proposal pipeline with deterministic intent fallback, change/hold/observe validation, fidelity reporting, and stale-proposal rejection.
