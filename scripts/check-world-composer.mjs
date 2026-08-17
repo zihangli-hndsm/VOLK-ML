@@ -206,6 +206,8 @@ assertPathDensity(moonShape, 'moon');
 const moonPoints = pointsFor(moonShape, 500, { type: 'uniform' });
 assert.ok(Math.max(...moonPoints.map((point) => Math.hypot(point.x, point.y))) > 0.95, 'moon contains the convex outer arc');
 assert.ok(moonPoints.some((point) => Math.abs(Math.hypot(point.x - 0.5, point.y) - 0.7) < 0.08), 'moon contains the concave inner arc');
+assert.ok(moonPoints.some((point) => Math.abs(Math.hypot(point.x, point.y) - 1) > 0.1), 'moon points are not all on the outer circle');
+assert.ok(moonPoints.every((point) => Math.abs(Math.hypot(point.x, point.y) - 1) <= 0.051 || Math.abs(Math.hypot(point.x - 0.5, point.y) - 0.7) <= 0.051), 'moon samples stay within the documented crescent bands');
 assert.throws(() => normalizeWorldRecipe({ ...base, groups: [{ ...base.groups[0], shape: { ...moonShape, params: { ...moonShape.params, innerOffset: [0.2, 0] } } }] }), /EXPLORATION_INVALID_WORLD_RECIPE/);
 const moonsPreset = getWorldRecipePreset('moons');
 const moonsMaterialized = materializeWorldRecipe(moonsPreset, 92, { worldId: 'moons-preset' });
