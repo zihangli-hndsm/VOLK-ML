@@ -54,6 +54,12 @@
 - 检查脚本兼容 Windows（`python3`/`python` 回退）；`browserExecutionContract.js` 为可归因的校验失败补充具体节点归属。
 - 验收：`npm run check`、`npm run build`、`git diff --check` 全部通过；Chrome 浏览器实测 15/15 通过。
 
+## 2026-08-17 — World Composer semantic acceptance fixes
+
+- Hardened recipe-level fidelity: normalized recipe paths now map to explicit semantic domains, whole-recipe creation is explicit, and accidental shape/sampling/noise/split changes become partial fidelity.
+- Added strict, bounded WorldRecipe patch validation with split-specific train/test transforms, deterministic density domains, interior polygon triangulation, self-intersection rejection, and no silent numeric coercion or clamping.
+- Preserved scoped deterministic materialization and legacy generator compatibility; expanded Agent-facing recipe summaries without raw observations and added focused schema, geometry, density, provenance, split, fidelity, and lifecycle regressions.
+
 ## 2026-08-05 — 教学增强：画布适配、示例数据集、教学示例与路线图
 
 - 修复首屏画布错位：样式异步加载会让 React Flow 用错误的容器尺寸适配；现在通过 ResizeObserver + 手动视口计算做“稳定重适配”，首次加载与加载示例后图形都完整落在画布内。

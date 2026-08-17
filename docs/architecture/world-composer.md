@@ -26,6 +26,14 @@ noise, label noise, and outlier decisions use stable scoped substreams derived
 from seed, World ID, group ID, split, purpose, and sample index. This lets an
 unchanged group keep its realization when another group is edited.
 
+Sampling density is a separate semantic field. `uniform`, `center-heavy`, and
+`edge-heavy` are interpreted over the primitive's domain (radial for filled
+blobs/ellipses, x-axis for filled rectangles, and path position for paths).
+Gradient density is explicit about its `x` or `path` axis; unsupported
+shape/axis combinations are rejected instead of silently changing geometry.
+Filled polygons are sampled from a deterministic ear-clipped triangulation, so
+all samples are interior points. Self-intersecting polygons are invalid.
+
 Every generated observation keeps bounded generation metadata including recipe
 version, group ID, shape type, sample index, split, noise flags, and anomaly.
 There is no `Math.random`, dynamic code, `eval`, or user-supplied expression
@@ -45,6 +53,13 @@ history, Agent preflight, and human dispatch boundaries as legacy generator and
 point operations. Recipe edits change the desired recipe and preserve the
 displayed realization until `REGENERATE_WORLD` is explicitly applied.
 
+Recipe patches have a strict versioned schema and bounded numeric validator.
+Unknown fields, non-finite values, out-of-range values, unknown groups, and
+unsupported patch combinations fail before materialization; values are never
+silently coerced or clamped. Transform patches may target `all`, `train`, or
+`test`; split-specific transforms are represented in
+`group.splitTransforms` and remain visible to comparison.
+
 Existing legacy World Builder controls remain unchanged. Recipe Worlds show a
 localized bounded summary with regenerate/freeze actions rather than pretending
 that legacy controls edit a richer recipe.
@@ -54,15 +69,21 @@ that legacy controls edit a richer recipe.
 Existing comparison top-level factors remain authoritative. Recipe-aware detail
 is exposed as `comparison.details.worldRecipe`, with changed paths, unchanged
 paths, affected group IDs, and changed splits. Scenario fidelity maps recipe
-designs to the existing `world` factor; it does not trust natural-language
-claims about what was held constant.
+designs to the existing `world` factor and checks actual normalized recipe
+paths against declared semantic domains. A whole-recipe create explicitly
+declares `whole-recipe`; an edit declares only the domains represented by its
+validated patch. Accidental shape, transform, sampling, noise, split, or label
+changes therefore become partial fidelity rather than being hidden by a
+natural-language hold claim.
 
 Agent interpretation may return only a bounded `world-design` outcome carrying
 a validated recipe or recipe patch. The deterministic planner turns that into
 `SET_WORLD_RECIPE`/`PATCH_WORLD_RECIPE` plus `REGENERATE_WORLD`, then uses the
 normal detached preflight and explicit execution flow. The Agent never emits
-raw observations or executable operations. Local fallback exposes registered
-presets; unsupported designs remain clarification outcomes.
+raw observations or executable operations. The provider-facing context uses a
+bounded recipe summary (group IDs, shapes, transforms, sampling, noise, and
+counts) without observations or imported rows. Local fallback exposes
+registered presets; unsupported designs remain clarification outcomes.
 
 ## Current limits
 
@@ -71,4 +92,3 @@ patch changes. Local noise supports bounding boxes and circles; boundary-aware
 noise is deferred. KNN/MLP adapters can inspect generated Worlds, but World
 mutation still requires the adapter's existing `applyWorld` capability. A full
 visual recipe editor and safe function-curve AST are deferred.
-

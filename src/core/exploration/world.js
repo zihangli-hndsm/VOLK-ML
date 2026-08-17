@@ -89,6 +89,9 @@ function normalizeGeneratorState(generator, { mode, seed }) {
     ? { kind, ...(kind === 'legacy-generator' ? { spec } : { recipe }), seed: generator.lastSeed ?? seed ?? null }
     : null;
   const realization = generator.realization ?? legacyRealization;
+  if (realization && realization.kind !== undefined && realization.kind !== kind) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator.realization.kind', value: realization.kind, reason: 'generator-kind-mismatch' });
+  }
   const normalizedRealization = realization
     ? {
       kind: realization.kind ?? kind,

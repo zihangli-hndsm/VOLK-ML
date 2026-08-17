@@ -19,6 +19,14 @@ assert.equal(teachingSchema.properties.values.anyOf[0].maxItems, 2);
 assert.ok(explorationSchema.properties.kind.enum.includes('navigation'));
 assert.equal(teachingSchema.additionalProperties, false);
 assert.equal(explorationSchema.additionalProperties, false);
+const worldDesignSchema = explorationSchema.properties.design.anyOf[0];
+const worldPatchSchema = worldDesignSchema.properties.patch.anyOf[0];
+assert.equal(worldPatchSchema.additionalProperties, false);
+assert.equal(worldPatchSchema.properties.changes.items.anyOf.length, 8);
+assert.ok(worldPatchSchema.properties.changes.items.anyOf.every((variant) => variant.additionalProperties === false || variant.anyOf?.every((nested) => nested.additionalProperties === false)));
+const noiseVariant = worldPatchSchema.properties.changes.items.anyOf.find((variant) => variant.anyOf?.some((nested) => nested.properties?.type?.const === 'SET_NOISE'));
+assert.ok(noiseVariant.anyOf.some((variant) => variant.properties?.kind?.const === 'position'));
+assert.ok(noiseVariant.anyOf.some((variant) => variant.properties?.kind?.const === 'label'));
 
 let requestedUrl = '';
 let requestedBody = null;

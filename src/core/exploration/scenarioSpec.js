@@ -1,7 +1,7 @@
 import { MAX_WORLD_TRANSACTION_OPERATIONS } from './operations.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { validateCanonicalControlValue } from '../playground/controlValidation.js';
-import { applyWorldRecipePatch, normalizeWorldRecipe } from './worldRecipe.js';
+import { WORLD_RECIPE_SEMANTIC_DOMAINS, applyWorldRecipePatch, normalizeWorldRecipe } from './worldRecipe.js';
 
 export const SCENARIO_SPEC_VERSION = 1;
 export const SCENARIO_FIDELITY_STATUSES = ['exact', 'partial', 'approximate'];
@@ -20,6 +20,13 @@ function stringArray(value, field) {
     throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field });
   }
   return [...value];
+}
+
+function worldRecipeDomainArray(value, field) {
+  const domains = stringArray(value, field);
+  const allowed = new Set(['whole-recipe', ...WORLD_RECIPE_SEMANTIC_DOMAINS]);
+  if (domains.some((domain) => !allowed.has(domain))) throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field, value: domains });
+  return domains;
 }
 
 function operationMetadata(context, type) {
@@ -204,6 +211,12 @@ export function validateScenarioSpec(spec, context = {}) {
   const intendedFactors = spec.intendedFactors === undefined
     ? null
     : stringArray(spec.intendedFactors, 'intendedFactors');
+  const intendedWorldRecipeDomains = spec.intendedWorldRecipeDomains === undefined
+    ? null
+    : worldRecipeDomainArray(spec.intendedWorldRecipeDomains, 'intendedWorldRecipeDomains');
+  const heldWorldRecipeDomains = spec.heldWorldRecipeDomains === undefined
+    ? null
+    : worldRecipeDomainArray(spec.heldWorldRecipeDomains, 'heldWorldRecipeDomains');
   const operationCount = changes.reduce((count, change) => count + (Array.isArray(change.parameters?.operations) ? change.parameters.operations.length : 1), 0);
   const maxOperations = Number(context?.resourceLimits?.maxWorldTransactionOperations ?? MAX_WORLD_TRANSACTION_OPERATIONS);
   if (operationCount > maxOperations) throw scenarioError('EXPLORATION_SCENARIO_RESOURCE_LIMIT', { field: 'operations', max: maxOperations, requested: operationCount });
@@ -236,6 +249,8 @@ export function validateScenarioSpec(spec, context = {}) {
     baseline: { experimentId: spec.baseline.experimentId, conditionFingerprint: spec.baseline.conditionFingerprint },
     change: changes,
     ...(intendedFactors ? { intendedFactors } : {}),
+    ...(intendedWorldRecipeDomains ? { intendedWorldRecipeDomains } : {}),
+    ...(heldWorldRecipeDomains ? { heldWorldRecipeDomains } : {}),
     hold,
     observe,
     execution,

@@ -1,4 +1,5 @@
 import { conditionFingerprintForSession } from './observables.js';
+import { worldRecipePatchSemanticDomains, worldRecipeSemanticDomains } from './worldRecipe.js';
 import { interpretExplorationRequest } from './explorationInterpreter.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { scenarioError, validateScenarioSpec } from './scenarioSpec.js';
@@ -177,6 +178,13 @@ function intentSpec(intent, request, context) {
 }
 
 function worldDesignSpec(worldDesign, request, context) {
+  const currentRecipe = context.world?.generator?.kind === 'world-recipe' ? context.world.generator.recipe : null;
+  const intendedWorldRecipeDomains = worldDesign.mode === 'create'
+    ? ['whole-recipe']
+    : worldRecipePatchSemanticDomains(currentRecipe, worldDesign.patch);
+  const heldWorldRecipeDomains = currentRecipe
+    ? worldRecipeSemanticDomains(currentRecipe).filter((domain) => !intendedWorldRecipeDomains.includes(domain))
+    : [];
   const baseline = {
     experimentId: context.experiment.id,
     conditionFingerprint: conditionFingerprintForSession({ world: context.world, adapterId: context.experiment.model?.adapterId, experiment: context.experiment }),
@@ -187,6 +195,8 @@ function worldDesignSpec(worldDesign, request, context) {
     baseline,
     execution: { duplicateBaseline: true, run: true, compare: true, repeat: null },
     hold: [...(worldDesign.requestedHolds ?? []), 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
+    intendedWorldRecipeDomains,
+    heldWorldRecipeDomains,
     observe: ['world.trainXRange', 'world.testXRange', 'outcome.trainMse', 'outcome.testMse'],
   };
   if (worldDesign.mode === 'create' && worldDesign.recipe) return {
