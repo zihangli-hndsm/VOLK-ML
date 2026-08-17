@@ -1,7 +1,7 @@
 import { getProviderProtocol } from './providerRegistry.js';
 
-export function defaultAiConfig(protocolId = 'openai-compatible') {
-  const protocol = getProviderProtocol(protocolId) ?? getProviderProtocol('openai-compatible');
+export function defaultAiConfig(protocolId = 'openai-responses') {
+  const protocol = getProviderProtocol(protocolId) ?? getProviderProtocol('openai-responses');
   return {
     protocol: protocol.id,
     displayName: '',

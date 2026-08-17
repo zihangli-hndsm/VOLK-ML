@@ -896,6 +896,7 @@ export const messages = {
   'ai.settingsTitle': { en: 'Application AI settings', zh: '应用 AI 设置' },
   'ai.settingsDescription': { en: 'One volatile provider configuration is shared by project explanation and Playground Agent.', zh: '项目解释和 Playground Agent 共用一份易失的服务商配置。' },
   'ai.protocol': { en: 'Protocol', zh: '协议' },
+  'ai.provider.openai': { en: 'OpenAI', zh: 'OpenAI' },
   'ai.provider.openaiCompatible': { en: 'OpenAI-compatible', zh: 'OpenAI 兼容协议' },
   'ai.provider.anthropicCompatible': { en: 'Anthropic-compatible', zh: 'Anthropic 兼容协议' },
   'ai.provider.geminiCompatible': { en: 'Gemini-compatible', zh: 'Gemini 兼容协议' },

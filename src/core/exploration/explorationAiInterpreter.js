@@ -6,6 +6,28 @@ const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
 const GUIDANCE_KINDS = Object.freeze(['explanation', 'navigation', 'experiment', 'clarification']);
 
+const nullableStringSchema = () => ({ anyOf: [{ type: 'string' }, { type: 'null' }] });
+
+export function explorationGuidanceResponseSchema({ availableDepths = [] } = {}) {
+  const depths = availableDepths.length ? availableDepths : ['unavailable'];
+  return {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      kind: { type: 'string', enum: GUIDANCE_KINDS },
+      topic: { anyOf: [{ type: 'string', enum: EXPLANATION_TOPICS }, { type: 'null' }] },
+      explanation: nullableStringSchema(),
+      depth: { anyOf: [{ type: 'string', enum: depths }, { type: 'null' }] },
+      intent: { anyOf: [{ type: 'string', enum: INTENTS }, { type: 'null' }] },
+      requestedChange: nullableStringSchema(),
+      requestedHolds: { anyOf: [{ type: 'array', maxItems: 12, items: { type: 'string' } }, { type: 'null' }] },
+      reason: nullableStringSchema(),
+      ambiguity: nullableStringSchema(),
+    },
+    required: ['kind', 'topic', 'explanation', 'depth', 'intent', 'requestedChange', 'requestedHolds', 'reason', 'ambiguity'],
+  };
+}
+
 function interpreterError(code, message) {
   const error = new Error(message);
   error.code = code;
@@ -148,6 +170,12 @@ export function createExplorationAiInterpreter({ gateway, fetchImpl = globalThis
           system: 'You are VOLK-ML\'s high-level exploration intent interpreter. Deterministic code remains authoritative.',
           messages: [{ role: 'user', content: promptFor({ request, context }) }],
           responseMode: 'json',
+          responseSchema: {
+            name: 'volk_ml_exploration_guidance',
+            schema: explorationGuidanceResponseSchema({
+              availableDepths: context?.presentation?.availableDepths ?? [],
+            }),
+          },
         });
         return { ...validateInterpretation(parseJsonText(response.text), context), providerId: response.protocol };
       } catch (error) {

@@ -7,13 +7,29 @@ export const LLM_PROVIDERS = Object.freeze(listProviderProtocols().map((protocol
   providerId: protocol.id,
 })));
 
-function goalSchemaFor() {
+function primitiveJsonSchema() {
+  return { anyOf: [{ type: 'number' }, { type: 'string' }, { type: 'boolean' }, { type: 'null' }] };
+}
+
+export function teachingGoalResponseSchema({ allowedControls = [] } = {}) {
+  const controls = allowedControls.map((control) => control.key).filter((key) => typeof key === 'string');
+  const controlEnum = controls.length ? controls : ['__no_allowed_control__'];
   return {
-    oneOf: [
-      { type: 'explain-process' },
-      { type: 'compare-control', control: 'one key from allowedControls', values: 'exactly two valid values for control' },
-      { type: 'what-if', control: 'one key from allowedControls', value: 'one valid value for control' },
-    ],
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      type: { type: 'string', enum: ['explain-process', 'compare-control', 'what-if'] },
+      control: { anyOf: [{ type: 'string', enum: controlEnum }, { type: 'null' }] },
+      values: { anyOf: [{ type: 'array', minItems: 2, maxItems: 2, items: primitiveJsonSchema() }, { type: 'null' }] },
+      value: primitiveJsonSchema(),
+    },
+    required: ['type', 'control', 'values', 'value'],
+  };
+}
+
+function goalSchemaFor({ allowedControls = [] } = {}) {
+  return {
+    ...teachingGoalResponseSchema({ allowedControls }),
   };
 }
 
@@ -89,7 +105,7 @@ export function buildTeachingInterpretationContext(context) {
       objectives: [...(context?.teaching?.objectives ?? [])],
       supportedObjectives: [...(context?.teaching?.supportedObjectives ?? [])],
     },
-    allowedGoalSchema: goalSchemaFor(),
+    allowedGoalSchema: goalSchemaFor({ allowedControls }),
     allowedControls,
     controlSchemas: allowedControls,
     currentControls: { ...(context?.controls ?? {}) },
@@ -265,6 +281,10 @@ export function createLlmGoalInterpreter({ gateway, fetchImpl = globalThis.fetch
             system: 'You are VOLK-ML\'s temporary semantic goal interpreter. Deterministic VOLK-ML code remains authoritative.',
             messages: [{ role: 'user', content: promptFor({ request, context: boundedContext, repairProblem, repairCandidate }) }],
             responseMode: 'json',
+            responseSchema: {
+              name: 'volk_ml_teaching_goal',
+              schema: teachingGoalResponseSchema({ allowedControls: boundedContext.allowedControls }),
+            },
           });
           const parsed = parseJsonText(response.text);
           let candidate;
