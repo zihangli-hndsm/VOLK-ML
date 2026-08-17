@@ -4,6 +4,7 @@
 // distribution by themselves.
 
 import { cloneGeneratorSpec, GENERATOR_VERSION } from './generator.js';
+import { normalizeWorldRecipe, WORLD_RECIPE_VERSION } from './worldRecipe.js';
 
 export const WORLD_VERSION = 1;
 export const WORLD_KIND = 'sample';
@@ -72,24 +73,37 @@ function normalizeObservation(input, index, defaultProvenance) {
 }
 
 function normalizeGeneratorState(generator, { mode, seed }) {
-  if (!generator || typeof generator !== 'object' || Array.isArray(generator) || !generator.spec) {
+  if (!generator || typeof generator !== 'object' || Array.isArray(generator)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator' });
   }
-  const spec = cloneGeneratorSpec(generator.spec);
+  const kind = generator.kind ?? (generator.recipe ? 'world-recipe' : 'legacy-generator');
+  if (!['legacy-generator', 'world-recipe'].includes(kind)) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator.kind', value: kind });
+  }
+  const spec = kind === 'legacy-generator' ? cloneGeneratorSpec(generator.spec) : null;
+  const recipe = kind === 'world-recipe' ? normalizeWorldRecipe(generator.recipe) : null;
+  if (kind === 'legacy-generator' && !generator.spec) throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator.spec' });
+  if (kind === 'world-recipe' && generator.spec) throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator.spec', reason: 'recipe-generator-cannot-have-legacy-spec' });
   const desiredSeed = generator.seed ?? generator.lastSeed ?? seed ?? null;
   const legacyRealization = mode === 'generated' && !generator.realization && generator.status === 'clean'
-    ? { spec, seed: generator.lastSeed ?? seed ?? null }
+    ? { kind, ...(kind === 'legacy-generator' ? { spec } : { recipe }), seed: generator.lastSeed ?? seed ?? null }
     : null;
   const realization = generator.realization ?? legacyRealization;
+  const normalizedRealization = realization
+    ? {
+      kind: realization.kind ?? kind,
+      ...(kind === 'legacy-generator' ? { spec: cloneGeneratorSpec(realization.spec) } : { recipe: normalizeWorldRecipe(realization.recipe) }),
+      seed: realization.seed ?? null,
+    }
+    : null;
   return {
-    version: generator.version ?? GENERATOR_VERSION,
+    kind,
+    version: generator.version ?? (kind === 'world-recipe' ? WORLD_RECIPE_VERSION : GENERATOR_VERSION),
     active: Boolean(generator.active ?? mode === 'generated'),
     status: ['clean', 'dirty', 'modified'].includes(generator.status) ? generator.status : 'dirty',
-    spec,
+    ...(kind === 'legacy-generator' ? { spec } : { recipe }),
     seed: desiredSeed,
-    realization: realization
-      ? { spec: cloneGeneratorSpec(realization.spec), seed: realization.seed ?? null }
-      : null,
+    realization: normalizedRealization,
   };
 }
 
@@ -103,7 +117,8 @@ export function deriveWorldGeneratorFacts(world) {
   if (!generator) return { needsRegeneration: false, hasManualEdits: false };
   const realization = generator.realization;
   const needsRegeneration = !realization
-    || !sameValue(generator.spec, realization.spec)
+    || generator.kind !== realization.kind
+    || !sameValue(generator.kind === 'world-recipe' ? generator.recipe : generator.spec, generator.kind === 'world-recipe' ? realization.recipe : realization.spec)
     || generator.seed !== realization.seed;
   const hasManualEdits = (world.observations ?? []).some((point) => (
     point.provenance === 'manual' && point.generation

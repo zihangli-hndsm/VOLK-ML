@@ -78,6 +78,8 @@ assert.equal(multiDiff.clarity, 'mixed', 'mixed comparisons are informative, not
 
 const registeredWorldOperations = listWorldOperations();
 assert.deepEqual(registeredWorldOperations.map((operation) => operation.type), [
+  'SET_WORLD_RECIPE',
+  'PATCH_WORLD_RECIPE',
   'SET_WORLD_GENERATOR',
   'SET_GENERATOR_PARAMETER',
   'SET_GENERATOR_SEED',

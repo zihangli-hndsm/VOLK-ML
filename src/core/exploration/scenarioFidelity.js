@@ -5,6 +5,7 @@ const FACTOR_BY_TARGET = Object.freeze({
   noise: 'world',
   'observation-noise': 'world',
   'observation-values': 'world',
+  'world-recipe': 'world',
   'learning-configuration': 'learning',
   'model-configuration': 'model',
 });
@@ -39,7 +40,7 @@ const HOLD_TO_GENERATOR_DETAIL = Object.freeze({
 
 export function evaluateScenarioFidelity(spec, comparison) {
   const changed = new Set(comparison?.changed ?? []);
-  const intended = new Set(spec.intendedFactors ?? spec.change.map((change) => FACTOR_BY_TARGET[change.semanticTarget] ?? change.semanticTarget));
+  const intended = new Set((spec.intendedFactors ?? spec.change.map((change) => change.semanticTarget)).map((factor) => FACTOR_BY_TARGET[factor] ?? factor));
   const held = new Set(spec.hold.map((item) => HOLD_TO_FACTOR[item] ?? item));
   const confounds = [...held].filter((factor) => changed.has(factor) && !intended.has(factor));
   const unrepresented = [...changed].filter((factor) => !intended.has(factor));
@@ -51,7 +52,9 @@ export function evaluateScenarioFidelity(spec, comparison) {
   const heldGenerator = new Set(spec.hold.map((item) => HOLD_TO_GENERATOR_DETAIL[item]).filter(Boolean));
   const generatorConfounds = [...heldGenerator].filter((field) => generatorChanged.has(field));
   const generatorUnrepresented = [...generatorChanged].filter((field) => !intendedGenerator.has(field));
-  const missing = [...new Set([...confounds, ...unrepresented, ...generatorConfounds, ...generatorUnrepresented])];
+  const recipeChanged = comparison?.details?.worldRecipe?.changedPaths ?? [];
+  const recipeUnrepresented = recipeChanged.length && !intended.has('world') ? ['world-recipe'] : [];
+  const missing = [...new Set([...confounds, ...unrepresented, ...generatorConfounds, ...generatorUnrepresented, ...recipeUnrepresented])];
   const status = missing.length
     ? 'partial'
     : spec.approximation ? 'approximate' : 'exact';

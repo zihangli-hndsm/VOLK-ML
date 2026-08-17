@@ -1,6 +1,7 @@
 import { MAX_WORLD_TRANSACTION_OPERATIONS } from './operations.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { validateCanonicalControlValue } from '../playground/controlValidation.js';
+import { applyWorldRecipePatch, normalizeWorldRecipe } from './worldRecipe.js';
 
 export const SCENARIO_SPEC_VERSION = 1;
 export const SCENARIO_FIDELITY_STATUSES = ['exact', 'partial', 'approximate'];
@@ -136,6 +137,32 @@ function validateWorldParameters(change, context) {
       throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { operation: change.operation, reason: 'generator-required' });
     }
     return { ...clone(parameters), value };
+  }
+  if (change.operation === 'SET_WORLD_RECIPE') {
+    if (!parameters.recipe || context?.world?.generator?.kind === 'world-recipe' && parameters.recipe.version === undefined) {
+      throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'change.parameters.recipe' });
+    }
+    try {
+      const recipe = normalizeWorldRecipe(parameters.recipe);
+      const seed = parameters.seed === undefined ? context?.world?.randomness?.seed ?? 42 : Number(parameters.seed);
+      if (!Number.isFinite(seed)) throw new Error('seed');
+      return { ...clone(parameters), recipe, seed: Math.trunc(seed) };
+    } catch (error) {
+      if (error.code === 'EXPLORATION_RESOURCE_LIMIT') throw scenarioError('EXPLORATION_SCENARIO_RESOURCE_LIMIT', error.details);
+      throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'change.parameters.recipe', reason: error.code ?? 'invalid-recipe' });
+    }
+  }
+  if (change.operation === 'PATCH_WORLD_RECIPE') {
+    if (context?.world?.generator?.kind !== 'world-recipe' || !parameters.patch) {
+      throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { operation: change.operation, reason: 'recipe-required' });
+    }
+    try {
+      applyWorldRecipePatch(context.world.generator.recipe, parameters.patch);
+      return { ...clone(parameters), patch: clone(parameters.patch) };
+    } catch (error) {
+      if (error.code === 'EXPLORATION_RESOURCE_LIMIT') throw scenarioError('EXPLORATION_SCENARIO_RESOURCE_LIMIT', error.details);
+      throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'change.parameters.patch', reason: error.code ?? 'invalid-recipe-patch' });
+    }
   }
   return clone(parameters);
 }

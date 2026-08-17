@@ -1,9 +1,11 @@
 import { CONCEPTUAL_DEPTHS } from './uiArchitecture.js';
 import { isExplorationIntent } from '../exploration/explorationIntents.js';
+import { getWorldRecipePreset } from '../exploration/worldRecipePresets.js';
 
 export const AGENT_GUIDANCE_OUTCOMES = Object.freeze({
   OPEN_DEPTH: 'open-depth',
   EXPERIMENT_PROPOSAL: 'experiment-proposal',
+  WORLD_DESIGN_PROPOSAL: 'world-design-proposal',
   EXPLANATION: 'explanation',
   CLARIFICATION: 'clarification',
 });
@@ -40,6 +42,20 @@ function semanticTopic(text) {
   if (/hidden\s*units|hidden layer|network width|wider hidden|model capacity|隐藏层|隐层|隐藏单元|模型容量/i.test(text)) return 'model-capacity';
   if (/learning\s*rate|learning-rate|学习率/i.test(text)) return 'learning-rate';
   return null;
+}
+
+function localWorldDesign(text) {
+  const preset = /ring|circle|圆环|圆形/i.test(text)
+    ? 'rings'
+    : /moon|moons|月牙|半月/i.test(text)
+      ? 'moons'
+      : /xor|异或/i.test(text)
+        ? 'xor'
+        : /checker|棋盘/i.test(text)
+          ? 'checkerboard'
+          : null;
+  if (!preset) return null;
+  return { mode: 'create', recipe: getWorldRecipePreset(preset), patch: null };
 }
 
 export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot = {} } = {}) {
@@ -80,6 +96,11 @@ export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot
   }
 
   if (isExperiment) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'unsupported-experiment', useAi: true };
+  const localDesign = localWorldDesign(text);
+  if (localDesign) return { kind: AGENT_GUIDANCE_OUTCOMES.WORLD_DESIGN_PROPOSAL, worldDesign: localDesign, requestedHolds: [], source: 'local' };
+  if (/create|design|dataset|world|shape|ring|spiral|triangle|v-shaped|数据集|世界|创建|设计|三角形|螺旋|圆环/i.test(text)) {
+    return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'world-design-needs-ai', useAi: true };
+  }
   return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'unsupported-request', useAi: true };
 }
 
@@ -99,6 +120,16 @@ export function routeAgentAiInterpretation({ interpretation, request, snapshot =
   }
   if (interpretation?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION) {
     return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: interpretation.reason || 'unsupported-request', source: 'ai', request };
+  }
+  if (interpretation?.kind === 'world-design') {
+    if (capabilities.worldComposer === false) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'world-composer-unavailable', source: 'ai', request };
+    return {
+      kind: AGENT_GUIDANCE_OUTCOMES.WORLD_DESIGN_PROPOSAL,
+      worldDesign: interpretation.design,
+      requestedHolds: interpretation.requestedHolds ?? [],
+      source: 'ai',
+      request,
+    };
   }
   const intent = interpretation?.intent;
   if (!isExplorationIntent(intent)) return null;

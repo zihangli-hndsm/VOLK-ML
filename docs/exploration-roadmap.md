@@ -832,6 +832,8 @@ Input generator
 
 The UI may present a small preset such as "two clusters with noise," while the scenario and comparison layers retain which primitives were composed and which were changed. The first generator release should implement only the combinations required by its acceptance scenarios; this decomposition is an extension point, not a mandate for a universal generator framework.
 
+World Composer v1 now provides that bounded compositional extension for Agent-designed Worlds. `WorldRecipe` is normalized into the same generated-World lifecycle, with stable group identities, primitive geometry, transforms, sampling, train/test variants, separated noise/anomaly semantics, and deterministic scoped seeds. Presets compile into the recipe; they are not a second generator contract. See `docs/architecture/world-composer.md`.
+
 ## First generator vocabulary
 
 Start with a small semantically clear set.

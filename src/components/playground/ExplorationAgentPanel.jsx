@@ -78,7 +78,9 @@ export default function ExplorationAgentPanel({ agent, snapshot, presentation = 
       if (!intent && aiMode === 'ai' && isConfigured) {
         try {
           const interpreted = await interpreter.interpret({ request, context: agent.inspectContext({ presentation }), config });
-          next = await agent.proposeExploration({ request, intent: interpreted.intent });
+          next = interpreted.kind === 'world-design'
+            ? await agent.proposeExploration({ request, worldDesign: { ...interpreted.design, requestedHolds: interpreted.requestedHolds ?? [] } })
+            : await agent.proposeExploration({ request, intent: interpreted.intent });
         } catch (aiError) {
           setAiNotice(t('playground.explorationAgent.aiFallback'));
           next = await agent.proposeExploration({ request });

@@ -154,7 +154,7 @@ export function isGeneratedRepeatCondition(world) {
   return Boolean(
     world?.mode === 'generated'
     && world.generator?.status === 'clean'
-    && world.generator?.spec
+    && (world.generator?.spec || world.generator?.recipe)
     && world.generator?.realization,
   );
 }
@@ -175,9 +175,11 @@ export function conditionFingerprintForSession({ world, adapterId, experiment = 
       featureNames: world.featureNames,
       metadata: world.metadata,
       generator: world.generator ? {
+        kind: world.generator.kind ?? 'legacy-generator',
         status: world.generator.status,
         active: world.generator.active,
         spec: world.generator.spec,
+        recipe: world.generator.recipe,
         seed: world.generator.seed,
         realizationSeed: world.generator.realization?.seed ?? null,
       } : null,

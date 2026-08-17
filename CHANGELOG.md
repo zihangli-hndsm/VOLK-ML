@@ -58,6 +58,7 @@
 
 - 修复首屏画布错位：样式异步加载会让 React Flow 用错误的容器尺寸适配；现在通过 ResizeObserver + 手动视口计算做“稳定重适配”，首次加载与加载示例后图形都完整落在画布内。
 - 示例数据集提升到界面：数据对话框新增 6 个内置数据集（考试成绩、花卉品种、鸢尾花、红酒品质、能源负荷、垃圾邮件），带中英文文案。
+
 - 新增 8 个教学示例项目（`examples/`）：房价预测、鸢尾花 KNN 分类、垃圾邮件 MLP 分类可在浏览器运行；能源负荷（自定义损失 + AdamW）、糖尿病风险（残差 MLP）、猫狗 CNN、电影推荐（Embedding）、情感分析（LSTM）可导出 PyTorch/TensorFlow 代码。
 - 新增“示例”画廊：顶部导航可打开，卡片展示任务、组件覆盖与可运行/导出徽标，一键加载到画布。
 - 新增 `docs/roadmap.md`：列出向量搜索、LLM 聊天机器人、AI Agent 规划等未实现任务与基础设施规划，README 增加入口。
@@ -519,3 +520,10 @@
 - Added a capability-driven Phenomenon surface that combines editable 2D World gestures with the existing runtime model-response primitives in one canvas.
 - Reduced the initial Playground hierarchy to question, phenomenon, Move/Draw/Erase, Undo, and a compact Experiment identity; full World tools remain reachable through the compatibility path.
 - Preserved shared World transactions, primitive rendering, Big Idea questions, Experiment semantics, responsive presentation, and fail-open semantic telemetry; deferred UI-4 through UI-7 and Phase 9.
+
+## 2026-08-17 - World Composer / Generative World Grammar
+
+- Added a versioned, JSON-safe WorldRecipe grammar with bounded geometry primitives, stable group identities, transforms, train/test sampling, position/label/local noise, outliers, deterministic scoped substreams, and compiled rings/moons/XOR/checkerboard presets.
+- Added deterministic recipe materialization into ordinary finite World observations with generation provenance, explicit desired-vs-realized lifecycle, recipe patch operations, atomic Undo/Redo, Repeat support, and legacy generator compatibility.
+- Added recipe-aware comparison details and ScenarioSpec fidelity, bounded Agent world-design proposals with explicit preflight/execution, local preset fallback, unsupported-adapter clarification, localized recipe summaries, architecture documentation, and integrated World Composer checks.
+- Acceptance: focused World Composer checks, full `npm run check`, `npm run build -- --configLoader runner`, and `git diff --check` passed. Default Vite config loading and localhost browser access remain restricted by this managed environment.
