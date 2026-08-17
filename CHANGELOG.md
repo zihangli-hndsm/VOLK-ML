@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-18 — World Composer v1 final acceptance
+
+- Corrected crescent inner-arc direction and continuity, and made arc-density checks use normalized geometric path length (`s`) rather than raw curve parameters.
+- Added the bounded KNN World `validateWorld`/`applyWorld` path with authoritative train/test membership and task-aware classification accuracy observables; MLP World mutation remains deferred.
+- Narrowed world-design compatibility clarification to structured adapter/task compatibility failures; stale, resource, validation, and unexpected errors now retain their own error semantics.
+
 ## 2026-08-14 - Phase 7 Big-Idea exploration entrances
 
 - Added a deterministic BigIdeaEntrance v1 registry for Finding Patterns, Noise and Robustness, Generalization, Distribution Shift, and Model Capacity.

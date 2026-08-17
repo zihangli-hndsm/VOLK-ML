@@ -157,7 +157,10 @@ function buildArcLengthTable(pointAt, resolution = PATH_TABLE_RESOLUTION) {
     total += distance(samples[index - 1].point, point);
     samples.push({ t, point, length: total });
   }
-  return { samples, total };
+  return {
+    samples: samples.map((sample) => ({ ...sample, s: total <= Number.EPSILON ? 0 : sample.length / total })),
+    total,
+  };
 }
 
 function parameterAtArcLength(table, normalizedLength) {
@@ -202,14 +205,17 @@ function crescentSegments(params) {
   const pointAtOuter = (angle) => [Math.cos(angle) * params.outerRadius, Math.sin(angle) * params.outerRadius];
   const upper = pointAtOuter(outerStart);
   const lower = pointAtOuter(outerEnd);
-  const innerStart = Math.atan2(lower[1] - offsetY, lower[0] - offsetX);
-  const innerEnd = Math.atan2(upper[1] - offsetY, upper[0] - offsetX);
   const ccwDelta = (end, start) => (end - start + TWO_PI) % TWO_PI;
-  const outerLength = ccwDelta(outerEnd, outerStart) * params.outerRadius;
-  const innerLength = ccwDelta(innerEnd, innerStart) * params.innerRadius;
+  const innerLower = Math.atan2(lower[1] - offsetY, lower[0] - offsetX);
+  const innerUpper = Math.atan2(upper[1] - offsetY, upper[0] - offsetX);
+  // The visible boundary of outer disk minus inner disk uses the major inner
+  // arc that remains inside the outer disk. Signed sweeps keep both circle
+  // intersections continuous without reflecting arbitrary samples.
+  const outerSweep = ccwDelta(outerEnd, outerStart);
+  const innerSweep = -ccwDelta(innerLower, innerUpper);
   return [
-    { center: [0, 0], radius: params.outerRadius, start: outerStart, end: outerEnd, length: outerLength },
-    { center: [offsetX, offsetY], radius: params.innerRadius, start: innerStart, end: innerEnd, length: innerLength },
+    { center: [0, 0], radius: params.outerRadius, start: outerStart, sweep: outerSweep, length: Math.abs(outerSweep) * params.outerRadius },
+    { center: [offsetX, offsetY], radius: params.innerRadius, start: innerLower, sweep: innerSweep, length: Math.abs(innerSweep) * params.innerRadius },
   ];
 }
 
@@ -220,7 +226,7 @@ function moonPointAt(params, normalizedLength, offset) {
   const segment = remaining <= segments[0].length ? segments[0] : segments[1];
   if (segment === segments[1]) remaining -= segments[0].length;
   const local = remaining / Math.max(segment.length, Number.EPSILON);
-  const angle = segment.start + ((segment.end - segment.start + TWO_PI) % TWO_PI) * local;
+  const angle = segment.start + segment.sweep * local;
   const radius = segment.radius + offset;
   return [segment.center[0] + Math.cos(angle) * radius, segment.center[1] + Math.sin(angle) * radius];
 }
@@ -231,7 +237,13 @@ function createPathSampler(shape) {
     const segments = crescentSegments(params);
     const total = segments[0].length + segments[1].length;
     const pointAt = (s) => moonPointAt(params, s, 0);
-    return { pointAt, table: buildArcLengthTable(pointAt), total };
+    const table = buildArcLengthTable(pointAt);
+    table.total = total;
+    table.samples = table.samples.map((sample) => ({
+      ...sample,
+      s: total <= Number.EPSILON ? 0 : Math.min(1, sample.length / total),
+    }));
+    return { pointAt, table, total, segments };
   }
   let curve;
   if (type === 'ellipse' && !params.fill) {
@@ -261,7 +273,12 @@ function createPathSampler(shape) {
 export function createWorldRecipePathSampler(shape) {
   const sampler = createPathSampler(shape);
   if (!sampler) return null;
-  return { pointAt: sampler.pointAt, samples: sampler.table.samples.map((sample) => ({ ...sample, point: [...sample.point] })), total: sampler.table.total };
+  return {
+    pointAt: sampler.pointAt,
+    samples: sampler.table.samples.map((sample) => ({ ...sample, point: [...sample.point] })),
+    total: sampler.table.total,
+    ...(sampler.segments ? { segments: sampler.segments.map((segment) => ({ ...segment, center: [...segment.center] })) } : {}),
+  };
 }
 
 function pathPointWithThickness(shape, sampler, s, v) {
@@ -269,10 +286,10 @@ function pathPointWithThickness(shape, sampler, s, v) {
   const offset = (v - 0.5) * shape.params.thickness * (fullWidthBand ? 2 : 1);
   const point = sampler.pointAt(s);
   if (shape.type === 'moon') {
-    const inner = crescentSegments(shape.params)[1];
-    const total = crescentSegments(shape.params).reduce((sum, segment) => sum + segment.length, 0);
-    const outerLength = crescentSegments(shape.params)[0].length;
-    const segment = s * total <= outerLength ? crescentSegments(shape.params)[0] : inner;
+    const segments = crescentSegments(shape.params);
+    const total = segments.reduce((sum, segment) => sum + segment.length, 0);
+    const outerLength = segments[0].length;
+    const segment = s * total <= outerLength ? segments[0] : segments[1];
     const radial = [point[0] - segment.center[0], point[1] - segment.center[1]];
     const length = Math.max(Math.hypot(radial[0], radial[1]), Number.EPSILON);
     return [point[0] + radial[0] / length * offset, point[1] + radial[1] / length * offset];

@@ -41,6 +41,8 @@ export const RAW_OBSERVABLES = [
   descriptor('model.hiddenUnits', 'MODEL', 'playground.evidence.hiddenUnits', 'number', ({ result }) => finite(result?.model?.hiddenUnits)),
   descriptor('outcome.trainMse', 'OUTCOME', 'playground.evidence.trainMse', 'number', ({ result }) => finite(result?.metrics?.trainMse ?? result?.metrics?.mse)),
   descriptor('outcome.testMse', 'OUTCOME', 'playground.evidence.testMse', 'number', ({ result }) => finite(result?.metrics?.testMse)),
+  descriptor('outcome.trainAccuracy', 'OUTCOME', 'playground.evidence.trainAccuracy', 'number', ({ result }) => finite(result?.metrics?.trainAccuracy ?? result?.metrics?.accuracy)),
+  descriptor('outcome.testAccuracy', 'OUTCOME', 'playground.evidence.testAccuracy', 'number', ({ result }) => finite(result?.metrics?.testAccuracy ?? result?.metrics?.runtimeAccuracy)),
   descriptor('learning.currentStep', 'LEARNING', 'playground.evidence.currentStep', 'number', ({ result }) => finite(result?.model?.trainingStep)),
   descriptor('comparison.changedFactorCount', 'EVIDENCE', 'playground.evidence.changedFactorCount', 'number', ({ comparison }) => (
     comparison?.diff ? comparison.diff.changed.length : null
@@ -52,6 +54,8 @@ export const OBSERVABLE_IDS = Object.freeze([
   ...RAW_OBSERVABLES.map((item) => item.id),
   'generalizationGap',
   'coverageMismatch',
+  'outcome.trainAccuracy',
+  'outcome.testAccuracy',
   'slopeDifference',
   'trainErrorRatio',
   'testErrorRatio',

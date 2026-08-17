@@ -179,6 +179,12 @@ function intentSpec(intent, request, context) {
 
 function worldDesignSpec(worldDesign, request, context) {
   const currentRecipe = context.world?.generator?.kind === 'world-recipe' ? context.world.generator.recipe : null;
+  const intendedTask = worldDesign.mode === 'create'
+    ? worldDesign.recipe?.task
+    : currentRecipe?.task;
+  const outcomeObservables = intendedTask === 'classification'
+    ? ['outcome.trainAccuracy', 'outcome.testAccuracy']
+    : ['outcome.trainMse', 'outcome.testMse'];
   const intendedWorldRecipeDomains = worldDesign.mode === 'create'
     ? ['whole-recipe']
     : worldRecipePatchSemanticDomains(currentRecipe, worldDesign.patch);
@@ -201,7 +207,7 @@ function worldDesignSpec(worldDesign, request, context) {
     intendedWorldRecipeDomains,
     intendedWorldRecipePaths,
     heldWorldRecipeDomains,
-    observe: ['world.trainXRange', 'world.testXRange', 'outcome.trainMse', 'outcome.testMse'],
+    observe: ['world.trainXRange', 'world.testXRange', ...outcomeObservables],
   };
   if (worldDesign.mode === 'create' && worldDesign.recipe) return {
     ...common,

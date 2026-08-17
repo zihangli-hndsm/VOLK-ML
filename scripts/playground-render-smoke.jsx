@@ -117,9 +117,9 @@ export function runPlaygroundRenderSmoke() {
   assert.ok(workspaceMarkup.includes('playground.workspace.title'), 'editable LR workspace renders from capability snapshot');
   assert.ok(workspaceMarkup.includes('playground.workspace.tool.brush'), 'workspace exposes brush tool semantics');
   assert.ok(workspaceMarkup.includes('playground.workspace.undo'), 'workspace exposes runtime Undo control');
-  assert.equal(renderToStaticMarkup(React.createElement(DataWorkspace, {
+  assert.ok(renderToStaticMarkup(React.createElement(DataWorkspace, {
     snapshot: knnSnapshots[0], onDispatch: noopDispatch, t,
-  })), '', 'unsupported adapters do not receive editable workspace controls');
+  })).includes('playground.workspace.title'), 'KNN World support exposes the shared editable workspace contract');
 
   // PR F.1: the MLP preset trains, reveals epochs and hidden activations; the
   // new toolkit primitives (network-graph, matrix-grid, parameter-trajectory,

@@ -229,6 +229,8 @@ export const messages = {
   'playground.evidence.bias': { en: 'Fitted bias', zh: '拟合偏置' },
   'playground.evidence.trainMse': { en: 'Train MSE', zh: '训练 MSE' },
   'playground.evidence.testMse': { en: 'Test MSE', zh: '测试 MSE' },
+  'playground.evidence.trainAccuracy': { en: 'Train accuracy', zh: '训练准确率' },
+  'playground.evidence.testAccuracy': { en: 'Test accuracy', zh: '测试准确率' },
   'playground.evidence.currentStep': { en: 'Learning step', zh: '学习步数' },
   'playground.evidence.generalizationGap': { en: 'Generalization gap', zh: '泛化间隔' },
   'playground.evidence.coverageMismatch': { en: 'Train/test coverage', zh: '训练/测试覆盖' },

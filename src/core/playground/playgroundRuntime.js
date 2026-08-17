@@ -505,6 +505,7 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
     throw playgroundError('INVALID_PLAYGROUND_ACTION', {
       type: 'APPLY_WORLD_TRANSACTION',
       reason: 'adapter does not support World editing',
+      reasonCode: 'world-adapter-unsupported',
       adapterId: session.adapterId,
     });
   }

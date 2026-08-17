@@ -22,6 +22,7 @@ import { getWorldRecipePreset, listWorldRecipePresets } from '../src/core/explor
 import { listWorldOperations } from '../src/core/exploration/operationRegistry.js';
 import { evaluateScenarioFidelity } from '../src/core/exploration/scenarioFidelity.js';
 import { validateScenarioSpec } from '../src/core/exploration/scenarioSpec.js';
+import { isWorldModelCompatibilityError } from '../src/core/exploration/worldModelCompatibility.js';
 
 const noise = () => ({
   train: { position: { amount: 0 }, label: { probability: 0, policy: 'flip' }, outliers: { fraction: 0, placement: 'radial', distance: 2 }, local: [] },
@@ -178,7 +179,7 @@ function pathBin(point, sampler, bins = 8) {
     const distance = Math.hypot(point.x - sample.point[0], point.y - sample.point[1]);
     if (distance < bestDistance) { best = sample; bestDistance = distance; }
   }
-  return Math.min(bins - 1, Math.floor(best.t * bins));
+  return Math.min(bins - 1, Math.floor(best.s * bins));
 }
 function pathMass(points, sampler, bins, predicate) {
   return points.filter((point) => predicate(pathBin(point, sampler, bins))).length;
@@ -203,6 +204,35 @@ function assertPathDensity(shape, label) {
 }
 const moonShape = { type: 'moon', params: { outerRadius: 1, innerRadius: 0.7, innerOffset: [0.5, 0], thickness: 0.05 } };
 assertPathDensity(moonShape, 'moon');
+function assertMoonGeometry(shape, label) {
+  const sampler = createWorldRecipePathSampler(shape);
+  assert.ok(sampler?.segments?.length === 2, `${label} exposes outer and inner arc segments`);
+  const [outer, inner] = sampler.segments;
+  const outerFraction = outer.length / sampler.total;
+  const start = sampler.pointAt(0);
+  const outerEnd = sampler.pointAt(outerFraction);
+  const innerStart = sampler.pointAt(outerFraction);
+  const innerEnd = sampler.pointAt(1);
+  const [offsetX, offsetY] = shape.params.innerOffset;
+  const outerDistance = (point) => Math.hypot(point[0], point[1]);
+  const innerDistance = (point) => Math.hypot(point[0] - offsetX, point[1] - offsetY);
+  const epsilon = 0.002;
+  for (const sample of sampler.samples) {
+    const point = sample.point;
+    const onOuter = Math.abs(outerDistance(point) - shape.params.outerRadius) <= epsilon;
+    const onInner = Math.abs(innerDistance(point) - shape.params.innerRadius) <= epsilon;
+    assert.ok(onOuter || onInner, `${label} centerline lies on one of the two circles`);
+    if (onOuter) assert.ok(innerDistance(point) >= shape.params.innerRadius - epsilon, `${label} outer arc stays outside inner disk`);
+    if (onInner) assert.ok(outerDistance(point) <= shape.params.outerRadius + epsilon, `${label} inner arc stays inside outer disk`);
+  }
+  assert.ok(Math.hypot(outerEnd[0] - innerStart[0], outerEnd[1] - innerStart[1]) <= epsilon, `${label} outer-to-inner intersection is continuous`);
+  assert.ok(Math.hypot(innerEnd[0] - start[0], innerEnd[1] - start[1]) <= epsilon, `${label} inner-to-outer intersection is continuous`);
+  const innerMid = sampler.pointAt((outerFraction + 1) / 2);
+  assert.ok(outerDistance(innerMid) < shape.params.outerRadius - 0.05, `${label} inner midpoint is inside outer disk`);
+  const rejectedMinorMidpoint = [offsetX + shape.params.innerRadius, offsetY];
+  assert.ok(outerDistance(rejectedMinorMidpoint) > shape.params.outerRadius, `${label} rejected minor inner arc is outside outer disk`);
+}
+assertMoonGeometry(moonShape, 'moon');
 const moonPoints = pointsFor(moonShape, 500, { type: 'uniform' });
 assert.ok(Math.max(...moonPoints.map((point) => Math.hypot(point.x, point.y))) > 0.95, 'moon contains the convex outer arc');
 assert.ok(moonPoints.some((point) => Math.abs(Math.hypot(point.x - 0.5, point.y) - 0.7) < 0.08), 'moon contains the concave inner arc');
@@ -213,6 +243,7 @@ const moonsPreset = getWorldRecipePreset('moons');
 const moonsMaterialized = materializeWorldRecipe(moonsPreset, 92, { worldId: 'moons-preset' });
 assert.ok(moonsMaterialized.observations.some((point) => point.generation.groupId === 'upper-moon'));
 assert.ok(moonsMaterialized.observations.some((point) => point.generation.groupId === 'lower-moon'));
+for (const groupEntry of moonsPreset.groups) assertMoonGeometry(groupEntry.shape, `moons preset ${groupEntry.id}`);
 const moonGroupMeans = ['upper-moon', 'lower-moon'].map((groupId) => mean(moonsMaterialized.observations.filter((point) => point.generation.groupId === groupId).map((point) => point.x)));
 assert.ok(Math.abs(moonGroupMeans[0] - moonGroupMeans[1]) > 0.5, 'moons preset realizes two distinct crescent groups');
 const ellipseOutline = { type: 'ellipse', params: { radii: [1.4, 0.7], fill: false, thickness: 0.05 } };
@@ -410,6 +441,9 @@ assert.equal(incompatibleProposal.kind, 'clarification');
 assert.equal(incompatibleProposal.interpretation.ambiguity, 'runtime-incompatible-world');
 assert.equal(host.getState().experimentWorkspace.experiments.length, 1, 'incompatible world proposal does not mutate before execution');
 assert.deepEqual(host.getState().experiment, incompatibleBefore, 'incompatible world preflight leaves the live experiment unchanged');
+assert.equal(isWorldModelCompatibilityError({ code: 'INVALID_PLAYGROUND_ACTION', details: { reasonCode: 'world-task-incompatible' } }), true);
+assert.equal(isWorldModelCompatibilityError({ code: 'EXPLORATION_SCENARIO_STALE', details: { reasonCode: 'world-task-incompatible' } }), false);
+assert.equal(isWorldModelCompatibilityError({ code: 'INVALID_PLAYGROUND_ACTION', details: { reasonCode: 'knn-world-invalid' } }), false);
 const regressionRecipe = normalizeWorldRecipe({ ...base, task: 'regression' });
 const regressionProposal = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: { mode: 'create', recipe: regressionRecipe, patch: null, requestedHolds: [] } });
 assert.equal(regressionProposal.kind, 'proposal');
@@ -419,6 +453,21 @@ assert.equal(result.snapshot.experiment.world.generator.kind, 'world-recipe');
 assert.equal(result.snapshot.experiment.world.task, 'regression');
 assert.equal(result.snapshot.experiment.world.generator.realization.recipe.task, 'regression');
 assert.equal(result.fidelity.status, 'exact');
+assert.throws(
+  () => host.preflightExplorationScenario({
+    scenario: { ...regressionProposal.scenario, baseline: { ...regressionProposal.scenario.baseline, conditionFingerprint: 'stale-condition' } },
+  }),
+  /EXPLORATION_PROPOSAL_STALE/,
+  'stale world-design scenarios do not become model incompatibility clarifications',
+);
+assert.throws(
+  () => host.proposeExploration({
+    request: 'Create an oversized world',
+    worldDesign: { mode: 'create', recipe: { ...base, groups: Array.from({ length: 17 }, (_, index) => ({ ...base.groups[index % base.groups.length], id: `oversized-${index}` })) }, patch: null, requestedHolds: [] },
+  }),
+  /EXPLORATION_SCENARIO_RESOURCE_LIMIT/,
+  'resource failures remain resource failures',
+);
 const agentComposerContext = host.inspectContext().exploration.worldComposer;
 assert.equal(agentComposerContext.supported, true);
 assert.equal(agentComposerContext.currentRecipe.groups[0].id, 'class-a');
@@ -438,12 +487,27 @@ const classificationDataset = {
 };
 const classificationHost = createPlaygroundHost({ getDataset: () => classificationDataset });
 await classificationHost.open({ playgroundId: 'data-lab', seed: 43 });
-const classificationResult = applyWorldTransaction(classificationHost.getState().world, {
-  id: 'classification-recipe-transaction', actor: 'human', intent: 'world-recipe',
-  operations: [{ type: 'SET_WORLD_RECIPE', recipe: base, seed: 43 }, { type: 'REGENERATE_WORLD' }],
-});
-assert.equal(classificationResult.world.task, 'classification');
-assert.equal(classificationResult.world.generator.realization.recipe.task, 'classification');
+await classificationHost.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: 'knn-classification' });
+const classificationBefore = structuredClone(classificationHost.getState().experiment);
+const classificationProposal = classificationHost.proposeExploration({ request: 'Create a classification ring world', worldDesign: { mode: 'create', recipe: base, patch: null, requestedHolds: [] } });
+assert.equal(classificationProposal.kind, 'proposal');
+assert.equal(classificationProposal.assessment.fidelity.status, 'exact');
+assert.deepEqual(classificationHost.getState().experiment, classificationBefore, 'classification preflight is detached');
+const classificationResult = await classificationHost.executeExploration({ scenario: classificationProposal.scenario });
+assert.equal(classificationResult.fidelity.status, 'exact');
+assert.equal(classificationResult.snapshot.experiment.world.task, 'classification');
+assert.equal(classificationResult.snapshot.experiment.world.generator.realization.recipe.task, 'classification');
+assert.equal(classificationResult.snapshot.model.adapterId, 'knn');
+assert.equal(classificationResult.snapshot.metrics.trainingPoints, 24);
+assert.equal(classificationResult.snapshot.metrics.testRows, 12);
+assert.equal(classificationResult.snapshot.observables['outcome.trainAccuracy'].available, true);
+assert.equal(classificationResult.snapshot.observables['outcome.testAccuracy'].available, true);
+assert.equal(classificationResult.snapshot.observables['outcome.trainMse'].available, false);
+assert.deepEqual(
+  classificationResult.snapshot.world.observations.map((point) => point.membership),
+  classificationResult.snapshot.experiment.world.observations.map((point) => point.membership),
+  'KNN preserves generated train/test membership',
+);
 await classificationHost.close();
 
 assert.deepEqual(listWorldRecipePresets().map((entry) => entry.id), ['rings', 'moons', 'xor', 'checkerboard']);
