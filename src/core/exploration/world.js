@@ -209,6 +209,19 @@ export function validateWorld(world) {
   if (mode === 'generated' && (!generator || !generator.active || !generator.realization)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator.active' });
   }
+  if (mode === 'generated' && generator?.realization) {
+    const realizationTask = generator.kind === 'world-recipe'
+      ? generator.realization.recipe.task
+      : 'regression';
+    if (world.task !== realizationTask) {
+      throw explorationError('EXPLORATION_INVALID_WORLD', {
+        field: 'task',
+        value: world.task,
+        expected: realizationTask,
+        reason: 'task-realization-mismatch',
+      });
+    }
+  }
   const defaultProvenance = world.observations[0]?.provenance ?? 'manual';
   const observations = world.observations.map((observation, index) => normalizeObservation(observation, index, defaultProvenance));
   const ids = new Set();

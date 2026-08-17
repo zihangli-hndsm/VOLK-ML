@@ -31,8 +31,12 @@ Sampling density is a separate semantic field. `uniform`, `center-heavy`, and
 blobs/ellipses, x-axis for filled rectangles, and path position for paths).
 Gradient density is explicit about its `x` or `path` axis; unsupported
 shape/axis combinations are rejected instead of silently changing geometry.
-Filled polygons are sampled from a deterministic ear-clipped triangulation, so
-all samples are interior points. Self-intersecting polygons are invalid.
+Path density means normalized geometric arc length, not an arbitrary primitive
+parameter. Ellipse outlines, spirals, and moons use deterministic 256-sample
+arc-length lookup tables; the crescent moon is the connected boundary made by
+the intersecting outer and inner circles, with `u` selecting boundary length
+and `v` supplying bounded normal thickness. Non-intersecting moon circles are
+invalid. Filled polygons are sampled from a deterministic ear-clipped triangulation, so all samples are interior points. Self-intersecting polygons are invalid.
 
 Every generated observation keeps bounded generation metadata including recipe
 version, group ID, shape type, sample index, split, noise flags, and anomaly.
@@ -59,6 +63,10 @@ unsupported patch combinations fail before materialization; values are never
 silently coerced or clamped. Transform patches may target `all`, `train`, or
 `test`; split-specific transforms are represented in
 `group.splitTransforms` and remain visible to comparison.
+The provider JSON schemas reuse the same numeric bounds and strict density
+variants as the local validator. Scenario validation derives exact expected
+recipe paths from the normalized recipe plus the validated patch; a caller
+cannot replace that contract with a fabricated path list.
 
 The current conservative limits include 20 coordinate units, 10 scale units,
 20 radius units, 10 thickness units, 20 spiral turns, 5 position-noise units,
@@ -83,6 +91,14 @@ validated patch and records the exact normalized changed paths. Exact-path
 comparison is the final fidelity boundary: an extra group, split, property, or
 component path, or a missing expected path, becomes partial fidelity rather
 than being hidden by a coarse domain or natural-language hold claim.
+`World.task` describes the current materialized realization. Configuring a
+different desired recipe leaves the existing task and observations unchanged
+until regeneration; recipe regeneration atomically switches the task to the
+recipe task, while legacy regeneration produces the legacy regression task.
+Generated-world validation checks task against the current realization, not a
+dirty future recipe. Detached preflight therefore rejects an attached adapter
+that is incompatible with the regenerated task without mutating the live
+session.
 
 Agent interpretation may return only a bounded `world-design` outcome carrying
 a validated recipe or recipe patch. The deterministic planner turns that into

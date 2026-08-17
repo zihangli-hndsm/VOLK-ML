@@ -235,10 +235,16 @@ function normalizeShape(value, field) {
     const outerRadius = positive(params.outerRadius ?? 1, `${field}.params.outerRadius`, { max: WORLD_RECIPE_LIMITS.maxRadius });
     const innerRadius = positive(params.innerRadius ?? 0.8, `${field}.params.innerRadius`, { max: WORLD_RECIPE_LIMITS.maxRadius });
     if (innerRadius >= outerRadius) throw worldRecipeError('EXPLORATION_INVALID_WORLD_RECIPE', { field, reason: 'moon-radii-invalid' });
+    const innerOffset = vector2(params.innerOffset ?? [0.45, 0], `${field}.params.innerOffset`);
+    const offsetDistance = Math.hypot(innerOffset[0], innerOffset[1]);
+    if (!(Math.abs(outerRadius - innerRadius) + 1e-9 < offsetDistance
+      && offsetDistance < outerRadius + innerRadius - 1e-9)) {
+      throw worldRecipeError('EXPLORATION_INVALID_WORLD_RECIPE', { field, reason: 'moon-circles-must-intersect' });
+    }
     normalized = {
       outerRadius,
       innerRadius,
-      innerOffset: vector2(params.innerOffset ?? [0.45, 0], `${field}.params.innerOffset`),
+      innerOffset,
       thickness: positive(params.thickness ?? 0.02, `${field}.params.thickness`, { max: WORLD_RECIPE_LIMITS.maxThickness }),
     };
   } else if (type === 'spiral') {
@@ -303,7 +309,7 @@ function normalizeRegion(value, field) {
     if (min[0] >= max[0] || min[1] >= max[1]) throw worldRecipeError('EXPLORATION_INVALID_WORLD_RECIPE', { field, reason: 'invalid-bbox' });
     return { type: 'bbox', min, max };
   }
-  if (source.type === 'circle') return { type: 'circle', center: vector2(source.center ?? [0, 0], `${field}.center`), radius: positive(source.radius ?? 1, `${field}.radius`) };
+  if (source.type === 'circle') return { type: 'circle', center: vector2(source.center ?? [0, 0], `${field}.center`), radius: positive(source.radius ?? 1, `${field}.radius`, { max: WORLD_RECIPE_LIMITS.maxRadius }) };
   throw worldRecipeError('EXPLORATION_INVALID_WORLD_RECIPE', { field: `${field}.type`, value: source.type });
 }
 
@@ -410,24 +416,36 @@ function nullable(schema) {
   return { anyOf: [schema, { type: 'null' }] };
 }
 
-const number = { type: 'number' };
-const vectorSchema = { type: 'array', minItems: 2, maxItems: 2, items: number };
+const coordinateNumber = { type: 'number', minimum: -WORLD_RECIPE_LIMITS.maxCoordinate, maximum: WORLD_RECIPE_LIMITS.maxCoordinate };
+const positiveRadiusNumber = { type: 'number', exclusiveMinimum: 0, maximum: WORLD_RECIPE_LIMITS.maxRadius };
+const scaleNumber = { type: 'number', exclusiveMinimum: 0, maximum: WORLD_RECIPE_LIMITS.maxScale };
+const thicknessNumber = { type: 'number', exclusiveMinimum: 0, maximum: WORLD_RECIPE_LIMITS.maxThickness };
+const rotationNumber = { type: 'number', minimum: -32 * Math.PI, maximum: 32 * Math.PI };
+const noiseAmountNumber = { type: 'number', minimum: 0, maximum: WORLD_RECIPE_LIMITS.maxNoiseAmount };
+const probabilityNumber = { type: 'number', minimum: 0, maximum: 0.5 };
+const outlierFractionNumber = { type: 'number', minimum: 0, maximum: 0.25 };
+const outlierDistanceNumber = { type: 'number', exclusiveMinimum: 0, maximum: WORLD_RECIPE_LIMITS.maxOutlierDistance };
+const densityStrengthNumber = { type: 'number', minimum: 0, maximum: 1 };
+const densityWeightNumber = { type: 'number', exclusiveMinimum: 0, maximum: WORLD_RECIPE_LIMITS.maxDensityWeight };
+const turnsNumber = { type: 'number', exclusiveMinimum: 0, maximum: WORLD_RECIPE_LIMITS.maxTurns };
+const vectorSchema = { type: 'array', minItems: 2, maxItems: 2, items: coordinateNumber };
+const positiveVectorSchema = { type: 'array', minItems: 2, maxItems: 2, items: scaleNumber };
 const transformSchema = {
   type: 'object', additionalProperties: false,
-  properties: { translate: vectorSchema, rotate: number, scale: vectorSchema },
+  properties: { translate: vectorSchema, rotate: rotationNumber, scale: positiveVectorSchema },
   required: ['translate', 'rotate', 'scale'],
 };
 const densitySchema = {
-  type: 'object', additionalProperties: false,
-  properties: {
-    type: { type: 'string', enum: WORLD_RECIPE_DENSITY_TYPES },
-    strength: nullable(number), from: nullable(number), to: nullable(number), axis: nullable({ type: 'string', enum: ['x', 'path'] }),
-  },
-  required: ['type', 'strength', 'from', 'to', 'axis'],
+  anyOf: [
+    { type: 'object', additionalProperties: false, properties: { type: { const: 'uniform' } }, required: ['type'] },
+    { type: 'object', additionalProperties: false, properties: { type: { const: 'center-heavy' }, strength: densityStrengthNumber }, required: ['type', 'strength'] },
+    { type: 'object', additionalProperties: false, properties: { type: { const: 'edge-heavy' }, strength: densityStrengthNumber }, required: ['type', 'strength'] },
+    { type: 'object', additionalProperties: false, properties: { type: { const: 'gradient' }, from: densityWeightNumber, to: densityWeightNumber, axis: { type: 'string', enum: ['x', 'path'] } }, required: ['type', 'from', 'to', 'axis'] },
+  ],
 };
 const samplingSchema = {
   type: 'object', additionalProperties: false,
-  properties: { count: { type: 'integer', minimum: 0, maximum: WORLD_RECIPE_LIMITS.maxSamplesPerGroupSplit }, density: densitySchema },
+    properties: { count: { type: 'integer', minimum: 0, maximum: WORLD_RECIPE_LIMITS.maxSamplesPerGroupSplit }, density: densitySchema },
   required: ['count', 'density'],
 };
 const boolean = { type: 'boolean' };
@@ -440,36 +458,36 @@ const shapeVariant = (type, properties) => ({
 const pointsSchema = { type: 'array', minItems: 2, maxItems: WORLD_RECIPE_LIMITS.maxPointsPerShape, items: vectorSchema };
 const shapeSchema = {
   anyOf: [
-    shapeVariant('blob', { radius: number, aspect: vectorSchema }),
-    shapeVariant('line', { start: vectorSchema, end: vectorSchema, thickness: number }),
-    shapeVariant('arc', { radius: number, startAngle: number, endAngle: number, thickness: number }),
-    shapeVariant('ring', { radius: number, thickness: number }),
-    shapeVariant('moon', { outerRadius: number, innerRadius: number, innerOffset: vectorSchema, thickness: number }),
-    shapeVariant('spiral', { turns: number, radius: number, startRadius: number, thickness: number }),
-    shapeVariant('rectangle', { width: number, height: number, fill: boolean, thickness: number }),
-    shapeVariant('ellipse', { radii: vectorSchema, fill: boolean, thickness: number }),
-    shapeVariant('polygon', { points: { ...pointsSchema, minItems: 3 }, fill: boolean, thickness: number }),
-    shapeVariant('polyline', { points: { ...pointsSchema, minItems: 2 }, thickness: number }),
+    shapeVariant('blob', { radius: positiveRadiusNumber, aspect: positiveVectorSchema }),
+    shapeVariant('line', { start: vectorSchema, end: vectorSchema, thickness: thicknessNumber }),
+    shapeVariant('arc', { radius: positiveRadiusNumber, startAngle: rotationNumber, endAngle: rotationNumber, thickness: thicknessNumber }),
+    shapeVariant('ring', { radius: positiveRadiusNumber, thickness: thicknessNumber }),
+    shapeVariant('moon', { outerRadius: positiveRadiusNumber, innerRadius: positiveRadiusNumber, innerOffset: vectorSchema, thickness: thicknessNumber }),
+    shapeVariant('spiral', { turns: turnsNumber, radius: positiveRadiusNumber, startRadius: { type: 'number', minimum: 0, maximum: WORLD_RECIPE_LIMITS.maxRadius }, thickness: thicknessNumber }),
+    shapeVariant('rectangle', { width: { type: 'number', exclusiveMinimum: 0, maximum: WORLD_RECIPE_LIMITS.maxCoordinate * 2 }, height: { type: 'number', exclusiveMinimum: 0, maximum: WORLD_RECIPE_LIMITS.maxCoordinate * 2 }, fill: boolean, thickness: thicknessNumber }),
+    shapeVariant('ellipse', { radii: { ...positiveVectorSchema, items: positiveRadiusNumber }, fill: boolean, thickness: thicknessNumber }),
+    shapeVariant('polygon', { points: { ...pointsSchema, minItems: 3 }, fill: boolean, thickness: thicknessNumber }),
+    shapeVariant('polyline', { points: { ...pointsSchema, minItems: 2 }, thickness: thicknessNumber }),
   ],
 };
 const regionSchema = {
   anyOf: [
     { type: 'object', additionalProperties: false, properties: { type: { const: 'bbox' }, min: vectorSchema, max: vectorSchema }, required: ['type', 'min', 'max'] },
-    { type: 'object', additionalProperties: false, properties: { type: { const: 'circle' }, center: vectorSchema, radius: number }, required: ['type', 'center', 'radius'] },
+    { type: 'object', additionalProperties: false, properties: { type: { const: 'circle' }, center: vectorSchema, radius: positiveRadiusNumber }, required: ['type', 'center', 'radius'] },
   ],
 };
 const localNoiseSchema = {
   anyOf: [
-    { type: 'object', additionalProperties: false, properties: { region: regionSchema, kind: { const: 'position' }, amount: number }, required: ['region', 'kind', 'amount'] },
-    { type: 'object', additionalProperties: false, properties: { region: regionSchema, kind: { const: 'label' }, probability: number }, required: ['region', 'kind', 'probability'] },
+    { type: 'object', additionalProperties: false, properties: { region: regionSchema, kind: { const: 'position' }, amount: noiseAmountNumber }, required: ['region', 'kind', 'amount'] },
+    { type: 'object', additionalProperties: false, properties: { region: regionSchema, kind: { const: 'label' }, probability: probabilityNumber }, required: ['region', 'kind', 'probability'] },
   ],
 };
 const noiseSchema = {
   type: 'object', additionalProperties: false,
   properties: {
-    position: { type: 'object', additionalProperties: false, properties: { amount: number }, required: ['amount'] },
-    label: { type: 'object', additionalProperties: false, properties: { probability: number, policy: { type: 'string', enum: ['flip'] } }, required: ['probability', 'policy'] },
-    outliers: { type: 'object', additionalProperties: false, properties: { fraction: number, placement: { type: 'string', enum: ['radial', 'bbox'] }, distance: number }, required: ['fraction', 'placement', 'distance'] },
+    position: { type: 'object', additionalProperties: false, properties: { amount: noiseAmountNumber }, required: ['amount'] },
+    label: { type: 'object', additionalProperties: false, properties: { probability: probabilityNumber, policy: { type: 'string', enum: ['flip'] } }, required: ['probability', 'policy'] },
+    outliers: { type: 'object', additionalProperties: false, properties: { fraction: outlierFractionNumber, placement: { type: 'string', enum: ['radial', 'bbox'] }, distance: outlierDistanceNumber }, required: ['fraction', 'placement', 'distance'] },
     local: { type: 'array', maxItems: WORLD_RECIPE_LIMITS.maxLocalNoiseRulesPerSplit, items: localNoiseSchema },
   },
   required: ['position', 'label', 'outliers', 'local'],
@@ -522,17 +540,17 @@ export function worldRecipePatchJsonSchema() {
         type: 'array', minItems: 1, maxItems: WORLD_RECIPE_LIMITS.maxPatchChanges,
         items: { anyOf: [
           patchVariant('TRANSLATE_GROUP', { ...common, delta: vectorSchema }, ['groupId', 'split', 'delta']),
-          patchVariant('ROTATE_GROUP', { ...common, radians: number }, ['groupId', 'split', 'radians']),
-          patchVariant('SCALE_GROUP', { ...common, scale: vectorSchema }, ['groupId', 'split', 'scale']),
+          patchVariant('ROTATE_GROUP', { ...common, radians: rotationNumber }, ['groupId', 'split', 'radians']),
+          patchVariant('SCALE_GROUP', { ...common, scale: positiveVectorSchema }, ['groupId', 'split', 'scale']),
           patchVariant('SET_GROUP_SAMPLING', { groupId: patchGroupIdSchema, split: patchSplitOnlySchema, sampling: samplingSchema }, ['groupId', 'split', 'sampling']),
           patchVariant('SET_GROUP_SAMPLE_COUNT', { groupId: patchGroupIdSchema, split: patchSplitOnlySchema, count: { type: 'integer', minimum: 0, maximum: WORLD_RECIPE_LIMITS.maxSamplesPerGroupSplit } }, ['groupId', 'split', 'count']),
           {
             anyOf: [
-              patchVariant('SET_NOISE', { split: { type: 'string', enum: ['train', 'test'] }, kind: { const: 'position' }, amount: number }, ['split', 'kind', 'amount']),
-              patchVariant('SET_NOISE', { split: { type: 'string', enum: ['train', 'test'] }, kind: { const: 'label' }, probability: number }, ['split', 'kind', 'probability']),
+              patchVariant('SET_NOISE', { split: { type: 'string', enum: ['train', 'test'] }, kind: { const: 'position' }, amount: noiseAmountNumber }, ['split', 'kind', 'amount']),
+              patchVariant('SET_NOISE', { split: { type: 'string', enum: ['train', 'test'] }, kind: { const: 'label' }, probability: probabilityNumber }, ['split', 'kind', 'probability']),
             ],
           },
-          patchVariant('SET_OUTLIERS', { split: { type: 'string', enum: ['train', 'test'] }, fraction: number, placement: { type: 'string', enum: ['radial', 'bbox'] }, distance: number }, ['split', 'fraction', 'placement', 'distance']),
+          patchVariant('SET_OUTLIERS', { split: { type: 'string', enum: ['train', 'test'] }, fraction: outlierFractionNumber, placement: { type: 'string', enum: ['radial', 'bbox'] }, distance: outlierDistanceNumber }, ['split', 'fraction', 'placement', 'distance']),
           patchVariant('SET_LOCAL_NOISE', { split: { type: 'string', enum: ['train', 'test'] }, local: { type: 'array', maxItems: WORLD_RECIPE_LIMITS.maxLocalNoiseRulesPerSplit, items: localNoiseSchema } }, ['split', 'local']),
         ] },
       },
@@ -605,7 +623,7 @@ export function applyWorldRecipePatch(recipe, patch) {
       target.translate = target.translate.map((value, itemIndex) => value + delta[itemIndex]);
     } else if (type === 'ROTATE_GROUP') target.rotate += changeValue(change.radians, `patch.changes[${index}].radians`);
     else if (type === 'SCALE_GROUP') {
-      const scale = vector2(change.scale, `patch.changes[${index}].scale`, { positiveValues: true });
+      const scale = vector2(change.scale, `patch.changes[${index}].scale`, { positiveValues: true, max: WORLD_RECIPE_LIMITS.maxScale });
       target.scale = target.scale.map((value, itemIndex) => value * scale[itemIndex]);
     } else if (type === 'SET_GROUP_SAMPLING') {
       group.sampling[split] = normalizeSampling(change.sampling, `patch.changes[${index}].sampling`);

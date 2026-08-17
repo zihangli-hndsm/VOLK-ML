@@ -161,6 +161,7 @@ function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
     return {
       world: createWorld({
         ...world,
+        task: generated.recipe.task,
         mode: 'generated',
         observations: generated.observations,
         seed: generated.seed,
@@ -183,6 +184,7 @@ function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
   return {
     world: createWorld({
       ...world,
+      task: 'regression',
       mode: 'generated',
       observations: generated.observations,
       seed: generated.seed,

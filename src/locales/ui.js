@@ -205,6 +205,7 @@ export const messages = {
   'playground.explorationAgent.evidenceFocus': { en: 'Evidence highlighted', zh: '已高亮证据' },
   'playground.explorationAgent.followUps': { en: 'Try next', zh: '下一步可以尝试' },
   'playground.explorationAgent.modelRequired': { en: 'Attach a compatible model before running an exploration proposal.', zh: '运行探索提案前，请先连接兼容模型。' },
+  'playground.explorationAgent.incompatibleWorld': { en: 'This proposed World is not compatible with the attached model.', zh: '这个 World 提案与当前连接的模型不兼容。' },
   'playground.experiment.generator.trainInputDistribution': { en: 'Train input distribution', zh: '训练输入分布' },
   'playground.worldBuilder.configured': { en: 'Generator configured — generate to create samples', zh: '生成器已配置——点击生成以创建样本' },
   'playground.worldBuilder.dirty': { en: 'Generator changed — regenerate to apply', zh: '生成器已更改——重新生成后生效' },

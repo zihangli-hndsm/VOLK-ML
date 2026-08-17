@@ -17,10 +17,11 @@ import {
   worldRecipeSummary,
   WORLD_RECIPE_SHAPE_TYPES,
 } from '../src/core/exploration/worldRecipe.js';
-import { materializeWorldRecipe, applyWorldRecipeTransform } from '../src/core/exploration/worldMaterializer.js';
+import { materializeWorldRecipe, applyWorldRecipeTransform, createWorldRecipePathSampler } from '../src/core/exploration/worldMaterializer.js';
 import { getWorldRecipePreset, listWorldRecipePresets } from '../src/core/exploration/worldRecipePresets.js';
 import { listWorldOperations } from '../src/core/exploration/operationRegistry.js';
 import { evaluateScenarioFidelity } from '../src/core/exploration/scenarioFidelity.js';
+import { validateScenarioSpec } from '../src/core/exploration/scenarioSpec.js';
 
 const noise = () => ({
   train: { position: { amount: 0 }, label: { probability: 0, policy: 'flip' }, outliers: { fraction: 0, placement: 'radial', distance: 2 }, local: [] },
@@ -53,11 +54,28 @@ assert.ok(listWorldOperations().some((operation) => operation.type === 'PATCH_WO
 const patchSchema = worldRecipePatchJsonSchema();
 assert.equal(patchSchema.additionalProperties, false);
 assert.equal(patchSchema.properties.changes.items.anyOf.length, 8, 'all patch types have strict structured variants');
-assert.ok(patchSchema.properties.changes.items.anyOf.some((variant) => variant.properties?.type?.const === 'TRANSLATE_GROUP'));
+const translatePatchSchema = patchSchema.properties.changes.items.anyOf.find((variant) => variant.properties?.type?.const === 'TRANSLATE_GROUP');
+assert.ok(translatePatchSchema);
+assert.equal(translatePatchSchema.properties.delta.items.maximum, 20, 'patch coordinate bound matches local limit');
+const rotatePatchSchema = patchSchema.properties.changes.items.anyOf.find((variant) => variant.properties?.type?.const === 'ROTATE_GROUP');
+assert.equal(rotatePatchSchema.properties.radians.maximum, 32 * Math.PI, 'patch rotation bound matches local limit');
+const scalePatchSchema = patchSchema.properties.changes.items.anyOf.find((variant) => variant.properties?.type?.const === 'SCALE_GROUP');
+assert.equal(scalePatchSchema.properties.scale.items.maximum, 10, 'patch scale bound matches local limit');
+assert.deepEqual(translatePatchSchema.required, ['type', 'groupId', 'split', 'delta']);
 const samplingPatchSchema = patchSchema.properties.changes.items.anyOf.find((variant) => variant.properties?.type?.const === 'SET_GROUP_SAMPLING');
 assert.deepEqual(samplingPatchSchema.properties.split.enum, ['train', 'test']);
 assert.equal(worldRecipePathSemanticDomain('.groups.class-b.sampling.test.count'), 'group-sampling-count');
 assert.equal(worldRecipePathSemanticDomain('.noise.train.position.amount'), 'train-position-noise');
+const fullRecipeSchema = worldRecipeJsonSchema();
+const recipeShapeVariants = fullRecipeSchema.properties.groups.items.properties.shape.anyOf;
+const moonSchema = recipeShapeVariants.find((variant) => variant.properties?.type?.const === 'moon');
+assert.equal(moonSchema.properties.params.properties.outerRadius.maximum, 20, 'schema radius bound matches local limit');
+assert.equal(moonSchema.properties.params.properties.thickness.maximum, 10, 'schema thickness bound matches local limit');
+const densityVariants = fullRecipeSchema.properties.groups.items.properties.sampling.properties.train.properties.density.anyOf;
+assert.equal(densityVariants.find((variant) => variant.properties.type.const === 'uniform').required.length, 1, 'uniform density has no irrelevant fields');
+assert.deepEqual(densityVariants.find((variant) => variant.properties.type.const === 'gradient').required, ['type', 'from', 'to', 'axis']);
+assert.throws(() => normalizeWorldRecipe({ ...recipe(), groups: [{ ...recipe().groups[0], transform: { ...recipe().groups[0].transform, translate: [21, 0] } }, recipe().groups[1]] }), /EXPLORATION_INVALID_WORLD_RECIPE/);
+assert.throws(() => normalizeWorldRecipe({ ...recipe(), groups: [{ ...recipe().groups[0], shape: { type: 'ring', params: { radius: 20, thickness: 10.01 } } }, recipe().groups[1]] }), /EXPLORATION_INVALID_WORLD_RECIPE/);
 
 for (const shapeType of WORLD_RECIPE_SHAPE_TYPES) {
   const shapes = {
@@ -65,7 +83,7 @@ for (const shapeType of WORLD_RECIPE_SHAPE_TYPES) {
     line: { type: 'line', params: { start: [-1, -1], end: [1, 1], thickness: 0.1 } },
     arc: { type: 'arc', params: { radius: 1, startAngle: 0, endAngle: Math.PI, thickness: 0.1 } },
     ring: { type: 'ring', params: { radius: 1, thickness: 0.1 } },
-    moon: { type: 'moon', params: { outerRadius: 1, innerRadius: 0.7, innerOffset: [0.3, 0], thickness: 0.1 } },
+    moon: { type: 'moon', params: { outerRadius: 1, innerRadius: 0.7, innerOffset: [0.5, 0], thickness: 0.1 } },
     spiral: { type: 'spiral', params: { turns: 1.5, radius: 1, startRadius: 0.1, thickness: 0.1 } },
     rectangle: { type: 'rectangle', params: { width: 1, height: 1, fill: true, thickness: 0.1 } },
     ellipse: { type: 'ellipse', params: { radii: [1, 0.5], fill: true, thickness: 0.1 } },
@@ -153,23 +171,52 @@ const pathCenter = pointsFor({ type: 'arc', params: { radius: 1, startAngle: 0, 
 const pathDistanceFromEnds = (point) => Math.min(Math.atan2(point.y, point.x), Math.PI - Math.atan2(point.y, point.x));
 assert.ok(pathEdge.filter((point) => pathDistanceFromEnds(point) < 0.35).length > pathEdge.filter((point) => pathDistanceFromEnds(point) > 1.0).length * 1.3, 'edge-heavy uses path distance near both ends');
 assert.ok(pathCenter.filter((point) => pathDistanceFromEnds(point) > 1.0).length > pathCenter.filter((point) => pathDistanceFromEnds(point) < 0.35).length * 1.2, 'center-heavy uses path distance near the middle');
-const closedPathParameter = (point) => ((Math.atan2(point.y, point.x) + Math.PI * 2) % (Math.PI * 2)) / (Math.PI * 2);
-const centerParameterMass = (points) => points.filter((point) => Math.abs(closedPathParameter(point) - 0.5) < 0.15).length;
-const edgeParameterMass = (points) => points.filter((point) => Math.min(closedPathParameter(point), 1 - closedPathParameter(point)) < 0.15).length;
-const moonShape = { type: 'moon', params: { outerRadius: 1, innerRadius: 0.1, innerOffset: [0.8, 0], thickness: 0.05 } };
-const moonCenter = pointsFor(moonShape, 500, { type: 'center-heavy', strength: 1 });
-const moonEdge = pointsFor(moonShape, 500, { type: 'edge-heavy', strength: 1 });
-assert.ok(centerParameterMass(moonCenter) > edgeParameterMass(moonCenter) * 1.3, 'moon center-heavy concentrates normalized path position');
-assert.ok(edgeParameterMass(moonEdge) > centerParameterMass(moonEdge) * 1.3, 'moon edge-heavy concentrates normalized path endpoints');
-const moonGradient = pointsFor(moonShape, 500, { type: 'gradient', from: 5, to: 0.2, axis: 'path' });
-assert.ok(moonGradient.filter((point) => closedPathParameter(point) < 0.2).length > moonGradient.filter((point) => closedPathParameter(point) > 0.5).length, 'moon path gradient changes angular density');
+function pathBin(point, sampler, bins = 8) {
+  let best = sampler.samples[0];
+  let bestDistance = Infinity;
+  for (const sample of sampler.samples) {
+    const distance = Math.hypot(point.x - sample.point[0], point.y - sample.point[1]);
+    if (distance < bestDistance) { best = sample; bestDistance = distance; }
+  }
+  return Math.min(bins - 1, Math.floor(best.t * bins));
+}
+function pathMass(points, sampler, bins, predicate) {
+  return points.filter((point) => predicate(pathBin(point, sampler, bins))).length;
+}
+function assertPathDensity(shape, label) {
+  const sampler = createWorldRecipePathSampler(shape);
+  const uniform = pointsFor(shape, 500, { type: 'uniform' });
+  const center = pointsFor(shape, 500, { type: 'center-heavy', strength: 1 });
+  const edge = pointsFor(shape, 500, { type: 'edge-heavy', strength: 1 });
+  const gradient = pointsFor(shape, 500, { type: 'gradient', from: 5, to: 0.2, axis: 'path' });
+  const centerMass = pathMass(center, sampler, 8, (bin) => bin === 3 || bin === 4);
+  const centerEdgeMass = pathMass(center, sampler, 8, (bin) => bin === 0 || bin === 7);
+  const edgeMass = pathMass(edge, sampler, 8, (bin) => bin === 0 || bin === 7);
+  const edgeCenterMass = pathMass(edge, sampler, 8, (bin) => bin === 3 || bin === 4);
+  const gradientStart = pathMass(gradient, sampler, 8, (bin) => bin === 0 || bin === 1);
+  const gradientEnd = pathMass(gradient, sampler, 8, (bin) => bin === 6 || bin === 7);
+  const uniformBins = Array.from({ length: 8 }, (_, bin) => pathMass(uniform, sampler, 8, (value) => value === bin));
+  assert.ok(Math.max(...uniformBins) < Math.min(...uniformBins) * 2.5, `${label} uniform density is approximately even in arc-length bins`);
+  assert.ok(centerMass > centerEdgeMass * 1.25, `${label} center-heavy follows normalized arc length`);
+  assert.ok(edgeMass > edgeCenterMass * 1.25, `${label} edge-heavy follows normalized arc length`);
+  assert.ok(gradientStart > gradientEnd * 1.5, `${label} path gradient follows normalized arc length`);
+}
+const moonShape = { type: 'moon', params: { outerRadius: 1, innerRadius: 0.7, innerOffset: [0.5, 0], thickness: 0.05 } };
+assertPathDensity(moonShape, 'moon');
+const moonPoints = pointsFor(moonShape, 500, { type: 'uniform' });
+assert.ok(Math.max(...moonPoints.map((point) => Math.hypot(point.x, point.y))) > 0.95, 'moon contains the convex outer arc');
+assert.ok(moonPoints.some((point) => Math.abs(Math.hypot(point.x - 0.5, point.y) - 0.7) < 0.08), 'moon contains the concave inner arc');
+assert.throws(() => normalizeWorldRecipe({ ...base, groups: [{ ...base.groups[0], shape: { ...moonShape, params: { ...moonShape.params, innerOffset: [0.2, 0] } } }] }), /EXPLORATION_INVALID_WORLD_RECIPE/);
+const moonsPreset = getWorldRecipePreset('moons');
+const moonsMaterialized = materializeWorldRecipe(moonsPreset, 92, { worldId: 'moons-preset' });
+assert.ok(moonsMaterialized.observations.some((point) => point.generation.groupId === 'upper-moon'));
+assert.ok(moonsMaterialized.observations.some((point) => point.generation.groupId === 'lower-moon'));
+const moonGroupMeans = ['upper-moon', 'lower-moon'].map((groupId) => mean(moonsMaterialized.observations.filter((point) => point.generation.groupId === groupId).map((point) => point.x)));
+assert.ok(Math.abs(moonGroupMeans[0] - moonGroupMeans[1]) > 0.5, 'moons preset realizes two distinct crescent groups');
 const ellipseOutline = { type: 'ellipse', params: { radii: [1.4, 0.7], fill: false, thickness: 0.05 } };
-const ellipseCenter = pointsFor(ellipseOutline, 500, { type: 'center-heavy', strength: 1 });
-const ellipseEdge = pointsFor(ellipseOutline, 500, { type: 'edge-heavy', strength: 1 });
-assert.ok(centerParameterMass(ellipseCenter) > edgeParameterMass(ellipseCenter) * 1.3, 'ellipse outline center-heavy concentrates normalized path position');
-assert.ok(edgeParameterMass(ellipseEdge) > centerParameterMass(ellipseEdge) * 1.3, 'ellipse outline edge-heavy concentrates normalized path endpoints');
-const ellipseGradient = pointsFor(ellipseOutline, 500, { type: 'gradient', from: 5, to: 0.2, axis: 'path' });
-assert.ok(ellipseGradient.filter((point) => closedPathParameter(point) < 0.2).length > ellipseGradient.filter((point) => closedPathParameter(point) > 0.5).length, 'ellipse outline path gradient changes angular density');
+assertPathDensity(ellipseOutline, 'ellipse outline');
+const spiralShape = { type: 'spiral', params: { turns: 1.2, radius: 1.2, startRadius: 0.8, thickness: 0.05 } };
+assertPathDensity(spiralShape, 'spiral');
 const ringGradient = pointsFor({ type: 'ring', params: { radius: 1, thickness: 0.05 } }, 500, { type: 'gradient', from: 5, to: 0.2, axis: 'path' });
 assert.ok(ringGradient.filter((point) => Math.abs(Math.atan2(point.y, point.x)) < 0.35).length > ringGradient.filter((point) => Math.abs(Math.atan2(point.y, point.x) - Math.PI) < 0.35).length, 'ring path gradient changes angular density');
 const rectangleGradient = pointsFor({ type: 'rectangle', params: { width: 2, height: 1, fill: true, thickness: 0.1 } }, 500, { type: 'gradient', from: 5, to: 0.2, axis: 'x' });
@@ -249,6 +296,8 @@ assert.equal(changed.generator.status, 'dirty');
 assert.equal(changed.observations.length, generated.observations.length, 'recipe edits keep realization until explicit regenerate');
 const regenerated = applyWorldTransaction(changed, { id: 'recipe-regenerate', actor: 'human', intent: 'regenerate-world', operations: [{ type: 'REGENERATE_WORLD' }] }).world;
 assert.equal(regenerated.observations.length, 44);
+assert.equal(regenerated.task, 'classification');
+assert.equal(regenerated.generator.realization.recipe.task, 'classification');
 assert.ok(deriveWorldGeneratorFacts(regenerated).needsRegeneration === false);
 const legacyTransitionSpec = normalizeGeneratorSpec({
   relation: { slope: 1, bias: 0 },
@@ -265,13 +314,17 @@ const legacyGenerated = applyWorldTransaction(
 const recipeAfterLegacy = applyWorldTransaction(legacyGenerated, { id: 'legacy-to-recipe', actor: 'human', intent: 'world-design', operations: [{ type: 'SET_WORLD_RECIPE', recipe: base, seed: 17 }] }).world;
 assert.equal(recipeAfterLegacy.generator.kind, 'world-recipe');
 assert.equal(recipeAfterLegacy.generator.realization, null);
+assert.equal(recipeAfterLegacy.task, 'regression', 'changing the desired recipe does not relabel the current realization');
 const recipeRegeneratedAfterLegacy = applyWorldTransaction(recipeAfterLegacy, { id: 'recipe-regenerate-after-legacy', actor: 'human', intent: 'regenerate-world', operations: [{ type: 'REGENERATE_WORLD' }] }).world;
 assert.equal(recipeRegeneratedAfterLegacy.generator.realization.kind, 'world-recipe');
+assert.equal(recipeRegeneratedAfterLegacy.task, 'classification');
 const legacyAfterRecipe = applyWorldTransaction(recipeRegeneratedAfterLegacy, { id: 'recipe-to-legacy', actor: 'human', intent: 'configure-generator', operations: [{ type: 'SET_WORLD_GENERATOR', spec: legacyTransitionSpec }] }).world;
 assert.equal(legacyAfterRecipe.generator.kind, 'legacy-generator');
 assert.equal(legacyAfterRecipe.generator.realization, null);
+assert.equal(legacyAfterRecipe.task, 'classification', 'changing to a legacy generator does not relabel the current realization');
 const legacyRegeneratedAfterRecipe = applyWorldTransaction(legacyAfterRecipe, { id: 'legacy-regenerate-after-recipe', actor: 'human', intent: 'regenerate-world', operations: [{ type: 'REGENERATE_WORLD' }] }).world;
 assert.equal(legacyRegeneratedAfterRecipe.generator.realization.kind, 'legacy-generator');
+assert.equal(legacyRegeneratedAfterRecipe.task, 'regression');
 const frozen = applyWorldTransaction(regenerated, { id: 'recipe-freeze', actor: 'human', intent: 'freeze', operations: [{ type: 'FREEZE_AS_SAMPLES' }] }).world;
 assert.equal(frozen.mode, 'sample');
 
@@ -349,24 +402,47 @@ assert.equal(wholeRecipeFidelity.status, 'exact');
 const host = createPlaygroundHost({ getDataset: () => null });
 await host.open({ playgroundId: 'data-lab', seed: 42 });
 await host.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: 'linear-regression' });
-const proposal = host.proposeExploration({ request: 'Create a ring world', worldDesign: { mode: 'create', recipe: getWorldRecipePreset('rings'), patch: null, requestedHolds: [] } });
-assert.equal(proposal.kind, 'proposal');
-assert.equal(proposal.assessment.fidelity.status, 'exact');
-assert.equal(host.getState().experimentWorkspace.experiments.length, 1, 'world design proposal does not mutate before execution');
-const result = await host.executeExploration({ scenario: proposal.scenario });
+const incompatibleBefore = structuredClone(host.getState().experiment);
+const incompatibleProposal = host.proposeExploration({ request: 'Create a classification ring world', worldDesign: { mode: 'create', recipe: getWorldRecipePreset('rings'), patch: null, requestedHolds: [] } });
+assert.equal(incompatibleProposal.kind, 'clarification');
+assert.equal(incompatibleProposal.interpretation.ambiguity, 'runtime-incompatible-world');
+assert.equal(host.getState().experimentWorkspace.experiments.length, 1, 'incompatible world proposal does not mutate before execution');
+assert.deepEqual(host.getState().experiment, incompatibleBefore, 'incompatible world preflight leaves the live experiment unchanged');
+const regressionRecipe = normalizeWorldRecipe({ ...base, task: 'regression' });
+const regressionProposal = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: { mode: 'create', recipe: regressionRecipe, patch: null, requestedHolds: [] } });
+assert.equal(regressionProposal.kind, 'proposal');
+assert.equal(regressionProposal.assessment.fidelity.status, 'exact');
+const result = await host.executeExploration({ scenario: regressionProposal.scenario });
 assert.equal(result.snapshot.experiment.world.generator.kind, 'world-recipe');
-assert.equal(result.snapshot.experiment.world.observations.length, 280);
+assert.equal(result.snapshot.experiment.world.task, 'regression');
+assert.equal(result.snapshot.experiment.world.generator.realization.recipe.task, 'regression');
 assert.equal(result.fidelity.status, 'exact');
 const agentComposerContext = host.inspectContext().exploration.worldComposer;
 assert.equal(agentComposerContext.supported, true);
-assert.equal(agentComposerContext.currentRecipe.groups[0].id, 'outer-ring');
+assert.equal(agentComposerContext.currentRecipe.groups[0].id, 'class-a');
 assert.deepEqual(agentComposerContext.currentRecipe.groups[0].trainDensity, { type: 'uniform' });
 assert.equal('observations' in agentComposerContext.currentRecipe, false, 'Agent recipe summary is relative and does not include raw observations');
 await host.dispatch({ type: 'REPEAT_EXPERIMENT', trials: 2 });
 assert.equal(host.getState().repeatEvidence?.trials?.length, 2, 'recipe Worlds use the normal Repeat lifecycle');
-const editProposal = host.proposeExploration({ request: 'Move class B right', worldDesign: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'inner-blob', split: 'all', delta: [0.7, 0] }] }, requestedHolds: ['model-configuration'] } });
+const editProposal = host.proposeExploration({ request: 'Move class B right', worldDesign: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-b', split: 'all', delta: [0.7, 0] }] }, requestedHolds: ['model-configuration'] } });
 assert.equal(editProposal.kind, 'proposal');
 assert.equal(editProposal.assessment.fidelity.status, 'exact');
+assert.throws(() => validateScenarioSpec({ ...editProposal.scenario, intendedWorldRecipePaths: ['.groups.class-a.shape.type'] }, host.inspectContext()), /EXPLORATION_SCENARIO_INVALID/);
+
+const classificationDataset = {
+  name: 'World Composer classification', task: 'classification', featureColumns: ['x', 'y'], targetColumn: 'label',
+  columns: [{ name: 'x', type: 'number' }, { name: 'y', type: 'number' }, { name: 'label', type: 'string' }],
+  rows: [{ x: -1, y: -1, label: '0' }, { x: -0.8, y: -1.1, label: '0' }, { x: 1, y: 1, label: '1' }, { x: 0.8, y: 1.1, label: '1' }],
+};
+const classificationHost = createPlaygroundHost({ getDataset: () => classificationDataset });
+await classificationHost.open({ playgroundId: 'data-lab', seed: 43 });
+const classificationResult = applyWorldTransaction(classificationHost.getState().world, {
+  id: 'classification-recipe-transaction', actor: 'human', intent: 'world-recipe',
+  operations: [{ type: 'SET_WORLD_RECIPE', recipe: base, seed: 43 }, { type: 'REGENERATE_WORLD' }],
+});
+assert.equal(classificationResult.world.task, 'classification');
+assert.equal(classificationResult.world.generator.realization.recipe.task, 'classification');
+await classificationHost.close();
 
 assert.deepEqual(listWorldRecipePresets().map((entry) => entry.id), ['rings', 'moons', 'xor', 'checkerboard']);
 console.log('World Composer checks passed: canonical recipe validation, primitive/preset materialization, deterministic substreams, noise/provenance, atomic lifecycle, comparison, fidelity, Agent proposal, and legacy compatibility.');

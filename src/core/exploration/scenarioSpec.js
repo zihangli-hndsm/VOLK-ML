@@ -1,7 +1,7 @@
 import { MAX_WORLD_TRANSACTION_OPERATIONS } from './operations.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { validateCanonicalControlValue } from '../playground/controlValidation.js';
-import { WORLD_RECIPE_SEMANTIC_DOMAINS, applyWorldRecipePatch, normalizeWorldRecipe } from './worldRecipe.js';
+import { WORLD_RECIPE_SEMANTIC_DOMAINS, applyWorldRecipePatch, normalizeWorldRecipe, worldRecipePatchChangedPaths } from './worldRecipe.js';
 
 export const SCENARIO_SPEC_VERSION = 1;
 export const SCENARIO_FIDELITY_STATUSES = ['exact', 'partial', 'approximate'];
@@ -217,6 +217,23 @@ export function validateScenarioSpec(spec, context = {}) {
   const intendedWorldRecipePaths = spec.intendedWorldRecipePaths === undefined
     ? null
     : stringArray(spec.intendedWorldRecipePaths, 'intendedWorldRecipePaths');
+  const recipeChange = changes.find((change) => change.operation === 'PATCH_WORLD_RECIPE' || change.operation === 'SET_WORLD_RECIPE');
+  let canonicalWorldRecipePaths = null;
+  if (recipeChange?.operation === 'PATCH_WORLD_RECIPE') {
+    canonicalWorldRecipePaths = worldRecipePatchChangedPaths(
+      context.world.generator.recipe,
+      recipeChange.parameters.patch,
+    );
+  } else if (recipeChange?.operation === 'SET_WORLD_RECIPE') {
+    canonicalWorldRecipePaths = ['whole-recipe'];
+  }
+  if (canonicalWorldRecipePaths) {
+    if (intendedWorldRecipePaths && JSON.stringify(intendedWorldRecipePaths) !== JSON.stringify(canonicalWorldRecipePaths)) {
+      throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'intendedWorldRecipePaths', reason: 'must-match-canonical-recipe-diff' });
+    }
+  } else if (intendedWorldRecipePaths) {
+    throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'intendedWorldRecipePaths', reason: 'recipe-operation-required' });
+  }
   const heldWorldRecipeDomains = spec.heldWorldRecipeDomains === undefined
     ? null
     : worldRecipeDomainArray(spec.heldWorldRecipeDomains, 'heldWorldRecipeDomains');
@@ -253,7 +270,7 @@ export function validateScenarioSpec(spec, context = {}) {
     change: changes,
     ...(intendedFactors ? { intendedFactors } : {}),
     ...(intendedWorldRecipeDomains ? { intendedWorldRecipeDomains } : {}),
-    ...(intendedWorldRecipePaths ? { intendedWorldRecipePaths } : {}),
+    ...(canonicalWorldRecipePaths ? { intendedWorldRecipePaths: canonicalWorldRecipePaths } : intendedWorldRecipePaths ? { intendedWorldRecipePaths } : {}),
     ...(heldWorldRecipeDomains ? { heldWorldRecipeDomains } : {}),
     hold,
     observe,

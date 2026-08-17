@@ -12,7 +12,9 @@
 
 - Rebased the existing World Composer acceptance branch onto the merged PR #99 main ancestry and retained the semantic fixes without a duplicate parallel ancestor.
 - Scenario fidelity now compares exact normalized recipe paths for edits, including group, split, property, and component identity; whole-recipe creation remains an explicit exception.
-- Moon and ellipse-outline materialization now use the normalized path coordinate for density semantics, while local patch validation now matches the structured schema for non-empty patches and required transform splits.
+- World.task now follows the current materialized realization rather than a dirty desired recipe, and detached preflight rejects incompatible attached models atomically.
+- Moon materialization is a validated intersecting-circle crescent with real inner/outer arcs; ellipse outlines, spirals, and moons apply density over deterministic geometric arc length.
+- Provider numeric schema fragments, local patch validation, and canonical ScenarioSpec recipe paths now share strict bounds and cannot trust fabricated fidelity declarations.
 - Acceptance: World Composer, Exploration Agent, OpenAI Responses, World Builder, full `npm run check`, production build, and `git diff --check` pass; no browser or GitHub Actions claim is made.
 
 ## 2026-08-13 - Phase 5 Exploration Agent learner mode

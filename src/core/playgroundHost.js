@@ -746,7 +746,23 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         : planExplorationRequest(request, context);
       if (planned.kind !== 'proposal') return planned;
       const validated = validateScenarioSpec(planned.scenario, context);
-      const assessment = this.preflightExplorationScenario({ scenario: validated });
+      let assessment;
+      try {
+        assessment = this.preflightExplorationScenario({ scenario: validated });
+      } catch (error) {
+        if (!worldDesign) throw error;
+        return {
+          kind: 'clarification',
+          request: request ?? 'Design a deterministic world',
+          interpretation: {
+            kind: 'world-design',
+            ambiguity: 'runtime-incompatible-world',
+            messageKey: 'playground.explorationAgent.incompatibleWorld',
+            choices: [],
+            errorCode: error?.code ?? 'EXPLORATION_RUNTIME_INCOMPATIBLE',
+          },
+        };
+      }
       return { ...planned, scenario: validated, assessment };
     },
 

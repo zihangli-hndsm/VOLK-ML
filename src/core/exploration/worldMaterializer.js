@@ -146,39 +146,152 @@ function sampleTriangle(triangles, rng) {
   return [first * a[0] + second * b[0] + (1 - first - second) * c[0], first * a[1] + second * b[1] + (1 - first - second) * c[1]];
 }
 
-function samplePolyline(points, parameter, offset, thickness) {
+const PATH_TABLE_RESOLUTION = 256;
+
+function buildArcLengthTable(pointAt, resolution = PATH_TABLE_RESOLUTION) {
+  const samples = [{ t: 0, point: pointAt(0), length: 0 }];
+  let total = 0;
+  for (let index = 1; index <= resolution; index += 1) {
+    const t = index / resolution;
+    const point = pointAt(t);
+    total += distance(samples[index - 1].point, point);
+    samples.push({ t, point, length: total });
+  }
+  return { samples, total };
+}
+
+function parameterAtArcLength(table, normalizedLength) {
+  const target = Math.max(0, Math.min(1, normalizedLength)) * table.total;
+  let low = 0;
+  let high = table.samples.length - 1;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (table.samples[middle].length < target) low = middle + 1;
+    else high = middle;
+  }
+  const right = table.samples[low];
+  const left = table.samples[Math.max(0, low - 1)];
+  const span = right.length - left.length;
+  const amount = span <= Number.EPSILON ? 0 : (target - left.length) / span;
+  return lerp(left.t, right.t, amount);
+}
+
+function polylinePointAt(points, parameter) {
   const lengths = points.slice(1).map((point, index) => distance(points[index], point));
   const total = lengths.reduce((sum, value) => sum + value, 0);
   let remaining = parameter * total;
   let segmentIndex = lengths.length - 1;
   for (let index = 0; index < lengths.length; index += 1) {
-    if (remaining <= lengths[index]) {
-      segmentIndex = index;
-      break;
-    }
+    if (remaining <= lengths[index]) { segmentIndex = index; break; }
     remaining -= lengths[index];
   }
   const start = points[segmentIndex];
   const end = points[segmentIndex + 1];
-  const segmentLength = Math.max(lengths[segmentIndex], Number.EPSILON);
-  const t = remaining / segmentLength;
-  const dx = end[0] - start[0];
-  const dy = end[1] - start[1];
-  const normalLength = Math.max(Math.hypot(dx, dy), Number.EPSILON);
+  return [lerp(start[0], end[0], remaining / Math.max(lengths[segmentIndex], Number.EPSILON)), lerp(start[1], end[1], remaining / Math.max(lengths[segmentIndex], Number.EPSILON))];
+}
+
+function crescentSegments(params) {
+  const [offsetX, offsetY] = params.innerOffset;
+  const distanceBetweenCenters = Math.hypot(offsetX, offsetY);
+  const baseAngle = Math.atan2(offsetY, offsetX);
+  const outerAlong = (params.outerRadius ** 2 - params.innerRadius ** 2 + distanceBetweenCenters ** 2) / (2 * distanceBetweenCenters);
+  const outerHeight = Math.sqrt(Math.max(0, params.outerRadius ** 2 - outerAlong ** 2));
+  const outerHalfAngle = Math.atan2(outerHeight, outerAlong);
+  const outerStart = baseAngle + outerHalfAngle;
+  const outerEnd = baseAngle - outerHalfAngle;
+  const pointAtOuter = (angle) => [Math.cos(angle) * params.outerRadius, Math.sin(angle) * params.outerRadius];
+  const upper = pointAtOuter(outerStart);
+  const lower = pointAtOuter(outerEnd);
+  const innerStart = Math.atan2(lower[1] - offsetY, lower[0] - offsetX);
+  const innerEnd = Math.atan2(upper[1] - offsetY, upper[0] - offsetX);
+  const ccwDelta = (end, start) => (end - start + TWO_PI) % TWO_PI;
+  const outerLength = ccwDelta(outerEnd, outerStart) * params.outerRadius;
+  const innerLength = ccwDelta(innerEnd, innerStart) * params.innerRadius;
   return [
-    lerp(start[0], end[0], t) - (dy / normalLength) * offset * thickness,
-    lerp(start[1], end[1], t) + (dx / normalLength) * offset * thickness,
+    { center: [0, 0], radius: params.outerRadius, start: outerStart, end: outerEnd, length: outerLength },
+    { center: [offsetX, offsetY], radius: params.innerRadius, start: innerStart, end: innerEnd, length: innerLength },
   ];
 }
 
-function sampleShape(shape, u, v, rng) {
+function moonPointAt(params, normalizedLength, offset) {
+  const segments = crescentSegments(params);
+  const total = segments[0].length + segments[1].length;
+  let remaining = Math.max(0, Math.min(1, normalizedLength)) * total;
+  const segment = remaining <= segments[0].length ? segments[0] : segments[1];
+  if (segment === segments[1]) remaining -= segments[0].length;
+  const local = remaining / Math.max(segment.length, Number.EPSILON);
+  const angle = segment.start + ((segment.end - segment.start + TWO_PI) % TWO_PI) * local;
+  const radius = segment.radius + offset;
+  return [segment.center[0] + Math.cos(angle) * radius, segment.center[1] + Math.sin(angle) * radius];
+}
+
+function createPathSampler(shape) {
+  const { type, params } = shape;
+  if (type === 'moon') {
+    const segments = crescentSegments(params);
+    const total = segments[0].length + segments[1].length;
+    const pointAt = (s) => moonPointAt(params, s, 0);
+    return { pointAt, table: buildArcLengthTable(pointAt), total };
+  }
+  let curve;
+  if (type === 'ellipse' && !params.fill) {
+    curve = (t) => [Math.cos(t * TWO_PI) * params.radii[0], Math.sin(t * TWO_PI) * params.radii[1]];
+  } else if (type === 'spiral') {
+    curve = (t) => {
+      const angle = t * params.turns * TWO_PI;
+      const radius = lerp(params.startRadius, params.radius, t);
+      return [Math.cos(angle) * radius, Math.sin(angle) * radius];
+    };
+  } else if (type === 'line') curve = (t) => polylinePointAt([params.start, params.end], t);
+  else if (type === 'polyline') curve = (t) => polylinePointAt(params.points, t);
+  else if (type === 'polygon' && !params.fill) curve = (t) => polylinePointAt([...params.points, params.points[0]], t);
+  else if (type === 'rectangle' && !params.fill) curve = (t) => {
+    const perimeter = 2 * (params.width + params.height);
+    const along = t * perimeter;
+    if (along < params.width) return [along - params.width / 2, -params.height / 2];
+    if (along < params.width + params.height) return [params.width / 2, along - params.width - params.height / 2];
+    if (along < 2 * params.width + params.height) return [params.width / 2 - (along - params.width - params.height), params.height / 2];
+    return [-params.width / 2, params.height / 2 - (along - 2 * params.width - params.height)];
+  };
+  if (!curve) return null;
+  const table = buildArcLengthTable(curve);
+  return { pointAt: (s) => curve(parameterAtArcLength(table, s)), table };
+}
+
+export function createWorldRecipePathSampler(shape) {
+  const sampler = createPathSampler(shape);
+  if (!sampler) return null;
+  return { pointAt: sampler.pointAt, samples: sampler.table.samples.map((sample) => ({ ...sample, point: [...sample.point] })), total: sampler.table.total };
+}
+
+function pathPointWithThickness(shape, sampler, s, v) {
+  const fullWidthBand = shape.type === 'line' || shape.type === 'polyline' || (shape.type === 'polygon' && !shape.params.fill);
+  const offset = (v - 0.5) * shape.params.thickness * (fullWidthBand ? 2 : 1);
+  const point = sampler.pointAt(s);
+  if (shape.type === 'moon') {
+    const inner = crescentSegments(shape.params)[1];
+    const total = crescentSegments(shape.params).reduce((sum, segment) => sum + segment.length, 0);
+    const outerLength = crescentSegments(shape.params)[0].length;
+    const segment = s * total <= outerLength ? crescentSegments(shape.params)[0] : inner;
+    const radial = [point[0] - segment.center[0], point[1] - segment.center[1]];
+    const length = Math.max(Math.hypot(radial[0], radial[1]), Number.EPSILON);
+    return [point[0] + radial[0] / length * offset, point[1] + radial[1] / length * offset];
+  }
+  const ahead = sampler.pointAt(Math.min(1, s + 1e-4));
+  const dx = ahead[0] - point[0];
+  const dy = ahead[1] - point[1];
+  const length = Math.max(Math.hypot(dx, dy), Number.EPSILON);
+  return [point[0] - dy / length * offset, point[1] + dx / length * offset];
+}
+
+function sampleShape(shape, u, v, rng, sampler) {
   const { type, params } = shape;
   const angle = v * TWO_PI;
   if (type === 'blob') {
     const radius = params.radius * Math.sqrt(u);
     return [Math.cos(angle) * radius * params.aspect[0], Math.sin(angle) * radius * params.aspect[1]];
   }
-  if (type === 'line') return samplePolyline([params.start, params.end], u, (v - 0.5) * 2, params.thickness);
+  if (type === 'line' || type === 'polyline' || (type === 'polygon' && !params.fill) || (type === 'rectangle' && !params.fill)) return pathPointWithThickness(shape, sampler, u, v);
   if (type === 'arc') {
     const arcAngle = lerp(params.startAngle, params.endAngle, u);
     const radius = params.radius + (v - 0.5) * params.thickness;
@@ -189,21 +302,9 @@ function sampleShape(shape, u, v, rng) {
     const pathAngle = u * TWO_PI;
     return [Math.cos(pathAngle) * radius, Math.sin(pathAngle) * radius];
   }
-  if (type === 'moon') {
-    const pathAngle = u * TWO_PI;
-    const radius = params.outerRadius + (v - 0.5) * params.thickness;
-    let point = [Math.cos(pathAngle) * radius, Math.sin(pathAngle) * radius];
-    const innerX = point[0] - params.innerOffset[0];
-    const innerY = point[1] - params.innerOffset[1];
-    if (Math.hypot(innerX, innerY) < params.innerRadius) {
-      point = [-point[0], point[1]];
-    }
-    return point;
-  }
+  if (type === 'moon') return pathPointWithThickness(shape, sampler, u, v);
   if (type === 'spiral') {
-    const spiralAngle = u * params.turns * TWO_PI;
-    const radius = lerp(params.startRadius, params.radius, u) + (v - 0.5) * params.thickness;
-    return [Math.cos(spiralAngle) * radius, Math.sin(spiralAngle) * radius];
+    return pathPointWithThickness(shape, sampler, u, v);
   }
   if (type === 'rectangle') {
     if (params.fill) return [(u - 0.5) * params.width, (v - 0.5) * params.height];
@@ -219,20 +320,13 @@ function sampleShape(shape, u, v, rng) {
       const radius = Math.sqrt(u);
       return [Math.cos(angle) * params.radii[0] * radius, Math.sin(angle) * params.radii[1] * radius];
     }
-    const pathAngle = u * TWO_PI;
-    const cosine = Math.cos(pathAngle);
-    const sine = Math.sin(pathAngle);
-    const base = [cosine * params.radii[0], sine * params.radii[1]];
-    const normalLength = Math.hypot(cosine / params.radii[0], sine / params.radii[1]);
-    const normal = [(cosine / params.radii[0]) / normalLength, (sine / params.radii[1]) / normalLength];
-    const offset = (v - 0.5) * params.thickness;
-    return [base[0] + normal[0] * offset, base[1] + normal[1] * offset];
+    return pathPointWithThickness(shape, sampler, u, v);
   }
   if (type === 'polygon') {
     if (params.fill) return sampleTriangle(triangulatePolygon(params.points), rng);
-    return samplePolyline([...params.points, params.points[0]], u, (v - 0.5) * 2, params.thickness);
+    return pathPointWithThickness(shape, sampler, u, v);
   }
-  return samplePolyline(params.points, u, (v - 0.5) * 2, params.thickness);
+  return pathPointWithThickness(shape, sampler, u, v);
 }
 
 function applyTransform(point, transform) {
@@ -278,6 +372,7 @@ export function materializeWorldRecipe(recipe, seed, { worldId = 'world-1' } = {
   const normalized = normalizeWorldRecipe(recipe);
   const normalizedSeed = Number.isFinite(Number(seed)) ? Math.trunc(Number(seed)) : 0;
   const labels = normalized.groups.map((group) => group.label).filter((label) => label !== null);
+  const pathSamplers = new Map(normalized.groups.map((group) => [group.id, createPathSampler(group.shape)]));
   const observations = [];
   for (const split of ['train', 'test']) {
     const splitNoise = normalized.noise[split];
@@ -294,7 +389,7 @@ export function materializeWorldRecipe(recipe, seed, { worldId = 'world-1' } = {
         const labelRng = createRng(normalizedSeed, worldId, group.id, split, 'label-noise', sampleIndex);
         const u = densityParameter(geometryRng(), sampling.density, densityDomainForShape(group.shape));
         const v = geometryRng();
-        let position = applyTransform(sampleShape(group.shape, u, v, geometryRng), group.transform);
+        let position = applyTransform(sampleShape(group.shape, u, v, geometryRng, pathSamplers.get(group.id)), group.transform);
         if (splitTransform) position = applyTransform(position, splitTransform);
         const localRules = splitNoise.local.filter((rule) => inRegion(position, rule.region));
         const positionAmount = splitNoise.position.amount + localRules.filter((rule) => rule.kind === 'position').reduce((sum, rule) => sum + rule.amount, 0);

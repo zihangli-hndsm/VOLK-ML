@@ -822,6 +822,7 @@ function repeatTrialWorld(world, seed, generated) {
     const generatedTrial = materializeWorldRecipe(world.generator.recipe, seed, { worldId: world.id });
     return createWorld({
       ...world,
+      task: generatedTrial.recipe.task,
       observations: generatedTrial.observations,
       seed,
       mode: 'generated',
@@ -839,6 +840,7 @@ function repeatTrialWorld(world, seed, generated) {
   const generatedTrial = generateObservations(world.generator.spec, seed, { worldId: world.id });
   return createWorld({
     ...world,
+    task: 'regression',
     observations: generatedTrial.observations,
     seed,
     mode: 'generated',
