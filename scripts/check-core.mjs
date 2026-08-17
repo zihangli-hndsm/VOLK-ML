@@ -3060,6 +3060,7 @@ assert.throws(
         const protocolGateway = createProviderGateway({ fetchImpl: async (url, options) => {
           requestedUrl = url;
           requestedOptions = options;
+          if (protocol.id === 'openai-responses') return { ok: true, json: async () => ({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: 'openai responses text' }] }] }) };
           if (protocol.id === 'openai-compatible') return { ok: true, json: async () => ({ choices: [{ message: { content: 'openai text' } }] }) };
           if (protocol.id === 'anthropic-compatible') return { ok: true, json: async () => ({ content: [{ type: 'text', text: 'anthropic text' }] }) };
           return { ok: true, json: async () => ({ candidates: [{ content: { parts: [{ text: 'gemini text' }] } }] }) };
@@ -3070,7 +3071,7 @@ assert.throws(
         });
         assert.equal(requestedUrl, `https://custom.example/${protocol.id}`, `${protocol.id} honors a custom endpoint`);
         assert.ok(!String(requestedOptions.body).includes('secret-key'), `${protocol.id} never puts the key in the request body`);
-        assert.deepEqual({ text: adapterResult.text, provider: adapterResult.provider, model: adapterResult.model }, { text: `${protocol.id === 'openai-compatible' ? 'openai' : protocol.id === 'anthropic-compatible' ? 'anthropic' : 'gemini'} text`, provider: 'Test provider', model: 'test-model' }, `${protocol.id} normalizes the gateway result`);
+        assert.deepEqual({ text: adapterResult.text, provider: adapterResult.provider, model: adapterResult.model }, { text: `${protocol.id === 'openai-responses' ? 'openai responses' : protocol.id === 'openai-compatible' ? 'openai' : protocol.id === 'anthropic-compatible' ? 'anthropic' : 'gemini'} text`, provider: 'Test provider', model: 'test-model' }, `${protocol.id} normalizes the gateway result`);
       }
       assert.equal(changeAiProtocol({ protocol: 'openai-compatible', apiKey: 'old-key', model: 'old' }, 'gemini-compatible').apiKey, '', 'changing protocol clears the previous key');
       assert.equal(endpointSafety('http://localhost:8787/v1').safe, true, 'local HTTP endpoints are explicitly allowed');

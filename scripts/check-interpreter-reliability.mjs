@@ -51,8 +51,8 @@ const context = agent.inspectContext({ presentation: {
   availableDepths: ['evidence', 'mechanism', 'representation'],
 } });
 const boundedContext = buildTeachingInterpretationContext(context);
-assert.equal(boundedContext.allowedGoalSchema.oneOf[1].control, 'one key from allowedControls');
-assert.equal(boundedContext.allowedGoalSchema.oneOf[1].objective, undefined);
+assert.ok(boundedContext.allowedGoalSchema.properties.control.anyOf[0].enum.includes('hiddenUnits'));
+assert.equal(boundedContext.allowedGoalSchema.properties.objective, undefined);
 assert.ok(boundedContext.allowedControls.some((control) => control.key === 'hiddenUnits'));
 
 const config = { protocol: 'openai-compatible', apiKey: 'test', model: 'mock', endpoint: 'https://example.test' };

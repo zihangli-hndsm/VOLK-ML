@@ -1,5 +1,11 @@
 const PROTOCOLS = Object.freeze([
   Object.freeze({
+    id: 'openai-responses',
+    labelKey: 'ai.provider.openai',
+    defaultEndpoint: 'https://api.openai.com/v1/responses',
+    defaultModel: 'gpt-5.6',
+  }),
+  Object.freeze({
     id: 'openai-compatible',
     labelKey: 'ai.provider.openaiCompatible',
     defaultEndpoint: 'https://api.openai.com/v1/chat/completions',
@@ -86,7 +92,76 @@ function textFromContent(content) {
   return content.map((part) => typeof part === 'string' ? part : part?.text ?? '').join('');
 }
 
+export function textFromResponsesPayload(payload) {
+  const status = payload?.status;
+  if (status === 'failed') {
+    const error = providerError('AI_PROVIDER_RESPONSE_FAILED', 'The OpenAI Responses request failed.');
+    error.details = { status, providerMessage: String(payload?.error?.message ?? '').slice(0, 400) };
+    throw error;
+  }
+  if (status === 'incomplete' || status === 'cancelled') {
+    const error = providerError('AI_PROVIDER_RESPONSE_INCOMPLETE', 'The OpenAI Responses request did not complete.');
+    error.details = { status, reason: String(payload?.incomplete_details?.reason ?? '').slice(0, 160) };
+    throw error;
+  }
+  const output = Array.isArray(payload?.output) ? payload.output : [];
+  const text = output
+    .filter((item) => item?.type === 'message')
+    .flatMap((item) => Array.isArray(item.content) ? item.content : [])
+    .filter((content) => content?.type === 'output_text' && typeof content.text === 'string')
+    .map((content) => content.text)
+    .join('');
+  if (text) return text;
+  const refusal = output
+    .flatMap((item) => Array.isArray(item?.content) ? item.content : [])
+    .find((content) => content?.type === 'refusal');
+  const error = providerError(refusal ? 'AI_PROVIDER_REFUSAL' : 'AI_PROVIDER_OUTPUT_MISSING', refusal
+    ? 'The OpenAI Responses model refused the request.'
+    : 'The OpenAI Responses response did not contain output text.');
+  error.details = { status: status ?? null };
+  throw error;
+}
+
+function responsesInput(messages) {
+  return messages.map((message) => ({
+    role: message.role,
+    content: [{ type: 'input_text', text: String(message.content ?? '') }],
+  }));
+}
+
+function responsesTextOptions(responseSchema) {
+  if (!responseSchema) return {};
+  const schema = responseSchema.schema ?? responseSchema;
+  const name = responseSchema.name ?? 'volk_ml_structured_output';
+  return {
+    text: {
+      format: {
+        type: 'json_schema',
+        name,
+        schema,
+        strict: true,
+      },
+    },
+  };
+}
+
 const adapters = Object.freeze({
+  'openai-responses': Object.freeze({
+    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseSchema }) {
+      const response = await fetchImpl(endpoint, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({
+          model,
+          instructions: system,
+          input: responsesInput(messages),
+          store: false,
+          ...responsesTextOptions(responseSchema),
+        }),
+      });
+      return textFromResponsesPayload(await readJson(response));
+    },
+  }),
   'openai-compatible': Object.freeze({
     async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode }) {
       const request = (includeJsonMode) => fetchImpl(endpoint, {
@@ -145,7 +220,7 @@ const adapters = Object.freeze({
 
 export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterRegistry = adapters } = {}) {
   return Object.freeze({
-    async complete({ config, system = '', messages = [], responseMode = 'text' }) {
+    async complete({ config, system = '', messages = [], responseMode = 'text', responseSchema = null }) {
       if (typeof fetchImpl !== 'function') throw providerError('AI_PROVIDER_UNAVAILABLE', 'No browser fetch implementation is available.');
       const resolved = requireConfig(config);
       const adapter = adapterRegistry[resolved.protocol.id];
@@ -160,6 +235,7 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
           system: String(system ?? ''),
           messages: messages.map((message) => ({ role: message.role, content: String(message.content ?? '') })),
           responseMode,
+          responseSchema,
         });
       } catch (error) {
         if (error?.code?.startsWith('AI_')) throw error;
