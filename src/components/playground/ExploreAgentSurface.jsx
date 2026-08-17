@@ -64,8 +64,13 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     setError(null);
     setBusy(true);
     try {
-      const nextProposal = await agent.proposeExploration({ request: proposalRequest, ...(nextOutcome.intent ? { intent: nextOutcome.intent } : {}) });
+      const nextProposal = await agent.proposeExploration({
+        request: proposalRequest,
+        ...(nextOutcome.intent ? { intent: nextOutcome.intent } : {}),
+        ...(nextOutcome.worldDesign ? { worldDesign: { ...nextOutcome.worldDesign, requestedHolds: nextOutcome.requestedHolds ?? [] } } : {}),
+      });
       setProposal(nextProposal);
+      if (nextProposal?.kind === 'clarification') setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: nextProposal.interpretation?.ambiguity ?? nextProposal.reason ?? 'world-composer-unavailable' });
     } catch (caught) {
       setError(caught);
     } finally {
@@ -94,7 +99,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         setBusy(false);
       }
     }
-    if (nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL) {
+    if (nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL || nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.WORLD_DESIGN_PROPOSAL) {
       await loadProposal(nextOutcome);
       return;
     }
@@ -196,7 +201,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       </> : <p className="mt-1">{outcome.explanation || (semanticExplanation?.available ? t(`playground.agentGuide.explain.${outcome.topic}`) : t('playground.agentGuide.clarification'))}</p>}
     </div>}
 
-    {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL && proposal?.kind === 'proposal' && <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50 p-3 text-xs text-slate-800">
+    {(outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL || outcome?.kind === AGENT_GUIDANCE_OUTCOMES.WORLD_DESIGN_PROPOSAL) && proposal?.kind === 'proposal' && <div className="mt-3 rounded-xl border border-violet-100 bg-violet-50 p-3 text-xs text-slate-800">
       <p className="font-black text-violet-800">{t('playground.agentGuide.proposalTitle')}</p>
       <p className="mt-1">{compactProposal(proposal, t).summary}</p>
       <p className="mt-2"><span className="font-black">{t('playground.explorationAgent.change')}:</span> {compactProposal(proposal, t).change.map((item) => semanticLabel(item, t)).join(', ')}</p>

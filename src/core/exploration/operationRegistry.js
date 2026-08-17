@@ -23,6 +23,28 @@ const GENERATOR_PARAMETER_SCHEMA = Object.freeze({ parameters: GENERATOR_PARAMET
 
 const PUBLIC_WORLD_OPERATIONS = [
   {
+    type: 'SET_WORLD_RECIPE',
+    capability: 'world.recipe.configure',
+    domain: 'world-generator',
+    category: 'configure-world-recipe',
+    changes: ['world-recipe'],
+    preserves: ['observations-until-regenerate', 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
+    undoable: true,
+    agentDiscoverable: true,
+    humanAccessible: true,
+  },
+  {
+    type: 'PATCH_WORLD_RECIPE',
+    capability: 'world.recipe.patch',
+    domain: 'world-generator',
+    category: 'edit-world-recipe',
+    changes: ['world-recipe'],
+    preserves: ['observations-until-regenerate', 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
+    undoable: true,
+    agentDiscoverable: true,
+    humanAccessible: true,
+  },
+  {
     type: 'SET_WORLD_GENERATOR',
     capability: 'world.generator.configure',
     domain: 'world-generator',

@@ -16,6 +16,11 @@ contract deliberately.
 runtime boundary. The model adapters remain responsible for model math and do
 not import this domain layer.
 
+World Composer v1 is an additional normalized generator kind. Its versioned
+WorldRecipe is materialized into the same finite World observations and uses
+the same seed, realization, transaction, comparison, and Agent preflight
+boundaries. See [World Composer](./world-composer.md).
+
 ## Experiment
 
 `src/core/exploration/experiment.js` defines `Experiment v1` as a detached,

@@ -2,6 +2,7 @@
 // comparison is information about multiple changed factors, not an error.
 
 import { validateExperiment } from './experiment.js';
+import { worldRecipeDiff } from './worldRecipe.js';
 
 const FACTORS = ['world', 'trainTest', 'model', 'learning', 'evaluation', 'randomness'];
 const DERIVED_MODEL_CONTROLS = new Set(['weight', 'bias']);
@@ -27,6 +28,16 @@ const worldSemantic = (world) => ({
 });
 
 const generatorSemantic = (world) => {
+  if (world.generator?.kind === 'world-recipe') {
+    return {
+      kind: 'world-recipe',
+      recipe: world.generator.recipe,
+      seedPolicy: {
+        policy: world.randomness?.policy ?? 'unspecified',
+        seed: world.randomness?.seed ?? null,
+      },
+    };
+  }
   const spec = world.generator?.spec;
   if (!spec) return null;
   return {
@@ -44,6 +55,9 @@ const generatorSemantic = (world) => {
 };
 
 function worldGeneratorDetails(left, right) {
+  if (left.generator?.kind === 'world-recipe' || right.generator?.kind === 'world-recipe') {
+    return { changed: [], unchanged: [], left: null, right: null };
+  }
   const a = generatorSemantic(left);
   const b = generatorSemantic(right);
   if (!a && !b) return { changed: [], left: null, right: null };
@@ -62,6 +76,16 @@ function worldGeneratorDetails(left, right) {
     left: a,
     right: b,
   };
+}
+
+function worldRecipeDetails(left, right) {
+  const leftRecipe = left.generator?.kind === 'world-recipe' ? left.generator.recipe : null;
+  const rightRecipe = right.generator?.kind === 'world-recipe' ? right.generator.recipe : null;
+  if (!leftRecipe && !rightRecipe) return { changedPaths: [], unchangedPaths: [], affectedGroupIds: [], changedSplits: [], left: null, right: null };
+  if (!leftRecipe || !rightRecipe) return { changedPaths: ['recipe-kind'], unchangedPaths: [], affectedGroupIds: [], changedSplits: [], left: leftRecipe, right: rightRecipe };
+  const diff = worldRecipeDiff(leftRecipe, rightRecipe);
+  const changedSplits = [...new Set(diff.changedPaths.map((path) => path.match(/\.(train|test)(?:\.|$)/)?.[1]).filter(Boolean))];
+  return { ...diff, changedSplits };
 }
 
 const trainTestSemantic = (world, sharedIds = null) => world.observations
@@ -104,6 +128,7 @@ export function compareExperiments(left, right) {
     factors,
     details: {
       worldGenerator: worldGeneratorDetails(leftValue.world, rightValue.world),
+      worldRecipe: worldRecipeDetails(leftValue.world, rightValue.world),
     },
     clarity: changed.length === 0 ? 'identical' : changed.length === 1 ? 'high' : 'mixed',
   };

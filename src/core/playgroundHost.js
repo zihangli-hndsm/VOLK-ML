@@ -34,10 +34,11 @@ import { AFFORDANCE_IDS, EXPLORATION_RECIPES, THINGS_TO_TRY } from './exploratio
 import { conditionFingerprintForSession } from './exploration/observables.js';
 import { getBigIdeaEntrance, listBigIdeaEntrances, resolveBigIdeaInitialization } from './exploration/bigIdeaRegistry.js';
 import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
-import { planExplorationIntent, planExplorationRequest } from './exploration/scenarioPlanner.js';
+import { planExplorationIntent, planExplorationRequest, planWorldDesign } from './exploration/scenarioPlanner.js';
 import { deriveCleanerComparisonProposal } from './exploration/cleanerComparison.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
+import { worldRecipeSummary } from './exploration/worldRecipe.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -590,6 +591,12 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           threads: snapshot.explorationThreads ?? [],
           activeThread: snapshot.activeExplorationThread ?? null,
           bigIdea: snapshot.bigIdea ?? null,
+          worldComposer: {
+            version: 1,
+            supported: Boolean(snapshot.world?.generator?.kind === 'world-recipe' || worldOperations.some((operation) => operation.type === 'SET_WORLD_RECIPE')),
+            operationTypes: worldOperations.filter((operation) => ['SET_WORLD_RECIPE', 'PATCH_WORLD_RECIPE', 'REGENERATE_WORLD', 'SET_GENERATOR_SEED'].includes(operation.type)).map((operation) => operation.type),
+            currentRecipe: snapshot.world?.generator?.kind === 'world-recipe' ? worldRecipeSummary(snapshot.world.generator.recipe) : null,
+          },
         },
         controlSchemas: (controlPlayground?.controls ?? []).map((control) => ({
           key: control.key,
@@ -729,10 +736,12 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       return present(derivePlaygroundSnapshot(session));
     },
 
-    proposeExploration({ request, intent } = {}) {
+    proposeExploration({ request, intent, worldDesign } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const context = this.inspectContext();
-      const planned = intent
+      const planned = worldDesign
+        ? planWorldDesign(worldDesign, request ?? 'Design a deterministic world', context)
+        : intent
         ? planExplorationIntent(intent, request ?? String(intent), context)
         : planExplorationRequest(request, context);
       if (planned.kind !== 'proposal') return planned;

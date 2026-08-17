@@ -176,6 +176,40 @@ function intentSpec(intent, request, context) {
   throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_REQUEST', { intent });
 }
 
+function worldDesignSpec(worldDesign, request, context) {
+  const baseline = {
+    experimentId: context.experiment.id,
+    conditionFingerprint: conditionFingerprintForSession({ world: context.world, adapterId: context.experiment.model?.adapterId, experiment: context.experiment }),
+  };
+  const common = {
+    version: 1,
+    request,
+    baseline,
+    execution: { duplicateBaseline: true, run: true, compare: true, repeat: null },
+    hold: [...(worldDesign.requestedHolds ?? []), 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
+    observe: ['world.trainXRange', 'world.testXRange', 'outcome.trainMse', 'outcome.testMse'],
+  };
+  if (worldDesign.mode === 'create' && worldDesign.recipe) return {
+    ...common,
+    interpretation: { summary: 'Create a deterministic World Recipe and materialize it through the normal World generator boundary.', ambiguity: null },
+    intendedFactors: ['world-recipe'],
+    change: [
+      { semanticTarget: 'world-recipe', operation: worldOperationType(context, 'world.recipe.configure'), parameters: { recipe: worldDesign.recipe, seed: context.world.randomness?.seed ?? 42 } },
+      { semanticTarget: 'generator-realization', operation: worldOperationType(context, 'world.generator.regenerate'), parameters: { seed: context.world.randomness?.seed ?? 42 } },
+    ],
+  };
+  if (worldDesign.mode === 'edit' && worldDesign.patch) return {
+    ...common,
+    interpretation: { summary: 'Edit the current World Recipe through a bounded semantic patch and regenerate its deterministic realization.', ambiguity: null },
+    intendedFactors: ['world-recipe'],
+    change: [
+      { semanticTarget: 'world-recipe', operation: worldOperationType(context, 'world.recipe.patch'), parameters: { patch: worldDesign.patch } },
+      { semanticTarget: 'generator-realization', operation: worldOperationType(context, 'world.generator.regenerate'), parameters: { seed: context.world.randomness?.seed ?? 42 } },
+    ],
+  };
+  throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'worldDesign', reason: 'unsupported-design' });
+}
+
 export function planExplorationRequest(request, context) {
   const interpretation = interpretExplorationRequest(request);
   if (interpretation.ambiguity) return { kind: 'clarification', request, interpretation };
@@ -210,4 +244,18 @@ export function planExplorationIntent(intent, request, context) {
     };
   }
   return { kind: 'proposal', scenario: validateScenarioSpec(draft, context) };
+}
+
+export function planWorldDesign(worldDesign, request, context) {
+  const requiredCapability = worldDesign?.mode === 'edit' ? 'world.recipe.patch' : 'world.recipe.configure';
+  const available = (context?.exploration?.worldOperations ?? []).some((operation) => operation.capability === requiredCapability && operation.agentDiscoverable !== false);
+  if (!available) {
+    return {
+      kind: 'clarification',
+      request,
+      interpretation: { kind: 'world-design', ambiguity: 'world-composer-unavailable', message: 'This attached model cannot edit World recipes through the current runtime. Open the Data Lab or choose a model with World editing support first.', choices: [] },
+    };
+  }
+  const draft = worldDesignSpec(worldDesign, request, context);
+  return { kind: 'proposal', scenario: validateScenarioSpec(draft, context), interpretation: { kind: 'world-design', mode: worldDesign.mode } };
 }

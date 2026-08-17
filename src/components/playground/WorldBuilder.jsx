@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { normalizeGeneratorSpec } from '../../core/exploration/generator.js';
 import { deriveWorldGeneratorFacts } from '../../core/exploration/world.js';
+import { worldRecipeSummary } from '../../core/exploration/worldRecipe.js';
 
 const DEFAULT_SPEC = normalizeGeneratorSpec({
   relation: { slope: 2, bias: 1 },
@@ -62,6 +63,31 @@ export default function WorldBuilder({ snapshot, onDispatch, t, highlightedAffor
       ? 'playground.worldBuilder.configured'
       : 'playground.worldBuilder.sample';
   const status = t(statusKey);
+  if (world?.generator?.kind === 'world-recipe') {
+    const recipe = worldRecipeSummary(world.generator.recipe);
+    const recipeGenerate = () => dispatchTransaction([{ type: 'REGENERATE_WORLD', seed: Number(seed) }], 'regenerate-world-recipe');
+    return <section className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3" aria-label={t('playground.worldBuilder.ariaLabel')}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black text-slate-900">{t('playground.worldBuilder.recipeTitle')}</h3>
+          <p className="mt-1 text-xs text-slate-600">{t('playground.worldBuilder.recipeSummary')}</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs font-black">
+          <span className={`rounded-full px-2 py-1 ${world.mode === 'generated' && world.generator.status === 'clean' ? 'bg-indigo-700 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'}`}>{status}</span>
+          <span className="rounded-full bg-white px-2 py-1 text-slate-600 ring-1 ring-slate-200">{t('playground.worldBuilder.seedBadge', { seed })}</span>
+          <span className="rounded-full bg-white px-2 py-1 text-slate-600 ring-1 ring-slate-200">{t('playground.worldBuilder.samplesBadge', { count: world.observations?.length ?? 0 })}</span>
+        </div>
+      </div>
+      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+        {recipe.groups.map((group) => <div key={group.id} className="rounded-xl bg-white/80 p-3 ring-1 ring-indigo-100"><p className="text-xs font-black text-slate-800">{group.id}</p><p className="mt-1 text-[11px] text-slate-600">{t('playground.worldBuilder.recipeGroup', { shape: group.shapeType, train: group.trainSamples, test: group.testSamples })}</p></div>)}
+      </div>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <button type="button" onClick={recipeGenerate} className="rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white">{t('playground.worldBuilder.regenerate')}</button>
+        {world.mode === 'generated' && <button type="button" onClick={() => onDispatch({ type: 'FREEZE_AS_SAMPLES' })} className="rounded-xl bg-white px-4 py-2 text-xs font-black text-slate-700 ring-1 ring-indigo-200">{t('playground.worldBuilder.freeze')}</button>}
+        {generatorFacts.needsRegeneration && <span className="self-center text-xs font-bold text-amber-700">{t('playground.worldBuilder.dirtyHint')}</span>}
+      </div>
+    </section>;
+  }
   return <section className="rounded-2xl border border-indigo-200 bg-indigo-50/60 p-3" aria-label={t('playground.worldBuilder.ariaLabel')}>
     <div className="flex flex-wrap items-start justify-between gap-3">
       <div>

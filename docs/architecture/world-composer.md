@@ -1,0 +1,74 @@
+# World Composer v1
+
+World Composer adds a bounded semantic grammar for deterministic finite Worlds.
+It is a domain capability used by humans and the Exploration Agent; it is not
+a second World state machine and it does not execute model-specific code.
+
+## Contract
+
+`src/core/exploration/worldRecipe.js` owns the versioned, JSON-safe
+`WorldRecipe` contract. A recipe contains a task, 2D coordinate space, stable
+group IDs, primitive shape parameters, transforms, train/test sampling, and
+separate position noise, label noise, outliers, and local noise rules. V1
+supports blob, line, arc, ring, moon, spiral, rectangle, ellipse, polygon, and
+polyline. Presets are compiled into this same contract.
+
+The recipe deliberately does not contain a random seed. The existing World
+`randomness.seed` / generator seed remains the single seed authority. A
+recipe plus seed is the deterministic realization identity.
+
+## Materialization
+
+`worldMaterializer.js` validates and materializes a recipe into ordinary finite
+World observations. Transform order is scale, rotate, then translate. Split
+transforms are applied after the common group transform. Geometry, position
+noise, label noise, and outlier decisions use stable scoped substreams derived
+from seed, World ID, group ID, split, purpose, and sample index. This lets an
+unchanged group keep its realization when another group is edited.
+
+Every generated observation keeps bounded generation metadata including recipe
+version, group ID, shape type, sample index, split, noise flags, and anomaly.
+There is no `Math.random`, dynamic code, `eval`, or user-supplied expression
+execution in the materializer. Function curves and arbitrary mathematical ASTs
+remain future work.
+
+## Runtime and compatibility
+
+The existing generator is represented as `kind: "legacy-generator"`; old
+serialized generator objects without `kind` are normalized to that kind. World
+Composer uses `kind: "world-recipe"`. Both retain the configured/draft,
+generated/clean, dirty, modified, realization, freeze, and seed lifecycle.
+
+`SET_WORLD_RECIPE` and `PATCH_WORLD_RECIPE` are registered public World
+operations. They use the same atomic World transaction, inverse/restore,
+history, Agent preflight, and human dispatch boundaries as legacy generator and
+point operations. Recipe edits change the desired recipe and preserve the
+displayed realization until `REGENERATE_WORLD` is explicitly applied.
+
+Existing legacy World Builder controls remain unchanged. Recipe Worlds show a
+localized bounded summary with regenerate/freeze actions rather than pretending
+that legacy controls edit a richer recipe.
+
+## Comparison and Agent
+
+Existing comparison top-level factors remain authoritative. Recipe-aware detail
+is exposed as `comparison.details.worldRecipe`, with changed paths, unchanged
+paths, affected group IDs, and changed splits. Scenario fidelity maps recipe
+designs to the existing `world` factor; it does not trust natural-language
+claims about what was held constant.
+
+Agent interpretation may return only a bounded `world-design` outcome carrying
+a validated recipe or recipe patch. The deterministic planner turns that into
+`SET_WORLD_RECIPE`/`PATCH_WORLD_RECIPE` plus `REGENERATE_WORLD`, then uses the
+normal detached preflight and explicit execution flow. The Agent never emits
+raw observations or executable operations. Local fallback exposes registered
+presets; unsupported designs remain clarification outcomes.
+
+## Current limits
+
+V1 bounds groups, points per polygon/polyline, samples, local-noise rules, and
+patch changes. Local noise supports bounding boxes and circles; boundary-aware
+noise is deferred. KNN/MLP adapters can inspect generated Worlds, but World
+mutation still requires the adapter's existing `applyWorld` capability. A full
+visual recipe editor and safe function-curve AST are deferred.
+

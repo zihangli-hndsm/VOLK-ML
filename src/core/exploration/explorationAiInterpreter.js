@@ -1,10 +1,11 @@
 import { normalizeAiConfig } from '../ai/aiSettings.js';
 import { createProviderGateway } from '../ai/providerRegistry.js';
 import { EXPLORATION_INTENT_IDS } from './explorationIntents.js';
+import { applyWorldRecipePatch, normalizeWorldRecipe, worldRecipeJsonSchema } from './worldRecipe.js';
 
 const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
-const GUIDANCE_KINDS = Object.freeze(['explanation', 'navigation', 'experiment', 'clarification']);
+const GUIDANCE_KINDS = Object.freeze(['explanation', 'navigation', 'experiment', 'world-design', 'clarification']);
 
 const nullableStringSchema = () => ({ anyOf: [{ type: 'string' }, { type: 'null' }] });
 
@@ -21,10 +22,18 @@ export function explorationGuidanceResponseSchema({ availableDepths = [] } = {})
       intent: { anyOf: [{ type: 'string', enum: INTENTS }, { type: 'null' }] },
       requestedChange: nullableStringSchema(),
       requestedHolds: { anyOf: [{ type: 'array', maxItems: 12, items: { type: 'string' } }, { type: 'null' }] },
+      design: { anyOf: [{ type: 'object', additionalProperties: false, properties: {
+        mode: { type: 'string', enum: ['create', 'edit'] },
+        recipe: { anyOf: [worldRecipeJsonSchema(), { type: 'null' }] },
+        patch: { anyOf: [{ type: 'object', additionalProperties: false, properties: {
+          version: { type: 'integer', enum: [1] },
+          changes: { type: 'array', maxItems: 32, items: { type: 'object' } },
+        }, required: ['version', 'changes'] }, { type: 'null' }] },
+      }, required: ['mode', 'recipe', 'patch'] }, { type: 'null' }] },
       reason: nullableStringSchema(),
       ambiguity: nullableStringSchema(),
     },
-    required: ['kind', 'topic', 'explanation', 'depth', 'intent', 'requestedChange', 'requestedHolds', 'reason', 'ambiguity'],
+    required: ['kind', 'topic', 'explanation', 'depth', 'intent', 'requestedChange', 'requestedHolds', 'design', 'reason', 'ambiguity'],
   };
 }
 
@@ -98,6 +107,27 @@ function validateInterpretation(value, context) {
     const reason = typeof value.reason === 'string' ? value.reason.slice(0, 240) : '';
     return { kind: 'clarification', reason: reason || 'unsupported-request', ambiguity: value.ambiguity ?? null };
   }
+  if (value.kind === 'world-design') {
+    const design = value.design;
+    if (!design || !['create', 'edit'].includes(design.mode)) {
+      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid World design mode.');
+    }
+    try {
+      const recipe = design.mode === 'create' && design.recipe ? normalizeWorldRecipe(design.recipe) : null;
+      const patch = design.mode === 'edit' && design.patch ? structuredClone(design.patch) : null;
+      if (design.mode === 'create' && !recipe) throw new Error('recipe-required');
+      if (design.mode === 'edit' && !patch) throw new Error('patch-required');
+      if (patch && context?.world?.generator?.kind === 'world-recipe') applyWorldRecipePatch(context.world.generator.recipe, patch);
+      return {
+        kind: 'world-design',
+        design: { mode: design.mode, recipe, patch },
+        requestedHolds: [...(value.requestedHolds ?? [])].filter((item) => typeof item === 'string').slice(0, 12),
+        ambiguity: value.ambiguity ?? null,
+      };
+    } catch {
+      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid World design.');
+    }
+  }
   if (value.kind === 'experiment' || (!value.kind && value.intent)) {
     if (!INTENTS.includes(value.intent)) {
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported exploration intent.');
@@ -138,6 +168,7 @@ export function projectExplorationAiContext(context = {}) {
     supportedOperationTypes: [...new Set((context?.exploration?.worldOperations ?? []).map((operation) => operation.type))],
     supportedConcepts: [...EXPLANATION_TOPICS],
     recentActions,
+    worldComposer: context?.exploration?.worldComposer ?? null,
   };
 }
 
@@ -147,12 +178,14 @@ function promptFor({ request, context }) {
     'Return JSON only. Never return runtime operations, operation IDs, control IDs, observable IDs, code, or a ScenarioSpec.',
     `Allowed outcome kinds: ${GUIDANCE_KINDS.join(', ')}`,
     `Allowed exploration intents: ${INTENTS.join(', ')}`,
+    'World-design is bounded to a validated recipe or recipe patch. Never emit points, runtime operations, evidence, or metrics.',
     `Allowed explanation topics: ${EXPLANATION_TOPICS.join(', ')}`,
     'The deterministic planner and capability registry will choose all executable operations after this response.',
     `Bounded semantic context: ${JSON.stringify(projectExplorationAiContext(context))}`,
     'Explanation shape: {"kind":"explanation","topic":"...","explanation":"short conceptual explanation"}',
     'Navigation shape: {"kind":"navigation","depth":"one available depth"}',
     'Experiment shape: {"kind":"experiment","intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
+    'World-design shape: {"kind":"world-design","design":{"mode":"create","recipe":{...canonical recipe...},"patch":null},"requestedHolds":[]}',
     'Clarification shape: {"kind":"clarification","reason":"short bounded reason"}',
     `Learner request: ${String(request ?? '').trim()}`,
   ].join('\n\n');

@@ -16,6 +16,7 @@ import {
 import { worldFromPlaygroundSource } from '../exploration/world.js';
 import { createWorld } from '../exploration/world.js';
 import { generateObservations } from '../exploration/generator.js';
+import { materializeWorldRecipe } from '../exploration/worldMaterializer.js';
 import {
   conditionFingerprintForSession,
   deriveObservableSet,
@@ -572,7 +573,7 @@ function canonicalWorldTransaction(action) {
     };
   }
   if (isPublicWorldOperation(action.type)) {
-    const intent = action.type === 'SET_WORLD_GENERATOR' || action.type === 'SET_GENERATOR_PARAMETER' || action.type === 'SET_GENERATOR_SEED'
+    const intent = action.type === 'SET_WORLD_GENERATOR' || action.type === 'SET_WORLD_RECIPE' || action.type === 'PATCH_WORLD_RECIPE' || action.type === 'SET_GENERATOR_PARAMETER' || action.type === 'SET_GENERATOR_SEED'
       ? 'world-generator'
       : action.type === 'REGENERATE_WORLD'
         ? 'regenerate-world'
@@ -817,6 +818,24 @@ function validateRepeatCount(value) {
 
 function repeatTrialWorld(world, seed, generated) {
   if (!generated) return world;
+  if (world.generator?.kind === 'world-recipe') {
+    const generatedTrial = materializeWorldRecipe(world.generator.recipe, seed, { worldId: world.id });
+    return createWorld({
+      ...world,
+      observations: generatedTrial.observations,
+      seed,
+      mode: 'generated',
+      generator: {
+        ...world.generator,
+        kind: 'world-recipe',
+        active: true,
+        status: 'clean',
+        recipe: generatedTrial.recipe,
+        seed,
+        realization: { kind: 'world-recipe', recipe: generatedTrial.recipe, seed },
+      },
+    });
+  }
   const generatedTrial = generateObservations(world.generator.spec, seed, { worldId: world.id });
   return createWorld({
     ...world,
