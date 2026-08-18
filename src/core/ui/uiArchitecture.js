@@ -8,6 +8,7 @@ export const UI_SURFACES = Object.freeze({
 
 export const CONCEPTUAL_DEPTHS = Object.freeze({
   PHENOMENON: 'phenomenon',
+  TUNE: 'tune',
   EVIDENCE: 'evidence',
   MECHANISM: 'mechanism',
   REPRESENTATION: 'representation',
@@ -44,10 +45,23 @@ const SURFACE_DESCRIPTORS = Object.freeze({
 
 const DEPTH_DESCRIPTORS = Object.freeze({
   phenomenon: Object.freeze({ id: 'phenomenon', titleKey: 'ui.depth.phenomenon', order: 0 }),
+  tune: Object.freeze({ id: 'tune', titleKey: 'ui.depth.tune', order: 1 }),
   evidence: Object.freeze({ id: 'evidence', titleKey: 'ui.depth.evidence', order: 1 }),
   mechanism: Object.freeze({ id: 'mechanism', titleKey: 'ui.depth.mechanism', order: 2 }),
   representation: Object.freeze({ id: 'representation', titleKey: 'ui.depth.representation', order: 3 }),
   builder: Object.freeze({ id: 'builder', titleKey: 'ui.depth.builder', order: 4 }),
+});
+
+export const UI_LAYERS = Object.freeze({
+  PLAY: 'play',
+  TUNE: 'tune',
+  INSPECT: 'inspect',
+});
+
+export const UI_LAYER_DESCRIPTORS = Object.freeze({
+  play: Object.freeze({ id: 'play', titleKey: 'ui.layer.play', purpose: 'direct manipulation and immediate experiment actions' }),
+  tune: Object.freeze({ id: 'tune', titleKey: 'ui.layer.tune', purpose: 'semantic controls grouped by domain' }),
+  inspect: Object.freeze({ id: 'inspect', titleKey: 'ui.layer.inspect', purpose: 'evidence, mechanism, representation, and advanced diagnostics' }),
 });
 
 export const UI_RESPONSIBILITY_MAP = Object.freeze({

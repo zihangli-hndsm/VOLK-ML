@@ -11,12 +11,13 @@ import PlaygroundAgentPanel from './PlaygroundAgentPanel.jsx';
 import PlaygroundTimeline from './PlaygroundTimeline.jsx';
 import TrainingMicroscopePanel from './TrainingMicroscopePanel.jsx';
 import PlaygroundInspector from './PlaygroundInspector.jsx';
+import TunePanel from './TunePanel.jsx';
 import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import CompactBottomSheet from '../CompactBottomSheet.jsx';
 
-export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, t }) {
+export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, t }) {
   const { responsive } = usePresentationCapabilities();
   const { isConfigured, openSettings } = useAiProvider();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
@@ -29,9 +30,10 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
   const previousAgentOpenRef = useRef(agentOpen);
   const panelClass = compact
     ? 'fixed inset-x-0 bottom-0 z-[90] max-h-[78dvh] overflow-y-auto rounded-t-3xl border border-slate-200 bg-white p-4 shadow-2xl'
-    : 'fixed right-4 top-24 z-[90] max-h-[78vh] w-[min(360px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl';
+    : 'fixed right-4 top-24 z-[90] max-h-[78vh] w-[min(300px,calc(100vw-2rem))] overflow-y-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl';
   const mechanismTitle = t(capabilities.mechanismLabelKey);
   const depthEntries = [
+    { id: CONCEPTUAL_DEPTHS.TUNE, label: t('playground.layer.tune'), available: capabilities[CONCEPTUAL_DEPTHS.TUNE] },
     { id: CONCEPTUAL_DEPTHS.EVIDENCE, label: t('playground.depth.whatChanged'), available: capabilities[CONCEPTUAL_DEPTHS.EVIDENCE] },
     { id: CONCEPTUAL_DEPTHS.MECHANISM, label: mechanismTitle, available: capabilities[CONCEPTUAL_DEPTHS.MECHANISM] },
     { id: CONCEPTUAL_DEPTHS.REPRESENTATION, label: t('playground.depth.inspectModel'), available: capabilities[CONCEPTUAL_DEPTHS.REPRESENTATION] },
@@ -56,8 +58,8 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
 
   const toggleDepth = (depth) => onDepthChange?.(activeDepth === depth ? null : depth);
 
-  return <section data-ui-region="details-region" className="relative min-w-0 space-y-3" aria-label={t('playground.depth.regionLabel')}>
-    <section data-ui-region="depth-entrances" aria-label={t('playground.depth.regionLabel')} className="rounded-2xl border border-slate-200 bg-white/80 p-3">
+  return <section data-ui-region="details-region" data-ui-layer={activeDepth === CONCEPTUAL_DEPTHS.TUNE ? 'tune' : activeDepth ? 'inspect' : 'play'} className="relative min-w-0 space-y-3" aria-label={t('playground.depth.regionLabel')}>
+    <section data-ui-region="depth-entrances" data-ui-layer="play" aria-label={t('playground.depth.regionLabel')} className="rounded-2xl border border-slate-200 bg-white/80 p-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h3 className="text-sm font-black text-slate-800">{t('playground.depth.prompt')}</h3>
         <span className="text-xs text-slate-500">{t('playground.depth.optional')}</span>
@@ -96,6 +98,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
         </div>
         <button ref={panelCloseRef} type="button" aria-label={t('playground.depth.close')} onClick={() => onDepthChange?.(null)} className="ui-motion-interactive min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">{t('playground.depth.close')}</button>
       </div>
+      {activeDepth === CONCEPTUAL_DEPTHS.TUNE && <TunePanel playground={modelPlayground} snapshot={snapshot} onDispatch={onDispatch} onOpenWorldTools={onOpenWorldTools} t={t} />}
       {activeDepth === CONCEPTUAL_DEPTHS.EVIDENCE && <ExplorationEvidence snapshot={snapshot} t={t} openByDefault />}
       {activeDepth === CONCEPTUAL_DEPTHS.MECHANISM && <MechanismContent snapshot={snapshot} capabilities={capabilities} formulaPrimitive={formulaPrimitive} onDispatch={onDispatch} t={t} />}
       {activeDepth === CONCEPTUAL_DEPTHS.REPRESENTATION && <PlaygroundInspector playground={modelPlayground} snapshot={snapshot} onDispatch={onDispatch} t={t} />}
@@ -125,6 +128,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
 }
 
 function depthTitle(depth, mechanismTitle, t) {
+  if (depth === CONCEPTUAL_DEPTHS.TUNE) return t('playground.layer.tune');
   if (depth === CONCEPTUAL_DEPTHS.EVIDENCE) return t('playground.depth.whatChanged');
   if (depth === CONCEPTUAL_DEPTHS.MECHANISM) return mechanismTitle;
   return t('playground.depth.inspectModel');

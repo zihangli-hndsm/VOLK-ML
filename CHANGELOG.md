@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-18 — Layered Exploration UI
+
+- Added an explicit Play/Tune/Inspect presentation hierarchy without changing World, Experiment, comparison, evidence, or Agent runtime semantics.
+- Grouped model controls in a semantic Tune surface while keeping full World tools and the complete model Inspector reachable through existing paths.
+- Standardized responsive depth/Inspector drawers to an approximately 300px desktop/tablet width and retained the Compact bottom-sheet behavior.
+- Added focused layered UI checks for control reachability, Agent result hierarchy, responsive presentation, and reduced-motion architecture.
+
 ## 2026-08-18 — World Composer v1 final acceptance
 
 - Corrected crescent inner-arc direction and continuity, and made arc-density checks use normalized geometric path length (`s`) rather than raw curve parameters.

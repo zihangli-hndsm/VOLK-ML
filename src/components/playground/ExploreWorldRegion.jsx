@@ -1,24 +1,23 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { derivePhenomenonCapabilities } from '../../core/ui/phenomenon.js';
 import PlaygroundStage from './PlaygroundStage.jsx';
 import DataWorkspace from './DataWorkspace.jsx';
 import WorldBuilder from './WorldBuilder.jsx';
 
-export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTabChange, onDispatch, t, highlightedAffordances = [] }) {
-  const [fullWorldToolsOpen, setFullWorldToolsOpen] = useState(false);
+export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTabChange, onDispatch, t, highlightedAffordances = [], fullWorldToolsOpen = false, onFullWorldToolsChange }) {
   const phenomenon = useMemo(() => derivePhenomenonCapabilities(snapshot), [snapshot]);
   const phenomenonQuestion = bigIdea ? t(bigIdea.questionKey) : t('playground.phenomenon.question');
 
   if (phenomenon.available && !fullWorldToolsOpen) {
-    return <section data-ui-region="world-region" data-phenomenon-available="true" aria-label={t('playground.phenomenon.regionLabel')} className="relative min-w-0 space-y-3">
+    return <section data-ui-region="world-region" data-ui-layer="play" data-phenomenon-available="true" aria-label={t('playground.phenomenon.regionLabel')} className="relative min-w-0 space-y-3">
       <DataWorkspace snapshot={snapshot} onDispatch={onDispatch} t={t} question={phenomenonQuestion} variant="phenomenon" onOpenFullWorkspace={() => openFullWorldTools()} highlightedAffordances={highlightedAffordances} />
     </section>;
   }
 
-  return <section data-ui-region="world-region" data-phenomenon-available={phenomenon.available ? 'true' : 'false'} aria-label={t('playground.explore.worldRegionLabel')} className="relative min-w-0 space-y-3">
+  return <section data-ui-region="world-region" data-ui-layer="play" data-phenomenon-available={phenomenon.available ? 'true' : 'false'} aria-label={t('playground.explore.worldRegionLabel')} className="relative min-w-0 space-y-3">
     {phenomenon.available && <div className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-3 py-2">
       <span className="text-xs font-bold text-blue-800">{t('playground.phenomenon.fullToolsHint')}</span>
-      <button type="button" onClick={() => setFullWorldToolsOpen(false)} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100">{t('playground.phenomenon.backToPhenomenon')}</button>
+      <button type="button" onClick={() => onFullWorldToolsChange?.(false)} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100">{t('playground.phenomenon.backToPhenomenon')}</button>
     </div>}
     <div role="tablist" aria-label={t('playground.lab.tabs')} className="flex gap-2 border-b border-slate-200 pb-2">
       {['data', 'model'].map((tab) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} onClick={() => onTabChange(tab)} className={`rounded-xl px-4 py-2 text-sm font-black focus:outline-none focus:ring-2 focus:ring-blue-500 ${activeTab === tab ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>{t(`playground.lab.${tab}`)}</button>)}
@@ -31,7 +30,7 @@ export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTab
   </section>;
 
   function openFullWorldTools() {
-    setFullWorldToolsOpen(true);
+    onFullWorldToolsChange?.(true);
     onTabChange('data');
   }
 }

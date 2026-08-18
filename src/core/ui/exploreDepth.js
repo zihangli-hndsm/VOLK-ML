@@ -22,6 +22,7 @@ export function deriveExploreDepthCapabilities(snapshot = {}) {
   const hasModelInspection = Boolean(snapshot.model && (snapshot.modelPlaygroundId || snapshot.playgroundId));
 
   return Object.freeze({
+    [CONCEPTUAL_DEPTHS.TUNE]: Boolean(snapshot.model || snapshot.world),
     [CONCEPTUAL_DEPTHS.EVIDENCE]: hasEvidence,
     [CONCEPTUAL_DEPTHS.MECHANISM]: hasMechanism,
     [CONCEPTUAL_DEPTHS.REPRESENTATION]: hasModelInspection,
