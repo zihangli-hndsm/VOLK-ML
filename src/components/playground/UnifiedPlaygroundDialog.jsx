@@ -22,6 +22,7 @@ import ExploreWorldRegion from './ExploreWorldRegion.jsx';
 import ExploreExperimentRegion from './ExploreExperimentRegion.jsx';
 import ExploreDetailsRegion from './ExploreDetailsRegion.jsx';
 import { REDUCED_MOTION_QUERY } from './motion.js';
+import { openFullWorldWorkspacePresentation } from '../../core/ui/layerNavigation.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -30,6 +31,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [playbackError, setPlaybackError] = useState(null);
   const [guidance, setGuidance] = useState(null);
   const [activeDepth, setActiveDepth] = useState(null);
+  const [fullWorldToolsOpen, setFullWorldToolsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
@@ -61,6 +63,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setPlaybackError(null);
     setGuidance(null);
     setActiveDepth(null);
+    setFullWorldToolsOpen(false);
     setAgentOpen(false);
     setPresentationMode(false);
     setActiveTab(initialTab);
@@ -156,6 +159,13 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setAgentOpen(true);
   };
 
+  const openFullWorldWorkspaceFromTune = () => {
+    const next = openFullWorldWorkspacePresentation({ fullWorldToolsOpen, activeTab, activeDepth });
+    setFullWorldToolsOpen(next.fullWorldToolsOpen);
+    setActiveTab(next.activeTab);
+    setActiveDepth(next.activeDepth);
+  };
+
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;
   if (presentationMode) {
     return <PresentationMode
@@ -169,9 +179,9 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const formulaPrimitive = snapshot.primitives.find((primitive) => primitive.type === 'formula');
   const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
-  const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
+  const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} fullWorldToolsOpen={fullWorldToolsOpen} onFullWorldToolsChange={setFullWorldToolsOpen} onOpenFullWorldTools={openFullWorldWorkspaceFromTune} />;
   const experimentRegion = <ExploreExperimentRegion t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
-  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => setAgentOpen(false)} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} t={t} />;
+  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => setAgentOpen(false)} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} t={t} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}

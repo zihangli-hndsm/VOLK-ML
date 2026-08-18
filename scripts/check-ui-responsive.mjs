@@ -63,7 +63,7 @@ assert.ok(hookSource.includes('ResizeObserver'), 'capabilities use container mea
 assert.ok(hookSource.includes('matchMedia'), 'capabilities use input media queries');
 assert.ok(!hookSource.includes('userAgent') && !hookSource.includes('navigator.userAgent'), 'capabilities do not use UA detection');
 assert.ok(boundarySource.includes('data-ui-pointer={presentation.responsive.pointer}'), 'boundary publishes input capability');
-assert.ok(depthSource.includes('bottom-0') && depthSource.includes('w-[min(360px,calc(100vw-2rem))]'), 'Depth/Inspector has compact sheet and larger drawer presentations');
+assert.ok(depthSource.includes('bottom-0') && depthSource.includes('w-[min(300px,calc(100vw-2rem))]'), 'Depth/Inspector has compact sheet and stable 300px drawer presentation');
 assert.ok(workspaceSource.includes('touch-none') && workspaceSource.includes('setPointerCapture'), 'World canvas preserves explicit touch gesture semantics');
 assert.ok(workspaceSource.includes('const finishGesture') && workspaceSource.includes('onPointerUp') && workspaceSource.includes('dispatchTransaction'), 'gesture preview commits through one pointer-up transaction boundary');
 assert.ok(dialogSource.includes('overflow-hidden') && dialogSource.includes('bg-slate-950/55') && dialogSource.includes('p-0 sm:p-5'), 'dialog removes compact outer padding');
