@@ -505,6 +505,7 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
     throw playgroundError('INVALID_PLAYGROUND_ACTION', {
       type: 'APPLY_WORLD_TRANSACTION',
       reason: 'adapter does not support World editing',
+      reasonCode: 'world-adapter-unsupported',
       adapterId: session.adapterId,
     });
   }
@@ -822,6 +823,7 @@ function repeatTrialWorld(world, seed, generated) {
     const generatedTrial = materializeWorldRecipe(world.generator.recipe, seed, { worldId: world.id });
     return createWorld({
       ...world,
+      task: generatedTrial.recipe.task,
       observations: generatedTrial.observations,
       seed,
       mode: 'generated',
@@ -839,6 +841,7 @@ function repeatTrialWorld(world, seed, generated) {
   const generatedTrial = generateObservations(world.generator.spec, seed, { worldId: world.id });
   return createWorld({
     ...world,
+    task: 'regression',
     observations: generatedTrial.observations,
     seed,
     mode: 'generated',

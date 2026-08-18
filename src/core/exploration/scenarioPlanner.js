@@ -1,4 +1,5 @@
 import { conditionFingerprintForSession } from './observables.js';
+import { worldRecipePatchChangedPaths, worldRecipePatchSemanticDomains, worldRecipeSemanticDomains } from './worldRecipe.js';
 import { interpretExplorationRequest } from './explorationInterpreter.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { scenarioError, validateScenarioSpec } from './scenarioSpec.js';
@@ -177,6 +178,22 @@ function intentSpec(intent, request, context) {
 }
 
 function worldDesignSpec(worldDesign, request, context) {
+  const currentRecipe = context.world?.generator?.kind === 'world-recipe' ? context.world.generator.recipe : null;
+  const intendedTask = worldDesign.mode === 'create'
+    ? worldDesign.recipe?.task
+    : currentRecipe?.task;
+  const outcomeObservables = intendedTask === 'classification'
+    ? ['outcome.trainAccuracy', 'outcome.testAccuracy']
+    : ['outcome.trainMse', 'outcome.testMse'];
+  const intendedWorldRecipeDomains = worldDesign.mode === 'create'
+    ? ['whole-recipe']
+    : worldRecipePatchSemanticDomains(currentRecipe, worldDesign.patch);
+  const intendedWorldRecipePaths = worldDesign.mode === 'create'
+    ? ['whole-recipe']
+    : worldRecipePatchChangedPaths(currentRecipe, worldDesign.patch);
+  const heldWorldRecipeDomains = currentRecipe
+    ? worldRecipeSemanticDomains(currentRecipe).filter((domain) => !intendedWorldRecipeDomains.includes(domain))
+    : [];
   const baseline = {
     experimentId: context.experiment.id,
     conditionFingerprint: conditionFingerprintForSession({ world: context.world, adapterId: context.experiment.model?.adapterId, experiment: context.experiment }),
@@ -187,7 +204,10 @@ function worldDesignSpec(worldDesign, request, context) {
     baseline,
     execution: { duplicateBaseline: true, run: true, compare: true, repeat: null },
     hold: [...(worldDesign.requestedHolds ?? []), 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
-    observe: ['world.trainXRange', 'world.testXRange', 'outcome.trainMse', 'outcome.testMse'],
+    intendedWorldRecipeDomains,
+    intendedWorldRecipePaths,
+    heldWorldRecipeDomains,
+    observe: ['world.trainXRange', 'world.testXRange', ...outcomeObservables],
   };
   if (worldDesign.mode === 'create' && worldDesign.recipe) return {
     ...common,

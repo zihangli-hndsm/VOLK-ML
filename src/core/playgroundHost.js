@@ -37,6 +37,7 @@ import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
 import { planExplorationIntent, planExplorationRequest, planWorldDesign } from './exploration/scenarioPlanner.js';
 import { deriveCleanerComparisonProposal } from './exploration/cleanerComparison.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
+import { isWorldModelCompatibilityError } from './exploration/worldModelCompatibility.js';
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
 import { worldRecipeSummary } from './exploration/worldRecipe.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
@@ -746,7 +747,23 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         : planExplorationRequest(request, context);
       if (planned.kind !== 'proposal') return planned;
       const validated = validateScenarioSpec(planned.scenario, context);
-      const assessment = this.preflightExplorationScenario({ scenario: validated });
+      let assessment;
+      try {
+        assessment = this.preflightExplorationScenario({ scenario: validated });
+      } catch (error) {
+        if (!worldDesign || !isWorldModelCompatibilityError(error)) throw error;
+        return {
+          kind: 'clarification',
+          request: request ?? 'Design a deterministic world',
+          interpretation: {
+            kind: 'world-design',
+            ambiguity: 'runtime-incompatible-world',
+            messageKey: 'playground.explorationAgent.incompatibleWorld',
+            choices: [],
+            errorCode: error?.code ?? 'EXPLORATION_RUNTIME_INCOMPATIBLE',
+          },
+        };
+      }
       return { ...planned, scenario: validated, assessment };
     },
 

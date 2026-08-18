@@ -3,6 +3,7 @@ import {
   computeTestAccuracy,
   DEFAULT_KNN_SEED,
   fitKnn,
+  fitKnnTrainingSet,
   predictKnn,
   rankNeighbors,
   refitKnnFromSplit,
@@ -375,6 +376,123 @@ export const knnAdapter = {
     };
   },
 
+  validateWorld(world) {
+    if (world?.task !== 'classification') {
+      throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+        reason: 'KNN requires a classification World',
+        reasonCode: 'world-task-incompatible',
+      });
+    }
+    const featureColumns = Array.isArray(world.featureNames) ? world.featureNames : [];
+    if (featureColumns.length < 2 || !Array.isArray(world.observations) || !world.observations.length) {
+      throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+        reason: 'KNN World needs at least two features and one observation',
+        reasonCode: 'knn-world-invalid',
+      });
+    }
+    const train = world.observations.filter((point) => point.membership === 'train');
+    if (!train.length) {
+      throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+        reason: 'KNN World needs at least one train observation',
+        reasonCode: 'knn-world-invalid',
+      });
+    }
+    for (const point of world.observations) {
+      if (!['train', 'test'].includes(point.membership)
+        || typeof point.label !== 'string'
+        || !point.label.trim()
+        || featureColumns.some((feature) => !Number.isFinite(Number(point.features?.[feature])))) {
+        throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+          reason: 'KNN World observations need finite features, labels, and explicit train/test membership',
+          reasonCode: 'knn-world-invalid',
+        });
+      }
+    }
+    return world;
+  },
+
+  applyWorld(modelState, world, { controls, recorder }) {
+    this.validateWorld(world);
+    const featureColumns = [...world.featureNames];
+    const points = world.observations.map((point) => ({
+      id: point.id,
+      features: Object.fromEntries(featureColumns.map((feature) => [feature, Number(point.features[feature])])),
+      label: point.label,
+      membership: point.membership,
+      provenance: point.provenance,
+    }));
+    const rawTrain = points.filter((point) => point.membership === 'train');
+    const test = points.filter((point) => point.membership === 'test');
+    const xFeature = featureColumns.includes(controls.xFeature)
+      ? controls.xFeature
+      : featureColumns[0];
+    const yFeature = featureColumns.includes(controls.yFeature) && controls.yFeature !== xFeature
+      ? controls.yFeature
+      : featureColumns.find((feature) => feature !== xFeature) ?? featureColumns[0];
+    const trainSamples = rawTrain.map((point) => ({
+      id: point.id,
+      x: featureColumns.map((feature) => point.features[feature]),
+      y: point.label,
+    }));
+    const fitted = fitKnnTrainingSet({ rawTrain: trainSamples, k: controls.k });
+    const fit = {
+      normalizedTrain: fitted.train,
+      normalization: fitted.normalization,
+      k: fitted.k,
+      trainRows: fitted.trainRows,
+      testRows: test.length,
+      testAccuracy: computeTestAccuracy({
+        normalizedTrain: fitted.train,
+        normalization: fitted.normalization,
+        k: fitted.k,
+      }, test, featureColumns),
+    };
+    const ranges = projectedRanges(points, xFeature, yFeature);
+    const query = {
+      x: finiteOrNull(modelState?.query?.x) ?? (ranges.xMin + ranges.xMax) / 2,
+      y: finiteOrNull(modelState?.query?.y) ?? (ranges.yMin + ranges.yMax) / 2,
+    };
+    const next = {
+      points,
+      rawTrain,
+      test,
+      fit,
+      featureColumns,
+      xFeature,
+      yFeature,
+      ranges,
+      query,
+      revealed: 0,
+      decisionRegions: null,
+      pointCounter: modelState?.pointCounter ?? 0,
+    };
+    recorder.emit('data.loaded', { points: points.length, features: featureColumns });
+    recorder.emit('split.created', {
+      kind: 'explicit-membership',
+      trainRows: rawTrain.length,
+      testRows: test.length,
+      trainIds: rawTrain.map((point) => point.id),
+      testIds: test.map((point) => point.id),
+    });
+    recorder.emit('normalization.fitted', {
+      means: fit.normalization.means,
+      stds: fit.normalization.stds,
+    });
+    recorder.emit('knn.samplesStored', { count: fit.trainRows, trainIds: rawTrain.map((point) => point.id) });
+    recorder.emit('evaluation.completed', { accuracy: fit.testAccuracy, k: fit.k });
+    return {
+      controls: {
+        xFeature,
+        yFeature,
+        k: fit.k,
+        queryX: query.x,
+        queryY: query.y,
+      },
+      modelState: refreshProjection(next, { ...controls, xFeature, yFeature, k: fit.k }),
+      timeline: { step: 0, totalSteps: fit.k },
+    };
+  },
+
   applyModelAction(modelState, action, { controls, recorder }) {
     if (action.type === 'SET_CONTROL') {
       if (action.key === 'xFeature' || action.key === 'yFeature') {
@@ -666,12 +784,14 @@ export const knnAdapter = {
     const metrics = {
       revealed: modelState.revealed,
       k: fit.k,
+      trainAccuracy: computeTestAccuracy(fit, modelState.rawTrain, featureColumns),
       predictedLabel: voting.predictedLabel,
       trainingPoints: fit.trainRows,
       testRows: fit.testRows,
     };
     if (modelState.test.length) {
       metrics.runtimeAccuracy = fit.testAccuracy;
+      metrics.testAccuracy = fit.testAccuracy;
       metrics.currentViewAccuracy = viewAccuracy;
     }
     return {

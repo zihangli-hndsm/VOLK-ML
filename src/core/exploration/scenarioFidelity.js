@@ -1,3 +1,5 @@
+import { worldRecipePathSemanticDomain } from './worldRecipe.js';
+
 const FACTOR_BY_TARGET = Object.freeze({
   outliers: 'world',
   'test-input-support': 'world',
@@ -53,8 +55,31 @@ export function evaluateScenarioFidelity(spec, comparison) {
   const generatorConfounds = [...heldGenerator].filter((field) => generatorChanged.has(field));
   const generatorUnrepresented = [...generatorChanged].filter((field) => !intendedGenerator.has(field));
   const recipeChanged = comparison?.details?.worldRecipe?.changedPaths ?? [];
-  const recipeUnrepresented = recipeChanged.length && !intended.has('world') ? ['world-recipe'] : [];
-  const missing = [...new Set([...confounds, ...unrepresented, ...generatorConfounds, ...generatorUnrepresented, ...recipeUnrepresented])];
+  const recipeDomains = new Set(recipeChanged.map(worldRecipePathSemanticDomain));
+  const declaredRecipeDomains = new Set(spec.intendedWorldRecipeDomains ?? []);
+  const declaredRecipePaths = Array.isArray(spec.intendedWorldRecipePaths) ? new Set(spec.intendedWorldRecipePaths) : null;
+  const recipeMissing = [];
+  if (declaredRecipePaths?.has('whole-recipe') || (!declaredRecipePaths && declaredRecipeDomains.has('whole-recipe'))) {
+    // A create-world design is explicitly a whole-recipe replacement. Its many
+    // path changes are intentional, not hidden confounds.
+  } else if (declaredRecipePaths) {
+    for (const path of recipeChanged) {
+      if (!declaredRecipePaths.has(path)) recipeMissing.push(`recipe:extra-path:${path}`);
+    }
+    for (const path of declaredRecipePaths) {
+      if (!recipeChanged.includes(path)) recipeMissing.push(`recipe:missing-path:${path}`);
+    }
+  } else if (recipeChanged.length && !declaredRecipeDomains.size) {
+    recipeMissing.push('recipe-domains-unclassified');
+  } else {
+    for (const domain of recipeDomains) {
+      if (!declaredRecipeDomains.has(domain)) recipeMissing.push(`recipe:${domain}`);
+    }
+    for (const domain of declaredRecipeDomains) {
+      if (domain !== 'whole-recipe' && !recipeDomains.has(domain)) recipeMissing.push(`recipe:not-changed:${domain}`);
+    }
+  }
+  const missing = [...new Set([...confounds, ...unrepresented, ...generatorConfounds, ...generatorUnrepresented, ...recipeMissing])];
   const status = missing.length
     ? 'partial'
     : spec.approximation ? 'approximate' : 'exact';

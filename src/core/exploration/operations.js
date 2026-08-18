@@ -42,8 +42,8 @@ function worldWithObservations(world, observations, details) {
 function setWorldGenerator(world, spec, seed = world.randomness?.seed ?? null) {
   const normalized = normalizeGeneratorSpec(spec);
   const existing = world.generator;
-  const hasRealization = Boolean(existing?.realization);
-  const active = world.mode === 'generated' && Boolean(existing?.active && hasRealization);
+  const hasRealization = existing?.kind === 'legacy-generator' && Boolean(existing.realization);
+  const active = world.mode === 'generated' && Boolean(existing?.kind === 'legacy-generator' && existing?.active && hasRealization);
   return {
     world: createWorld({
       ...world,
@@ -57,7 +57,7 @@ function setWorldGenerator(world, spec, seed = world.randomness?.seed ?? null) {
         status: existing?.status === 'modified' ? 'modified' : 'dirty',
         spec: normalized,
         seed,
-        realization: existing?.realization
+        realization: hasRealization
           ? {
             spec: cloneGeneratorSpec(existing.realization.spec),
             seed: existing.realization.seed ?? null,
@@ -161,6 +161,7 @@ function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
     return {
       world: createWorld({
         ...world,
+        task: generated.recipe.task,
         mode: 'generated',
         observations: generated.observations,
         seed: generated.seed,
@@ -183,6 +184,7 @@ function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
   return {
     world: createWorld({
       ...world,
+      task: 'regression',
       mode: 'generated',
       observations: generated.observations,
       seed: generated.seed,

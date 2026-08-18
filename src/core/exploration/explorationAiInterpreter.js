@@ -1,7 +1,7 @@
 import { normalizeAiConfig } from '../ai/aiSettings.js';
 import { createProviderGateway } from '../ai/providerRegistry.js';
 import { EXPLORATION_INTENT_IDS } from './explorationIntents.js';
-import { applyWorldRecipePatch, normalizeWorldRecipe, worldRecipeJsonSchema } from './worldRecipe.js';
+import { applyWorldRecipePatch, normalizeWorldRecipe, worldRecipeJsonSchema, worldRecipePatchJsonSchema } from './worldRecipe.js';
 
 const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
@@ -25,10 +25,7 @@ export function explorationGuidanceResponseSchema({ availableDepths = [] } = {})
       design: { anyOf: [{ type: 'object', additionalProperties: false, properties: {
         mode: { type: 'string', enum: ['create', 'edit'] },
         recipe: { anyOf: [worldRecipeJsonSchema(), { type: 'null' }] },
-        patch: { anyOf: [{ type: 'object', additionalProperties: false, properties: {
-          version: { type: 'integer', enum: [1] },
-          changes: { type: 'array', maxItems: 32, items: { type: 'object' } },
-        }, required: ['version', 'changes'] }, { type: 'null' }] },
+        patch: { anyOf: [worldRecipePatchJsonSchema(), { type: 'null' }] },
       }, required: ['mode', 'recipe', 'patch'] }, { type: 'null' }] },
       reason: nullableStringSchema(),
       ambiguity: nullableStringSchema(),

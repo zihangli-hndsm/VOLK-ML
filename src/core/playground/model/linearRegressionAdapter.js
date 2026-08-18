@@ -37,7 +37,10 @@ function pointForModel(point, feature, target) {
 
 function validateRegressionWorld(world) {
   if (world.task !== 'regression') {
-    throw playgroundError('INVALID_PLAYGROUND_ACTION', { reason: 'linear regression requires a regression World' });
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+      reason: 'linear regression requires a regression World',
+      reasonCode: 'world-task-incompatible',
+    });
   }
   const trainCount = world.observations.filter((point) => point.membership !== 'test').length;
   if (trainCount < 2) {

@@ -164,7 +164,7 @@ export default function ExplorationAgentPanel({ agent, snapshot, presentation = 
       </button>
     </div>
     {proposal?.kind === 'clarification' && <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
-      <p className="font-black">{proposal.interpretation.message ?? t('playground.explorationAgent.clarify')}</p>
+      <p className="font-black">{proposal.interpretation.messageKey ? t(proposal.interpretation.messageKey) : proposal.interpretation.message ?? t('playground.explorationAgent.clarify')}</p>
       <div className="mt-2 flex flex-wrap gap-2">{(proposal.interpretation.choices ?? []).map((choice) => <button type="button" key={choice.id} onClick={() => ask(choice.id)} className="rounded-lg bg-white px-2 py-1 font-bold text-amber-900 ring-1 ring-amber-200">{choice.label}</button>)}</div>
     </div>}
     {scenario && <div className="mt-3 rounded-xl border border-violet-200 bg-white p-3 text-xs">

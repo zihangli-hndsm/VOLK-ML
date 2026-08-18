@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-18 — World Composer v1 final acceptance
+
+- Corrected crescent inner-arc direction and continuity, and made arc-density checks use normalized geometric path length (`s`) rather than raw curve parameters.
+- Added the bounded KNN World `validateWorld`/`applyWorld` path with authoritative train/test membership and task-aware classification accuracy observables; MLP World mutation remains deferred.
+- Narrowed world-design compatibility clarification to structured adapter/task compatibility failures; stale, resource, validation, and unexpected errors now retain their own error semantics.
+
 ## 2026-08-14 - Phase 7 Big-Idea exploration entrances
 
 - Added a deterministic BigIdeaEntrance v1 registry for Finding Patterns, Noise and Robustness, Generalization, Distribution Shift, and Model Capacity.
@@ -7,6 +13,15 @@
 - Added localized, keyboard-accessible entrance cards and a non-blocking starter question with explicit optional Thread creation and restart.
 - Added Distribution Shift manual Test-support acceptance coverage, immediate-divergence coverage, real MLP hidden-unit evidence, architecture documentation, and integrated registry/runtime checks into `npm run check`.
 - Acceptance fix: canonicalized effective entrance seeds across session creation and entrance-owned World regeneration, and strengthened registry validation for model compatibility, setup controls, World transactions, affordances, and malformed declarations.
+
+## 2026-08-18 — World Composer exact-path and path-density acceptance fixes
+
+- Rebased the existing World Composer acceptance branch onto the merged PR #99 main ancestry and retained the semantic fixes without a duplicate parallel ancestor.
+- Scenario fidelity now compares exact normalized recipe paths for edits, including group, split, property, and component identity; whole-recipe creation remains an explicit exception.
+- World.task now follows the current materialized realization rather than a dirty desired recipe, and detached preflight rejects incompatible attached models atomically.
+- Moon materialization is a validated intersecting-circle crescent with real inner/outer arcs; ellipse outlines, spirals, and moons apply density over deterministic geometric arc length.
+- Provider numeric schema fragments, local patch validation, and canonical ScenarioSpec recipe paths now share strict bounds and cannot trust fabricated fidelity declarations.
+- Acceptance: World Composer, Exploration Agent, OpenAI Responses, World Builder, full `npm run check`, production build, and `git diff --check` pass; no browser or GitHub Actions claim is made.
 
 ## 2026-08-13 - Phase 5 Exploration Agent learner mode
 
@@ -53,6 +68,12 @@
 - 删除误提交的 `tmp_branch_marker.txt`；统一 `src/core/compiler.js` 与 `docs/architecture/compiler-ir.md` 的换行为 LF。
 - 检查脚本兼容 Windows（`python3`/`python` 回退）；`browserExecutionContract.js` 为可归因的校验失败补充具体节点归属。
 - 验收：`npm run check`、`npm run build`、`git diff --check` 全部通过；Chrome 浏览器实测 15/15 通过。
+
+## 2026-08-17 — World Composer semantic acceptance fixes
+
+- Hardened recipe-level fidelity: normalized recipe paths now map to explicit semantic domains, whole-recipe creation is explicit, and accidental shape/sampling/noise/split changes become partial fidelity.
+- Added strict, bounded WorldRecipe patch validation with split-specific train/test transforms, deterministic density domains, interior polygon triangulation, self-intersection rejection, and no silent numeric coercion or clamping.
+- Preserved scoped deterministic materialization and legacy generator compatibility; expanded Agent-facing recipe summaries without raw observations and added focused schema, geometry, density, provenance, split, fidelity, and lifecycle regressions.
 
 ## 2026-08-05 — 教学增强：画布适配、示例数据集、教学示例与路线图
 

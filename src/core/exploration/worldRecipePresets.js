@@ -32,8 +32,8 @@ const recipes = {
   moons: () => ({
     version: 1, task: 'classification', coordinateSpace: 'cartesian-2d',
     groups: [
-      group('upper-moon', '0', { type: 'moon', params: { outerRadius: 1.1, innerRadius: 0.7, innerOffset: [0.35, 0], thickness: 0.05 } }, [-0.55, 0.25]),
-      group('lower-moon', '1', { type: 'moon', params: { outerRadius: 1.1, innerRadius: 0.7, innerOffset: [0.35, 0], thickness: 0.05 } }, [0.55, -0.25]),
+      group('upper-moon', '0', { type: 'moon', params: { outerRadius: 1.1, innerRadius: 0.7, innerOffset: [0.65, 0], thickness: 0.05 } }, [-0.7, 0.35]),
+      group('lower-moon', '1', { type: 'moon', params: { outerRadius: 1.1, innerRadius: 0.7, innerOffset: [0.65, 0], thickness: 0.05 } }, [0.7, -0.35]),
     ],
     noise: baseNoise(),
   }),
@@ -70,4 +70,3 @@ export function getWorldRecipePreset(id) {
 export function listWorldRecipePresets() {
   return WORLD_RECIPE_PRESET_IDS.map((id) => ({ id, recipe: getWorldRecipePreset(id) }));
 }
-

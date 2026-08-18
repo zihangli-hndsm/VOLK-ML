@@ -89,6 +89,9 @@ function normalizeGeneratorState(generator, { mode, seed }) {
     ? { kind, ...(kind === 'legacy-generator' ? { spec } : { recipe }), seed: generator.lastSeed ?? seed ?? null }
     : null;
   const realization = generator.realization ?? legacyRealization;
+  if (realization && realization.kind !== undefined && realization.kind !== kind) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator.realization.kind', value: realization.kind, reason: 'generator-kind-mismatch' });
+  }
   const normalizedRealization = realization
     ? {
       kind: realization.kind ?? kind,
@@ -205,6 +208,19 @@ export function validateWorld(world) {
   }
   if (mode === 'generated' && (!generator || !generator.active || !generator.realization)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'generator.active' });
+  }
+  if (mode === 'generated' && generator?.realization) {
+    const realizationTask = generator.kind === 'world-recipe'
+      ? generator.realization.recipe.task
+      : 'regression';
+    if (world.task !== realizationTask) {
+      throw explorationError('EXPLORATION_INVALID_WORLD', {
+        field: 'task',
+        value: world.task,
+        expected: realizationTask,
+        reason: 'task-realization-mismatch',
+      });
+    }
   }
   const defaultProvenance = world.observations[0]?.provenance ?? 'manual';
   const observations = world.observations.map((observation, index) => normalizeObservation(observation, index, defaultProvenance));
