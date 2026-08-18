@@ -34,12 +34,16 @@ import { AFFORDANCE_IDS, EXPLORATION_RECIPES, THINGS_TO_TRY } from './exploratio
 import { conditionFingerprintForSession } from './exploration/observables.js';
 import { getBigIdeaEntrance, listBigIdeaEntrances, resolveBigIdeaInitialization } from './exploration/bigIdeaRegistry.js';
 import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
-import { planExplorationIntent, planExplorationRequest, planWorldDesign } from './exploration/scenarioPlanner.js';
+import { planExplorationIntent, planExplorationRequest, planWorldDesign, planPedagogicalExperiment } from './exploration/scenarioPlanner.js';
+import { createPedagogicalExperimentDesign } from './exploration/pedagogicalExperiment.js';
+import { derivePedagogicalEvidence, pedagogicalFollowUpGoals } from './exploration/pedagogicalEvidence.js';
+import { verifyPedagogicalIntervention } from './exploration/pedagogicalVerification.js';
 import { deriveCleanerComparisonProposal } from './exploration/cleanerComparison.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
 import { isWorldModelCompatibilityError } from './exploration/worldModelCompatibility.js';
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
 import { worldRecipeSummary } from './exploration/worldRecipe.js';
+import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -134,7 +138,19 @@ function executeExplorationOnDetachedSession(baseSession, validated) {
   const snapshot = derivePlaygroundSnapshot(candidate);
   const mutationDiff = snapshot.experimentWorkspace?.comparison?.diff ?? null;
   const fidelity = evaluateScenarioFidelity(validated, mutationDiff);
-  return { session: candidate, snapshot, mutationDiff, fidelity };
+  const pedagogicalVerification = validated.pedagogicalDesign
+    ? verifyPedagogicalIntervention({
+      design: validated.pedagogicalDesign,
+      baselineWorld: baseSession.experiment?.world,
+      candidateWorld: candidate.experiment?.world,
+      scenario: validated,
+      comparison: mutationDiff,
+    })
+    : null;
+  if (pedagogicalVerification && !pedagogicalVerification.valid) {
+    throw scenarioError('EXPLORATION_PEDAGOGICAL_INTERVENTION_INVALID', { reason: pedagogicalVerification.reason });
+  }
+  return { session: candidate, snapshot, mutationDiff, fidelity, pedagogicalVerification };
 }
 
 function resolveSource(playground, dataset) {
@@ -654,6 +670,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         scenarioSpecVersion: SCENARIO_SPEC_VERSION,
         fidelityStatuses: [...SCENARIO_FIDELITY_STATUSES],
         proposalLifecycle: ['propose', 'accept', 'execute', 'inspect'],
+        pedagogicalExperimentGoals: pedagogicalGoalIds(),
       };
       return context;
     },
@@ -737,30 +754,70 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       return present(derivePlaygroundSnapshot(session));
     },
 
-    proposeExploration({ request, intent, worldDesign } = {}) {
+    proposeExploration({ request, intent, worldDesign, design } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const context = this.inspectContext();
-      const planned = worldDesign
-        ? planWorldDesign(worldDesign, request ?? 'Design a deterministic world', context)
-        : intent
-        ? planExplorationIntent(intent, request ?? String(intent), context)
-        : planExplorationRequest(request, context);
+      let planned;
+      try {
+        planned = design
+          ? planPedagogicalExperiment(design, request ?? 'Design a controlled experiment', context)
+          : worldDesign
+          ? planWorldDesign(worldDesign, request ?? 'Design a deterministic world', context)
+          : intent
+            ? planExplorationIntent(intent, request ?? String(intent), context)
+            : planExplorationRequest(request, context);
+      } catch (error) {
+        if (design && error?.code === 'EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION') {
+          return {
+            kind: 'clarification',
+            request: request ?? 'Design a controlled experiment',
+            interpretation: { ambiguity: error.details?.reason ?? 'pedagogical-intervention-unavailable', messageKey: 'playground.pedagogical.unsupported' },
+          };
+        }
+        throw error;
+      }
       if (planned.kind !== 'proposal') return planned;
       const validated = validateScenarioSpec(planned.scenario, context);
       let assessment;
       try {
         assessment = this.preflightExplorationScenario({ scenario: validated });
       } catch (error) {
-        if (!worldDesign || !isWorldModelCompatibilityError(error)) throw error;
+        if ((!worldDesign && !design) || !isWorldModelCompatibilityError(error)) {
+          if (design && error?.code === 'EXPLORATION_PEDAGOGICAL_INTERVENTION_INVALID') {
+            return {
+              kind: 'clarification',
+              request: request ?? 'Design a controlled experiment',
+              interpretation: {
+                kind: 'exploration-design',
+                ambiguity: error.details?.reason ?? 'pedagogical-intervention-unavailable',
+                messageKey: 'playground.pedagogical.unsupported',
+                choices: [],
+              },
+            };
+          }
+          throw error;
+        }
         return {
           kind: 'clarification',
           request: request ?? 'Design a deterministic world',
           interpretation: {
-            kind: 'world-design',
+            kind: design ? 'exploration-design' : 'world-design',
             ambiguity: 'runtime-incompatible-world',
-            messageKey: 'playground.explorationAgent.incompatibleWorld',
+            messageKey: design ? 'playground.pedagogical.incompatibleModel' : 'playground.explorationAgent.incompatibleWorld',
             choices: [],
             errorCode: error?.code ?? 'EXPLORATION_RUNTIME_INCOMPATIBLE',
+          },
+        };
+      }
+      if (design && assessment.fidelity?.status !== 'exact') {
+        return {
+          kind: 'clarification',
+          request: request ?? 'Design a controlled experiment',
+          interpretation: {
+            kind: 'exploration-design',
+            ambiguity: 'pedagogical-fidelity-not-exact',
+            messageKey: 'playground.pedagogical.fidelityNotExact',
+            choices: [],
           },
         };
       }
@@ -812,6 +869,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       return {
         scenario: validated,
         fidelity: result.fidelity,
+        pedagogicalVerification: result.pedagogicalVerification,
         predictedSemanticDiff: result.mutationDiff,
         snapshot: result.snapshot,
       };
@@ -825,15 +883,45 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       // assessment has succeeded on the detached candidate.
       const assessment = this.preflightExplorationScenario({ scenario });
       const validated = assessment.scenario;
+      if (validated.pedagogicalDesign && assessment.fidelity?.status !== 'exact') {
+        throw scenarioError('EXPLORATION_PEDAGOGICAL_FIDELITY_NOT_EXACT', {
+          status: assessment.fidelity?.status ?? 'unavailable',
+        });
+      }
       const candidate = executeExplorationOnDetachedSession(session, validated);
       const proposalFidelity = assessment.fidelity;
       const executionFidelity = candidate.fidelity;
       const fidelityMismatch = JSON.stringify(proposalFidelity) !== JSON.stringify(executionFidelity);
+      if (validated.pedagogicalDesign && executionFidelity?.status !== 'exact') {
+        throw scenarioError('EXPLORATION_PEDAGOGICAL_FIDELITY_NOT_EXACT', {
+          status: executionFidelity?.status ?? 'unavailable',
+        });
+      }
       commit(candidate.session);
       const result = candidate.snapshot;
       const followUps = [];
+      let pedagogicalEvidence = null;
+      const pedagogicalVerification = candidate.pedagogicalVerification;
+      if (validated.pedagogicalDesign) {
+        pedagogicalEvidence = derivePedagogicalEvidence({ snapshot: result, scenario: validated, verification: pedagogicalVerification });
+        for (const goal of pedagogicalFollowUpGoals(validated.pedagogicalDesign.goal)) {
+          try {
+            const followDesign = createPedagogicalExperimentDesign(goal);
+            const followPlan = planPedagogicalExperiment(followDesign, `Try a follow-up experiment for ${goal}.`, this.inspectContext());
+            if (followPlan.kind !== 'proposal') continue;
+            const followAssessment = this.preflightExplorationScenario({ scenario: followPlan.scenario });
+            if (followAssessment.fidelity.status === 'exact') {
+              followUps.push({ id: 'pedagogical-design', goal, design: followDesign, request: `Try a follow-up experiment for ${goal}.` });
+            }
+          } catch {
+            // A follow-up is offered only when current capabilities can preflight it.
+          }
+          if (followUps.length >= 2) break;
+        }
+      } else {
         if (candidate.mutationDiff?.changed?.includes('world')) followUps.push({ id: 'repeat-condition' });
         if (result.observations?.some((notice) => notice.id === 'SLOPE_MOVED_STRONGLY')) followUps.push({ id: 'smaller-change' });
+      }
       return {
         snapshot: present(result),
         scenario: validated,
@@ -844,6 +932,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         mutationDiff: candidate.mutationDiff,
         evidenceFocus: [...validated.observe],
         followUps: followUps.slice(0, 2),
+        pedagogicalEvidence,
+        pedagogicalVerification,
       };
     },
 

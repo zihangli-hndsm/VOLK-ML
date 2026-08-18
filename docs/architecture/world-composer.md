@@ -113,6 +113,7 @@ registered presets; unsupported designs remain clarification outcomes.
 
 V1 bounds groups, points per polygon/polyline, samples, local-noise rules, and
 patch changes. Local noise supports bounding boxes and circles; boundary-aware
-noise is deferred. KNN/MLP adapters can inspect generated Worlds, but World
-mutation still requires the adapter's existing `applyWorld` capability. A full
+noise is deferred. KNN supports the current classification World mutation
+contract; MLP can inspect generated Worlds but its World mutation remains
+deferred. A full
 visual recipe editor and safe function-curve AST are deferred.

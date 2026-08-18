@@ -548,3 +548,21 @@
 - Added deterministic recipe materialization into ordinary finite World observations with generation provenance, explicit desired-vs-realized lifecycle, recipe patch operations, atomic Undo/Redo, Repeat support, and legacy generator compatibility.
 - Added recipe-aware comparison details and ScenarioSpec fidelity, bounded Agent world-design proposals with explicit preflight/execution, local preset fallback, unsupported-adapter clarification, localized recipe summaries, architecture documentation, and integrated World Composer checks.
 - Acceptance: focused World Composer checks, full `npm run check`, `npm run build -- --configLoader runner`, and `git diff --check` passed. Default Vite config loading and localhost browser access remain restricted by this managed environment.
+
+## 2026-08-18 — Agent Pedagogical Experiment Design
+
+- Added a bounded `ExplorationDesign` layer for class overlap, train/test support shift, observation noise, and outlier sensitivity; deterministic planning compiles these goals into existing WorldRecipe, ScenarioSpec, comparison, fidelity, and explicit execution semantics.
+- Added a learner-facing “Let’s test this” proposal with Change / Keep fixed / Watch, optional prediction recording through existing Exploration Thread entries, runtime-grounded outcome evidence, and at most two capability-preflighted follow-up questions.
+- Added strict AI structured design validation with local fallback, task-aware accuracy/MSE observables, focused regression coverage, and documentation; World Composer v1 remains closed and MLP World mutation remains deferred.
+
+## 2026-08-18 — Pedagogical experiment semantic acceptance fixes
+
+- Added a deterministic pedagogical-intervention verifier grounded in realized observations: class overlap must reduce measured cross-class distance, support shift must increase test-outside-train coverage while preserving Train, and noise/outlier proposals cannot be zero-change or based on dirty baselines.
+- Tightened grounded evidence and compatibility behavior, preserving ordinary validation/resource errors, and recorded predictions before successful experiment commits followed by experiment and observation Thread entries.
+- Validation: focused pedagogical experiment checks, related runtime/render regressions, `npm run check`, `npm run build`, and `git diff --check` passed; browser validation was not run in this environment.
+
+## 2026-08-18 — Pedagogical experiment semantic naming and hold cleanup
+
+- Renamed the bounded class intervention to `class-separation`; overlap-language requests may still route to it, but learner copy now truthfully describes moving classes closer rather than measuring geometric overlap.
+- Made exact structural fidelity a pedagogical proposal and commit requirement, corrected Agent Thread provenance to prediction=`human`, experiment/observation=`agent`, and strengthened finite Train/Test/non-selected-group realization holds.
+- Validation: focused pedagogical, Agent, Thread, World Composer, UI, OpenAI Responses, and render checks passed; `npm run check`, `npm run build`, and `git diff --check` passed. Browser validation was not run and no GitHub Actions run is claimed.
