@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
+import { createPlaygroundAgentApi } from '../src/core/playgroundAgent.js';
 import { classifyAgentGuideRequest } from '../src/core/ui/agentGuide.js';
-import { projectExplorationAiContext } from '../src/core/exploration/explorationAiInterpreter.js';
+import { createExplorationAiInterpreter, projectExplorationAiContext } from '../src/core/exploration/explorationAiInterpreter.js';
 import { createPedagogicalExperimentDesign, PEDAGOGICAL_EXPERIMENT_GOALS } from '../src/core/exploration/pedagogicalExperiment.js';
 import { derivePedagogicalObservation } from '../src/core/exploration/pedagogicalObservation.js';
 import { derivePedagogicalNextQuestionCandidates } from '../src/core/exploration/pedagogicalNextQuestions.js';
@@ -90,11 +91,26 @@ const threadProposal = threadHost.proposeExploration({ design: threadDesign });
 threadHost.addExplorationThreadPrediction({ text: 'Test accuracy may decrease.', scenario: threadProposal.scenario, actor: 'human' });
 const threadResult = await threadHost.executeExploration({ scenario: threadProposal.scenario });
 threadHost.recordExplorationThreadExperiment({ scenario: threadProposal.scenario, actor: 'agent' });
-threadHost.recordExplorationThreadObservation({ scenario: threadProposal.scenario, actor: 'agent', pedagogicalObservation: threadResult.pedagogicalObservation });
+const threadAgent = createPlaygroundAgentApi(threadHost);
+threadAgent.recordExplorationThreadObservation({
+  scenario: threadProposal.scenario,
+  actor: 'agent',
+  pedagogicalObservation: {
+    version: 1,
+    goal: 'class-separation',
+    available: true,
+    summaryKey: 'fake',
+    facts: [{ id: 'fake', before: 1, after: 999, direction: 'increased', nested: { oversized: 'x'.repeat(10000) } }],
+    changed: ['fake'],
+    held: [],
+  },
+});
 const threadEntries = threadHost.getState().activeExplorationThread.entries.slice(-3);
 assert.deepEqual(threadEntries.map((entry) => entry.kind), ['prediction', 'experiment', 'observation']);
 assert.deepEqual(threadEntries.map((entry) => entry.actor), ['human', 'agent', 'agent']);
 assert.deepEqual(threadEntries[2].evidence.pedagogicalObservation, threadResult.pedagogicalObservation);
+assert.equal(JSON.stringify(threadEntries[2].evidence).includes('fake'), false, 'caller-authored observation does not enter Thread evidence');
+assert.equal(JSON.stringify(threadEntries[2].evidence).includes('oversized'), false, 'fabricated nested observation does not enter Thread evidence');
 
 const noEvidence = derivePedagogicalObservation({
   design: threadDesign,
@@ -114,6 +130,27 @@ assert.deepEqual(
   derivePedagogicalNextQuestionCandidates({ design: threadDesign, observation: resultB.pedagogicalObservation, task: 'classification' }),
 );
 
+const syntheticObservation = (trainAfter, testAfter) => derivePedagogicalObservation({
+  design: threadDesign,
+  evidence: {
+    grounded: true,
+    changed: ['world'],
+    held: ['model', 'learning'],
+    metrics: [
+      { id: 'outcome.trainAccuracy', before: 0.9, after: trainAfter },
+      { id: 'outcome.testAccuracy', before: 0.9, after: testAfter },
+    ],
+  },
+  verification: { valid: true, measurements: { before: 2, after: 1 } },
+});
+const generalizationObservation = syntheticObservation(0.88, 0.55);
+const similarOutcomeObservation = syntheticObservation(0.55, 0.55);
+const generalizationGoals = derivePedagogicalNextQuestionCandidates({ design: threadDesign, observation: generalizationObservation, task: 'classification' }).map((item) => item.goal);
+const similarOutcomeGoals = derivePedagogicalNextQuestionCandidates({ design: threadDesign, observation: similarOutcomeObservation, task: 'classification' }).map((item) => item.goal);
+assert.notDeepEqual(generalizationGoals, similarOutcomeGoals, 'grounded outcome deltas affect next-question selection');
+assert.ok(generalizationGoals.includes(PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT));
+assert.ok(!similarOutcomeGoals.includes(PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT));
+
 const projected = projectExplorationAiContext({
   pedagogicalObservation: observation,
   recentWorldActions: [{ id: 'tx-private', pointId: 'point-private', actor: 'human', intent: 'move', operationTypes: ['MOVE_POINT'], reversible: true }],
@@ -127,6 +164,31 @@ const localClose = classifyAgentGuideRequest({ request: 'What happens when the c
 assert.equal(localClose.design.goal, PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION);
 const localChinese = classifyAgentGuideRequest({ request: '让两个类别更接近一点。', snapshot: host.getState() });
 assert.equal(localChinese.design.goal, PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION);
+for (const request of ['What happens if I move class A to the right?', 'Move the red class upward.', '把类别A向右移动。']) {
+  const routed = classifyAgentGuideRequest({ request, snapshot: host.getState() });
+  assert.notEqual(routed.design?.goal, PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION, `directional movement is not class separation: ${request}`);
+}
+
+let capturedPrompt = '';
+const explanationInterpreter = createExplorationAiInterpreter({ gateway: {
+  complete: async ({ messages }) => {
+    capturedPrompt = messages[0].content;
+    return { text: JSON.stringify({ kind: 'explanation', topic: 'comparison', explanation: 'The facts are consistent with a possible interpretation; test it next.' }), protocol: 'mock' };
+  },
+} });
+const observationBeforeAi = structuredClone(observation);
+const interpretation = await explanationInterpreter.interpret({
+  request: 'Why did that happen?',
+  context: { presentation: { availableDepths: ['evidence'] }, pedagogicalObservation: observation },
+  config: { protocol: 'openai-compatible', apiKey: 'test', model: 'mock' },
+});
+assert.equal(interpretation.kind, 'explanation');
+assert.match(capturedPrompt, /authoritative deterministic facts/);
+assert.match(capturedPrompt, /Never overwrite, recompute, invent/);
+assert.match(capturedPrompt, /never turn co-occurrence into causality/);
+assert.match(capturedPrompt, /FACT, HYPOTHESIS \/ INTERPRETATION, and NEXT TEST/);
+assert.match(capturedPrompt, /geometric overlap increased/);
+assert.deepEqual(observation, observationBeforeAi, 'AI interpretation cannot mutate canonical facts');
 
 const agentSource = readFileSync(new URL('../src/components/playground/ExploreAgentSurface.jsx', import.meta.url), 'utf8');
 const predictionIndex = agentSource.indexOf('agent.addExplorationThreadPrediction');

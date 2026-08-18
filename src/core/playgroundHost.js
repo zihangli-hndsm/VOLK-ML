@@ -737,9 +737,9 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       return present(derivePlaygroundSnapshot(session));
     },
 
-    recordExplorationThreadObservation({ scenario, note, pedagogicalObservation, actor = 'human' } = {}) {
+    recordExplorationThreadObservation({ scenario, note, actor = 'human' } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_OBSERVATION', actor, scenario, note, pedagogicalObservation }));
+      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_OBSERVATION', actor, scenario, note }));
       return present(derivePlaygroundSnapshot(session));
     },
 

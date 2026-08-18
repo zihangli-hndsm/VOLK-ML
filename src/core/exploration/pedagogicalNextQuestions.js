@@ -1,9 +1,11 @@
 import { createPedagogicalExperimentDesign, PEDAGOGICAL_EXPERIMENT_GOALS } from './pedagogicalExperiment.js';
 
 const metricDelta = (observation, id) => observation?.facts?.find((fact) => fact.id === id)?.delta ?? 0;
+const absoluteMetricDelta = (observation, id) => Math.abs(metricDelta(observation, id));
 
 const CANDIDATES = Object.freeze({
   [PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION]: [
+    { goal: PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT, questionKey: 'playground.pedagogical.next.classSeparation.supportShift', rationaleKey: 'playground.pedagogical.next.rationale.coverage' },
     { goal: PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE, questionKey: 'playground.pedagogical.next.classSeparation.noise', rationaleKey: 'playground.pedagogical.next.rationale.outcome' },
     { goal: PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY, questionKey: 'playground.pedagogical.next.classSeparation.outliers', rationaleKey: 'playground.pedagogical.next.rationale.outcome' },
   ],
@@ -23,10 +25,13 @@ const CANDIDATES = Object.freeze({
 
 export function derivePedagogicalNextQuestionCandidates({ design, observation, task } = {}) {
   if (!observation?.available || !CANDIDATES[design?.goal]) return [];
-  const candidates = [...CANDIDATES[design.goal]];
-  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION
-    && Math.abs(metricDelta(observation, 'outcome.testAccuracy')) > Math.abs(metricDelta(observation, 'outcome.trainAccuracy'))) {
-    candidates.reverse();
+  let candidates = [...CANDIDATES[design.goal]];
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION) {
+    const testDelta = absoluteMetricDelta(observation, 'outcome.testAccuracy');
+    const trainDelta = absoluteMetricDelta(observation, 'outcome.trainAccuracy');
+    candidates = testDelta > trainDelta + 0.05
+      ? candidates.filter((candidate) => candidate.goal !== PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY)
+      : candidates.filter((candidate) => candidate.goal !== PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT);
   }
   return candidates
     .filter((candidate) => candidate.goal !== PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION || task === 'classification')

@@ -3,6 +3,7 @@ import { createProviderGateway } from '../ai/providerRegistry.js';
 import { EXPLORATION_INTENT_IDS } from './explorationIntents.js';
 import { applyWorldRecipePatch, normalizeWorldRecipe, worldRecipeJsonSchema, worldRecipePatchJsonSchema } from './worldRecipe.js';
 import { pedagogicalExperimentSchema, validateExplorationDesign, pedagogicalGoalIds } from './pedagogicalExperiment.js';
+import { canonicalizePedagogicalObservation } from './pedagogicalObservation.js';
 
 const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
@@ -158,14 +159,15 @@ function validateInterpretation(value, context) {
 
 export function projectExplorationAiContext(context = {}) {
   const comparison = context?.experimentWorkspace?.comparison;
-  const pedagogicalObservation = context?.pedagogicalObservation?.available
+  const canonicalObservation = canonicalizePedagogicalObservation(context?.pedagogicalObservation);
+  const pedagogicalObservation = canonicalObservation
     ? {
-      version: context.pedagogicalObservation.version,
-      goal: context.pedagogicalObservation.goal,
-      facts: (context.pedagogicalObservation.facts ?? []).slice(0, 8),
-      changed: (context.pedagogicalObservation.changed ?? []).slice(0, 12),
-      held: (context.pedagogicalObservation.held ?? []).slice(0, 12),
-      summaryKey: context.pedagogicalObservation.summaryKey ?? null,
+      version: canonicalObservation.version,
+      goal: canonicalObservation.goal,
+      facts: canonicalObservation.facts,
+      changed: canonicalObservation.changed,
+      held: canonicalObservation.held,
+      summaryKey: canonicalObservation.summaryKey,
     }
     : null;
   const recentActions = (context?.recentWorldActions ?? context?.exploration?.recentWorldActions ?? [])
@@ -203,6 +205,15 @@ function promptFor({ request, context }) {
     'When the learner asks a testable curiosity question, prefer experimentDesign with one supported goal over a lecture or arbitrary World.',
     'For requests about classes overlapping, use the truthful class-separation goal: move one class closer and observe the outcome; do not claim that geometric overlap was measured.',
     'World-design is bounded to a validated recipe or recipe patch. Never emit points, runtime operations, evidence, or metrics.',
+    ...(context?.pedagogicalObservation?.available ? [
+      'The PedagogicalObservation facts in context are authoritative deterministic facts from the runtime.',
+      'Never overwrite, recompute, invent, round into different values, or contradict their numeric values.',
+      'Never claim that an unmeasured variable changed, and never turn co-occurrence into causality.',
+      'When explaining the result, distinguish FACT, HYPOTHESIS / INTERPRETATION, and NEXT TEST.',
+      'If causal evidence is insufficient, use language such as "is consistent with", "one possible interpretation is", or "we can test that by...".',
+      'For class-separation, never say or imply that geometric overlap increased.',
+      'The AI cannot author canonical observation/evidence or authorize runtime execution.',
+    ] : []),
     `Allowed explanation topics: ${EXPLANATION_TOPICS.join(', ')}`,
     'The deterministic planner and capability registry will choose all executable operations after this response.',
     `Bounded semantic context: ${JSON.stringify(projectExplorationAiContext(context))}`,

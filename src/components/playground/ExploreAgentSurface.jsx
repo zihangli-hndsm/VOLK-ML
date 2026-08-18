@@ -137,7 +137,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     }
     setOutcome(nextOutcome);
     setProposal(null);
-    setResult(null);
+    setResult(nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION && result ? result : null);
     setError(null);
   };
 
@@ -161,7 +161,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       if (threadActive) {
         try {
           agent.recordExplorationThreadExperiment({ scenario: proposal.scenario, actor: 'agent' });
-          agent.recordExplorationThreadObservation({ scenario: proposal.scenario, actor: 'agent', pedagogicalObservation: nextResult.pedagogicalObservation });
+          agent.recordExplorationThreadObservation({ scenario: proposal.scenario, actor: 'agent' });
         } catch {
           // Thread capture is historical presentation evidence and must not
           // turn an already committed experiment into a failed runtime action.
@@ -241,7 +241,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     </div>}
 
     {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-950">
-      <p className="font-black">{t('playground.agentGuide.explanationTitle')}</p>
+      <p className="font-black">{t('playground.pedagogical.interpretationTitle')}</p>
       {outcome.topic === 'comparison' ? <>
         {comparison.kind === 'mixed-comparison' && <p className="mt-1">{t('playground.agentGuide.mixedComparison')}</p>}
         {comparison.kind !== 'mixed-comparison' && <p className="mt-1">{t('playground.agentGuide.comparisonFacts')}</p>}

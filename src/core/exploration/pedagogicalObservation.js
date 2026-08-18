@@ -1,6 +1,30 @@
 import { PEDAGOGICAL_EXPERIMENT_GOALS } from './pedagogicalExperiment.js';
+import { conditionFingerprintForSession } from './observables.js';
+import { derivePedagogicalEvidence } from './pedagogicalEvidence.js';
+import { verifyPedagogicalIntervention } from './pedagogicalVerification.js';
 
 export const PEDAGOGICAL_OBSERVATION_VERSION = 1;
+
+const SUPPORTED_GOALS = new Set(Object.values(PEDAGOGICAL_EXPERIMENT_GOALS));
+const SUMMARY_KEYS = Object.freeze({
+  [PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION]: 'playground.pedagogical.observation.classSeparation',
+  [PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT]: 'playground.pedagogical.observation.supportShift',
+  [PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE]: 'playground.pedagogical.observation.noise',
+  [PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY]: 'playground.pedagogical.observation.outliers',
+});
+
+const FACT_CONTRACTS = Object.freeze({
+  'class-separation-distance': { kind: 'intervention', labelKey: 'playground.pedagogical.observation.classSeparationDistance', numeric: true },
+  'test-outside-train-fraction': { kind: 'coverage', labelKey: 'playground.pedagogical.observation.testOutsideTrainFraction', numeric: true },
+  'train-realization-held': { kind: 'hold', labelKey: 'playground.pedagogical.observation.trainHeld', numeric: false },
+  'train-position-changes': { kind: 'intervention', labelKey: 'playground.pedagogical.observation.trainPositionsChanged', numeric: true },
+  'test-realization-held': { kind: 'hold', labelKey: 'playground.pedagogical.observation.testHeld', numeric: false },
+  'train-outlier-count': { kind: 'intervention', labelKey: 'playground.pedagogical.observation.outlierCount', numeric: true },
+  'outcome.trainAccuracy': { kind: 'outcome', labelKey: 'playground.pedagogical.trainOutcome', numeric: true },
+  'outcome.testAccuracy': { kind: 'outcome', labelKey: 'playground.pedagogical.testOutcome', numeric: true },
+  'outcome.trainMse': { kind: 'outcome', labelKey: 'playground.pedagogical.trainMse', numeric: true },
+  'outcome.testMse': { kind: 'outcome', labelKey: 'playground.pedagogical.testMse', numeric: true },
+});
 
 const clone = (value) => structuredClone(value);
 
@@ -48,6 +72,56 @@ function baseObservation({ goal, evidence }) {
     changed: [...(evidence?.changed ?? [])].slice(0, 12),
     held: [...(evidence?.held ?? [])].slice(0, 12),
     summaryKey: null,
+  };
+}
+
+function canonicalFact(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const contract = FACT_CONTRACTS[value.id];
+  if (!contract || value.kind !== contract.kind || value.labelKey !== contract.labelKey) return null;
+  if (contract.numeric) {
+    if (![value.before, value.after, value.delta].every(Number.isFinite)
+      || Math.abs(value.delta - (value.after - value.before)) > 1e-6
+      || !['increased', 'decreased', 'unchanged'].includes(value.direction)) return null;
+    return {
+      id: value.id,
+      kind: contract.kind,
+      labelKey: contract.labelKey,
+      before: value.before,
+      after: value.after,
+      delta: value.delta,
+      direction: value.direction,
+    };
+  }
+  return {
+    id: value.id,
+    kind: contract.kind,
+    labelKey: contract.labelKey,
+    direction: 'unchanged',
+  };
+}
+
+export function canonicalizePedagogicalObservation(value) {
+  if (!value?.available || value.version !== PEDAGOGICAL_OBSERVATION_VERSION || !SUPPORTED_GOALS.has(value.goal)) return null;
+  if (value.summaryKey !== SUMMARY_KEYS[value.goal]
+    || !Array.isArray(value.facts)
+    || value.facts.length > 8
+    || !Array.isArray(value.changed)
+    || value.changed.length > 12
+    || !Array.isArray(value.held)
+    || value.held.length > 12
+    || value.changed.some((item) => typeof item !== 'string' || item.length > 120)
+    || value.held.some((item) => typeof item !== 'string' || item.length > 120)) return null;
+  const facts = value.facts.map(canonicalFact);
+  if (facts.some((fact) => !fact)) return null;
+  return {
+    version: PEDAGOGICAL_OBSERVATION_VERSION,
+    goal: value.goal,
+    available: true,
+    facts,
+    changed: [...value.changed],
+    held: [...value.held],
+    summaryKey: value.summaryKey,
   };
 }
 
@@ -110,12 +184,7 @@ export function derivePedagogicalObservation({ design, evidence, verification } 
     facts.push({ id: 'test-realization-held', kind: 'hold', labelKey: 'playground.pedagogical.observation.testHeld', direction: 'unchanged' });
   }
 
-  const summaryKey = {
-    [PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION]: 'playground.pedagogical.observation.classSeparation',
-    [PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT]: 'playground.pedagogical.observation.supportShift',
-    [PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE]: 'playground.pedagogical.observation.noise',
-    [PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY]: 'playground.pedagogical.observation.outliers',
-  }[goal] ?? null;
+  const summaryKey = SUMMARY_KEYS[goal] ?? null;
   const completeFacts = [...facts, ...outcomeFacts(evidence)].slice(0, 8);
   return {
     ...observation,
@@ -123,4 +192,35 @@ export function derivePedagogicalObservation({ design, evidence, verification } 
     facts: clone(completeFacts),
     summaryKey,
   };
+}
+
+function conditionFingerprintForState(state) {
+  return conditionFingerprintForSession({
+    world: state?.experiment?.world,
+    adapterId: state?.adapterId ?? state?.experiment?.model?.adapterId,
+    experiment: state?.experiment,
+  });
+}
+
+export function derivePedagogicalObservationForScenario({ session, snapshot, scenario } = {}) {
+  const design = scenario?.pedagogicalDesign;
+  const baselineId = scenario?.baseline?.experimentId;
+  const workspace = session?.experimentWorkspace;
+  const comparison = snapshot?.experimentWorkspace?.comparison;
+  const activeId = snapshot?.experimentWorkspace?.activeExperimentId ?? workspace?.activeExperimentId ?? session?.experiment?.id;
+  if (!design || !baselineId || !activeId || activeId === baselineId
+    || !comparison?.enabled
+    || comparison.againstExperimentId !== baselineId) return null;
+  const baselineState = workspace?.entries?.[baselineId]?.state;
+  if (!baselineState || conditionFingerprintForState(baselineState) !== scenario.baseline.conditionFingerprint) return null;
+  const verification = verifyPedagogicalIntervention({
+    design,
+    baselineWorld: baselineState.experiment?.world,
+    candidateWorld: session.experiment?.world,
+    scenario,
+    comparison: comparison.diff,
+  });
+  if (!verification.valid) return null;
+  const evidence = derivePedagogicalEvidence({ snapshot, scenario, verification });
+  return canonicalizePedagogicalObservation(derivePedagogicalObservation({ design, evidence, verification }));
 }
