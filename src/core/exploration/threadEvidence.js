@@ -1,5 +1,6 @@
 import { conditionFingerprintForSession, deriveObservableSet, isRepeatEvidenceCurrent } from './observables.js';
 import { explorationThreadError, EXPLORATION_THREAD_LIMITS } from './explorationThread.js';
+import { derivePedagogicalObservationForScenario } from './pedagogicalObservation.js';
 
 const clone = (value) => structuredClone(value);
 const DEFAULT_OBSERVABLES = ['model.slope', 'model.bias', 'outcome.trainMse', 'outcome.testMse', 'generalizationGap', 'coverageMismatch'];
@@ -122,6 +123,7 @@ export function captureThreadObservation({ session, snapshot, scenario, note, ac
   if (!activeState) throw explorationThreadError('EXPLORATION_THREAD_EXPERIMENT_UNAVAILABLE', { experimentId: identity.activeId });
   if (identity.againstId && !baselineState) throw explorationThreadError('EXPLORATION_THREAD_EXPERIMENT_UNAVAILABLE', { experimentId: identity.againstId });
   const activeFingerprint = identity.conditionFingerprints[identity.activeId];
+  const pedagogicalObservation = derivePedagogicalObservationForScenario({ session, snapshot, scenario });
   const activeEvidence = { raw: snapshot.observables, derived: snapshot.derivedObservables };
   const baselineEvidence = baselineState
     ? deriveObservableSet({ world: baselineState.experiment.world, result: baselineState.experiment.result })
@@ -144,6 +146,7 @@ export function captureThreadObservation({ session, snapshot, scenario, note, ac
       observables,
       semanticDiff: compactSemanticDiff(snapshot.experimentWorkspace?.comparison?.diff),
       notices,
+      ...(pedagogicalObservation ? { pedagogicalObservation: clone(pedagogicalObservation) } : {}),
       ...(compactRepeat(snapshot.repeatEvidence, activeFingerprint) ? { repeatEvidence: compactRepeat(snapshot.repeatEvidence, activeFingerprint) } : {}),
     },
     ...(note ? { note: String(note).slice(0, EXPLORATION_THREAD_LIMITS.maxNoteLength) } : {}),

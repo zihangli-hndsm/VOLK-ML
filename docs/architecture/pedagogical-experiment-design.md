@@ -88,6 +88,44 @@ capability planning and detached preflight. Evidence is marked grounded only
 when Compare is enabled, deterministic intervention verification passed, and
 every requested before/after metric is available.
 
+## Observation and next-question loop
+
+After a pedagogical scenario commits, `pedagogicalObservation.js` creates a
+bounded `PedagogicalObservation` from the verified intervention, structural
+comparison, and runtime evidence. It contains only JSON-safe facts, changed and
+held semantic factors, and localization keys. It does not estimate geometry,
+recompute metrics, or make a causal claim. If the evidence is incomplete or the
+intervention is not verified, the observation is unavailable rather than
+invented.
+
+The existing Thread contract stores this projection under the observation
+entry's evidence. The lifecycle remains prediction (human), experiment (agent),
+then observation (agent); no second notebook or Thread entry kind is created.
+The public Host and Agent APIs do not accept observation facts. At the Thread
+runtime boundary, the current comparison target, baseline condition identity,
+realized Worlds, pedagogical verification, and grounded evidence are checked
+again before the canonical observation is stored. If that reconstruction is
+not available, the caller's value is ignored and no pedagogical observation is
+persisted. Stored facts are canonicalized to the supported version, goals,
+fact IDs, numeric fields, and bounded changed/held lists.
+
+`pedagogicalNextQuestions.js` derives at most two bounded candidates from the
+completed goal and its factual observation. Each candidate is planned through
+the existing ScenarioSpec planner and is shown only after detached preflight,
+pedagogical verification, and exact fidelity succeed. Candidates are questions,
+not automatic actions. The deterministic path works without an AI provider.
+
+When an AI provider is configured, the interpreter may receive a compact,
+bounded projection of the observation to help answer an explicit learner
+follow-up. The prompt marks those facts as authoritative and requires a clear
+FACT / HYPOTHESIS / NEXT TEST distinction, forbids recomputation and
+unsupported causality, and preserves the class-separation/not-geometric-overlap
+wording. The provider cannot change fact values, produce metrics, or authorize
+execution; runtime comparison and observables remain authoritative. The result
+surface keeps the deterministic Observation/Evidence card visible while an
+optional interpretation is shown separately. Starting a new proposal clears
+the previous result.
+
 ## Prediction and Threads
 
 When a learner enters an optional prediction and an Exploration Thread is
