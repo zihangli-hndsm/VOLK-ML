@@ -59,3 +59,10 @@ a bounded secondary fallback and are never removed.
 When an enabled deterministic comparison exposes control-level values, Tune
 marks the corresponding controls as Changed or Held constant. It does not
 infer recommendations or causality, and no AI provider is involved.
+
+The Changed/Held markers require exact control evidence on both comparison
+sides. A factor-level unchanged label cannot mark every control in that
+factor, and derived outputs or view controls remain unmarked when the runtime
+does not expose exact control values. The playground registry validates this
+metadata centrally and limits each playground to at most three primary
+controls.

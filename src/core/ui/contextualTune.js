@@ -1,4 +1,5 @@
 const IMPORTANCES = new Set(['primary', 'secondary', 'advanced']);
+const ROLES = new Set(['experiment', 'inspection']);
 const FACTOR_BY_DOMAIN = Object.freeze({ model: 'model', learning: 'learning', evaluation: 'evaluation', view: 'evaluation' });
 
 const stable = (value) => {
@@ -20,6 +21,38 @@ export function normalizeControlPresentation(control = {}) {
   };
 }
 
+export function validatePlaygroundControlPresentation(playground = {}) {
+  const controls = Array.isArray(playground.controls) ? playground.controls : [];
+  let primaryCount = 0;
+
+  for (const control of controls) {
+    if (control?.presentation === undefined) continue;
+    const presentation = control.presentation;
+    if (!presentation || typeof presentation !== 'object' || Array.isArray(presentation)) {
+      throw new Error(`Invalid control presentation for ${control?.key ?? 'unknown control'}`);
+    }
+    if (!IMPORTANCES.has(presentation.importance)) {
+      throw new Error(`Invalid control presentation importance for ${control?.key ?? 'unknown control'}`);
+    }
+    if (!Array.isArray(presentation.roles)
+      || presentation.roles.length > 2
+      || new Set(presentation.roles).size !== presentation.roles.length
+      || presentation.roles.some((role) => !ROLES.has(role))) {
+      throw new Error(`Invalid control presentation roles for ${control?.key ?? 'unknown control'}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(presentation, 'explanationKey')
+      && (typeof presentation.explanationKey !== 'string' || !presentation.explanationKey.trim())) {
+      throw new Error(`Invalid control presentation explanationKey for ${control?.key ?? 'unknown control'}`);
+    }
+    if (presentation.importance === 'primary') primaryCount += 1;
+  }
+
+  if (primaryCount > 3) {
+    throw new Error(`Playground ${playground.id ?? 'unknown'} declares more than three primary controls`);
+  }
+  return playground;
+}
+
 export function deriveChangedTuneControlKeys(diff = {}) {
   const factors = diff.factors ?? {};
   const changed = new Set();
@@ -27,7 +60,9 @@ export function deriveChangedTuneControlKeys(diff = {}) {
     const left = factors[factor]?.left?.controls ?? {};
     const right = factors[factor]?.right?.controls ?? {};
     for (const key of new Set([...Object.keys(left), ...Object.keys(right)])) {
-      if (stable(left[key]) !== stable(right[key])) changed.add(key);
+      if (Object.prototype.hasOwnProperty.call(left, key)
+        && Object.prototype.hasOwnProperty.call(right, key)
+        && stable(left[key]) !== stable(right[key])) changed.add(key);
     }
   }
   return changed;
@@ -35,7 +70,6 @@ export function deriveChangedTuneControlKeys(diff = {}) {
 
 export function deriveTuneControlState(control, diff = {}) {
   const factor = FACTOR_BY_DOMAIN[control?.domain];
-  const changedKeys = deriveChangedTuneControlKeys(diff);
   const comparisonActive = Boolean(diff && (diff.factors || diff.changed));
   const factorControls = factor ? diff.factors?.[factor] : null;
   const hasControlEvidence = Boolean(factorControls?.left?.controls && factorControls?.right?.controls
@@ -44,9 +78,8 @@ export function deriveTuneControlState(control, diff = {}) {
   const controlHeld = hasControlEvidence
     && stable(factorControls.left.controls[control.key]) === stable(factorControls.right.controls[control.key]);
   return {
-    changed: comparisonActive && changedKeys.has(control?.key),
-    held: comparisonActive && Boolean(factor) && (Array.isArray(diff.unchanged) && diff.unchanged.includes(factor)
-      || controlHeld),
+    changed: comparisonActive && hasControlEvidence && !controlHeld,
+    held: comparisonActive && controlHeld,
   };
 }
 

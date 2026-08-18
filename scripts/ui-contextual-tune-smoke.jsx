@@ -39,20 +39,19 @@ export async function runContextualTuneSmoke() {
   assert.ok(lrMarkup.includes('Learning rate') && lrMarkup.includes('Training steps'));
   assert.equal(lrMarkup.includes('Weight'), false, 'model inspection controls are not prominent initially');
 
-  const changedSnapshot = structuredClone(lrSnapshot);
-  changedSnapshot.experimentWorkspace.comparison = {
-    enabled: true,
-    diff: {
-      changed: ['learning'],
-      unchanged: ['model', 'evaluation', 'world', 'trainTest', 'randomness'],
-      factors: {
-        learning: { left: { controls: { learningRate: 0.01, trainingSteps: 10 } }, right: { controls: { learningRate: 0.2, trainingSteps: 10 } } },
-      },
-    },
-  };
-  assert.deepEqual(deriveTuneControlState(lr.controls.find((control) => control.key === 'learningRate'), changedSnapshot.experimentWorkspace.comparison.diff), { changed: true, held: false });
-  assert.deepEqual(deriveTuneControlState(lr.controls.find((control) => control.key === 'weight'), changedSnapshot.experimentWorkspace.comparison.diff), { changed: false, held: true });
-  const changedMarkup = renderTune(lr, changedSnapshot);
+  const lrExperimentA = lrSnapshot.experimentWorkspace.experiments[0];
+  await lrHost.dispatch({ type: 'DUPLICATE_EXPERIMENT' });
+  await lrHost.dispatch({ type: 'SET_CONTROL', key: 'learningRate', value: 0.2 });
+  await lrHost.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: lrExperimentA.id });
+  const comparedLrSnapshot = lrHost.getState();
+  const comparisonDiff = comparedLrSnapshot.experimentWorkspace.comparison.diff;
+  assert.ok(comparisonDiff.changed.includes('learning'), 'real runtime comparison records the learning factor');
+  assert.equal(comparisonDiff.factors.learning.left.controls.trainingSteps, comparisonDiff.factors.learning.right.controls.trainingSteps, 'real comparison retains equal training steps');
+  assert.deepEqual(deriveTuneControlState(lr.controls.find((control) => control.key === 'learningRate'), comparisonDiff), { changed: true, held: false });
+  assert.deepEqual(deriveTuneControlState(lr.controls.find((control) => control.key === 'trainingSteps'), comparisonDiff), { changed: false, held: true });
+  assert.deepEqual(deriveTuneControlState(lr.controls.find((control) => control.key === 'weight'), comparisonDiff), { changed: false, held: false }, 'derived model outputs have no control evidence');
+  assert.deepEqual(deriveTuneControlState(lr.controls.find((control) => control.key === 'showResiduals'), comparisonDiff), { changed: false, held: false }, 'view controls have no control evidence');
+  const changedMarkup = renderTune(lr, comparedLrSnapshot);
   assert.ok(changedMarkup.includes('Changed') && changedMarkup.includes('Held constant'), 'deterministic comparison state marks changed and held controls');
 
   const legacy = { id: 'legacy', controls: [{ key: 'legacyControl', type: 'number', min: 0, max: 1, step: 0.1, domain: 'model' }] };

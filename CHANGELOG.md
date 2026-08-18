@@ -100,6 +100,12 @@
 - `npm run check` 新增示例验证：8 个示例逐个加载校验、可运行示例真实执行、可导出示例的双框架代码经 Python 语法校验。
 - 验收：`npm run check`、`npm run build`、`git diff --check` 全部通过；浏览器实测 9/9 通过。
 
+## 2026-08-18 — Contextual Tune acceptance correction
+
+- Changed/Held Tune markers now use real runtime comparison control evidence: only exact controls present on both sides can be marked, preventing factor-level or derived-output false positives.
+- Centralized bounded control-presentation validation in the playground registry, including supported importance/role metadata and the three-primary-control limit; legacy controls remain reachable through the fallback.
+- Acceptance: focused Contextual Tune, layered UI, responsive, and Playground render checks; full `npm run check`; production build; and `git diff --check` pass.
+
 ## 2026-08-05 — 示例项目布局优化
 
 - 重新排布 8 个教学示例的画布布局：训练器示例采用分层排布（模型链在上、数据 → 训练器在中、损失/优化器在下、评估/预测右侧分叉）；线性回归与 KNN 采用直线链 + 分叉；电影推荐示例改为双嵌入分支汇入拼接头。
