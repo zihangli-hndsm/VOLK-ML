@@ -2,6 +2,7 @@ import { MAX_WORLD_TRANSACTION_OPERATIONS } from './operations.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { validateCanonicalControlValue } from '../playground/controlValidation.js';
 import { WORLD_RECIPE_SEMANTIC_DOMAINS, applyWorldRecipePatch, normalizeWorldRecipe, worldRecipePatchChangedPaths } from './worldRecipe.js';
+import { validateExplorationDesign } from './pedagogicalExperiment.js';
 
 export const SCENARIO_SPEC_VERSION = 1;
 export const SCENARIO_FIDELITY_STATUSES = ['exact', 'partial', 'approximate'];
@@ -259,6 +260,9 @@ export function validateScenarioSpec(spec, context = {}) {
   if (execution.repeat !== null && (!Number.isInteger(Number(execution.repeat)) || Number(execution.repeat) < 2 || Number(execution.repeat) > 20)) {
     throw scenarioError('EXPLORATION_SCENARIO_RESOURCE_LIMIT', { field: 'execution.repeat', min: 2, max: 20 });
   }
+  const pedagogicalDesign = spec.pedagogicalDesign === undefined
+    ? null
+    : validateExplorationDesign(spec.pedagogicalDesign, { context });
   return {
     version: SCENARIO_SPEC_VERSION,
     request: spec.request,
@@ -272,6 +276,7 @@ export function validateScenarioSpec(spec, context = {}) {
     ...(intendedWorldRecipeDomains ? { intendedWorldRecipeDomains } : {}),
     ...(canonicalWorldRecipePaths ? { intendedWorldRecipePaths: canonicalWorldRecipePaths } : intendedWorldRecipePaths ? { intendedWorldRecipePaths } : {}),
     ...(heldWorldRecipeDomains ? { heldWorldRecipeDomains } : {}),
+    ...(pedagogicalDesign ? { pedagogicalDesign } : {}),
     hold,
     observe,
     execution,

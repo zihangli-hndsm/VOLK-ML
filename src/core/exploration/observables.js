@@ -54,8 +54,6 @@ export const OBSERVABLE_IDS = Object.freeze([
   ...RAW_OBSERVABLES.map((item) => item.id),
   'generalizationGap',
   'coverageMismatch',
-  'outcome.trainAccuracy',
-  'outcome.testAccuracy',
   'slopeDifference',
   'trainErrorRatio',
   'testErrorRatio',

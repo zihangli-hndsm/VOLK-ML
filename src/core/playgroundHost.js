@@ -34,12 +34,15 @@ import { AFFORDANCE_IDS, EXPLORATION_RECIPES, THINGS_TO_TRY } from './exploratio
 import { conditionFingerprintForSession } from './exploration/observables.js';
 import { getBigIdeaEntrance, listBigIdeaEntrances, resolveBigIdeaInitialization } from './exploration/bigIdeaRegistry.js';
 import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
-import { planExplorationIntent, planExplorationRequest, planWorldDesign } from './exploration/scenarioPlanner.js';
+import { planExplorationIntent, planExplorationRequest, planWorldDesign, planPedagogicalExperiment } from './exploration/scenarioPlanner.js';
+import { createPedagogicalExperimentDesign } from './exploration/pedagogicalExperiment.js';
+import { derivePedagogicalEvidence, pedagogicalFollowUpGoals } from './exploration/pedagogicalEvidence.js';
 import { deriveCleanerComparisonProposal } from './exploration/cleanerComparison.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
 import { isWorldModelCompatibilityError } from './exploration/worldModelCompatibility.js';
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
 import { worldRecipeSummary } from './exploration/worldRecipe.js';
+import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -654,6 +657,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         scenarioSpecVersion: SCENARIO_SPEC_VERSION,
         fidelityStatuses: [...SCENARIO_FIDELITY_STATUSES],
         proposalLifecycle: ['propose', 'accept', 'execute', 'inspect'],
+        pedagogicalExperimentGoals: pedagogicalGoalIds(),
       };
       return context;
     },
@@ -737,10 +741,12 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       return present(derivePlaygroundSnapshot(session));
     },
 
-    proposeExploration({ request, intent, worldDesign } = {}) {
+    proposeExploration({ request, intent, worldDesign, design } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const context = this.inspectContext();
-      const planned = worldDesign
+      const planned = design
+        ? planPedagogicalExperiment(design, request ?? 'Design a controlled experiment', context)
+        : worldDesign
         ? planWorldDesign(worldDesign, request ?? 'Design a deterministic world', context)
         : intent
         ? planExplorationIntent(intent, request ?? String(intent), context)
@@ -832,8 +838,27 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       commit(candidate.session);
       const result = candidate.snapshot;
       const followUps = [];
+      let pedagogicalEvidence = null;
+      if (validated.pedagogicalDesign) {
+        pedagogicalEvidence = derivePedagogicalEvidence({ snapshot: result, scenario: validated });
+        for (const goal of pedagogicalFollowUpGoals(validated.pedagogicalDesign.goal)) {
+          try {
+            const followDesign = createPedagogicalExperimentDesign(goal);
+            const followPlan = planPedagogicalExperiment(followDesign, `Try a follow-up experiment for ${goal}.`, this.inspectContext());
+            if (followPlan.kind !== 'proposal') continue;
+            const followAssessment = this.preflightExplorationScenario({ scenario: followPlan.scenario });
+            if (followAssessment.fidelity.status === 'exact') {
+              followUps.push({ id: 'pedagogical-design', goal, design: followDesign, request: `Try a follow-up experiment for ${goal}.` });
+            }
+          } catch {
+            // A follow-up is offered only when current capabilities can preflight it.
+          }
+          if (followUps.length >= 2) break;
+        }
+      } else {
         if (candidate.mutationDiff?.changed?.includes('world')) followUps.push({ id: 'repeat-condition' });
         if (result.observations?.some((notice) => notice.id === 'SLOPE_MOVED_STRONGLY')) followUps.push({ id: 'smaller-change' });
+      }
       return {
         snapshot: present(result),
         scenario: validated,
@@ -844,6 +869,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         mutationDiff: candidate.mutationDiff,
         evidenceFocus: [...validated.observe],
         followUps: followUps.slice(0, 2),
+        pedagogicalEvidence,
       };
     },
 

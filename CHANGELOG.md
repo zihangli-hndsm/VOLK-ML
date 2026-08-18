@@ -548,3 +548,9 @@
 - Added deterministic recipe materialization into ordinary finite World observations with generation provenance, explicit desired-vs-realized lifecycle, recipe patch operations, atomic Undo/Redo, Repeat support, and legacy generator compatibility.
 - Added recipe-aware comparison details and ScenarioSpec fidelity, bounded Agent world-design proposals with explicit preflight/execution, local preset fallback, unsupported-adapter clarification, localized recipe summaries, architecture documentation, and integrated World Composer checks.
 - Acceptance: focused World Composer checks, full `npm run check`, `npm run build -- --configLoader runner`, and `git diff --check` passed. Default Vite config loading and localhost browser access remain restricted by this managed environment.
+
+## 2026-08-18 — Agent Pedagogical Experiment Design
+
+- Added a bounded `ExplorationDesign` layer for class overlap, train/test support shift, observation noise, and outlier sensitivity; deterministic planning compiles these goals into existing WorldRecipe, ScenarioSpec, comparison, fidelity, and explicit execution semantics.
+- Added a learner-facing “Let’s test this” proposal with Change / Keep fixed / Watch, optional prediction recording through existing Exploration Thread entries, runtime-grounded outcome evidence, and at most two capability-preflighted follow-up questions.
+- Added strict AI structured design validation with local fallback, task-aware accuracy/MSE observables, focused regression coverage, and documentation; World Composer v1 remains closed and MLP World mutation remains deferred.

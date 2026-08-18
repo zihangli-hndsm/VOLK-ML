@@ -4,6 +4,10 @@ import { interpretExplorationRequest } from './explorationInterpreter.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { scenarioError, validateScenarioSpec } from './scenarioSpec.js';
 import { EXPLORATION_INTENTS } from './explorationIntents.js';
+import {
+  PEDAGOGICAL_EXPERIMENT_GOALS,
+  validateExplorationDesign,
+} from './pedagogicalExperiment.js';
 
 const clone = (value) => structuredClone(value);
 
@@ -228,6 +232,113 @@ function worldDesignSpec(worldDesign, request, context) {
     ],
   };
   throw scenarioError('EXPLORATION_SCENARIO_INVALID', { field: 'worldDesign', reason: 'unsupported-design' });
+}
+
+function recipeForPedagogicalDesign(design, context) {
+  const recipe = context.world?.generator?.kind === 'world-recipe'
+    ? context.world.generator.recipe
+    : null;
+  if (!recipe) return null;
+  const groups = recipe.groups ?? [];
+  const firstDifferentLabelPair = groups.flatMap((left, leftIndex) => groups.slice(leftIndex + 1).map((right) => ({ left, right })))
+    .find(({ left, right }) => left.label !== right.label);
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP) {
+    if (!firstDifferentLabelPair) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'distinct-class-groups-required' });
+    const { left, right } = firstDifferentLabelPair;
+    const deltaBetweenGroups = [
+      Number(left.transform.translate[0]) - Number(right.transform.translate[0]),
+      Number(left.transform.translate[1]) - Number(right.transform.translate[1]),
+    ];
+    const length = Math.hypot(...deltaBetweenGroups);
+    const delta = length > 1e-9
+      ? deltaBetweenGroups.map((value) => Number((value / length * 0.35).toFixed(6)))
+      : [0.35, 0];
+    return {
+      version: 1,
+      changes: [{ type: 'TRANSLATE_GROUP', groupId: right.id, split: 'all', delta }],
+    };
+  }
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT) {
+    return {
+      version: 1,
+      changes: groups.map((group) => ({
+        type: 'TRANSLATE_GROUP',
+        groupId: group.id,
+        split: 'test',
+        delta: [1.25, 0],
+      })),
+    };
+  }
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE) {
+    const current = Number(recipe.noise?.train?.position?.amount ?? 0);
+    return {
+      version: 1,
+      changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: Number(Math.min(5, current + 0.08).toFixed(6)) }],
+    };
+  }
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY) {
+    const current = Number(recipe.noise?.train?.outliers?.fraction ?? 0);
+    return {
+      version: 1,
+      changes: [{ type: 'SET_OUTLIERS', split: 'train', fraction: Number(Math.min(0.25, current + 0.03).toFixed(6)), placement: 'radial', distance: 2 }],
+    };
+  }
+  throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_REQUEST', { goal: design.goal });
+}
+
+function pedagogicalObservables(design, task) {
+  const outcome = task === 'classification'
+    ? ['outcome.trainAccuracy', 'outcome.testAccuracy']
+    : ['outcome.trainMse', 'outcome.testMse'];
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT) {
+    return ['world.trainXRange', 'world.testXRange', 'coverageMismatch', ...outcome];
+  }
+  return outcome;
+}
+
+export function planPedagogicalExperiment(designInput, request, context) {
+  const design = validateExplorationDesign(designInput, { context });
+  const currentRecipe = context.world?.generator?.kind === 'world-recipe' ? context.world.generator.recipe : null;
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP && context.world?.task !== 'classification') {
+    return {
+      kind: 'clarification',
+      request,
+      interpretation: { ambiguity: 'classification-world-required', messageKey: 'playground.pedagogical.unsupported' },
+    };
+  }
+  if (currentRecipe) {
+    const patch = recipeForPedagogicalDesign(design, context);
+    const draft = worldDesignSpec({ mode: 'edit', patch, requestedHolds: [] }, request, context);
+    draft.pedagogicalDesign = design;
+    draft.interpretation = { summary: 'Prepare a one-factor pedagogical experiment from the current World.', ambiguity: null };
+    draft.observe = pedagogicalObservables(design, currentRecipe.task);
+    draft.hold = [
+      'model-configuration',
+      'learning-configuration',
+      'evaluation-configuration',
+      'randomness-policy',
+      ...(design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT ? ['train-world'] : []),
+    ];
+    return { kind: 'proposal', scenario: validateScenarioSpec(draft, context), interpretation: { kind: 'exploration-design', design } };
+  }
+
+  const legacyIntent = {
+    [PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT]: EXPLORATION_INTENTS.TEST_SHIFT,
+    [PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE]: EXPLORATION_INTENTS.HARDER_NOISE,
+    [PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY]: EXPLORATION_INTENTS.OUTLIERS,
+  }[design.goal];
+  if (!legacyIntent) {
+    return {
+      kind: 'clarification',
+      request,
+      interpretation: { ambiguity: 'current-world-does-not-support-goal', messageKey: 'playground.pedagogical.unsupported' },
+    };
+  }
+  const draft = intentSpec(legacyIntent, request, context);
+  draft.pedagogicalDesign = design;
+  draft.interpretation = { summary: 'Prepare a one-factor pedagogical experiment from the current World.', ambiguity: null };
+  draft.observe = pedagogicalObservables(design, context.world?.task);
+  return { kind: 'proposal', scenario: validateScenarioSpec(draft, context), interpretation: { kind: 'exploration-design', design } };
 }
 
 export function planExplorationRequest(request, context) {

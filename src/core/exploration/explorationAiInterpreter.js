@@ -2,6 +2,7 @@ import { normalizeAiConfig } from '../ai/aiSettings.js';
 import { createProviderGateway } from '../ai/providerRegistry.js';
 import { EXPLORATION_INTENT_IDS } from './explorationIntents.js';
 import { applyWorldRecipePatch, normalizeWorldRecipe, worldRecipeJsonSchema, worldRecipePatchJsonSchema } from './worldRecipe.js';
+import { pedagogicalExperimentSchema, validateExplorationDesign, pedagogicalGoalIds } from './pedagogicalExperiment.js';
 
 const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
@@ -27,10 +28,11 @@ export function explorationGuidanceResponseSchema({ availableDepths = [] } = {})
         recipe: { anyOf: [worldRecipeJsonSchema(), { type: 'null' }] },
         patch: { anyOf: [worldRecipePatchJsonSchema(), { type: 'null' }] },
       }, required: ['mode', 'recipe', 'patch'] }, { type: 'null' }] },
+      experimentDesign: { anyOf: [pedagogicalExperimentSchema(), { type: 'null' }] },
       reason: nullableStringSchema(),
       ambiguity: nullableStringSchema(),
     },
-    required: ['kind', 'topic', 'explanation', 'depth', 'intent', 'requestedChange', 'requestedHolds', 'design', 'reason', 'ambiguity'],
+    required: ['kind', 'topic', 'explanation', 'depth', 'intent', 'requestedChange', 'requestedHolds', 'design', 'experimentDesign', 'reason', 'ambiguity'],
   };
 }
 
@@ -126,15 +128,26 @@ function validateInterpretation(value, context) {
     }
   }
   if (value.kind === 'experiment' || (!value.kind && value.intent)) {
-    if (!INTENTS.includes(value.intent)) {
+    if (value.experimentDesign === null || value.experimentDesign === undefined) {
+      if (!INTENTS.includes(value.intent)) {
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported exploration intent.');
+      }
     }
     if (value.requestedHolds !== undefined && (!Array.isArray(value.requestedHolds) || value.requestedHolds.some((item) => typeof item !== 'string'))) {
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned invalid requested holds.');
     }
+    let experimentDesign = null;
+    if (value.experimentDesign !== null && value.experimentDesign !== undefined) {
+      try {
+        experimentDesign = validateExplorationDesign(value.experimentDesign, { context });
+      } catch {
+        throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid pedagogical experiment design.');
+      }
+    }
     return {
       kind: 'experiment',
       intent: value.intent,
+      design: experimentDesign,
       requestedChange: typeof value.requestedChange === 'string' ? value.requestedChange.slice(0, 240) : null,
       requestedHolds: [...(value.requestedHolds ?? [])].slice(0, 12),
       ambiguity: value.ambiguity ?? null,
@@ -164,6 +177,7 @@ export function projectExplorationAiContext(context = {}) {
     ],
     supportedOperationTypes: [...new Set((context?.exploration?.worldOperations ?? []).map((operation) => operation.type))],
     supportedConcepts: [...EXPLANATION_TOPICS],
+    supportedExperimentGoals: pedagogicalGoalIds(),
     recentActions,
     worldComposer: context?.exploration?.worldComposer ?? null,
   };
@@ -175,6 +189,7 @@ function promptFor({ request, context }) {
     'Return JSON only. Never return runtime operations, operation IDs, control IDs, observable IDs, code, or a ScenarioSpec.',
     `Allowed outcome kinds: ${GUIDANCE_KINDS.join(', ')}`,
     `Allowed exploration intents: ${INTENTS.join(', ')}`,
+    'When the learner asks a testable curiosity question, prefer experimentDesign with one supported goal over a lecture or arbitrary World.',
     'World-design is bounded to a validated recipe or recipe patch. Never emit points, runtime operations, evidence, or metrics.',
     `Allowed explanation topics: ${EXPLANATION_TOPICS.join(', ')}`,
     'The deterministic planner and capability registry will choose all executable operations after this response.',
@@ -182,6 +197,7 @@ function promptFor({ request, context }) {
     'Explanation shape: {"kind":"explanation","topic":"...","explanation":"short conceptual explanation"}',
     'Navigation shape: {"kind":"navigation","depth":"one available depth"}',
     'Experiment shape: {"kind":"experiment","intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
+    'Pedagogical experiment shape: {"kind":"experiment","experimentDesign":{"version":1,"kind":"exploration-design","goal":"class-overlap|train-test-support-shift|observation-noise|outlier-sensitivity","intervention":"...","evidence":"...","prediction":null},"intent":null,"ambiguity":null}',
     'World-design shape: {"kind":"world-design","design":{"mode":"create","recipe":{...canonical recipe...},"patch":null},"requestedHolds":[]}',
     'Clarification shape: {"kind":"clarification","reason":"short bounded reason"}',
     `Learner request: ${String(request ?? '').trim()}`,
