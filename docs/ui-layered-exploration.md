@@ -33,3 +33,29 @@ transitions.
 
 The shell publishes `data-ui-layer` markers for focused acceptance checks;
 these markers are presentation metadata only.
+
+## Contextual Tune
+
+Playground descriptors may add bounded `presentation` metadata to a control:
+
+```js
+presentation: {
+  importance: 'primary' | 'secondary' | 'advanced',
+  roles: ['experiment', 'inspection'],
+  explanationKey: 'playground.controlHint.someControl'
+}
+```
+
+`domain` remains the semantic responsibility of a control; `importance` only
+describes how prominently it should appear in Tune. The initial Tune view
+shows descriptor-owned primary controls. Secondary and advanced controls are
+grouped behind More controls and remain available in the full Inspector.
+
+Current emphasis is declarative: KNN foregrounds `k`; Linear Regression
+foregrounds learning rate and training steps; MLP foregrounds hidden units,
+learning rate, and training steps. Controls without presentation metadata use
+a bounded secondary fallback and are never removed.
+
+When an enabled deterministic comparison exposes control-level values, Tune
+marks the corresponding controls as Changed or Held constant. It does not
+infer recommendations or causality, and no AI provider is involved.

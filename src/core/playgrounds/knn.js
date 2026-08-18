@@ -16,17 +16,17 @@ export const knnPlayground = {
   sourceKinds: ['example', 'workspace-dataset'],
 
   controls: [
-    { key: 'xFeature', type: 'select', domain: 'evaluation' },
-    { key: 'yFeature', type: 'select', domain: 'evaluation' },
+    { key: 'xFeature', type: 'select', domain: 'evaluation', presentation: { importance: 'advanced', roles: ['inspection'] } },
+    { key: 'yFeature', type: 'select', domain: 'evaluation', presentation: { importance: 'advanced', roles: ['inspection'] } },
     // runObjective declares which model operation a what-if/compare on this
     // control should run; it is declarative metadata, not a model-id switch.
-    { key: 'k', type: 'number', min: 1, max: MAX_K, step: 1, runObjective: 'predict', domain: 'model' },
-    { key: 'queryX', type: 'number', domain: 'evaluation' },
-    { key: 'queryY', type: 'number', domain: 'evaluation' },
-    { key: 'showNeighborOrder', type: 'boolean', domain: 'view' },
-    { key: 'showDecisionRegions', type: 'boolean', domain: 'view' },
-    { key: 'normalize', type: 'boolean', domain: 'learning' },
-    { key: 'distanceMetric', type: 'select', options: ['euclidean'], domain: 'model' },
+    { key: 'k', type: 'number', min: 1, max: MAX_K, step: 1, runObjective: 'predict', domain: 'model', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], explanationKey: 'playground.controlHint.k' } },
+    { key: 'queryX', type: 'number', domain: 'evaluation', presentation: { importance: 'secondary', roles: ['inspection'] } },
+    { key: 'queryY', type: 'number', domain: 'evaluation', presentation: { importance: 'secondary', roles: ['inspection'] } },
+    { key: 'showNeighborOrder', type: 'boolean', domain: 'view', presentation: { importance: 'advanced', roles: ['inspection'] } },
+    { key: 'showDecisionRegions', type: 'boolean', domain: 'view', presentation: { importance: 'secondary', roles: ['inspection'] } },
+    { key: 'normalize', type: 'boolean', domain: 'learning', presentation: { importance: 'secondary', roles: ['experiment', 'inspection'] } },
+    { key: 'distanceMetric', type: 'select', options: ['euclidean'], domain: 'model', presentation: { importance: 'secondary', roles: ['experiment', 'inspection'] } },
   ],
 
   actions: [

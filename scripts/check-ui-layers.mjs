@@ -24,7 +24,7 @@ assert.ok(details.includes('CONCEPTUAL_DEPTHS.TUNE') && details.includes('TunePa
 for (const depth of ['EVIDENCE', 'MECHANISM', 'REPRESENTATION']) assert.ok(details.includes(`CONCEPTUAL_DEPTHS.${depth}`));
 assert.ok(details.includes("data-ui-layer={activeDepth === CONCEPTUAL_DEPTHS.TUNE ? 'tune' : activeDepth ? 'inspect' : 'play'}"));
 assert.ok(!details.includes('playground.controls.map'));
-for (const group of ['world', 'model', 'learning', 'evaluation']) assert.ok(tune.includes(`playground.layer.${group}`));
+for (const group of ['world', 'moreModel', 'moreLearning', 'moreEvaluation']) assert.ok(tune.includes(`playground.layer.${group}`));
 assert.ok(tune.includes('PlaygroundControlField') && tune.includes('data-ui-control-group'));
 assert.ok(inspector.includes('PlaygroundControlField') && inspector.includes('playground.controls.map'));
 assert.ok(tune.includes('onOpenWorldTools') && tune.includes('moreWorldTools'));

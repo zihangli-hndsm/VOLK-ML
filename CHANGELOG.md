@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-18 — Contextual Tune
+
+- Added bounded, model-owned control presentation metadata separating semantic domain from learner-facing importance and role.
+- Tune now foregrounds descriptor-selected primary controls, keeps secondary/advanced controls behind an accessible More controls disclosure, and preserves the complete Inspector inventory.
+- Added localized primary-control hints and deterministic Changed/Held constant markers from existing comparison factor state.
+- Added Contextual Tune behavioral checks for KNN, Linear Regression, legacy controls, accessibility, responsive safety, and runtime-safe presentation.
+
 ## 2026-08-18 — Layered Exploration UI
 
 - Added an explicit Play/Tune/Inspect presentation hierarchy without changing World, Experiment, comparison, evidence, or Agent runtime semantics.

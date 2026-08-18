@@ -14,12 +14,15 @@ const summarize = (playground) => ({
   supportedOps: [...playground.supportedOps],
   supportedTasks: [...playground.supportedTasks],
   sourceKinds: [...playground.sourceKinds],
-  controls: playground.controls.map(({ key, type, min, max, step, options }) => ({
+  controls: playground.controls.map(({ key, type, min, max, step, options, domain, runObjective, presentation }) => ({
     key, type,
+    ...(domain ? { domain } : {}),
     ...(min !== undefined ? { min } : {}),
     ...(max !== undefined ? { max } : {}),
     ...(step !== undefined ? { step } : {}),
     ...(options ? { options: [...options] } : {}),
+    ...(runObjective ? { runObjective } : {}),
+    ...(presentation ? { presentation: structuredClone(presentation) } : {}),
   })),
   actions: [...playground.actions],
   scenarios: playground.scenarios.map(({ id, titleKey }) => ({ id, titleKey })),

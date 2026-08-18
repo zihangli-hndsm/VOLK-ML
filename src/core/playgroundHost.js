@@ -625,6 +625,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           ...(control.step !== undefined ? { step: control.step } : {}),
           ...(control.options ? { options: [...control.options] } : {}),
           ...(control.runObjective ? { runObjective: control.runObjective } : {}),
+          ...(control.presentation ? { presentation: structuredClone(control.presentation) } : {}),
         })),
         traces: TRACE_EVENTS[session.adapterId] ?? [],
         traceSchemas: Object.fromEntries((TRACE_EVENTS[session.adapterId] ?? []).map((type) => [type, TRACE_PAYLOAD_SCHEMAS[type] ?? {}])),
