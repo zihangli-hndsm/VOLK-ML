@@ -4,7 +4,7 @@ import PlaygroundStage from './PlaygroundStage.jsx';
 import DataWorkspace from './DataWorkspace.jsx';
 import WorldBuilder from './WorldBuilder.jsx';
 
-export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTabChange, onDispatch, t, highlightedAffordances = [], fullWorldToolsOpen = false, onFullWorldToolsChange }) {
+export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTabChange, onDispatch, t, highlightedAffordances = [], fullWorldToolsOpen = false, onFullWorldToolsChange, onOpenFullWorldTools }) {
   const phenomenon = useMemo(() => derivePhenomenonCapabilities(snapshot), [snapshot]);
   const phenomenonQuestion = bigIdea ? t(bigIdea.questionKey) : t('playground.phenomenon.question');
 
@@ -30,6 +30,10 @@ export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTab
   </section>;
 
   function openFullWorldTools() {
+    if (onOpenFullWorldTools) {
+      onOpenFullWorldTools();
+      return;
+    }
     onFullWorldToolsChange?.(true);
     onTabChange('data');
   }
