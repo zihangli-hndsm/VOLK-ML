@@ -1491,7 +1491,7 @@ function dispatchExplorationThreadAction(session, action) {
     const snapshot = deriveRuntimeSnapshot(session);
     const entry = action.type === 'RECORD_THREAD_EXPERIMENT'
       ? captureThreadExperiment({ session, snapshot, scenario: action.scenario, actor: action.actor ?? 'human' })
-      : captureThreadObservation({ session, snapshot, scenario: action.scenario, note: action.note, actor: action.actor ?? 'human' });
+      : captureThreadObservation({ session, snapshot, scenario: action.scenario, note: action.note, pedagogicalObservation: action.pedagogicalObservation, actor: action.actor ?? 'human' });
     const nextThread = appendExplorationThreadEntry(current, entry, now);
     return {
       ...session,

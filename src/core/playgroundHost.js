@@ -35,8 +35,9 @@ import { conditionFingerprintForSession } from './exploration/observables.js';
 import { getBigIdeaEntrance, listBigIdeaEntrances, resolveBigIdeaInitialization } from './exploration/bigIdeaRegistry.js';
 import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
 import { planExplorationIntent, planExplorationRequest, planWorldDesign, planPedagogicalExperiment } from './exploration/scenarioPlanner.js';
-import { createPedagogicalExperimentDesign } from './exploration/pedagogicalExperiment.js';
-import { derivePedagogicalEvidence, pedagogicalFollowUpGoals } from './exploration/pedagogicalEvidence.js';
+import { derivePedagogicalEvidence } from './exploration/pedagogicalEvidence.js';
+import { derivePedagogicalObservation } from './exploration/pedagogicalObservation.js';
+import { derivePedagogicalNextQuestionCandidates } from './exploration/pedagogicalNextQuestions.js';
 import { verifyPedagogicalIntervention } from './exploration/pedagogicalVerification.js';
 import { deriveCleanerComparisonProposal } from './exploration/cleanerComparison.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
@@ -736,9 +737,9 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       return present(derivePlaygroundSnapshot(session));
     },
 
-    recordExplorationThreadObservation({ scenario, note, actor = 'human' } = {}) {
+    recordExplorationThreadObservation({ scenario, note, pedagogicalObservation, actor = 'human' } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_OBSERVATION', actor, scenario, note }));
+      commit(dispatchPlaygroundAction(session, { type: 'RECORD_THREAD_OBSERVATION', actor, scenario, note, pedagogicalObservation }));
       return present(derivePlaygroundSnapshot(session));
     },
 
@@ -901,22 +902,42 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       const result = candidate.snapshot;
       const followUps = [];
       let pedagogicalEvidence = null;
+      let pedagogicalObservation = null;
+      const nextQuestions = [];
       const pedagogicalVerification = candidate.pedagogicalVerification;
       if (validated.pedagogicalDesign) {
         pedagogicalEvidence = derivePedagogicalEvidence({ snapshot: result, scenario: validated, verification: pedagogicalVerification });
-        for (const goal of pedagogicalFollowUpGoals(validated.pedagogicalDesign.goal)) {
+        pedagogicalObservation = derivePedagogicalObservation({ design: validated.pedagogicalDesign, evidence: pedagogicalEvidence, verification: pedagogicalVerification });
+        for (const question of derivePedagogicalNextQuestionCandidates({
+          design: validated.pedagogicalDesign,
+          observation: pedagogicalObservation,
+          task: result.experiment?.world?.task,
+        })) {
           try {
-            const followDesign = createPedagogicalExperimentDesign(goal);
-            const followPlan = planPedagogicalExperiment(followDesign, `Try a follow-up experiment for ${goal}.`, this.inspectContext());
+            const followDesign = question.design;
+            const followPlan = planPedagogicalExperiment(followDesign, question.questionKey, this.inspectContext());
             if (followPlan.kind !== 'proposal') continue;
             const followAssessment = this.preflightExplorationScenario({ scenario: followPlan.scenario });
-            if (followAssessment.fidelity.status === 'exact') {
-              followUps.push({ id: 'pedagogical-design', goal, design: followDesign, request: `Try a follow-up experiment for ${goal}.` });
+            if (followAssessment.fidelity.status === 'exact' && followAssessment.pedagogicalVerification?.valid) {
+              const nextQuestion = {
+                id: 'pedagogical-next-question',
+                goal: question.goal,
+                design: followDesign,
+                questionKey: question.questionKey,
+                rationaleKey: question.rationaleKey,
+                request: question.questionKey,
+                preflightAssessment: {
+                  fidelity: followAssessment.fidelity,
+                  pedagogicalVerification: followAssessment.pedagogicalVerification,
+                },
+              };
+              nextQuestions.push(nextQuestion);
+              followUps.push(nextQuestion);
             }
           } catch {
             // A follow-up is offered only when current capabilities can preflight it.
           }
-          if (followUps.length >= 2) break;
+          if (nextQuestions.length >= 2) break;
         }
       } else {
         if (candidate.mutationDiff?.changed?.includes('world')) followUps.push({ id: 'repeat-condition' });
@@ -933,6 +954,8 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         evidenceFocus: [...validated.observe],
         followUps: followUps.slice(0, 2),
         pedagogicalEvidence,
+        pedagogicalObservation,
+        nextQuestions: nextQuestions.slice(0, 2),
         pedagogicalVerification,
       };
     },

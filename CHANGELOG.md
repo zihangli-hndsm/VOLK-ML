@@ -566,3 +566,9 @@
 - Renamed the bounded class intervention to `class-separation`; overlap-language requests may still route to it, but learner copy now truthfully describes moving classes closer rather than measuring geometric overlap.
 - Made exact structural fidelity a pedagogical proposal and commit requirement, corrected Agent Thread provenance to prediction=`human`, experiment/observation=`agent`, and strengthened finite Train/Test/non-selected-group realization holds.
 - Validation: focused pedagogical, Agent, Thread, World Composer, UI, OpenAI Responses, and render checks passed; `npm run check`, `npm run build`, and `git diff --check` passed. Browser validation was not run and no GitHub Actions run is claimed.
+
+## 2026-08-18 — Evidence-grounded observation loop
+
+- Added a deterministic `PedagogicalObservation` projection for class separation, support shift, noise, and outlier experiments, with factual before/after evidence and no causal claims.
+- Grounded observations now enter the existing Exploration Thread after the human prediction and agent experiment entries; the result surface presents Observation, Evidence, and up to two capability-preflighted next questions.
+- Added bounded observation context for optional Agent interpretation, class-separation local language including Chinese phrasing, protected prediction capture, focused loop regressions, and architecture documentation. Browser validation was not run and no GitHub Actions run is claimed.

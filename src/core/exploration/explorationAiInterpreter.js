@@ -158,6 +158,16 @@ function validateInterpretation(value, context) {
 
 export function projectExplorationAiContext(context = {}) {
   const comparison = context?.experimentWorkspace?.comparison;
+  const pedagogicalObservation = context?.pedagogicalObservation?.available
+    ? {
+      version: context.pedagogicalObservation.version,
+      goal: context.pedagogicalObservation.goal,
+      facts: (context.pedagogicalObservation.facts ?? []).slice(0, 8),
+      changed: (context.pedagogicalObservation.changed ?? []).slice(0, 12),
+      held: (context.pedagogicalObservation.held ?? []).slice(0, 12),
+      summaryKey: context.pedagogicalObservation.summaryKey ?? null,
+    }
+    : null;
   const recentActions = (context?.recentWorldActions ?? context?.exploration?.recentWorldActions ?? [])
     .slice(-10)
     .map((action) => ({
@@ -178,6 +188,7 @@ export function projectExplorationAiContext(context = {}) {
     supportedOperationTypes: [...new Set((context?.exploration?.worldOperations ?? []).map((operation) => operation.type))],
     supportedConcepts: [...EXPLANATION_TOPICS],
     supportedExperimentGoals: pedagogicalGoalIds(),
+    pedagogicalObservation,
     recentActions,
     worldComposer: context?.exploration?.worldComposer ?? null,
   };

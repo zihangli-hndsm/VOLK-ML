@@ -113,7 +113,7 @@ function compactRepeat(repeatEvidence, fingerprint) {
   };
 }
 
-export function captureThreadObservation({ session, snapshot, scenario, note, actor = 'human' } = {}) {
+export function captureThreadObservation({ session, snapshot, scenario, note, pedagogicalObservation, actor = 'human' } = {}) {
   const identity = workspaceIdentity(session, snapshot);
   const activeState = identity.activeId === session.experimentWorkspace.activeExperimentId
     ? session
@@ -144,6 +144,7 @@ export function captureThreadObservation({ session, snapshot, scenario, note, ac
       observables,
       semanticDiff: compactSemanticDiff(snapshot.experimentWorkspace?.comparison?.diff),
       notices,
+      ...(pedagogicalObservation?.available ? { pedagogicalObservation: clone(pedagogicalObservation) } : {}),
       ...(compactRepeat(snapshot.repeatEvidence, activeFingerprint) ? { repeatEvidence: compactRepeat(snapshot.repeatEvidence, activeFingerprint) } : {}),
     },
     ...(note ? { note: String(note).slice(0, EXPLORATION_THREAD_LIMITS.maxNoteLength) } : {}),
