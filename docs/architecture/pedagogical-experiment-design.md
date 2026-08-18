@@ -26,7 +26,7 @@ values as authority.
 `src/core/exploration/pedagogicalExperiment.js` owns the versioned contract.
 V1 supports four goals:
 
-- `class-overlap`
+- `class-separation`
 - `train-test-support-shift`
 - `observation-noise`
 - `outlier-sensitivity`
@@ -40,7 +40,7 @@ optional learner input; it is not a result or a causal claim.
 `scenarioPlanner.js` compiles a valid design against the current session.
 Recipe Worlds use the existing `PATCH_WORLD_RECIPE` and regeneration
 operations. The first supported KNN path moves one group toward another for
-class-overlap; test-support shift uses split-specific test transforms; noise
+class-separation; test-support shift uses split-specific test transforms; noise
 and outlier designs use the existing bounded recipe patch variants. Legacy
 linear-regression Worlds reuse the existing registered intent operations where
 they are supported.
@@ -56,8 +56,9 @@ Structural Scenario fidelity is necessary but is not the pedagogical truth
 boundary. `pedagogicalVerification.js` independently checks the realized
 observations after detached execution:
 
-- class-overlap measures the actual mean cross-class point distance and accepts
-  only a decrease; it requires exactly one realized group per class label;
+- class-separation measures the actual mean cross-class distance and accepts
+  only a decrease; it requires exactly one realized group per class label. It
+  describes moving classes closer, not a geometric overlap measurement;
 - train/test support shift compares the runtime `testOutsideTrainFraction`
   before and after and requires the Train realization to remain unchanged;
 - noise and outlier designs must produce a measurable realized change rather
@@ -68,6 +69,13 @@ baseline. A dirty recipe is still a pending desired state, not the current
 realization, so the Agent asks the learner to regenerate it first. Supported
 numeric bounds are checked before planning, including the maximum noise and
 outlier limits.
+
+Pedagogical execution has a stricter commit gate than ordinary exploration:
+both structural fidelity (`exact`) and the realized-observation predicate must
+pass. The verifier also checks finite holds: support shift preserves the full
+Train point set, Train noise preserves Test, outlier addition preserves Test,
+and class separation preserves every non-selected group. A predicate passing
+cannot make a structurally mixed scenario executable.
 
 ## Evidence and follow-ups
 

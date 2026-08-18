@@ -809,6 +809,18 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           },
         };
       }
+      if (design && assessment.fidelity?.status !== 'exact') {
+        return {
+          kind: 'clarification',
+          request: request ?? 'Design a controlled experiment',
+          interpretation: {
+            kind: 'exploration-design',
+            ambiguity: 'pedagogical-fidelity-not-exact',
+            messageKey: 'playground.pedagogical.fidelityNotExact',
+            choices: [],
+          },
+        };
+      }
       return { ...planned, scenario: validated, assessment };
     },
 
@@ -871,10 +883,20 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       // assessment has succeeded on the detached candidate.
       const assessment = this.preflightExplorationScenario({ scenario });
       const validated = assessment.scenario;
+      if (validated.pedagogicalDesign && assessment.fidelity?.status !== 'exact') {
+        throw scenarioError('EXPLORATION_PEDAGOGICAL_FIDELITY_NOT_EXACT', {
+          status: assessment.fidelity?.status ?? 'unavailable',
+        });
+      }
       const candidate = executeExplorationOnDetachedSession(session, validated);
       const proposalFidelity = assessment.fidelity;
       const executionFidelity = candidate.fidelity;
       const fidelityMismatch = JSON.stringify(proposalFidelity) !== JSON.stringify(executionFidelity);
+      if (validated.pedagogicalDesign && executionFidelity?.status !== 'exact') {
+        throw scenarioError('EXPLORATION_PEDAGOGICAL_FIDELITY_NOT_EXACT', {
+          status: executionFidelity?.status ?? 'unavailable',
+        });
+      }
       commit(candidate.session);
       const result = candidate.snapshot;
       const followUps = [];

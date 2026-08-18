@@ -5,7 +5,7 @@
 export const PEDAGOGICAL_EXPERIMENT_VERSION = 1;
 
 export const PEDAGOGICAL_EXPERIMENT_GOALS = Object.freeze({
-  CLASS_OVERLAP: 'class-overlap',
+  CLASS_SEPARATION: 'class-separation',
   TRAIN_TEST_SUPPORT_SHIFT: 'train-test-support-shift',
   OBSERVATION_NOISE: 'observation-noise',
   OUTLIER_SENSITIVITY: 'outlier-sensitivity',
@@ -25,7 +25,7 @@ export const PEDAGOGICAL_EVIDENCE = Object.freeze({
 });
 
 const GOAL_CONTRACTS = Object.freeze({
-  [PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP]: {
+  [PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION]: {
     intervention: PEDAGOGICAL_INTERVENTIONS.MOVE_CLASS_TOWARD_CLASS,
     evidence: PEDAGOGICAL_EVIDENCE.TASK_OUTCOME,
   },
@@ -94,7 +94,7 @@ export function validateExplorationDesign(value, { context } = {}) {
     error.details = { field: 'prediction' };
     throw error;
   }
-  if (context?.world?.task && goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP && context.world.task !== 'classification') {
+  if (context?.world?.task && goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION && context.world.task !== 'classification') {
     const error = new Error('EXPLORATION_DESIGN_UNSUPPORTED');
     error.code = 'EXPLORATION_DESIGN_UNSUPPORTED';
     error.details = { goal, task: context.world.task };

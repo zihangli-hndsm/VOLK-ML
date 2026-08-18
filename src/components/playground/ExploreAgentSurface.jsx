@@ -8,10 +8,10 @@ import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
 import CompactBottomSheet from '../CompactBottomSheet.jsx';
 
 const pedagogicalGoalCopy = {
-  'class-overlap': {
-    question: 'playground.pedagogical.goal.classOverlap.question',
-    change: 'playground.pedagogical.goal.classOverlap.change',
-    watch: 'playground.pedagogical.goal.classOverlap.watch',
+  'class-separation': {
+    question: 'playground.pedagogical.goal.classSeparation.question',
+    change: 'playground.pedagogical.goal.classSeparation.change',
+    watch: 'playground.pedagogical.goal.classSeparation.watch',
   },
   'train-test-support-shift': {
     question: 'playground.pedagogical.goal.supportShift.question',
@@ -157,8 +157,8 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       const nextResult = await agent.executeExploration(proposal.scenario);
       if (threadActive) {
         try {
-          agent.recordExplorationThreadExperiment({ scenario: proposal.scenario, actor: 'human' });
-          agent.recordExplorationThreadObservation({ scenario: proposal.scenario, actor: 'human' });
+          agent.recordExplorationThreadExperiment({ scenario: proposal.scenario, actor: 'agent' });
+          agent.recordExplorationThreadObservation({ scenario: proposal.scenario, actor: 'agent' });
         } catch {
           // Thread capture is historical presentation evidence and must not
           // turn an already committed experiment into a failed runtime action.

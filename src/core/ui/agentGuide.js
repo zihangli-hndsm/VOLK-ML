@@ -12,7 +12,7 @@ export const AGENT_GUIDANCE_OUTCOMES = Object.freeze({
 });
 
 const NAVIGATION_RE = /where can i|how do i|show me|open .*settings|model settings|inspect|control|parameter|learning rate|noise|在哪里.*(改|调|设置)|怎么.*(改|调|设置)|模型设置|检查模型|控制|参数|学习率|噪声/i;
-const EXPERIMENT_RE = /what happens if|what if|try (a|an|the)?\s*|could we see whether|increase|decrease|lower|raise|larger|smaller|make .* (more|less)|add .*noise|add .*outlier|如果.*(增加|减少|提高|降低)|尝试|增加|减少|提高|降低|添加|噪声|异常点/i;
+const EXPERIMENT_RE = /what happens (if|when)|what if|try (a|an|the)?\s*|could we see whether|increase|decrease|lower|raise|larger|smaller|make .* (more|less)|add .*noise|add .*outlier|如果.*(增加|减少|提高|降低)|尝试|增加|减少|提高|降低|添加|噪声|异常点/i;
 const COMPARISON_RE = /clean comparison|what caused|comparison|compare|clarity|干净.*比较|什么导致|比较|对照|清晰/i;
 
 function has(snapshot, key) {
@@ -37,7 +37,7 @@ function proposalIntent(text) {
 function localPedagogicalDesign(text, snapshot) {
   const task = snapshot?.world?.task ?? snapshot?.experiment?.world?.task;
   if (/overlap|classes overlap|class overlap|重叠|类别.*重叠|类.*重合/i.test(text) && task === 'classification') {
-    return createPedagogicalExperimentDesign(PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP);
+    return createPedagogicalExperimentDesign(PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION);
   }
   if (/training never saw|test.*outside|test.*unseen|support shift|训练.*没见过|测试.*训练.*范围|测试.*分布/i.test(text)) {
     return createPedagogicalExperimentDesign(PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT);

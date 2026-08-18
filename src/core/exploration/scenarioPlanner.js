@@ -243,7 +243,7 @@ function recipeForPedagogicalDesign(design, context) {
   const groups = recipe.groups ?? [];
   const firstDifferentLabelPair = groups.flatMap((left, leftIndex) => groups.slice(leftIndex + 1).map((right) => ({ left, right })))
     .find(({ left, right }) => left.label !== right.label);
-  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP) {
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION) {
     if (!firstDifferentLabelPair) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'distinct-class-groups-required' });
     const { left, right } = firstDifferentLabelPair;
     const observationsByGroup = new Map();
@@ -353,7 +353,7 @@ export function planPedagogicalExperiment(designInput, request, context) {
       interpretation: { ambiguity: 'regenerate-baseline-first', messageKey: 'playground.pedagogical.regenerateBaseline' },
     };
   }
-  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP && context.world?.task !== 'classification') {
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION && context.world?.task !== 'classification') {
     return {
       kind: 'clarification',
       request,

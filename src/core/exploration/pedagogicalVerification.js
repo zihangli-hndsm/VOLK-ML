@@ -1,4 +1,5 @@
 import { coverageMismatch } from './observables.js';
+import { PEDAGOGICAL_EXPERIMENT_GOALS } from './pedagogicalExperiment.js';
 
 const EPSILON = 1e-6;
 const clone = (value) => structuredClone(value);
@@ -53,21 +54,60 @@ function meanCrossGroupDistance(left, right) {
   return count ? total / count : null;
 }
 
-function samePoint(left, right) {
-  const a = pointXY(left);
-  const b = pointXY(right);
-  if (!a || !b) return false;
-  return left.id === right.id
-    && left.membership === right.membership
-    && left.label === right.label
-    && Math.abs(a[0] - b[0]) <= EPSILON
-    && Math.abs(a[1] - b[1]) <= EPSILON;
+function stableValue(value) {
+  if (Array.isArray(value)) return value.map(stableValue);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, stableValue(value[key])]));
+}
+
+function pointIdentity(point) {
+  return {
+    id: point?.id === undefined || point?.id === null ? null : String(point.id),
+    groupId: point?.generation?.groupId ?? null,
+    membership: point?.membership ?? null,
+    label: point?.label ?? null,
+    target: point?.target ?? null,
+  };
+}
+
+function pointSemanticSignature(point, { includePosition = true } = {}) {
+  const position = pointXY(point);
+  return {
+    ...pointIdentity(point),
+    ...(includePosition ? { position, features: stableValue(point?.features ?? null) } : {}),
+  };
+}
+
+function samePointCollection(leftPoints, rightPoints, { includePosition = true } = {}) {
+  if (leftPoints.length !== rightPoints.length) return false;
+  const rightById = new Map(rightPoints.map((point) => [String(point?.id), point]));
+  if (rightById.size !== rightPoints.length) return false;
+  return leftPoints.every((point) => {
+    const candidate = rightById.get(String(point?.id));
+    if (!candidate) return false;
+    return JSON.stringify(pointSemanticSignature(point, { includePosition }))
+      === JSON.stringify(pointSemanticSignature(candidate, { includePosition }));
+  });
+}
+
+function changedPositionCount(leftPoints, rightPoints) {
+  if (!samePointCollection(leftPoints, rightPoints, { includePosition: false })) return false;
+  const rightById = new Map(rightPoints.map((point) => [String(point?.id), point]));
+  return leftPoints.filter((point) => {
+    const left = pointXY(point);
+    const right = pointXY(rightById.get(String(point?.id)));
+    return !left || !right || Math.abs(left[0] - right[0]) > EPSILON || Math.abs(left[1] - right[1]) > EPSILON;
+  }).length;
+}
+
+function pointsFor(world, predicate) {
+  return (world?.observations ?? []).filter(predicate);
 }
 
 function trainRealizationUnchanged(baselineWorld, candidateWorld) {
-  const candidateById = new Map((candidateWorld?.observations ?? []).map((point) => [String(point.id), point]));
-  const baselineTrain = (baselineWorld?.observations ?? []).filter((point) => point.membership === 'train');
-  return baselineTrain.length > 0 && baselineTrain.every((point) => samePoint(point, candidateById.get(String(point.id))));
+  const baselineTrain = pointsFor(baselineWorld, (point) => point.membership === 'train');
+  const candidateTrain = pointsFor(candidateWorld, (point) => point.membership === 'train');
+  return baselineTrain.length > 0 && samePointCollection(baselineTrain, candidateTrain);
 }
 
 function rangeFor(world, membership) {
@@ -96,7 +136,7 @@ export function verifyPedagogicalIntervention({ design, baselineWorld, candidate
     return invalid(goal, 'no-semantic-recipe-change');
   }
 
-  if (goal === 'class-overlap') {
+  if (goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION) {
     const groupsByLabel = groupIdsByLabel(baselineWorld);
     if (groupsByLabel.size !== 2 || [...groupsByLabel.values()].some((ids) => ids.size !== 1)) {
       return invalid(goal, 'class-group-selection-ambiguous');
@@ -110,13 +150,15 @@ export function verifyPedagogicalIntervention({ design, baselineWorld, candidate
     const otherBefore = observationsForGroup(baselineWorld, [...groupsByLabel.get(otherLabel)][0]);
     const selectedAfter = observationsForGroup(candidateWorld, String(selectedGroupId));
     const otherAfter = observationsForGroup(candidateWorld, [...groupsByLabel.get(otherLabel)][0]);
+    if (!samePointCollection(otherBefore, otherAfter)) return invalid(goal, 'non-selected-class-changed');
+    if (!samePointCollection(selectedBefore, selectedAfter, { includePosition: false })) return invalid(goal, 'selected-class-membership-changed');
     const before = meanCrossGroupDistance(selectedBefore, otherBefore);
     const after = meanCrossGroupDistance(selectedAfter, otherAfter);
     if (before === null || after === null) return invalid(goal, 'class-separation-unavailable');
     const selectedCentroidBefore = centroid(selectedBefore);
     const selectedCentroidAfter = centroid(selectedAfter);
     return after < before - EPSILON
-      ? { valid: true, goal, measurements: { metric: 'meanCrossClassDistance', before, after, selectedGroupId: String(selectedGroupId), selectedCentroidBefore, selectedCentroidAfter }, reason: null }
+      ? { valid: true, goal, measurements: { metric: 'meanCrossClassSeparation', before, after, selectedGroupId: String(selectedGroupId), selectedCentroidBefore, selectedCentroidAfter }, reason: null }
       : invalid(goal, 'class-separation-did-not-decrease');
   }
 
@@ -131,21 +173,25 @@ export function verifyPedagogicalIntervention({ design, baselineWorld, candidate
   }
 
   if (goal === 'observation-noise') {
-    const baselineById = new Map((baselineWorld.observations ?? []).map((point) => [String(point.id), point]));
-    const changed = (candidateWorld.observations ?? []).filter((point) => point.membership === 'train')
-      .filter((point) => !samePoint(baselineById.get(String(point.id)), point)).length;
-    return changed > 0
+    const baselineTrain = pointsFor(baselineWorld, (point) => point.membership === 'train');
+    const candidateTrain = pointsFor(candidateWorld, (point) => point.membership === 'train');
+    const baselineTest = pointsFor(baselineWorld, (point) => point.membership === 'test');
+    const candidateTest = pointsFor(candidateWorld, (point) => point.membership === 'test');
+    const changed = changedPositionCount(baselineTrain, candidateTrain);
+    return changed > 0 && samePointCollection(baselineTest, candidateTest)
       ? { valid: true, goal, measurements: { changedTrainPositions: changed }, reason: null }
-      : invalid(goal, 'noise-produced-no-change');
+      : invalid(goal, changed > 0 ? 'test-realization-changed' : 'noise-produced-no-change');
   }
 
   if (goal === 'outlier-sensitivity') {
     const count = (world) => (world?.observations ?? []).filter((point) => point.provenance === 'generated-outlier').length;
     const before = count(baselineWorld);
     const after = count(candidateWorld);
-    return after > before
+    const baselineTest = pointsFor(baselineWorld, (point) => point.membership === 'test');
+    const candidateTest = pointsFor(candidateWorld, (point) => point.membership === 'test');
+    return after > before && samePointCollection(baselineTest, candidateTest)
       ? { valid: true, goal, measurements: { outliersBefore: before, outliersAfter: after }, reason: null }
-      : invalid(goal, 'outliers-produced-no-change');
+      : invalid(goal, after > before ? 'test-realization-changed' : 'outliers-produced-no-change');
   }
   return invalid(goal, 'unsupported-goal');
 }

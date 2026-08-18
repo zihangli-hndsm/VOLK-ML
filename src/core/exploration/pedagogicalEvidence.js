@@ -26,7 +26,7 @@ export function derivePedagogicalEvidence({ snapshot, scenario, verification } =
     .filter((item) => item.before !== null || item.after !== null);
   const metricsComplete = metrics.length > 0 && metrics.every((item) => item.before !== null && item.after !== null);
   const coverage = verification?.measurements?.coverageMismatch ?? null;
-  const coverageComplete = scenario?.pedagogicalDesign?.goal !== 'train-test-support-shift'
+  const coverageComplete = scenario?.pedagogicalDesign?.goal !== PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT
     || Boolean(coverage?.before?.testOutsideTrainFraction !== undefined && coverage?.after?.testOutsideTrainFraction !== undefined);
   const grounded = Boolean(comparison?.enabled && verification?.valid && metricsComplete && coverageComplete);
   return {
@@ -44,7 +44,7 @@ export function derivePedagogicalEvidence({ snapshot, scenario, verification } =
 
 export function pedagogicalFollowUpGoals(goal) {
   const order = {
-    [PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP]: [
+    [PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION]: [
       PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE,
       PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY,
     ],
@@ -53,12 +53,12 @@ export function pedagogicalFollowUpGoals(goal) {
       PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY,
     ],
     [PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE]: [
-      PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP,
+      PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION,
       PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY,
     ],
     [PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY]: [
       PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE,
-      PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP,
+      PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION,
     ],
   };
   return [...(order[goal] ?? [])].slice(0, 2);
