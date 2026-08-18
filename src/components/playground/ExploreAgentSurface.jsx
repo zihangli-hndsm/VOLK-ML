@@ -99,7 +99,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         ...(nextOutcome.worldDesign ? { worldDesign: { ...nextOutcome.worldDesign, requestedHolds: nextOutcome.requestedHolds ?? [] } } : {}),
       });
       setProposal(nextProposal);
-      if (nextProposal?.kind === 'clarification') setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: nextProposal.interpretation?.ambiguity ?? nextProposal.reason ?? 'world-composer-unavailable' });
+      if (nextProposal?.kind === 'clarification') setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: nextProposal.interpretation?.messageKey ?? nextProposal.interpretation?.ambiguity ?? nextProposal.reason ?? 'world-composer-unavailable' });
     } catch (caught) {
       setError(caught);
     } finally {
@@ -147,11 +147,22 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     if (proposal?.kind !== 'proposal' || busy) return;
     setBusy(true);
     setError(null);
+    const threadActive = Boolean(snapshot.activeExplorationThread);
+    if (prediction.trim() && threadActive) {
+      // A prediction is a learner statement about the pending scenario. It
+      // must be captured before the runtime can produce the result.
+      agent.addExplorationThreadPrediction({ text: prediction.trim(), scenario: proposal.scenario, actor: 'human' });
+    }
     try {
       const nextResult = await agent.executeExploration(proposal.scenario);
-      if (prediction.trim() && snapshot.activeExplorationThread) {
-        agent.addExplorationThreadPrediction({ text: prediction.trim(), scenario: proposal.scenario });
-        agent.recordExplorationThreadExperiment({ scenario: proposal.scenario });
+      if (threadActive) {
+        try {
+          agent.recordExplorationThreadExperiment({ scenario: proposal.scenario, actor: 'human' });
+          agent.recordExplorationThreadObservation({ scenario: proposal.scenario, actor: 'human' });
+        } catch {
+          // Thread capture is historical presentation evidence and must not
+          // turn an already committed experiment into a failed runtime action.
+        }
       }
       setResult(nextResult);
       setProposal(null);
@@ -256,9 +267,9 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <button type="button" disabled={busy} onClick={runProposal} className="mt-3 rounded-xl bg-emerald-600 px-3 py-2 font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-500">{compactProposal(proposal, t).pedagogical ? t('playground.pedagogical.runExperiment') : t('playground.agentGuide.tryIt')}</button>
     </div>}
 
-    {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-950">{outcome.reason === 'world-control' ? t('playground.agentGuide.worldTools') : t('playground.agentGuide.clarification')}</p>}
+    {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-950">{outcome.reason?.startsWith?.('playground.') ? t(outcome.reason) : outcome.reason === 'world-control' ? t('playground.agentGuide.worldTools') : t('playground.agentGuide.clarification')}</p>}
     {aiFallback && <p className="mt-2 text-xs font-bold text-slate-500">{t('playground.agentGuide.aiFallback')}</p>}
-    {result && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-950"><p className="font-black">{t('playground.agentGuide.completed')}</p><p className="mt-1 text-xs">{t('playground.agentGuide.changed')}: {result.mutationDiff?.changed?.map((item) => semanticLabel(item, t)).join(', ') || t('playground.explorationAgent.none')}</p>{result.pedagogicalEvidence?.metrics?.map((metric) => <p key={metric.id} className="mt-1 text-xs">{t(metric.id === 'outcome.testAccuracy' ? 'playground.pedagogical.testOutcome' : metric.id === 'outcome.trainAccuracy' ? 'playground.pedagogical.trainOutcome' : metric.id === 'outcome.trainMse' ? 'playground.pedagogical.trainMse' : 'playground.pedagogical.testMse')}: {metric.before ?? '—'} → {metric.after ?? '—'}</p>)}{result.followUps?.length > 0 && <div className="mt-2"><p className="text-xs font-black">{t('playground.explorationAgent.followUps')}</p><div className="mt-1 flex flex-wrap gap-2">{result.followUps.map((item, index) => <button key={`${item.goal ?? item.id}-${index}`} type="button" onClick={() => followUp(item)} className="rounded-lg bg-white px-2 py-1 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.pedagogical.followUp')}</button>)}</div></div>}<button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button></div>}
+    {result && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-950"><p className="font-black">{t('playground.agentGuide.completed')}</p><p className="mt-1 text-xs">{t('playground.agentGuide.changed')}: {result.mutationDiff?.changed?.map((item) => semanticLabel(item, t)).join(', ') || t('playground.explorationAgent.none')}</p>{result.pedagogicalEvidence?.grounded ? result.pedagogicalEvidence.metrics.map((metric) => <p key={metric.id} className="mt-1 text-xs">{t(metric.id === 'outcome.testAccuracy' ? 'playground.pedagogical.testOutcome' : metric.id === 'outcome.trainAccuracy' ? 'playground.pedagogical.trainOutcome' : metric.id === 'outcome.trainMse' ? 'playground.pedagogical.trainMse' : 'playground.pedagogical.testMse')}: {metric.before} → {metric.after}</p>) : result.pedagogicalEvidence && <p className="mt-1 text-xs">{t('playground.pedagogical.evidenceUnavailable')}</p>}{result.followUps?.length > 0 && <div className="mt-2"><p className="text-xs font-black">{t('playground.explorationAgent.followUps')}</p><div className="mt-1 flex flex-wrap gap-2">{result.followUps.map((item, index) => <button key={`${item.goal ?? item.id}-${index}`} type="button" onClick={() => followUp(item)} className="rounded-lg bg-white px-2 py-1 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.pedagogical.followUp')}</button>)}</div></div>}<button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-2 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button></div>}
     {error && <div role="alert" className="ui-motion-error mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-xs text-red-800"><p className="font-bold">{t('playground.agentGuide.errorGeneric')}</p><details className="mt-1"><summary className="cursor-pointer font-mono text-[10px]">{error.code ?? 'EXPLORATION_FAILED'}</summary><p className="mt-1 font-mono text-[10px]">{error.message}</p></details></div>}
 
     <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">

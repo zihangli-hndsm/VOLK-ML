@@ -12,7 +12,7 @@ function valueOf(snapshot, id) {
   return record?.available ? record.value : null;
 }
 
-export function derivePedagogicalEvidence({ snapshot, scenario } = {}) {
+export function derivePedagogicalEvidence({ snapshot, scenario, verification } = {}) {
   const comparison = snapshot?.experimentWorkspace?.comparison ?? null;
   const activeResult = comparison?.results?.active ?? null;
   const baselineResult = comparison?.results?.against ?? null;
@@ -24,15 +24,21 @@ export function derivePedagogicalEvidence({ snapshot, scenario } = {}) {
       after: activeResult?.metrics ? activeResult.metrics[outcomeMetric[id]] ?? valueOf(snapshot, id) : valueOf(snapshot, id),
     }))
     .filter((item) => item.before !== null || item.after !== null);
+  const metricsComplete = metrics.length > 0 && metrics.every((item) => item.before !== null && item.after !== null);
+  const coverage = verification?.measurements?.coverageMismatch ?? null;
+  const coverageComplete = scenario?.pedagogicalDesign?.goal !== 'train-test-support-shift'
+    || Boolean(coverage?.before?.testOutsideTrainFraction !== undefined && coverage?.after?.testOutsideTrainFraction !== undefined);
+  const grounded = Boolean(comparison?.enabled && verification?.valid && metricsComplete && coverageComplete);
   return {
-    available: Boolean(comparison?.enabled),
-    grounded: true,
+    available: grounded,
+    grounded,
     changed: [...(comparison?.diff?.changed ?? [])],
     held: [...(comparison?.diff?.unchanged ?? [])],
     clarity: comparison?.diff?.clarity ?? null,
     metrics,
-    coverageMismatch: valueOf(snapshot, 'coverageMismatch'),
+    coverageMismatch: coverage ? { before: coverage.before, after: coverage.after } : null,
     goal: scenario?.pedagogicalDesign?.goal ?? null,
+    ...(grounded ? {} : { unavailableReason: !comparison?.enabled ? 'comparison-unavailable' : !verification?.valid ? 'intervention-unverified' : !metricsComplete ? 'outcome-evidence-incomplete' : 'coverage-evidence-incomplete' }),
   };
 }
 

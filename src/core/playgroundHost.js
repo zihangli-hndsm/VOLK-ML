@@ -37,6 +37,7 @@ import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
 import { planExplorationIntent, planExplorationRequest, planWorldDesign, planPedagogicalExperiment } from './exploration/scenarioPlanner.js';
 import { createPedagogicalExperimentDesign } from './exploration/pedagogicalExperiment.js';
 import { derivePedagogicalEvidence, pedagogicalFollowUpGoals } from './exploration/pedagogicalEvidence.js';
+import { verifyPedagogicalIntervention } from './exploration/pedagogicalVerification.js';
 import { deriveCleanerComparisonProposal } from './exploration/cleanerComparison.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
 import { isWorldModelCompatibilityError } from './exploration/worldModelCompatibility.js';
@@ -137,7 +138,19 @@ function executeExplorationOnDetachedSession(baseSession, validated) {
   const snapshot = derivePlaygroundSnapshot(candidate);
   const mutationDiff = snapshot.experimentWorkspace?.comparison?.diff ?? null;
   const fidelity = evaluateScenarioFidelity(validated, mutationDiff);
-  return { session: candidate, snapshot, mutationDiff, fidelity };
+  const pedagogicalVerification = validated.pedagogicalDesign
+    ? verifyPedagogicalIntervention({
+      design: validated.pedagogicalDesign,
+      baselineWorld: baseSession.experiment?.world,
+      candidateWorld: candidate.experiment?.world,
+      scenario: validated,
+      comparison: mutationDiff,
+    })
+    : null;
+  if (pedagogicalVerification && !pedagogicalVerification.valid) {
+    throw scenarioError('EXPLORATION_PEDAGOGICAL_INTERVENTION_INVALID', { reason: pedagogicalVerification.reason });
+  }
+  return { session: candidate, snapshot, mutationDiff, fidelity, pedagogicalVerification };
 }
 
 function resolveSource(playground, dataset) {
@@ -744,27 +757,53 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
     proposeExploration({ request, intent, worldDesign, design } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const context = this.inspectContext();
-      const planned = design
-        ? planPedagogicalExperiment(design, request ?? 'Design a controlled experiment', context)
-        : worldDesign
-        ? planWorldDesign(worldDesign, request ?? 'Design a deterministic world', context)
-        : intent
-        ? planExplorationIntent(intent, request ?? String(intent), context)
-        : planExplorationRequest(request, context);
+      let planned;
+      try {
+        planned = design
+          ? planPedagogicalExperiment(design, request ?? 'Design a controlled experiment', context)
+          : worldDesign
+          ? planWorldDesign(worldDesign, request ?? 'Design a deterministic world', context)
+          : intent
+            ? planExplorationIntent(intent, request ?? String(intent), context)
+            : planExplorationRequest(request, context);
+      } catch (error) {
+        if (design && error?.code === 'EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION') {
+          return {
+            kind: 'clarification',
+            request: request ?? 'Design a controlled experiment',
+            interpretation: { ambiguity: error.details?.reason ?? 'pedagogical-intervention-unavailable', messageKey: 'playground.pedagogical.unsupported' },
+          };
+        }
+        throw error;
+      }
       if (planned.kind !== 'proposal') return planned;
       const validated = validateScenarioSpec(planned.scenario, context);
       let assessment;
       try {
         assessment = this.preflightExplorationScenario({ scenario: validated });
       } catch (error) {
-        if (!worldDesign || !isWorldModelCompatibilityError(error)) throw error;
+        if ((!worldDesign && !design) || !isWorldModelCompatibilityError(error)) {
+          if (design && error?.code === 'EXPLORATION_PEDAGOGICAL_INTERVENTION_INVALID') {
+            return {
+              kind: 'clarification',
+              request: request ?? 'Design a controlled experiment',
+              interpretation: {
+                kind: 'exploration-design',
+                ambiguity: error.details?.reason ?? 'pedagogical-intervention-unavailable',
+                messageKey: 'playground.pedagogical.unsupported',
+                choices: [],
+              },
+            };
+          }
+          throw error;
+        }
         return {
           kind: 'clarification',
           request: request ?? 'Design a deterministic world',
           interpretation: {
-            kind: 'world-design',
+            kind: design ? 'exploration-design' : 'world-design',
             ambiguity: 'runtime-incompatible-world',
-            messageKey: 'playground.explorationAgent.incompatibleWorld',
+            messageKey: design ? 'playground.pedagogical.incompatibleModel' : 'playground.explorationAgent.incompatibleWorld',
             choices: [],
             errorCode: error?.code ?? 'EXPLORATION_RUNTIME_INCOMPATIBLE',
           },
@@ -818,6 +857,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       return {
         scenario: validated,
         fidelity: result.fidelity,
+        pedagogicalVerification: result.pedagogicalVerification,
         predictedSemanticDiff: result.mutationDiff,
         snapshot: result.snapshot,
       };
@@ -839,8 +879,9 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       const result = candidate.snapshot;
       const followUps = [];
       let pedagogicalEvidence = null;
+      const pedagogicalVerification = candidate.pedagogicalVerification;
       if (validated.pedagogicalDesign) {
-        pedagogicalEvidence = derivePedagogicalEvidence({ snapshot: result, scenario: validated });
+        pedagogicalEvidence = derivePedagogicalEvidence({ snapshot: result, scenario: validated, verification: pedagogicalVerification });
         for (const goal of pedagogicalFollowUpGoals(validated.pedagogicalDesign.goal)) {
           try {
             const followDesign = createPedagogicalExperimentDesign(goal);
@@ -870,6 +911,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         evidenceFocus: [...validated.observe],
         followUps: followUps.slice(0, 2),
         pedagogicalEvidence,
+        pedagogicalVerification,
       };
     },
 

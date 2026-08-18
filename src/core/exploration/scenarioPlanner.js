@@ -4,6 +4,7 @@ import { interpretExplorationRequest } from './explorationInterpreter.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { scenarioError, validateScenarioSpec } from './scenarioSpec.js';
 import { EXPLORATION_INTENTS } from './explorationIntents.js';
+import { coverageMismatch } from './observables.js';
 import {
   PEDAGOGICAL_EXPERIMENT_GOALS,
   validateExplorationDesign,
@@ -245,9 +246,30 @@ function recipeForPedagogicalDesign(design, context) {
   if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP) {
     if (!firstDifferentLabelPair) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'distinct-class-groups-required' });
     const { left, right } = firstDifferentLabelPair;
+    const observationsByGroup = new Map();
+    for (const point of context.world?.observations ?? []) {
+      const groupId = point.generation?.groupId;
+      if (!groupId || !Number.isFinite(Number(point.x)) || !Number.isFinite(Number(point.y))) continue;
+      if (!observationsByGroup.has(groupId)) observationsByGroup.set(groupId, []);
+      observationsByGroup.get(groupId).push(point);
+    }
+    const labelGroupIds = new Map();
+    for (const group of groups) {
+      if (!labelGroupIds.has(group.label)) labelGroupIds.set(group.label, []);
+      labelGroupIds.get(group.label).push(group.id);
+    }
+    if (labelGroupIds.size !== 2 || [...labelGroupIds.values()].some((ids) => ids.length !== 1)) {
+      throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'class-group-selection-ambiguous' });
+    }
+    const mean = (items) => items.length
+      ? items.reduce((sum, point) => [sum[0] + Number(point.x), sum[1] + Number(point.y)], [0, 0]).map((value) => value / items.length)
+      : null;
+    const leftCentroid = mean(observationsByGroup.get(left.id) ?? []);
+    const rightCentroid = mean(observationsByGroup.get(right.id) ?? []);
+    if (!leftCentroid || !rightCentroid) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'class-realization-unavailable' });
     const deltaBetweenGroups = [
-      Number(left.transform.translate[0]) - Number(right.transform.translate[0]),
-      Number(left.transform.translate[1]) - Number(right.transform.translate[1]),
+      leftCentroid[0] - rightCentroid[0],
+      leftCentroid[1] - rightCentroid[1],
     ];
     const length = Math.hypot(...deltaBetweenGroups);
     const delta = length > 1e-9
@@ -259,18 +281,40 @@ function recipeForPedagogicalDesign(design, context) {
     };
   }
   if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT) {
+    const range = (membership) => {
+      const values = (context.world?.observations ?? []).filter((point) => point.membership === membership).map((point) => Number(point.x)).filter(Number.isFinite);
+      return values.length ? { min: Math.min(...values), max: Math.max(...values) } : null;
+    };
+    const trainRange = range('train');
+    const testRange = range('test');
+    if (!trainRange || !testRange) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'coverage-measurement-unavailable' });
+    const before = coverageMismatch(trainRange, testRange);
+    const transformLimit = groups.reduce((limit, group) => Math.min(limit, ...['train', 'test'].map((split) => {
+      const current = group.splitTransforms?.[split]?.translate?.[0] ?? 0;
+      return 20 - Math.abs(Number(current));
+    })), 1.25);
+    const magnitude = Math.max(0, Math.min(1.25, transformLimit));
+    const candidates = [magnitude, -magnitude].map((delta) => ({
+      delta,
+      mismatch: coverageMismatch(trainRange, { min: testRange.min + delta, max: testRange.max + delta }),
+    }));
+    const best = candidates.sort((a, b) => b.mismatch.testOutsideTrainFraction - a.mismatch.testOutsideTrainFraction)[0];
+    if (!best || magnitude <= 0 || best.mismatch.testOutsideTrainFraction <= before.testOutsideTrainFraction + 1e-6) {
+      throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'coverage-mismatch-cannot-increase' });
+    }
     return {
       version: 1,
       changes: groups.map((group) => ({
         type: 'TRANSLATE_GROUP',
         groupId: group.id,
         split: 'test',
-        delta: [1.25, 0],
+        delta: [best.delta, 0],
       })),
     };
   }
   if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE) {
     const current = Number(recipe.noise?.train?.position?.amount ?? 0);
+    if (current >= 5 - 1e-9) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'pedagogical-limit-reached' });
     return {
       version: 1,
       changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: Number(Math.min(5, current + 0.08).toFixed(6)) }],
@@ -278,6 +322,7 @@ function recipeForPedagogicalDesign(design, context) {
   }
   if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY) {
     const current = Number(recipe.noise?.train?.outliers?.fraction ?? 0);
+    if (current >= 0.25 - 1e-9) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'pedagogical-limit-reached' });
     return {
       version: 1,
       changes: [{ type: 'SET_OUTLIERS', split: 'train', fraction: Number(Math.min(0.25, current + 0.03).toFixed(6)), placement: 'radial', distance: 2 }],
@@ -299,6 +344,15 @@ function pedagogicalObservables(design, task) {
 export function planPedagogicalExperiment(designInput, request, context) {
   const design = validateExplorationDesign(designInput, { context });
   const currentRecipe = context.world?.generator?.kind === 'world-recipe' ? context.world.generator.recipe : null;
+  const generator = context.world?.generator;
+  const regeneratesWorld = Boolean(currentRecipe || generator?.kind === 'legacy-generator');
+  if (regeneratesWorld && generator?.status !== 'clean') {
+    return {
+      kind: 'clarification',
+      request,
+      interpretation: { ambiguity: 'regenerate-baseline-first', messageKey: 'playground.pedagogical.regenerateBaseline' },
+    };
+  }
   if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_OVERLAP && context.world?.task !== 'classification') {
     return {
       kind: 'clarification',
@@ -307,7 +361,19 @@ export function planPedagogicalExperiment(designInput, request, context) {
     };
   }
   if (currentRecipe) {
-    const patch = recipeForPedagogicalDesign(design, context);
+    let patch;
+    try {
+      patch = recipeForPedagogicalDesign(design, context);
+    } catch (error) {
+      if (error?.code === 'EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION') {
+        return {
+          kind: 'clarification',
+          request,
+          interpretation: { ambiguity: error.details?.reason ?? 'pedagogical-intervention-unavailable', messageKey: error.details?.reason === 'pedagogical-limit-reached' ? 'playground.pedagogical.limitReached' : 'playground.pedagogical.unsupported' },
+        };
+      }
+      throw error;
+    }
     const draft = worldDesignSpec({ mode: 'edit', patch, requestedHolds: [] }, request, context);
     draft.pedagogicalDesign = design;
     draft.interpretation = { summary: 'Prepare a one-factor pedagogical experiment from the current World.', ambiguity: null };
