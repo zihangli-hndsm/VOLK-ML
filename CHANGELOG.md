@@ -635,3 +635,9 @@
 - Preserved canonical World-factor identity through Undo and Redo by deriving a bounded projection from each history entry's forward operations when that entry is created; reversal events now use that projection instead of their control-flow wrapper action.
 - Added regressions for noise, Test input, first-action Train/Test point Undo/Redo, provenance, and the absence of raw history/transaction data in the semantic log.
 - Validation: `node scripts/check-semantic-events.mjs`, `npm run check`, `npm run build`, and `git diff --check` passed; Goal 2 remains deferred.
+
+## 2026-08-19 — Learner Inquiry Engine Goal 2
+
+- Added a bounded deterministic Learner Inquiry projection over Semantic Events, active comparison facts, Observation Detector notices, Repeat evidence, and explicit Exploration Thread predictions.
+- Added a six-concept declarative inquiry registry for controlled and mixed comparisons, distribution shift, generalization, repeat variation, and counterfactual reasoning patterns; every candidate retains bounded event/observation provenance and uses no causal language or AI.
+- Exposed the same local-session inquiry projection in normal Playground snapshots and Host inspection, with focused regressions for evidence gates, false positives, deterministic output, and no-provider operation.
