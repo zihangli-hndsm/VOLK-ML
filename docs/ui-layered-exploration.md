@@ -66,3 +66,20 @@ factor, and derived outputs or view controls remain unmarked when the runtime
 does not expose exact control values. The playground registry validates this
 metadata centrally and limits each playground to at most three primary
 controls.
+
+## Contextual Quick Control
+
+A descriptor may additionally mark an experiment control with
+`quickControl: true`; an optional `quickControlDefault: true` identifies a
+unique fallback for a playground. Quick eligibility is separate from actual
+selection. The pure Play selector first honors an active scenario/experiment
+variable, then a single exact Changed control in the runtime comparison, then
+one declared default. Ambiguous candidates resolve to no quick control.
+
+World-only pedagogical scenarios are never mapped to an unrelated model
+control, even when a comparison has a changed model control or a descriptor
+declares a default. Explicit registered `SET_CONTROL` scenario variables are
+still eligible. No AI ranking is involved. Play renders at most one compact
+shared `PlaygroundControlField`; Tune and Play read the same snapshot value and
+dispatch the same `SET_CONTROL` action. When no deterministic candidate exists,
+Play renders no quick-control placeholder.

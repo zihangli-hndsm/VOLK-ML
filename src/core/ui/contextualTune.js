@@ -18,12 +18,15 @@ export function normalizeControlPresentation(control = {}) {
     importance,
     roles,
     ...(typeof presentation.explanationKey === 'string' && presentation.explanationKey ? { explanationKey: presentation.explanationKey } : {}),
+    ...(presentation.quickControl === true ? { quickControl: true } : {}),
+    ...(presentation.quickControlDefault === true ? { quickControlDefault: true } : {}),
   };
 }
 
 export function validatePlaygroundControlPresentation(playground = {}) {
   const controls = Array.isArray(playground.controls) ? playground.controls : [];
   let primaryCount = 0;
+  let quickControlDefaultCount = 0;
 
   for (const control of controls) {
     if (control?.presentation === undefined) continue;
@@ -44,11 +47,31 @@ export function validatePlaygroundControlPresentation(playground = {}) {
       && (typeof presentation.explanationKey !== 'string' || !presentation.explanationKey.trim())) {
       throw new Error(`Invalid control presentation explanationKey for ${control?.key ?? 'unknown control'}`);
     }
+    if (Object.prototype.hasOwnProperty.call(presentation, 'quickControl')
+      && typeof presentation.quickControl !== 'boolean') {
+      throw new Error(`Invalid control presentation quickControl for ${control?.key ?? 'unknown control'}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(presentation, 'quickControlDefault')
+      && typeof presentation.quickControlDefault !== 'boolean') {
+      throw new Error(`Invalid control presentation quickControlDefault for ${control?.key ?? 'unknown control'}`);
+    }
+    if (presentation.quickControl === true && !presentation.roles.includes('experiment')) {
+      throw new Error(`Quick control ${control?.key ?? 'unknown control'} must have the experiment role`);
+    }
+    if (presentation.quickControlDefault === true) {
+      if (presentation.quickControl !== true) {
+        throw new Error(`Quick control default ${control?.key ?? 'unknown control'} must be eligible`);
+      }
+      quickControlDefaultCount += 1;
+    }
     if (presentation.importance === 'primary') primaryCount += 1;
   }
 
   if (primaryCount > 3) {
     throw new Error(`Playground ${playground.id ?? 'unknown'} declares more than three primary controls`);
+  }
+  if (quickControlDefaultCount > 1) {
+    throw new Error(`Playground ${playground.id ?? 'unknown'} declares more than one default quick control`);
   }
   return playground;
 }

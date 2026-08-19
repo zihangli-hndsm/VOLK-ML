@@ -20,7 +20,7 @@ export const knnPlayground = {
     { key: 'yFeature', type: 'select', domain: 'evaluation', presentation: { importance: 'advanced', roles: ['inspection'] } },
     // runObjective declares which model operation a what-if/compare on this
     // control should run; it is declarative metadata, not a model-id switch.
-    { key: 'k', type: 'number', min: 1, max: MAX_K, step: 1, runObjective: 'predict', domain: 'model', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], explanationKey: 'playground.controlHint.k' } },
+    { key: 'k', type: 'number', min: 1, max: MAX_K, step: 1, runObjective: 'predict', domain: 'model', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], explanationKey: 'playground.controlHint.k', quickControl: true, quickControlDefault: true } },
     { key: 'queryX', type: 'number', domain: 'evaluation', presentation: { importance: 'secondary', roles: ['inspection'] } },
     { key: 'queryY', type: 'number', domain: 'evaluation', presentation: { importance: 'secondary', roles: ['inspection'] } },
     { key: 'showNeighborOrder', type: 'boolean', domain: 'view', presentation: { importance: 'advanced', roles: ['inspection'] } },
