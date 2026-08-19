@@ -90,3 +90,44 @@ Goal 3 adds no LLM call, TeachingGoal, suggestion execution, or permanent
 concept panel. Goal 4 may add structured inquiry suggestions, but must reuse
 the existing validated TeachingGoal/Scenario paths rather than make this card
 an execution authority.
+
+## Goal 4: deterministic causal-inquiry suggestions
+
+Goal 4 adds a small `InquirySuggestion` projection. It consumes only direct
+Goal 2 candidates plus the current inspected World/model capabilities. It is
+not a recommendation model, an LLM result, an executable Scenario, or an
+additional experiment runtime.
+
+```text
+direct inquiry candidate + registered capability
+  -> bounded InquirySuggestion
+  -> learner elects to inspect or execute
+  -> existing TeachingGoal / TeachingPlan / Composer / dry run / fidelity / Runtime
+```
+
+Each suggestion contains a localized question and hypothesis-to-test, one
+intended intervention, bounded intended holds, task-appropriate existing
+observable IDs, related inquiry concepts, and a reason code. It never asserts
+that its hypothesis is true. At most two suggestions are returned.
+
+V1 has two deliberately distinct routes:
+
+- A direct distribution-shift or generalization candidate can offer an
+  inspectable **manual World** suggestion: change only Test input support while
+  holding Train input, model, learning, evaluation, and randomness policy
+  fixed. It is not forced into a model-control TeachingGoal.
+- A generalization candidate can offer a **TeachingGoal** capacity comparison
+  only if a model-owned registered control explicitly declares
+  `presentation.inquiryRole: 'capacity'`. The current MLP `hiddenUnits`
+  descriptor is that declaration. The goal is validated by the existing
+  `compare-control` planner; a learner-approved use continues through the
+  established plan, composition, validation, strict dry run, fidelity, and
+  explicit Script Runtime path.
+
+No React model-ID branch, AI ranking, inferred causal importance, automatic
+execution, or new TeachingGoal taxonomy is involved. Suggestions are derived
+again from the Host's own snapshot in `suggestInquiry()`, so an API caller
+cannot install arbitrary suggestions as canonical runtime state.
+
+Goal 5 remains deferred: no background AI interpretation, candidate ranking,
+or interruption policy is included here.

@@ -648,3 +648,9 @@
 - Added a quiet, dismissible Play-surface Concept Card driven only by Goal 2 deterministic inquiry candidates; it names the observed pattern, explains why it appeared with bounded event evidence, and links only to the existing Evidence depth.
 - Added bounded session exposure and evidence-cycle deduplication so one clean experiment presents at most one card and repeated minor actions cannot create a card stream.
 - Preserved manual/no-AI exploration and all runtime semantics; Goal 4 suggestions and any AI interpretation remain deferred.
+
+## 2026-08-20 — Learner Inquiry Engine Goal 4
+
+- Added a bounded deterministic `InquirySuggestion` projection that turns direct distribution-shift/generalization inquiry evidence into at most two non-causal follow-up tests: an inspectable Test-support World intervention and, only when a model descriptor explicitly declares a capacity role, a registered capacity-control comparison.
+- Reused the existing `compare-control` TeachingGoal path for executable model-control suggestions; planning, composition, strict dry run, goal fidelity, and Script Runtime execution remain explicit and unchanged. World suggestions stay manual when they do not belong in the TeachingGoal taxonomy.
+- Added focused capability, hold/evidence, no-mutation, forged-candidate, TeachingGoal pipeline, and runtime checks. Goal 5 AI interpretation remains deferred.

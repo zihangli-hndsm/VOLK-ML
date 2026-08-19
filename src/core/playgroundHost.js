@@ -48,6 +48,7 @@ import { worldRecipeSummary } from './exploration/worldRecipe.js';
 import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 import { createSemanticEventStore, deriveSemanticEventDrafts } from './exploration/semanticEvents.js';
 import { deriveLearnerInquiryState } from './exploration/learnerInquiry.js';
+import { deriveInquirySuggestions } from './exploration/inquirySuggestion.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -915,6 +916,17 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
       return options.length
         ? { kind: 'cleaner-proposals', againstExperimentId: comparison?.againstExperimentId ?? null, options }
         : { kind: 'clarification', reason: 'cleaner-comparison-unavailable' };
+    },
+
+    // Goal 4: deterministic, read-only inquiry suggestions. This consumes
+    // the same factual inquiry projection visible in a snapshot and returns
+    // either an inspectable manual World idea or a validated TeachingGoal.
+    // It never modifies the live session; callers must still use plan(),
+    // composeScript(), and explicit loadScript() for an executable goal.
+    suggestInquiry() {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const snapshot = derivePlaygroundSnapshot(session);
+      return deriveInquirySuggestions({ inquiry: snapshot.learnerInquiry, context: this.inspectContext() });
     },
 
     preflightExplorationScenario({ scenario } = {}) {

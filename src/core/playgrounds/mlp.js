@@ -22,7 +22,7 @@ export const mlpPlayground = {
     { key: 'yFeature', type: 'select', domain: 'evaluation', presentation: { importance: 'advanced', roles: ['inspection'] } },
     // runObjective declares which model operation a what-if/compare on this
     // control should run; it is declarative metadata, not a model-id switch.
-    { key: 'hiddenUnits', type: 'number', min: 1, max: 8, step: 1, runObjective: 'predict', domain: 'model', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], explanationKey: 'playground.controlHint.hiddenUnits', quickControl: true, quickControlDefault: true } },
+    { key: 'hiddenUnits', type: 'number', min: 1, max: 8, step: 1, runObjective: 'predict', domain: 'model', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], explanationKey: 'playground.controlHint.hiddenUnits', quickControl: true, quickControlDefault: true, inquiryRole: 'capacity' } },
     { key: 'learningRate', type: 'number', min: 0.001, max: 2, step: 0.001, runObjective: 'fit', domain: 'learning', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], explanationKey: 'playground.controlHint.learningRate', quickControl: true } },
     { key: 'trainingSteps', type: 'number', min: 1, max: 50, step: 1, runObjective: 'fit', domain: 'learning', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], explanationKey: 'playground.controlHint.trainingSteps', quickControl: true } },
     { key: 'queryX', type: 'number', domain: 'evaluation', presentation: { importance: 'secondary', roles: ['inspection'] } },
