@@ -615,3 +615,23 @@
 - Added a bounded localized concept catalog and deterministic concept-signal projection for exact, verified experiments: controlled comparison, held constant, distribution shift, observation noise, outliers, and class separation.
 - Successful pedagogical execution now returns canonical concept metadata, the existing Thread observation path derives the same metadata at the Host boundary, and the Agent result presents at most one new compact Concept Card without AI-authored IDs or causal claims.
 - Added no-AI runtime/render regressions for intervention priority, exact-fidelity gating, forged-ID rejection, session exposure, and compact-safe presentation; browser validation remains environment-dependent.
+
+## 2026-08-19 — Concept & Inquiry Engine Goal 1: Semantic Event Foundation
+
+- Added a bounded local-session semantic event stream for completed experiment duplication, registered control changes, World interventions, comparisons, repeats, and deterministic Observation Detector notices.
+- Recorded event drafts only after successful runtime commits, with JSON-safe Experiment/factor/operation/evidence references; raw pointer paths, coordinates, observations, mutation objects, prompts, and DOM state are excluded. Continuous gestures remain one completed World event.
+- Exposed the same event snapshot to ordinary Playground consumers and detached Agent inspection, retained no project/cloud/telemetry state, and documented the injected local-store seam for later layered persistence.
+- Acceptance: focused semantic-event, core, Experiment, Agent, Thread, World Builder, Concept Card, render, full `npm run check`, `npm run build`, and `git diff --check` passed. Browser validation and GitHub Actions were not run for this change; Goal 2 concept matching remains deferred.
+
+## 2026-08-19 — Semantic Event Foundation truthfulness correction
+
+- Made semantic-event actor provenance explicit: trusted UI actions are `human`, Agent execution is `agent`, and omitted/internal Host, preset, script, or runtime work is `system` without changing established runtime Undo defaults.
+- Unified control-event eligibility with Experiment comparison semantics, excluding view-only and derived model controls; World events now retain bounded train/test, input, noise, outlier, relation, sample-count, seed, and lifecycle factor references without learner data.
+- Replaced session-wide observation suppression with active-state transition tracking so persistent detector output is quiet, insignificant evidence changes do not spam events, and a cleared observation can truthfully re-enter later.
+- Validation: `node scripts/check-semantic-events.mjs` and full `npm run check` passed. `npm run build` is blocked in this managed sandbox because esbuild cannot read the parent directory while loading Vite config; `git diff --check` passed. Goal 2 remains deferred.
+
+## 2026-08-19 — Semantic Event World Undo/Redo truthfulness correction
+
+- Preserved canonical World-factor identity through Undo and Redo by deriving a bounded projection from each history entry's forward operations when that entry is created; reversal events now use that projection instead of their control-flow wrapper action.
+- Added regressions for noise, Test input, first-action Train/Test point Undo/Redo, provenance, and the absence of raw history/transaction data in the semantic log.
+- Validation: `node scripts/check-semantic-events.mjs`, `npm run check`, `npm run build`, and `git diff --check` passed; Goal 2 remains deferred.

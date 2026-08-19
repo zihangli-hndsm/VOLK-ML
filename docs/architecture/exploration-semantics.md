@@ -321,3 +321,63 @@ most one new card per in-memory exploration session; repeated IDs are kept in
 a small presentation-only exposure list. Thread observation metadata is
 derived at the Host boundary and validated against the same catalog. Provider
 or UI input cannot author concept IDs, definitions, metrics, or causal claims.
+
+## Semantic Event Foundation
+
+`src/core/exploration/semanticEvents.js` provides a bounded, local-session
+record of completed semantic exploration actions. It is presentation context
+for deterministic inquiry work, not analytics, project persistence, or a
+second runtime. `createPlaygroundHost()` derives drafts only after the normal
+runtime action has succeeded, then appends canonical JSON-safe events to its
+in-memory store. A failed runtime action therefore records nothing, and event
+recording is fail-open so it cannot block a successful semantic commit.
+
+The v1 event vocabulary is intentionally small: experiment duplication,
+registered control factor changes, completed World transactions, completed
+comparisons, completed repeats, and Observation Detector notices. Actor
+provenance is explicit: UI dispatches mark learner actions `human`, Agent
+execution marks them `agent`, and omitted or internal Host/runtime work is
+projected as `system`. The event layer never defaults unknown work to learner
+behavior, while leaving existing runtime action/Undo defaults untouched.
+
+`experiment.factor-changed` uses the same canonical experimental-condition
+policy as Experiment comparison. View/inspection controls and derived model
+values such as weight and bias are not experiment factors merely because a
+runtime control changed. Registered learning, model, and evaluation condition
+controls retain their comparison-factor identity, with the specific control key
+as a bounded reason code.
+
+World events retain bounded factor references such as Train/Test observations,
+Train/Test input, sample count, noise, outliers, relation, seed policy, or
+generator realization. Those factors are derived from registered World
+operations and current membership only; they never retain point IDs,
+coordinates, raw observations, pointer paths, condition fingerprints, prompts,
+DOM references, or runtime mutation objects. Continuous tools already
+materialize one World transaction on gesture completion; the event layer records
+that one semantic intervention rather than individual pointer updates.
+
+Undo and Redo preserve that same factor identity. When a World history entry is
+created, the runtime derives a bounded factor projection from its canonical
+forward operations. Semantic Event derivation reads that projection from the
+entry being reversed or replayed; `UNDO_WORLD_ACTION` and
+`REDO_WORLD_ACTION` are control-flow metadata only, never the source of World
+meaning. This also means undoing the first World action emits a truthful event
+even though the resulting `past` history is empty. The event retains only the
+bounded factor references and Undo/Redo metadata, never the entry's
+forward/inverse transactions, IDs, snapshots, or raw World values.
+
+The store retains at most 100 ordered events per open Playground session and
+resets when that session closes. It is visible in normal snapshots and the
+Agent inspection context for future deterministic inquiry derivation, while
+the detailed existing `recentWorldActions` contract remains unchanged.
+Observation events use a lifecycle identity of detector ID, relevant Experiment
+IDs, and relevant observable references. The store records appearance once,
+suppresses persistent detector output (including insignificant evidence-value
+changes), clears active identity when the notice disappears, and records a new
+event if the same observation later reappears. It does not expose a separate
+cleared-event type in Goal 1.
+
+An injected store-shaped seam (`reset`, `append`, `snapshot`) supports a later
+layered persistence provider without adding cloud, account, project-format, or
+telemetry changes here. Goal 1 deliberately does not classify learners, match
+concepts, display cards, or invoke an AI provider.
