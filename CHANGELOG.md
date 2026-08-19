@@ -642,3 +642,9 @@
 - Added a six-concept declarative inquiry registry for controlled and mixed comparisons, distribution shift, generalization, repeat variation, and counterfactual reasoning patterns; every candidate retains bounded event/observation provenance and uses no causal language or AI.
 - Exposed the same local-session inquiry projection in normal Playground snapshots and Host inspection, with focused regressions for evidence gates, false positives, deterministic output, and no-provider operation.
 - Acceptance hardening: evidence-gated candidates now require the matching detector notice to remain active and, for comparisons, to reference the current Experiment pair; stale historical notices cannot surface a current concept.
+
+## 2026-08-19 — Learner Inquiry Engine Goal 3
+
+- Added a quiet, dismissible Play-surface Concept Card driven only by Goal 2 deterministic inquiry candidates; it names the observed pattern, explains why it appeared with bounded event evidence, and links only to the existing Evidence depth.
+- Added bounded session exposure and evidence-cycle deduplication so one clean experiment presents at most one card and repeated minor actions cannot create a card stream.
+- Preserved manual/no-AI exploration and all runtime semantics; Goal 4 suggestions and any AI interpretation remain deferred.
