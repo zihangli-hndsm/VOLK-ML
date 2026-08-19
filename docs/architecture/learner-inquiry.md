@@ -1,5 +1,36 @@
 # Learner Inquiry Engine
 
+## Goal 7: learner trajectory and evaluation
+
+Goal 7 adds a bounded local-session `inquiryTrajectory` projection for product
+evaluation. It measures completed exploration process, not learner ability,
+mastery, causal understanding, chat length, or card-click volume.
+
+The projection combines completed Semantic Events, explicitly recorded
+presentation events, and existing Exploration Thread entry kinds. Its current
+aggregate signals are:
+
+- time to first meaningful **human** World/control manipulation;
+- whether a second Experiment was created, Duplicate/Compare/Repeat use, and
+  the canonical one-factor comparison rate;
+- concept-card, depth, and explicit suggestion surface/engagement outcomes;
+- whether a later human semantic action followed surfaced guidance (a process
+  signal for independent exploration, not a mastery claim); and
+- bounded question/prediction/follow-up-question counts from the active Thread.
+
+The presentation store is local to the open Playground session and has a fixed
+event bound. It retains only a known event type, timestamp, and the latest
+Semantic Event sequence at presentation time. It excludes learner text, point
+data, World factors, Experiment IDs, card content, suggestion content, model
+results, provider output, project JSON, and telemetry vendors. It never
+dispatches a semantic runtime action. Normal snapshots and Agent inspection
+expose the same aggregate `inquiryTrajectory` projection.
+
+This is deliberately an evaluation seam, not an optimization target. Any
+future external reporting must remain opt-in and export only a separately
+reviewed aggregate contract; it must not treat clicks or chat volume as the
+success metric.
+
 ## Goal 6: causal/scientific inquiry concept pack
 
 Goal 6 adds a bounded `causalInquiry` projection over the same Semantic Events,

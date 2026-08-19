@@ -106,6 +106,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       return;
     }
     setActiveInquiryCard(next);
+    host.recordInquiryPresentationEvent?.({ type: 'concept-card-surfaced' });
     setShownInquiryConceptIds((shown) => nextInquiryConceptExposure(shown, next.conceptId));
     setShownInquiryEventIds((shown) => nextInquiryConceptEventExposure(shown, next.supportingEventIds));
   }, [snapshot?.learnerInquiry, shownInquiryConceptIds, shownInquiryEventIds, activeInquiryCard]);
@@ -179,6 +180,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setAgentOpen(false);
     const telemetryType = depthTelemetryType(nextDepth);
     if (telemetryType) safeTrackExplorationEvent({ version: 1, type: telemetryType, payload: {} }, telemetry);
+    if (nextDepth) host.recordInquiryPresentationEvent?.({ type: 'depth-opened' });
     setActiveDepth(nextDepth);
   };
 
@@ -195,7 +197,10 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   };
 
   const dismissInquiryCard = () => setActiveInquiryCard(null);
-  const openInquiryEvidence = () => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE);
+  const openInquiryEvidence = () => {
+    host.recordInquiryPresentationEvent?.({ type: 'concept-card-engaged' });
+    changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE);
+  };
 
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;
   if (presentationMode) {

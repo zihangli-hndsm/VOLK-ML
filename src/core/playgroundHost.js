@@ -50,6 +50,7 @@ import { createSemanticEventStore, deriveSemanticEventDrafts } from './explorati
 import { deriveLearnerInquiryState } from './exploration/learnerInquiry.js';
 import { deriveInquirySuggestions } from './exploration/inquirySuggestion.js';
 import { deriveCausalInquiryState } from './exploration/causalInquiry.js';
+import { createInquiryTrajectoryStore, deriveInquiryTrajectory } from './exploration/inquiryTrajectory.js';
 import {
   deriveInquiryGuidanceTrigger,
   nextInquiryGuidanceHistory,
@@ -437,7 +438,12 @@ function initializeBigIdeaSession(entrance, { getDataset: readDataset, seed } = 
   };
 }
 
-export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEventStore = createSemanticEventStore() } = {}) {
+export function createPlaygroundHost({
+  getDataset,
+  scriptGenerator,
+  semanticEventStore = createSemanticEventStore(),
+  inquiryTrajectoryStore = createInquiryTrajectoryStore(),
+} = {}) {
   let session = null;
   // Where the active script came from: 'preset' | 'generated' | 'composed' |
   // 'revised' | 'imported'. The UI surfaces this so users can always tell
@@ -452,6 +458,11 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
     if (!snapshot) return null;
     const semanticEvents = semanticEventStore.snapshot();
     const learnerInquiry = deriveLearnerInquiryState({ semanticEvents, snapshot });
+    const inquiryTrajectory = deriveInquiryTrajectory({
+      ...inquiryTrajectoryStore.snapshot(),
+      semanticEvents,
+      activeExplorationThread: snapshot.activeExplorationThread,
+    });
     return {
       ...snapshot,
       provenance: scriptProvenance,
@@ -462,6 +473,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
         semanticEvents,
         activeExplorationThread: snapshot.activeExplorationThread,
       }),
+      inquiryTrajectory,
     };
   };
 
@@ -538,6 +550,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
       scriptProvenance = 'preset';
       semanticEventStore.reset();
       inquiryGuidanceHistory = [];
+      inquiryTrajectoryStore.reset();
       commit(created);
       return present(derivePlaygroundSnapshot(session));
     },
@@ -629,6 +642,11 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
         semanticEvents,
         activeExplorationThread: snapshot.activeExplorationThread,
       });
+      const inquiryTrajectory = deriveInquiryTrajectory({
+        ...inquiryTrajectoryStore.snapshot(),
+        semanticEvents,
+        activeExplorationThread: snapshot.activeExplorationThread,
+      });
       const context = {
         version: 1,
         playground: { id: session.playgroundId, modelAdapter: session.adapterId, task: data.task ?? null },
@@ -664,6 +682,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
           semanticEvents,
           learnerInquiry,
           causalInquiry,
+          inquiryTrajectory,
           worldMode: snapshot.world?.mode ?? 'sample',
           generator: snapshot.world?.generator ?? null,
           observables: snapshot.observables ?? {},
@@ -978,7 +997,24 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
       const canonical = validateInquiryGuidance(decision, { trigger, context: this.inspectContext() });
       if (!canonical) throw playgroundError('INVALID_ACTION');
       inquiryGuidanceHistory = nextInquiryGuidanceHistory(inquiryGuidanceHistory, { trigger, guidance: canonical });
+      if (canonical.policy !== 'ignore') {
+        inquiryTrajectoryStore.append({
+          type: canonical.policy === 'suggest-experiment' ? 'suggestion-surfaced' : 'agent-guidance-surfaced',
+          afterSemanticEventSequence: trigger.eventSequence,
+        });
+      }
       return canonical;
+    },
+
+    // Goal 7 presentation signal boundary. This never changes semantic
+    // runtime state and retains only a bounded event type and event sequence.
+    recordInquiryPresentationEvent({ type, afterSemanticEventSequence } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const latestSequence = semanticEventStore.snapshot().events.at(-1)?.sequence ?? 0;
+      return inquiryTrajectoryStore.append({
+        type,
+        afterSemanticEventSequence: afterSemanticEventSequence ?? latestSequence,
+      });
     },
 
     preflightExplorationScenario({ scenario } = {}) {
@@ -1272,6 +1308,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
       session = null;
       semanticEventStore.reset();
       inquiryGuidanceHistory = [];
+      inquiryTrajectoryStore.reset();
       notify();
     },
 
