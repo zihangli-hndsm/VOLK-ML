@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-18 — Contextual Tune
+
+- Added bounded, model-owned control presentation metadata separating semantic domain from learner-facing importance and role.
+- Tune now foregrounds descriptor-selected primary controls, keeps secondary/advanced controls behind an accessible More controls disclosure, and preserves the complete Inspector inventory.
+- Added localized primary-control hints and deterministic Changed/Held constant markers from existing comparison factor state.
+- Added Contextual Tune behavioral checks for KNN, Linear Regression, legacy controls, accessibility, responsive safety, and runtime-safe presentation.
+
 ## 2026-08-18 — Layered Exploration UI
 
 - Added an explicit Play/Tune/Inspect presentation hierarchy without changing World, Experiment, comparison, evidence, or Agent runtime semantics.
@@ -92,6 +99,12 @@
 - 新增 `docs/roadmap.md`：列出向量搜索、LLM 聊天机器人、AI Agent 规划等未实现任务与基础设施规划，README 增加入口。
 - `npm run check` 新增示例验证：8 个示例逐个加载校验、可运行示例真实执行、可导出示例的双框架代码经 Python 语法校验。
 - 验收：`npm run check`、`npm run build`、`git diff --check` 全部通过；浏览器实测 9/9 通过。
+
+## 2026-08-18 — Contextual Tune acceptance correction
+
+- Changed/Held Tune markers now use real runtime comparison control evidence: only exact controls present on both sides can be marked, preventing factor-level or derived-output false positives.
+- Centralized bounded control-presentation validation in the playground registry, including supported importance/role metadata and the three-primary-control limit; legacy controls remain reachable through the fallback.
+- Acceptance: focused Contextual Tune, layered UI, responsive, and Playground render checks; full `npm run check`; production build; and `git diff --check` pass.
 
 ## 2026-08-05 — 示例项目布局优化
 

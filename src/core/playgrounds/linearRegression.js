@@ -15,17 +15,17 @@ export const linearRegressionPlayground = {
   sourceKinds: ['example', 'workspace-dataset'],
 
   controls: [
-    { key: 'weight', type: 'number', min: -100, max: 100, step: 0.01, domain: 'model' },
-    { key: 'bias', type: 'number', min: -100, max: 100, step: 0.01, domain: 'model' },
+    { key: 'weight', type: 'number', min: -100, max: 100, step: 0.01, domain: 'model', presentation: { importance: 'secondary', roles: ['inspection'] } },
+    { key: 'bias', type: 'number', min: -100, max: 100, step: 0.01, domain: 'model', presentation: { importance: 'secondary', roles: ['inspection'] } },
     // Max 5: gradient descent runs on standardized (z-scored) data, so values
     // > 1 are required to demonstrate the learning-rate-too-high teaching
     // scenario. The descriptor is the single source for every public path.
     // runObjective declares which model operation a what-if/compare on this
     // control should run; it is declarative metadata, not a model-id switch.
-    { key: 'learningRate', type: 'number', min: 0.001, max: 5, step: 0.001, runObjective: 'fit', domain: 'learning' },
-    { key: 'trainingSteps', type: 'number', min: 1, max: 100, step: 1, runObjective: 'fit', domain: 'learning' },
-    { key: 'showResiduals', type: 'boolean', domain: 'view' },
-    { key: 'showBestFit', type: 'boolean', domain: 'view' },
+    { key: 'learningRate', type: 'number', min: 0.001, max: 5, step: 0.001, runObjective: 'fit', domain: 'learning', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], explanationKey: 'playground.controlHint.learningRate' } },
+    { key: 'trainingSteps', type: 'number', min: 1, max: 100, step: 1, runObjective: 'fit', domain: 'learning', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], explanationKey: 'playground.controlHint.trainingSteps' } },
+    { key: 'showResiduals', type: 'boolean', domain: 'view', presentation: { importance: 'secondary', roles: ['inspection'] } },
+    { key: 'showBestFit', type: 'boolean', domain: 'view', presentation: { importance: 'advanced', roles: ['inspection'] } },
   ],
 
   actions: [

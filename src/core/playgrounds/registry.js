@@ -2,8 +2,10 @@ import { linearRegressionPlayground } from './linearRegression.js';
 import { knnPlayground } from './knn.js';
 import { mlpPlayground } from './mlp.js';
 import { dataLabPlayground } from './dataLab.js';
+import { validatePlaygroundControlPresentation } from '../ui/contextualTune.js';
 
 const playgrounds = [linearRegressionPlayground, knnPlayground, mlpPlayground, dataLabPlayground];
+playgrounds.forEach(validatePlaygroundControlPresentation);
 const byId = new Map(playgrounds.map((playground) => [playground.id, playground]));
 
 const summarize = (playground) => ({
@@ -14,12 +16,15 @@ const summarize = (playground) => ({
   supportedOps: [...playground.supportedOps],
   supportedTasks: [...playground.supportedTasks],
   sourceKinds: [...playground.sourceKinds],
-  controls: playground.controls.map(({ key, type, min, max, step, options }) => ({
+  controls: playground.controls.map(({ key, type, min, max, step, options, domain, runObjective, presentation }) => ({
     key, type,
+    ...(domain ? { domain } : {}),
     ...(min !== undefined ? { min } : {}),
     ...(max !== undefined ? { max } : {}),
     ...(step !== undefined ? { step } : {}),
     ...(options ? { options: [...options] } : {}),
+    ...(runObjective ? { runObjective } : {}),
+    ...(presentation ? { presentation: structuredClone(presentation) } : {}),
   })),
   actions: [...playground.actions],
   scenarios: playground.scenarios.map(({ id, titleKey }) => ({ id, titleKey })),
