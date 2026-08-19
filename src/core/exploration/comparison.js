@@ -7,6 +7,24 @@ import { worldRecipeDiff } from './worldRecipe.js';
 const FACTORS = ['world', 'trainTest', 'model', 'learning', 'evaluation', 'randomness'];
 const DERIVED_MODEL_CONTROLS = new Set(['weight', 'bias']);
 
+// A control can be a valid runtime/inspection field without being part of an
+// Experiment's canonical condition. Consumers use this same policy rather
+// than independently treating every SET_CONTROL as an experiment factor.
+export function canonicalExperimentalControl(controlDescriptor, key = controlDescriptor?.key) {
+  const normalizedKey = String(key ?? '');
+  if (!normalizedKey || DERIVED_MODEL_CONTROLS.has(normalizedKey)) return null;
+  const domain = controlDescriptor?.domain;
+  if (domain === 'view') return null;
+  return {
+    key: normalizedKey,
+    comparisonFactor: domain === 'learning'
+      ? 'learning'
+      : domain === 'evaluation'
+        ? 'evaluation'
+        : 'model',
+  };
+}
+
 const stable = (value) => {
   if (Array.isArray(value)) return `[${value.map(stable).join(',')}]`;
   if (value && typeof value === 'object') {
@@ -95,7 +113,7 @@ const trainTestSemantic = (world, sharedIds = null) => world.observations
 export function semanticFactors(experiment, { sharedObservationIds = null } = {}) {
   const value = validateExperiment(experiment);
   const modelControls = Object.fromEntries(
-    Object.entries(value.model?.controls ?? {}).filter(([key]) => !DERIVED_MODEL_CONTROLS.has(key)),
+    Object.entries(value.model?.controls ?? {}).filter(([key]) => Boolean(canonicalExperimentalControl(null, key))),
   );
   return {
     world: worldSemantic(value.world),

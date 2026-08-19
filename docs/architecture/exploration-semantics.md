@@ -334,19 +334,40 @@ recording is fail-open so it cannot block a successful semantic commit.
 
 The v1 event vocabulary is intentionally small: experiment duplication,
 registered control factor changes, completed World transactions, completed
-comparisons, completed repeats, and Observation Detector notices. Events retain
-only bounded actor, Experiment identity, semantic-factor, operation-type, and
-observable-reference fields. They never retain DOM references, pointer paths,
-point IDs, coordinates, raw observations, condition fingerprints, prompts, or
-runtime mutation objects. Continuous tools already materialize one World
-transaction on gesture completion; the event layer records that one semantic
-intervention rather than individual pointer updates.
+comparisons, completed repeats, and Observation Detector notices. Actor
+provenance is explicit: UI dispatches mark learner actions `human`, Agent
+execution marks them `agent`, and omitted or internal Host/runtime work is
+projected as `system`. The event layer never defaults unknown work to learner
+behavior, while leaving existing runtime action/Undo defaults untouched.
+
+`experiment.factor-changed` uses the same canonical experimental-condition
+policy as Experiment comparison. View/inspection controls and derived model
+values such as weight and bias are not experiment factors merely because a
+runtime control changed. Registered learning, model, and evaluation condition
+controls retain their comparison-factor identity, with the specific control key
+as a bounded reason code.
+
+World events retain bounded factor references such as Train/Test observations,
+Train/Test input, sample count, noise, outliers, relation, seed policy, or
+generator realization. Those factors are derived from registered World
+operations and current membership only; they never retain point IDs,
+coordinates, raw observations, pointer paths, condition fingerprints, prompts,
+DOM references, or runtime mutation objects. Continuous tools already
+materialize one World transaction on gesture completion; the event layer records
+that one semantic intervention rather than individual pointer updates.
 
 The store retains at most 100 ordered events per open Playground session and
 resets when that session closes. It is visible in normal snapshots and the
 Agent inspection context for future deterministic inquiry derivation, while
-the detailed existing `recentWorldActions` contract remains unchanged. An
-injected store-shaped seam (`reset`, `append`, `snapshot`) supports a later
+the detailed existing `recentWorldActions` contract remains unchanged.
+Observation events use a lifecycle identity of detector ID, relevant Experiment
+IDs, and relevant observable references. The store records appearance once,
+suppresses persistent detector output (including insignificant evidence-value
+changes), clears active identity when the notice disappears, and records a new
+event if the same observation later reappears. It does not expose a separate
+cleared-event type in Goal 1.
+
+An injected store-shaped seam (`reset`, `append`, `snapshot`) supports a later
 layered persistence provider without adding cloud, account, project-format, or
 telemetry changes here. Goal 1 deliberately does not classify learners, match
 concepts, display cards, or invoke an AI provider.

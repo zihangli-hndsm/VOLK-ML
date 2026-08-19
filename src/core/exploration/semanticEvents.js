@@ -1,6 +1,8 @@
 // A bounded, presentation-agnostic record of completed exploration actions.
 // This is deliberately not telemetry: it is local session context for future
 // deterministic inquiry work. Runtime actions remain authoritative.
+import { canonicalExperimentalControl } from './comparison.js';
+import { deriveWorldSemanticFactors } from './worldSemanticFactors.js';
 export const SEMANTIC_EVENT_VERSION = 1;
 export const SEMANTIC_EVENT_LOG_VERSION = 1;
 export const MAX_SEMANTIC_EVENTS = 100;
@@ -32,7 +34,7 @@ function boundedStrings(values, max = MAX_EVENT_STRINGS) {
 }
 
 function actorFor(action) {
-  return ACTORS.has(action?.actor) ? action.actor : 'human';
+  return ACTORS.has(action?.actor) ? action.actor : 'system';
 }
 
 function activeExperimentId(snapshot) {
@@ -75,24 +77,26 @@ function controlEvent(before, after, action, controlDescriptors) {
   if (!key) return null;
   if (stableJson(before?.controls?.[key]) === stableJson(after?.controls?.[key])) return null;
   const descriptor = (controlDescriptors ?? []).find((control) => control.key === key);
+  const experimentalControl = canonicalExperimentalControl(descriptor, key);
+  if (!experimentalControl) return null;
   return {
     type: 'experiment.factor-changed',
     actor: actorFor(action),
     experimentIds: boundedStrings([activeExperimentId(after)], 1),
-    semanticFactors: [`control.${key}`],
+    semanticFactors: [experimentalControl.comparisonFactor],
     operationTypes: ['SET_CONTROL'],
-    reasonCode: boundedString(descriptor?.domain, 'control-changed'),
+    reasonCode: `control.${experimentalControl.key}`,
   };
 }
 
-function worldEvent(after, action, operations = action?.transaction?.operations) {
+function worldEvent(before, after, action, operations = action?.transaction?.operations) {
   const operationTypes = boundedStrings((operations ?? []).map((operation) => operation?.type));
   if (!operationTypes.length) return null;
   return {
     type: 'world.intervened',
     actor: actorFor(action?.transaction?.actor ? { actor: action.transaction.actor } : action),
     experimentIds: boundedStrings([activeExperimentId(after)], 1),
-    semanticFactors: ['world'],
+    semanticFactors: boundedStrings(deriveWorldSemanticFactors({ operations, beforeWorld: before?.world })),
     operationTypes,
     reasonCode: boundedString(action?.transaction?.intent, 'world-transaction'),
   };
@@ -102,12 +106,15 @@ function worldEventFromHistory(before, after, action) {
   const previous = before?.actionHistory?.past?.at(-1)?.id ?? null;
   const current = after?.actionHistory?.past?.at(-1) ?? null;
   if (!current || current.id === previous) return null;
-  return worldEvent(after, {
+  const operation = action?.type && action.type !== 'EXECUTE_EXPLORATION'
+    ? { ...action }
+    : null;
+  return worldEvent(before, after, {
     ...action,
     transaction: {
-      actor: current.actor,
+      actor: action?.actor ?? current.actor,
       intent: current.intent,
-      operations: (current.mutationSummary?.types ?? []).map((type) => ({ type })),
+      operations: operation ? [operation] : (current.mutationSummary?.types ?? []).map((type) => ({ type })),
     },
   });
 }
@@ -136,9 +143,10 @@ function stableJson(value) {
 export function observationDedupeKey(notice) {
   return stableJson({
     id: boundedString(notice?.id),
-    relatedExperimentIds: boundedStrings(notice?.relatedExperimentIds),
-    relatedObservableIds: boundedStrings(notice?.relatedObservableIds),
-    evidence: notice?.evidence ?? null,
+    // Detector output order is incidental. The pedagogical identity is the
+    // same set of related experiments/observables, independent of ordering.
+    relatedExperimentIds: boundedStrings(notice?.relatedExperimentIds).sort(),
+    relatedObservableIds: boundedStrings(notice?.relatedObservableIds).sort(),
   });
 }
 
@@ -172,8 +180,8 @@ function executionEvents(before, after, action, controlDescriptors) {
   }
   const worldOperations = changes
     .filter((change) => !['SET_CONTROL', 'REPEAT_EXPERIMENT', 'DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS'].includes(change.operation))
-    .map((change) => ({ type: change.operation }));
-  const world = worldEvent(after, { ...action, transaction: { actor: action.actor, intent: 'exploration-scenario', operations: worldOperations } });
+    .map((change) => ({ type: change.operation, ...(change.parameters ?? {}) }));
+  const world = worldEvent(before, after, { ...action, transaction: { actor: action.actor, intent: 'exploration-scenario', operations: worldOperations } });
   if (world) events.push(world);
   if (action?.execution?.compare || changes.some((change) => ['SET_COMPARE', 'COMPARE_EXPERIMENTS'].includes(change.operation))) {
     const event = comparisonEvent(after, action);
@@ -199,7 +207,7 @@ export function deriveSemanticEventDrafts({ before, after, action, controlDescri
     const event = controlEvent(before, after, action, controlDescriptors);
     if (event) events.push(event);
   } else if (action.type === 'APPLY_WORLD_TRANSACTION') {
-    const event = worldEvent(after, action);
+    const event = worldEvent(before, after, action);
     if (event) events.push(event);
   } else if (action.type === 'SET_COMPARE' || action.type === 'COMPARE_EXPERIMENTS') {
     const event = comparisonEvent(after, action);
@@ -229,7 +237,7 @@ function canonicalEvent(draft, { sequence, occurredAt } = {}) {
     sequence,
     occurredAt: timestamp,
     type: draft.type,
-    actor: ACTORS.has(draft.actor) ? draft.actor : 'human',
+    actor: ACTORS.has(draft.actor) ? draft.actor : 'system',
     experimentIds: boundedStrings(draft.experimentIds, 4),
     semanticFactors: boundedStrings(draft.semanticFactors),
     operationTypes: boundedStrings(draft.operationTypes),
@@ -242,27 +250,30 @@ export function createSemanticEventStore({ limit = MAX_SEMANTIC_EVENTS, now = ()
   const normalizedLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, MAX_SEMANTIC_EVENTS) : MAX_SEMANTIC_EVENTS;
   let sequence = 0;
   let events = [];
-  let seenObservationKeys = [];
+  let activeObservationKeys = [];
 
   return {
     reset() {
       sequence = 0;
       events = [];
-      seenObservationKeys = [];
+      activeObservationKeys = [];
     },
     append(drafts = []) {
       const appended = [];
+      const observationDrafts = drafts.filter((draft) => draft?.type === 'observation.detected');
+      const nextObservationKeys = [...new Set(observationDrafts.map((draft) => draft.observationDedupeKey).filter(Boolean))]
+        .slice(-normalizedLimit);
       for (const draft of drafts) {
         if (draft?.type === 'observation.detected') {
           const key = draft.observationDedupeKey;
-          if (!key || seenObservationKeys.includes(key)) continue;
-          seenObservationKeys = [...seenObservationKeys, key].slice(-normalizedLimit);
+          if (!key || activeObservationKeys.includes(key)) continue;
         }
         const event = canonicalEvent(draft, { sequence: sequence + 1, occurredAt: now() });
         sequence += 1;
         events = [...events, event].slice(-normalizedLimit);
         appended.push(structuredClone(event));
       }
+      activeObservationKeys = nextObservationKeys;
       return appended;
     },
     snapshot() {

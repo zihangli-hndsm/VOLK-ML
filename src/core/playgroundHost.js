@@ -50,6 +50,7 @@ import { createSemanticEventStore, deriveSemanticEventDrafts } from './explorati
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
+const SEMANTIC_ACTION_ACTORS = new Set(['human', 'agent', 'system']);
 
 // Playback routing: with an active Visualization Script the host controls the
 // Script Runtime (SCRIPT_* actions); without one it falls back to the model
@@ -469,10 +470,27 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
     notify();
   };
 
-  const dispatchAndCommit = (action) => {
+  const semanticAction = (action, { defaultActor = 'system' } = {}) => (action?.type === 'APPLY_WORLD_TRANSACTION'
+      ? {
+        ...action,
+        transaction: {
+          ...(action.transaction ?? {}),
+          actor: SEMANTIC_ACTION_ACTORS.has(action.transaction?.actor) ? action.transaction.actor : defaultActor,
+        },
+      }
+      : {
+        ...action,
+        actor: SEMANTIC_ACTION_ACTORS.has(action?.actor) ? action.actor : defaultActor,
+      });
+
+  const dispatchAndCommit = (action, options = {}) => {
+    const eventAction = semanticAction(action, options);
     const before = session;
+    // Preserve the established runtime defaulting/Undo semantics. Provenance
+    // is projected separately for inquiry events so omission never becomes a
+    // claim about the learner.
     const next = dispatchPlaygroundAction(before, action);
-    commit(next, { action, before });
+    commit(next, { action: eventAction, before });
     return next;
   };
 
