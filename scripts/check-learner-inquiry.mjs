@@ -70,7 +70,8 @@ const distributionEvents = [
   event({ id: 'event-coverage', sequence: 3, type: 'observation.detected', experimentIds: ['experiment-a', 'experiment-b'], reasonCode: 'COVERAGE_MISMATCH', evidenceRefs: ['coverageMismatch'] }),
   event({ id: 'event-test-error', sequence: 4, type: 'observation.detected', experimentIds: ['experiment-a', 'experiment-b'], reasonCode: 'TEST_ERROR_CHANGED_MORE', evidenceRefs: ['outcome.testMse', 'outcome.trainMse'] }),
 ];
-const distributionState = deriveLearnerInquiryState({ semanticEvents: { events: distributionEvents }, comparison: comparison(['world']) });
+const activeDistributionNotices = [{ id: 'COVERAGE_MISMATCH' }, { id: 'TEST_ERROR_CHANGED_MORE' }];
+const distributionState = deriveLearnerInquiryState({ semanticEvents: { events: distributionEvents }, comparison: comparison(['world']), observations: activeDistributionNotices });
 assert.ok(distributionState.candidates.some((item) => item.conceptId === INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT), 'Test World change plus factual coverage mismatch produces distribution-shift candidate');
 assert.ok(distributionState.candidates.some((item) => item.conceptId === INQUIRY_CONCEPT_IDS.GENERALIZATION), 'Test World change plus factual Test-error difference produces generalization candidate');
 assert.deepEqual(distributionState.candidates.find((item) => item.conceptId === INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT).supportingObservationIds, ['COVERAGE_MISMATCH'], 'candidate retains only stable observation identity rather than raw detector evidence');
@@ -78,16 +79,30 @@ assert.deepEqual(distributionState.candidates.find((item) => item.conceptId === 
 const noTestWorld = deriveLearnerInquiryState({
   semanticEvents: { events: distributionEvents.filter((item) => item.id !== 'event-world-test') },
   comparison: comparison(['learning']),
+  observations: activeDistributionNotices,
 });
 assert.equal(noTestWorld.candidates.some((item) => [INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT, INQUIRY_CONCEPT_IDS.GENERALIZATION].includes(item.conceptId)), false, 'metric notices alone never claim a Test-world concept');
+
+const clearedEvidence = deriveLearnerInquiryState({
+  semanticEvents: { events: distributionEvents },
+  comparison: comparison(['world']),
+  observations: [],
+});
+assert.equal(clearedEvidence.candidates.some((item) => [INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT, INQUIRY_CONCEPT_IDS.GENERALIZATION].includes(item.conceptId)), false, 'historical detector events do not remain evidence after the current notice clears');
+const wrongComparisonEvidence = deriveLearnerInquiryState({
+  semanticEvents: { events: distributionEvents.map((item) => item.type === 'observation.detected' ? { ...item, experimentIds: ['experiment-b', 'experiment-c'] } : item) },
+  comparison: comparison(['world']),
+  observations: activeDistributionNotices,
+});
+assert.equal(wrongComparisonEvidence.candidates.some((item) => [INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT, INQUIRY_CONCEPT_IDS.GENERALIZATION].includes(item.conceptId)), false, 'a notice from another comparison pair cannot become evidence for the current pair');
 
 const repeatEvents = [
   event({ id: 'event-repeat', sequence: 1, type: 'repeat.completed', experimentIds: ['experiment-b'], reasonCode: 'repeat-evidence-ready' }),
   event({ id: 'event-repeat-observation', sequence: 2, type: 'observation.detected', experimentIds: ['experiment-b'], reasonCode: 'REPEAT_VARIATION', evidenceRefs: ['repeatSlopeSpread'] }),
 ];
-const stability = deriveLearnerInquiryState({ semanticEvents: { events: repeatEvents } });
+const stability = deriveLearnerInquiryState({ semanticEvents: { events: repeatEvents }, observations: [{ id: 'REPEAT_VARIATION' }] });
 assert.ok(stability.candidates.some((item) => item.conceptId === INQUIRY_CONCEPT_IDS.STABILITY), 'repeat completion plus repeat variation notice produces a stability candidate');
-assert.equal(deriveLearnerInquiryState({ semanticEvents: { events: repeatEvents.slice(0, 1) } }).candidates.length, 0, 'repeat completion alone does not claim observed variation');
+assert.equal(deriveLearnerInquiryState({ semanticEvents: { events: repeatEvents.slice(0, 1) }, observations: [{ id: 'REPEAT_VARIATION' }] }).candidates.length, 0, 'repeat completion alone does not claim observed variation');
 
 const hypothesisState = deriveLearnerInquiryState({
   semanticEvents: { events: [] },
@@ -98,7 +113,7 @@ const hypothesisState = deriveLearnerInquiryState({
 assert.deepEqual(hypothesisState.explicitHypothesis, { entryId: 'prediction-1', text: 'The Test error may change more.' }, 'explicit Thread prediction is tracked only when it already exists');
 assert.equal(hypothesisState.conceptualDepth, 'evidence', 'explicit presentation depth is retained without being inferred from runtime behavior');
 assert.deepEqual(hypothesisState.conceptsPreviouslySurfaced, [INQUIRY_CONCEPT_IDS.GENERALIZATION], 'only registered bounded exposure IDs are retained');
-assert.deepEqual(distributionState, deriveLearnerInquiryState({ semanticEvents: { events: distributionEvents }, comparison: comparison(['world']) }), 'same factual input produces a deep-equal deterministic inquiry state');
+assert.deepEqual(distributionState, deriveLearnerInquiryState({ semanticEvents: { events: distributionEvents }, comparison: comparison(['world']), observations: activeDistributionNotices }), 'same factual input produces a deep-equal deterministic inquiry state');
 assert.ok(!JSON.stringify(distributionState).match(/caus|because|proves/i), 'candidates retain factual reason codes without causal language');
 
 await host.close();

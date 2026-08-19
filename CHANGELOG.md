@@ -641,3 +641,4 @@
 - Added a bounded deterministic Learner Inquiry projection over Semantic Events, active comparison facts, Observation Detector notices, Repeat evidence, and explicit Exploration Thread predictions.
 - Added a six-concept declarative inquiry registry for controlled and mixed comparisons, distribution shift, generalization, repeat variation, and counterfactual reasoning patterns; every candidate retains bounded event/observation provenance and uses no causal language or AI.
 - Exposed the same local-session inquiry projection in normal Playground snapshots and Host inspection, with focused regressions for evidence gates, false positives, deterministic output, and no-provider operation.
+- Acceptance hardening: evidence-gated candidates now require the matching detector notice to remain active and, for comparisons, to reference the current Experiment pair; stale historical notices cannot surface a current concept.

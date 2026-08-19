@@ -162,6 +162,19 @@ function eventForActiveExperiment(event, comparison) {
   return !comparison || !event.experimentIds.length || event.experimentIds.includes(comparison.activeExperimentId);
 }
 
+function observationForCurrentComparison(event, comparison) {
+  if (!comparison) return true;
+  // Comparison notices carry both Experiment identities. A notice from a
+  // prior comparison that merely shares the active branch is not evidence for
+  // this pair.
+  return sameExperimentPair(event, comparison);
+}
+
+function activeObservationIds(observations) {
+  return new Set(safeStrings((observations ?? []).map((notice) => notice?.id), OBSERVATION_IDS.size)
+    .filter((id) => OBSERVATION_IDS.has(id)));
+}
+
 function lastEvent(events, predicate) {
   for (let index = events.length - 1; index >= 0; index -= 1) {
     if (predicate(events[index])) return events[index];
@@ -179,7 +192,7 @@ function candidate(conceptId, supportingEvents, supportingObservations, reasonCo
   };
 }
 
-function directCandidates(events, comparison) {
+function directCandidates(events, comparison, activeObservations) {
   const candidates = [];
   const comparisonEvent = lastEvent(events, (event) => event.type === 'comparison.completed' && sameExperimentPair(event, comparison));
   const duplicated = lastEvent(events, (event) => event.type === 'experiment.duplicated' && sameExperimentPair(event, comparison));
@@ -201,10 +214,12 @@ function directCandidates(events, comparison) {
     && event.semanticFactors.some((factor) => factor === 'world.test.input' || factor === 'world.test.observations'));
   const coverage = lastEvent(events, (event) => event.type === 'observation.detected'
     && event.reasonCode === 'COVERAGE_MISMATCH'
-    && eventForActiveExperiment(event, comparison));
+    && activeObservations.has('COVERAGE_MISMATCH')
+    && observationForCurrentComparison(event, comparison));
   const testError = lastEvent(events, (event) => event.type === 'observation.detected'
     && event.reasonCode === 'TEST_ERROR_CHANGED_MORE'
-    && eventForActiveExperiment(event, comparison));
+    && activeObservations.has('TEST_ERROR_CHANGED_MORE')
+    && observationForCurrentComparison(event, comparison));
   if (testWorldEvent && coverage) {
     candidates.push(candidate(INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT, [testWorldEvent, coverage], [coverage], 'test-world-change-with-coverage-mismatch'));
   }
@@ -215,6 +230,7 @@ function directCandidates(events, comparison) {
   const repeated = lastEvent(events, (event) => event.type === 'repeat.completed' && eventForActiveExperiment(event, comparison));
   const repeatVariation = lastEvent(events, (event) => event.type === 'observation.detected'
     && event.reasonCode === 'REPEAT_VARIATION'
+    && activeObservations.has('REPEAT_VARIATION')
     && eventForActiveExperiment(event, comparison));
   if (repeated && repeatVariation) {
     candidates.push(candidate(INQUIRY_CONCEPT_IDS.STABILITY, [repeated, repeatVariation], [repeatVariation], 'repeat-variation-observed'));
@@ -251,13 +267,15 @@ export function deriveLearnerInquiryState({
   semanticEvents,
   snapshot,
   comparison,
+  observations = snapshot?.observations,
   activeExplorationThread = snapshot?.activeExplorationThread,
   conceptsPreviouslySurfaced = [],
   conceptualDepth = null,
 } = {}) {
   const events = normalizedEvents(semanticEvents);
   const currentComparison = normalizedComparison(comparison) ?? comparisonFor(snapshot);
-  const concepts = directCandidates(events, currentComparison)
+  const currentObservations = activeObservationIds(observations);
+  const concepts = directCandidates(events, currentComparison, currentObservations)
     .filter((item, index, all) => all.findIndex((candidateItem) => candidateItem.conceptId === item.conceptId) === index)
     .slice(0, MAX_INQUIRY_CANDIDATES);
   const normalizedDepth = safeString(conceptualDepth);
@@ -266,6 +284,7 @@ export function deriveLearnerInquiryState({
     version: LEARNER_INQUIRY_VERSION,
     recentEventIds: events.map((event) => event.id),
     recentObservationIds: [...new Set(events.filter((event) => event.type === 'observation.detected' && OBSERVATION_IDS.has(event.reasonCode)).map((event) => event.reasonCode))],
+    activeObservationIds: [...currentObservations],
     activeComparison: currentComparison,
     candidates: concepts,
     conceptsPreviouslySurfaced: safeStrings(conceptsPreviouslySurfaced, Object.keys(INQUIRY_CONCEPT_REGISTRY).length)

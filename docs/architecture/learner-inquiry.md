@@ -62,9 +62,11 @@ Current direct rules include:
 - a completed Repeat plus `REPEAT_VARIATION` for stability.
 
 Metric notices without a relevant Test World event do not produce a
-distribution-shift or generalization candidate. Repeat completion alone does
-not claim variation. These are observations and inquiry opportunities, never
-proof that one condition caused a result.
+distribution-shift or generalization candidate. A historical detector event is
+not enough: its matching notice must still be active in the current runtime
+snapshot, and a comparison notice must reference the current Experiment pair.
+Repeat completion alone does not claim variation. These are observations and
+inquiry opportunities, never proof that one condition caused a result.
 
 ## Boundaries and next slice
 
