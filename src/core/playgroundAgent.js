@@ -11,6 +11,7 @@ export {
 } from './exploration/inquiryGuidance.js';
 export { deriveCausalInquiryState, listCausalInquirySteps } from './exploration/causalInquiry.js';
 export { getCausalWorldPrototype } from './exploration/causalWorldPrototype.js';
+export { createInquiryTrajectoryStore, deriveInquiryTrajectory } from './exploration/inquiryTrajectory.js';
 
 const copy = (value) => structuredClone(value);
 
@@ -81,6 +82,7 @@ export function createPlaygroundAgentApi(host) {
     proposeCleanerComparison: () => invoke('proposeCleanerComparison', () => copy(host.proposeCleanerComparison())),
     getInquiryGuidanceTrigger: () => invoke('getInquiryGuidanceTrigger', () => copy(host.getInquiryGuidanceTrigger())),
     recordInquiryGuidance: (request) => invoke('recordInquiryGuidance', () => copy(host.recordInquiryGuidance(copy(request ?? {})))),
+    recordInquiryPresentationEvent: (request) => invoke('recordInquiryPresentationEvent', () => copy(host.recordInquiryPresentationEvent(copy(request ?? {})))),
     preflightExplorationScenario: (scenario) => invoke('preflightExplorationScenario', () => copy(host.preflightExplorationScenario({ scenario: copy(scenario) }))),
     executeExploration: (scenario) => invokeAsync('executeExploration', async () => copy(await host.executeExploration({ scenario: copy(scenario) }))),
     createExplorationThread: (request) => invoke('createExplorationThread', () => copy(host.createExplorationThread(copy(request ?? {})))),

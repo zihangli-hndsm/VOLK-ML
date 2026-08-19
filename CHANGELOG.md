@@ -666,3 +666,9 @@
 - Added a bounded deterministic causal/scientific inquiry projection over existing facts: observed pattern, learner-stated hypothesis, registered intervention, controlled or mixed comparison, counterfactual reasoning, and repeat variation.
 - Kept ordinary detector/metric evidence distinct from association and causal conclusions; mixed comparisons now explicitly lead to factor isolation and repeat variation to uncertainty checking.
 - Added an inspectable design-only Causal World contract with explicit observable/intervenable/latent variables and mechanism-reveal policy, without a second World state machine, raw observations, Agent-only operations, or executable mechanism. A live Causal World remains a later capability.
+
+## 2026-08-20 — Learner Inquiry Engine Goal 7
+
+- Added a bounded local-session inquiry trajectory projection for completed exploration process: first meaningful manipulation, second Experiment, Duplicate/Compare/one-factor/Repeat use, concept/depth/suggestion outcomes, later independent human exploration, and Thread question/prediction follow-up counts.
+- Added a strict presentation-event boundary used by the quiet Concept Card and conceptual-depth surface; recording is presentation-only and cannot mutate World, Experiment, comparison, Agent, or Thread runtime semantics.
+- Preserved vendor-independent/no-provider operation and excluded learner text, raw World data, Experiment IDs, suggestion/card content, model results, project persistence, and cloud telemetry. The projection is evaluation context, not learner scoring or a click-optimization target.
