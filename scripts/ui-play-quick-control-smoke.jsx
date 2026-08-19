@@ -50,7 +50,12 @@ export async function runPlayQuickControlSmoke() {
   const lrSnapshot = snapshots.get('linear-regression');
   assert.equal(derivePlayQuickControl(lr, lrSnapshot), null, 'Linear Regression does not choose between two eligible controls without context');
   assert.equal(renderQuick(lr, lrSnapshot), '', 'null selection renders no placeholder');
-  assert.equal(derivePlayQuickControl(lr, { ...lrSnapshot, scenario: { variable: { key: 'trainingSteps' } } })?.key, 'trainingSteps', 'scenario variable resolves one eligible control');
+  assert.equal(derivePlayQuickControl(lr, {
+    ...lrSnapshot,
+    scenario: {
+      change: [{ operation: 'SET_CONTROL', parameters: { key: 'trainingSteps', value: 30 } }],
+    },
+  })?.key, 'trainingSteps', 'explicit SET_CONTROL scenario resolves one eligible control');
 
   const mlp = getPlayground('mlp-classification');
   const mlpSnapshot = snapshots.get('mlp-classification');
@@ -70,16 +75,27 @@ export async function runPlayQuickControlSmoke() {
   const twoChanged = lrHost.getState();
   assert.equal(derivePlayQuickControl(lr, twoChanged), null, 'two equally eligible changed controls resolve to no quick control');
 
+  const knnHost = hosts.get('knn-classification');
+  const knnBaseline = knnSnapshot.experimentWorkspace.experiments[0];
+  await knnHost.dispatch({ type: 'DUPLICATE_EXPERIMENT' });
+  await knnHost.dispatch({ type: 'SET_CONTROL', key: 'k', value: 7 });
+  await knnHost.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: knnBaseline.id });
+  const knnCompared = knnHost.getState();
+  assert.equal(derivePlayQuickControl(knn, knnCompared)?.key, 'k', 'real KNN comparison selects its changed eligible control');
+
   const worldOnly = {
-    ...knnSnapshot,
+    ...knnCompared,
     scenario: {
       pedagogicalDesign: { goal: 'class-separation' },
       change: [{ operation: 'APPLY_WORLD_TRANSACTION', parameters: { operations: [] } }],
     },
   };
   assert.equal(derivePlayQuickControl(knn, worldOnly), null, 'World-only pedagogical scenarios do not map to a model quick control');
+  assert.equal(renderQuick(knn, worldOnly), '', 'World-only context renders no stale comparison/default quick-control placeholder');
+  assert.equal(worldOnly.experimentWorkspace.comparison.enabled, true, 'World-only presentation context preserves comparison state');
+  const resumed = { ...knnCompared, scenario: null };
+  assert.equal(derivePlayQuickControl(knn, resumed)?.key, 'k', 'ending World-only context restores the real comparison quick control');
 
-  const knnHost = hosts.get('knn-classification');
   const quick = derivePlayQuickControl(knn, knnSnapshot);
   const priorExperiment = knnSnapshot.experiment;
   await knnHost.dispatch({ type: 'SET_CONTROL', key: quick.key, value: 1 });

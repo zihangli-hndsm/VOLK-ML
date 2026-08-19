@@ -77,7 +77,9 @@ variable, then a single exact Changed control in the runtime comparison, then
 one declared default. Ambiguous candidates resolve to no quick control.
 
 World-only pedagogical scenarios are never mapped to an unrelated model
-control, and no AI ranking is involved. Play renders at most one compact
+control, even when a comparison has a changed model control or a descriptor
+declares a default. Explicit registered `SET_CONTROL` scenario variables are
+still eligible. No AI ranking is involved. Play renders at most one compact
 shared `PlaygroundControlField`; Tune and Play read the same snapshot value and
 dispatch the same `SET_CONTROL` action. When no deterministic candidate exists,
 Play renders no quick-control placeholder.

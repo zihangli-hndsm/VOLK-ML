@@ -36,6 +36,10 @@ export function derivePlayQuickControl(playground, snapshot = {}) {
   const candidates = eligibleControls(playground);
   if (candidates.length === 0) return null;
 
+  // A current World-only pedagogical experiment owns the learner's attention.
+  // Do not let a stale model comparison or descriptor default leak into Play.
+  if (isWorldOnlyScenario(snapshot)) return null;
+
   const byKey = new Map(candidates.map((control) => [control.key, control]));
   const contextControl = scenarioControlKeys(snapshot).map((key) => byKey.get(key)).find(Boolean);
   if (contextControl) return contextControl;
@@ -48,7 +52,6 @@ export function derivePlayQuickControl(playground, snapshot = {}) {
     if (changed.length > 1) return null;
   }
 
-  if (isWorldOnlyScenario(snapshot)) return null;
   const defaults = candidates.filter((control) => normalizeControlPresentation(control).quickControlDefault === true);
   return defaults.length === 1 ? defaults[0] : null;
 }

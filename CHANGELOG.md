@@ -604,3 +604,8 @@
 - Added a deterministic Play-level quick-control selector over the accepted descriptor metadata: scenario/experiment context and exact comparison evidence can surface at most one eligible control, while ambiguous or World-only contexts stay empty.
 - Reused `PlaygroundControlField` and canonical `SET_CONTROL` semantics in a compact responsive Play card; Tune and Play continue reading the same runtime snapshot without AI recommendations or duplicated state.
 - Added focused eligibility, ambiguity, comparison, World-only, runtime, responsive-contract, and no-provider checks; browser validation remains environment-dependent.
+
+## 2026-08-19 — Contextual Quick Control acceptance correction
+
+- Made active World-only pedagogical context take priority over stale model comparison/default presentation, while preserving explicit registered `SET_CONTROL` scenario variables.
+- Added a real KNN duplicate/change/compare regression proving the quick control disappears only for the World-only presentation context and returns when that context ends; browser validation remains unavailable in this environment.
