@@ -47,6 +47,7 @@ import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration
 import { worldRecipeSummary } from './exploration/worldRecipe.js';
 import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 import { createSemanticEventStore, deriveSemanticEventDrafts } from './exploration/semanticEvents.js';
+import { deriveLearnerInquiryState } from './exploration/learnerInquiry.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -437,11 +438,16 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
   let scriptProvenance = 'preset';
   const subscribers = new Set();
 
-  const present = (snapshot) => (snapshot ? {
-    ...snapshot,
-    provenance: scriptProvenance,
-    semanticEvents: semanticEventStore.snapshot(),
-  } : null);
+  const present = (snapshot) => {
+    if (!snapshot) return null;
+    const semanticEvents = semanticEventStore.snapshot();
+    return {
+      ...snapshot,
+      provenance: scriptProvenance,
+      semanticEvents,
+      learnerInquiry: deriveLearnerInquiryState({ semanticEvents, snapshot }),
+    };
+  };
 
   const notify = () => {
     const snapshot = present(session ? derivePlaygroundSnapshot(session) : null);
@@ -632,6 +638,10 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
         exploration: {
           version: 1,
           semanticEvents: semanticEventStore.snapshot(),
+          learnerInquiry: deriveLearnerInquiryState({
+            semanticEvents: semanticEventStore.snapshot(),
+            snapshot,
+          }),
           worldMode: snapshot.world?.mode ?? 'sample',
           generator: snapshot.world?.generator ?? null,
           observables: snapshot.observables ?? {},

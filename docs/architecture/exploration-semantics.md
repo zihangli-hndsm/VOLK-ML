@@ -381,3 +381,13 @@ An injected store-shaped seam (`reset`, `append`, `snapshot`) supports a later
 layered persistence provider without adding cloud, account, project-format, or
 telemetry changes here. Goal 1 deliberately does not classify learners, match
 concepts, display cards, or invoke an AI provider.
+
+## Goal 2 — Learner inquiry projection
+
+The local Semantic Event history now feeds a deterministic, bounded Learner
+Inquiry projection (`docs/architecture/learner-inquiry.md`). The projection
+matches only inspectable event and Observation Detector evidence; it does not
+infer causes, rank learners, invoke AI, execute experiments, or create UI
+cards. Runtime snapshots and detached Host inspection expose the same
+JSON-safe candidate contract so a later presentation layer can remain a
+consumer rather than a second source of truth.
