@@ -1,5 +1,31 @@
 # Learner Inquiry Engine
 
+## Goal 5: optional background pedagogical AI
+
+Goal 5 is an optional, event-triggered interpretation layer over the existing
+deterministic inquiry pipeline. It has no authority over `World`, Experiments,
+observations, concept candidates, or execution.
+
+`deriveInquiryGuidanceTrigger()` only accepts a newly completed Semantic Event
+which directly supports a current direct candidate. It is suppressed after the
+same event has been handled, during a three-event local cooldown, and after a
+bounded local-session interruption budget. Ordinary rendering never calls an
+AI provider.
+
+The strict provider response may choose only `ignore`, a current direct
+concept, a prevalidated inquiry suggestion, or an already available conceptual
+depth. Its context contains semantic candidate reasons, suggestion identifiers,
+task/model family, inquiry stage, and available depths. It excludes raw World
+observations, coordinates, event/Experiment identifiers, prompts, and runtime
+objects. Provider output is independently validated; unavailable, malformed,
+or invalid output falls back to the deterministic policy.
+
+An AI suggestion remains a presentation choice. Any executable teaching goal
+continues through planning, composition, validation, dry run, fidelity, and
+explicit learner execution. The default is `ignore`; the deterministic fallback
+only surfaces a directly related, already valid suggestion. This keeps guidance
+quiet and preserves no-provider/manual parity.
+
 ## Goal 2: deterministic inquiry projection
 
 The Learner Inquiry Engine is a local, presentation-neutral projection over

@@ -49,6 +49,11 @@ import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 import { createSemanticEventStore, deriveSemanticEventDrafts } from './exploration/semanticEvents.js';
 import { deriveLearnerInquiryState } from './exploration/learnerInquiry.js';
 import { deriveInquirySuggestions } from './exploration/inquirySuggestion.js';
+import {
+  deriveInquiryGuidanceTrigger,
+  nextInquiryGuidanceHistory,
+  validateInquiryGuidance,
+} from './exploration/inquiryGuidance.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -437,6 +442,9 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
   // 'revised' | 'imported'. The UI surfaces this so users can always tell
   // whether they are looking at a preset, an Agent composition or an import.
   let scriptProvenance = 'preset';
+  // Presentation-only local session history. This prevents repeated AI
+  // interruptions without adding a second runtime or persisted learner model.
+  let inquiryGuidanceHistory = [];
   const subscribers = new Set();
 
   const present = (snapshot) => {
@@ -522,6 +530,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
       });
       scriptProvenance = 'preset';
       semanticEventStore.reset();
+      inquiryGuidanceHistory = [];
       commit(created);
       return present(derivePlaygroundSnapshot(session));
     },
@@ -929,6 +938,37 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
       return deriveInquirySuggestions({ inquiry: snapshot.learnerInquiry, context: this.inspectContext() });
     },
 
+    // Consumers may ask for an event-triggered guidance opportunity. This
+    // exposes bounded deterministic candidates only; it never calls a
+    // provider, mutates the runtime, or runs continuously during rendering.
+    getInquiryGuidanceTrigger() {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const snapshot = derivePlaygroundSnapshot(session);
+      const context = this.inspectContext();
+      const inquiry = deriveLearnerInquiryState({ semanticEvents: semanticEventStore.snapshot(), snapshot });
+      const suggestions = deriveInquirySuggestions({ inquiry, context });
+      return deriveInquiryGuidanceTrigger({
+        inquiry,
+        semanticEvents: semanticEventStore.snapshot(),
+        suggestions,
+        history: inquiryGuidanceHistory,
+      });
+    },
+
+    // A caller may only acknowledge a currently valid bounded decision. It
+    // cannot write candidates, observations, suggestions, or execution state.
+    recordInquiryGuidance({ guidance } = {}) {
+      const trigger = this.getInquiryGuidanceTrigger();
+      if (!trigger) return null;
+      // Interpreter wrappers may annotate a result with source/provider data;
+      // only the strict decision payload is admitted to the local history.
+      const { source, providerId, ...decision } = guidance ?? {};
+      const canonical = validateInquiryGuidance(decision, { trigger, context: this.inspectContext() });
+      if (!canonical) throw playgroundError('INVALID_ACTION');
+      inquiryGuidanceHistory = nextInquiryGuidanceHistory(inquiryGuidanceHistory, { trigger, guidance: canonical });
+      return canonical;
+    },
+
     preflightExplorationScenario({ scenario } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       if (!scenario) throw scenarioError('EXPLORATION_SCENARIO_NOT_PROPOSAL');
@@ -1219,6 +1259,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
     async close() {
       session = null;
       semanticEventStore.reset();
+      inquiryGuidanceHistory = [];
       notify();
     },
 
