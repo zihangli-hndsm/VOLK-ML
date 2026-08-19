@@ -70,7 +70,23 @@ inquiry opportunities, never proof that one condition caused a result.
 
 ## Boundaries and next slice
 
-No UI card, concept exposure action, LLM call, experiment execution, Teaching
-Goal, or suggestion is introduced here. Goal 3 may use this same deterministic
-candidate contract to decide whether to surface one quiet Concept Card. It must
-not replace the matcher or accept caller-authored concept candidates.
+## Goal 3 — quiet Concept Cards
+
+Goal 3 consumes the Goal 2 candidate contract through a pure presentation
+projection. It surfaces at most one compact, dismissible card in the Play
+experiment region. The card contains the catalog title and summary, a
+deterministic “Why this appeared” list, an optional non-causal explanation,
+and one presentation-only action to open the existing Evidence depth.
+
+The Explore dialog owns a bounded session-only exposure list. A concept is
+shown at most once per session, and all candidates supported by the same event
+cycle are suppressed after one card has appeared. Dismissal does not mutate the
+World, Experiment, comparison, Agent, Thread, or inquiry matcher. New card
+display stays deliberately separate from the older Agent-result Concept Card;
+both consume deterministic contracts and neither lets callers or AI author a
+canonical concept.
+
+Goal 3 adds no LLM call, TeachingGoal, suggestion execution, or permanent
+concept panel. Goal 4 may add structured inquiry suggestions, but must reuse
+the existing validated TeachingGoal/Scenario paths rather than make this card
+an execution authority.

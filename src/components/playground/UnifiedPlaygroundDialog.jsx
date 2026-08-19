@@ -23,6 +23,7 @@ import ExploreExperimentRegion from './ExploreExperimentRegion.jsx';
 import ExploreDetailsRegion from './ExploreDetailsRegion.jsx';
 import { REDUCED_MOTION_QUERY } from './motion.js';
 import { openFullWorldWorkspacePresentation } from '../../core/ui/layerNavigation.js';
+import { nextInquiryConceptEventExposure, nextInquiryConceptExposure, selectInquiryConceptCard } from '../../core/exploration/inquiryConceptCard.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -33,6 +34,9 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [activeDepth, setActiveDepth] = useState(null);
   const [fullWorldToolsOpen, setFullWorldToolsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [shownInquiryConceptIds, setShownInquiryConceptIds] = useState([]);
+  const [shownInquiryEventIds, setShownInquiryEventIds] = useState([]);
+  const [activeInquiryCard, setActiveInquiryCard] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
   const meaningfulManipulationTrackerRef = useRef(null);
@@ -65,6 +69,9 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setActiveDepth(null);
     setFullWorldToolsOpen(false);
     setAgentOpen(false);
+    setShownInquiryConceptIds([]);
+    setShownInquiryEventIds([]);
+    setActiveInquiryCard(null);
     setPresentationMode(false);
     setActiveTab(initialTab);
     host.ensureOpen(playgroundId).then(() => {
@@ -86,6 +93,22 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       host.close().catch(() => {});
     };
   }, [open, playgroundId, host]);
+
+  useEffect(() => {
+    if (!snapshot?.learnerInquiry) return;
+    const currentStillValid = activeInquiryCard
+      && snapshot.learnerInquiry.candidates?.some((candidate) => candidate.conceptId === activeInquiryCard.conceptId
+        && candidate.supportingEventIds?.join('|') === activeInquiryCard.supportingEventIds?.join('|'));
+    if (currentStillValid) return;
+    const next = selectInquiryConceptCard({ inquiry: snapshot.learnerInquiry, shownConceptIds: shownInquiryConceptIds, shownEventIds: shownInquiryEventIds });
+    if (!next) {
+      setActiveInquiryCard(null);
+      return;
+    }
+    setActiveInquiryCard(next);
+    setShownInquiryConceptIds((shown) => nextInquiryConceptExposure(shown, next.conceptId));
+    setShownInquiryEventIds((shown) => nextInquiryConceptEventExposure(shown, next.supportingEventIds));
+  }, [snapshot?.learnerInquiry, shownInquiryConceptIds, shownInquiryEventIds, activeInquiryCard]);
 
   useEffect(() => {
     if (!open || !snapshot || snapshot.playgroundId !== playgroundId || !readySessionRef.current) return;
@@ -171,6 +194,9 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setActiveDepth(next.activeDepth);
   };
 
+  const dismissInquiryCard = () => setActiveInquiryCard(null);
+  const openInquiryEvidence = () => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE);
+
   if (!open || !snapshot || !playground || snapshot.playgroundId !== playgroundId) return null;
   if (presentationMode) {
     return <PresentationMode
@@ -185,7 +211,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} fullWorldToolsOpen={fullWorldToolsOpen} onFullWorldToolsChange={setFullWorldToolsOpen} onOpenFullWorldTools={openFullWorldWorkspaceFromTune} />;
-  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} onDispatch={dispatchAction} t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
+  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onDispatch={dispatchAction} t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
   const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => setAgentOpen(false)} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} t={t} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
