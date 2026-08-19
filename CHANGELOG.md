@@ -615,3 +615,10 @@
 - Added a bounded localized concept catalog and deterministic concept-signal projection for exact, verified experiments: controlled comparison, held constant, distribution shift, observation noise, outliers, and class separation.
 - Successful pedagogical execution now returns canonical concept metadata, the existing Thread observation path derives the same metadata at the Host boundary, and the Agent result presents at most one new compact Concept Card without AI-authored IDs or causal claims.
 - Added no-AI runtime/render regressions for intervention priority, exact-fidelity gating, forged-ID rejection, session exposure, and compact-safe presentation; browser validation remains environment-dependent.
+
+## 2026-08-19 — Concept & Inquiry Engine Goal 1: Semantic Event Foundation
+
+- Added a bounded local-session semantic event stream for completed experiment duplication, registered control changes, World interventions, comparisons, repeats, and deterministic Observation Detector notices.
+- Recorded event drafts only after successful runtime commits, with JSON-safe Experiment/factor/operation/evidence references; raw pointer paths, coordinates, observations, mutation objects, prompts, and DOM state are excluded. Continuous gestures remain one completed World event.
+- Exposed the same event snapshot to ordinary Playground consumers and detached Agent inspection, retained no project/cloud/telemetry state, and documented the injected local-store seam for later layered persistence.
+- Acceptance: focused semantic-event, core, Experiment, Agent, Thread, World Builder, Concept Card, render, full `npm run check`, `npm run build`, and `git diff --check` passed. Browser validation and GitHub Actions were not run for this change; Goal 2 concept matching remains deferred.

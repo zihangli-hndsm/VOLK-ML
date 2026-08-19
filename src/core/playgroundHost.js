@@ -46,6 +46,7 @@ import { isWorldModelCompatibilityError } from './exploration/worldModelCompatib
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
 import { worldRecipeSummary } from './exploration/worldRecipe.js';
 import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
+import { createSemanticEventStore, deriveSemanticEventDrafts } from './exploration/semanticEvents.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -427,7 +428,7 @@ function initializeBigIdeaSession(entrance, { getDataset: readDataset, seed } = 
   };
 }
 
-export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
+export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEventStore = createSemanticEventStore() } = {}) {
   let session = null;
   // Where the active script came from: 'preset' | 'generated' | 'composed' |
   // 'revised' | 'imported'. The UI surfaces this so users can always tell
@@ -435,7 +436,11 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
   let scriptProvenance = 'preset';
   const subscribers = new Set();
 
-  const present = (snapshot) => (snapshot ? { ...snapshot, provenance: scriptProvenance } : null);
+  const present = (snapshot) => (snapshot ? {
+    ...snapshot,
+    provenance: scriptProvenance,
+    semanticEvents: semanticEventStore.snapshot(),
+  } : null);
 
   const notify = () => {
     const snapshot = present(session ? derivePlaygroundSnapshot(session) : null);
@@ -444,9 +449,31 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
     });
   };
 
-  const commit = (next) => {
+  const commit = (next, { action = null, before = session } = {}) => {
+    if (action && before) {
+      try {
+        const controlPlayground = getPlayground(next.modelPlaygroundId ?? next.playgroundId)
+          ?? getPlayground(next.playgroundId);
+        semanticEventStore.append(deriveSemanticEventDrafts({
+          before: derivePlaygroundSnapshot(before),
+          after: derivePlaygroundSnapshot(next),
+          action,
+          controlDescriptors: controlPlayground?.controls ?? [],
+        }));
+      } catch {
+        // Inquiry history is presentation context and must never block a
+        // successful runtime commit.
+      }
+    }
     session = next;
     notify();
+  };
+
+  const dispatchAndCommit = (action) => {
+    const before = session;
+    const next = dispatchPlaygroundAction(before, action);
+    commit(next, { action, before });
+    return next;
   };
 
   return {
@@ -458,13 +485,15 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       const playground = getPlayground(request.playgroundId);
       if (!playground) throw playgroundError('PLAYGROUND_NOT_FOUND', { playgroundId: request.playgroundId });
       const source = resolveSource(playground, getDataset());
-      commit(createPlaygroundSession(playground, {
+      const created = createPlaygroundSession(playground, {
         source,
         controls: request.controls ?? {},
         seed: request.seed,
         dataset: getDataset(),
-      }));
+      });
       scriptProvenance = 'preset';
+      semanticEventStore.reset();
+      commit(created);
       return present(derivePlaygroundSnapshot(session));
     },
 
@@ -480,7 +509,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
 
     async dispatch(action) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      commit(dispatchPlaygroundAction(session, action));
+      dispatchAndCommit(action);
       return present(derivePlaygroundSnapshot(session));
     },
 
@@ -502,7 +531,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
 
     async runScenario(scenarioId) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      commit(dispatchPlaygroundAction(session, { type: 'RUN_SCENARIO', scenarioId }));
+      dispatchAndCommit({ type: 'RUN_SCENARIO', scenarioId });
       scriptProvenance = 'preset';
       return present(derivePlaygroundSnapshot(session));
     },
@@ -580,6 +609,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         affordances: [...AFFORDANCE_IDS],
         exploration: {
           version: 1,
+          semanticEvents: semanticEventStore.snapshot(),
           worldMode: snapshot.world?.mode ?? 'sample',
           generator: snapshot.world?.generator ?? null,
           observables: snapshot.observables ?? {},
@@ -900,7 +930,16 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           status: executionFidelity?.status ?? 'unavailable',
         });
       }
-      commit(candidate.session);
+      const before = session;
+      commit(candidate.session, {
+        before,
+        action: {
+          type: 'EXECUTE_EXPLORATION',
+          actor: 'agent',
+          changes: validated.change,
+          execution: validated.execution,
+        },
+      });
       const result = candidate.snapshot;
       const followUps = [];
       let pedagogicalEvidence = null;
@@ -995,7 +1034,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
 
     async loadScript(script, options = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script }));
+      dispatchAndCommit({ type: 'SCRIPT_LOAD', script });
       scriptProvenance = options.provenance ?? 'imported';
       return present(derivePlaygroundSnapshot(session));
     },
@@ -1004,9 +1043,9 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const preset = getPreset(presetId);
       if (!preset) throw playgroundError('PLAYGROUND_PRESET_NOT_FOUND', { presetId });
-      commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: preset }));
+      dispatchAndCommit({ type: 'SCRIPT_LOAD', script: preset });
       for (const [key, value] of Object.entries(parameters)) {
-        commit(dispatchPlaygroundAction(session, { type: 'SET_CONTROL', key, value }));
+        dispatchAndCommit({ type: 'SET_CONTROL', key, value });
       }
       scriptProvenance = 'preset';
       return present(derivePlaygroundSnapshot(session));
@@ -1041,7 +1080,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         const fallbackScript = fallbackPreset ? getPreset(fallbackPreset.id) : null;
         if (!fallbackScript) throw playgroundError('PLAYGROUND_PRESET_NOT_FOUND', { presetId: goal });
         dryRun = runDryRun({ script: fallbackScript, session });
-        commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: fallbackScript }));
+        dispatchAndCommit({ type: 'SCRIPT_LOAD', script: fallbackScript });
         scriptProvenance = 'preset';
         return {
           mode: 'preset',
@@ -1052,7 +1091,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
           snapshot: present(derivePlaygroundSnapshot(session)),
         };
       }
-      commit(dispatchPlaygroundAction(session, { type: 'SCRIPT_LOAD', script: result.script }));
+      dispatchAndCommit({ type: 'SCRIPT_LOAD', script: result.script });
       scriptProvenance = result.mode === 'preset' ? 'preset' : 'generated';
       return { ...result, dryRun, snapshot: present(derivePlaygroundSnapshot(session)) };
     },
@@ -1135,6 +1174,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
 
     async close() {
       session = null;
+      semanticEventStore.reset();
       notify();
     },
 

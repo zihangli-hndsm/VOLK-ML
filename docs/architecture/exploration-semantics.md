@@ -321,3 +321,32 @@ most one new card per in-memory exploration session; repeated IDs are kept in
 a small presentation-only exposure list. Thread observation metadata is
 derived at the Host boundary and validated against the same catalog. Provider
 or UI input cannot author concept IDs, definitions, metrics, or causal claims.
+
+## Semantic Event Foundation
+
+`src/core/exploration/semanticEvents.js` provides a bounded, local-session
+record of completed semantic exploration actions. It is presentation context
+for deterministic inquiry work, not analytics, project persistence, or a
+second runtime. `createPlaygroundHost()` derives drafts only after the normal
+runtime action has succeeded, then appends canonical JSON-safe events to its
+in-memory store. A failed runtime action therefore records nothing, and event
+recording is fail-open so it cannot block a successful semantic commit.
+
+The v1 event vocabulary is intentionally small: experiment duplication,
+registered control factor changes, completed World transactions, completed
+comparisons, completed repeats, and Observation Detector notices. Events retain
+only bounded actor, Experiment identity, semantic-factor, operation-type, and
+observable-reference fields. They never retain DOM references, pointer paths,
+point IDs, coordinates, raw observations, condition fingerprints, prompts, or
+runtime mutation objects. Continuous tools already materialize one World
+transaction on gesture completion; the event layer records that one semantic
+intervention rather than individual pointer updates.
+
+The store retains at most 100 ordered events per open Playground session and
+resets when that session closes. It is visible in normal snapshots and the
+Agent inspection context for future deterministic inquiry derivation, while
+the detailed existing `recentWorldActions` contract remains unchanged. An
+injected store-shaped seam (`reset`, `append`, `snapshot`) supports a later
+layered persistence provider without adding cloud, account, project-format, or
+telemetry changes here. Goal 1 deliberately does not classify learners, match
+concepts, display cards, or invoke an AI provider.
