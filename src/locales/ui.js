@@ -48,6 +48,8 @@ export const messages = {
   'playground.controlHint.learningRate': { en: 'How large is each training update?', zh: '每次训练更新有多大？' },
   'playground.controlHint.trainingSteps': { en: 'How long should training continue?', zh: '训练应持续多久？' },
   'playground.controlHint.hiddenUnits': { en: 'How much internal capacity should the model use?', zh: '模型应使用多少内部容量？' },
+  'playground.quickControl.prompt': { en: 'Try changing this', zh: '试着改变这个' },
+  'playground.quickControl.ariaLabel': { en: 'Quick experiment control', zh: '快速实验控制' },
   'playground.depth.prompt': { en: 'What do you want to look at next?', zh: '接下来想看看什么？' },
   'playground.depth.optional': { en: 'Optional', zh: '可选' },
   'playground.depth.whatChanged': { en: 'What changed?', zh: '发生了什么变化？' },

@@ -598,3 +598,9 @@
 - Added a deterministic `PedagogicalObservation` projection for class separation, support shift, noise, and outlier experiments, with factual before/after evidence and no causal claims.
 - Grounded observations now enter the existing Exploration Thread after the human prediction and agent experiment entries; the result surface presents Observation, Evidence, and up to two capability-preflighted next questions.
 - Added bounded observation context for optional Agent interpretation, class-separation local language including Chinese phrasing, protected prediction capture, focused loop regressions, and architecture documentation. Browser validation was not run and no GitHub Actions run is claimed.
+
+## 2026-08-19 — Contextual Quick Control
+
+- Added a deterministic Play-level quick-control selector over the accepted descriptor metadata: scenario/experiment context and exact comparison evidence can surface at most one eligible control, while ambiguous or World-only contexts stay empty.
+- Reused `PlaygroundControlField` and canonical `SET_CONTROL` semantics in a compact responsive Play card; Tune and Play continue reading the same runtime snapshot without AI recommendations or duplicated state.
+- Added focused eligibility, ambiguity, comparison, World-only, runtime, responsive-contract, and no-provider checks; browser validation remains environment-dependent.
