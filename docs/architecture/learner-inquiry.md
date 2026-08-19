@@ -1,5 +1,37 @@
 # Learner Inquiry Engine
 
+## Goal 6: causal/scientific inquiry concept pack
+
+Goal 6 adds a bounded `causalInquiry` projection over the same Semantic Events,
+Learner Inquiry candidates, exact comparison evidence, Repeat evidence, and
+explicit Thread predictions already used elsewhere. It names a scientific
+reasoning sequence without claiming that a measured outcome has a causal
+explanation:
+
+```text
+observed pattern -> explicit hypothesis -> intervention
+  -> controlled comparison / mixed comparison -> counterfactual -> repeat variation
+```
+
+An Observation Detector notice is an `observed-pattern`, never an association
+or a causal conclusion. A hypothesis exists only when the learner already
+recorded a Thread prediction. An intervention is a registered World/control
+factor change. Controlled and counterfactual steps require the existing direct
+exact-comparison candidates; a mixed comparison is explicitly a limit on what
+the comparison isolates; repeat variation is an uncertainty-checking step.
+
+The initial Causal World is an inspectable **design-only** contract rather
+than a second runtime: it declares observable, intervenable, and latent
+variables plus a post-comparison mechanism-reveal policy, but contains no
+observations, operations, generated code, or Agent execution path. A future
+materialization must enter through the normal finite World, registered
+intervention, Experiment, comparison, and evidence contracts. Until that
+exists, ordinary ML Worlds cannot claim a causal association merely from their
+metrics.
+
+The projection is local, JSON-safe, deterministic, visible in normal snapshots
+and Agent inspection, and does not require an AI provider.
+
 ## Goal 5: optional background pedagogical AI
 
 Goal 5 is an optional, event-triggered interpretation layer over the existing
