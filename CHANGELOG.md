@@ -654,3 +654,9 @@
 - Added a bounded deterministic `InquirySuggestion` projection that turns direct distribution-shift/generalization inquiry evidence into at most two non-causal follow-up tests: an inspectable Test-support World intervention and, only when a model descriptor explicitly declares a capacity role, a registered capacity-control comparison.
 - Reused the existing `compare-control` TeachingGoal path for executable model-control suggestions; planning, composition, strict dry run, goal fidelity, and Script Runtime execution remain explicit and unchanged. World suggestions stay manual when they do not belong in the TeachingGoal taxonomy.
 - Added focused capability, hold/evidence, no-mutation, forged-candidate, TeachingGoal pipeline, and runtime checks. Goal 5 AI interpretation remains deferred.
+
+## 2026-08-20 — Learner Inquiry Engine Goal 5
+
+- Added an optional, event-triggered pedagogical AI guidance seam over existing deterministic inquiry candidates and prevalidated suggestions. It can only choose ignore, a current concept, a validated suggestion, or an available depth; it cannot author facts, concepts, operations, or execution.
+- Added local-session cooldown and interruption-budget policy, bounded provider-safe semantic context, strict structured response validation, and deterministic fallback for disabled, unavailable, malformed, or rejected provider responses.
+- Preserved the existing TeachingGoal/script/fidelity path and manual no-provider experience; the default policy remains quiet. Goal 6 causal concept-pack work remains deferred.

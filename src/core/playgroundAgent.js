@@ -3,6 +3,12 @@ import { SCRIPT_ERROR_CODES } from './playground/visualization/scriptErrors.js';
 export { getAgentExamples, listAgentExamplePlaygroundIds } from './playground/agent/agentExamples.js';
 export { buildTeachingInterpretationContext, createLlmGoalInterpreter, LLM_PROVIDERS } from './playground/agent/llmGoalInterpreter.js';
 export { createExplorationAiInterpreter, explorationIntentIds } from './exploration/explorationAiInterpreter.js';
+export {
+  createInquiryGuidanceAiInterpreter,
+  deriveDeterministicInquiryGuidance,
+  deriveInquiryGuidanceTrigger,
+  validateInquiryGuidance,
+} from './exploration/inquiryGuidance.js';
 
 const copy = (value) => structuredClone(value);
 
@@ -71,6 +77,8 @@ export function createPlaygroundAgentApi(host) {
     }),
     proposeExploration: (request) => invoke('proposeExploration', () => copy(host.proposeExploration(typeof request === 'string' ? { request } : copy(request ?? {})))),
     proposeCleanerComparison: () => invoke('proposeCleanerComparison', () => copy(host.proposeCleanerComparison())),
+    getInquiryGuidanceTrigger: () => invoke('getInquiryGuidanceTrigger', () => copy(host.getInquiryGuidanceTrigger())),
+    recordInquiryGuidance: (request) => invoke('recordInquiryGuidance', () => copy(host.recordInquiryGuidance(copy(request ?? {})))),
     preflightExplorationScenario: (scenario) => invoke('preflightExplorationScenario', () => copy(host.preflightExplorationScenario({ scenario: copy(scenario) }))),
     executeExploration: (scenario) => invokeAsync('executeExploration', async () => copy(await host.executeExploration({ scenario: copy(scenario) }))),
     createExplorationThread: (request) => invoke('createExplorationThread', () => copy(host.createExplorationThread(copy(request ?? {})))),
