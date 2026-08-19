@@ -39,6 +39,7 @@ import { derivePedagogicalEvidence } from './exploration/pedagogicalEvidence.js'
 import { derivePedagogicalObservation } from './exploration/pedagogicalObservation.js';
 import { derivePedagogicalNextQuestionCandidates } from './exploration/pedagogicalNextQuestions.js';
 import { verifyPedagogicalIntervention } from './exploration/pedagogicalVerification.js';
+import { deriveConceptSignals, canonicalizeConceptSignals } from './exploration/concepts.js';
 import { deriveCleanerComparisonProposal } from './exploration/cleanerComparison.js';
 import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.js';
 import { isWorldModelCompatibilityError } from './exploration/worldModelCompatibility.js';
@@ -904,11 +905,20 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
       const followUps = [];
       let pedagogicalEvidence = null;
       let pedagogicalObservation = null;
+      let conceptSignals = { version: 1, concepts: [] };
       const nextQuestions = [];
       const pedagogicalVerification = candidate.pedagogicalVerification;
       if (validated.pedagogicalDesign) {
         pedagogicalEvidence = derivePedagogicalEvidence({ snapshot: result, scenario: validated, verification: pedagogicalVerification });
         pedagogicalObservation = derivePedagogicalObservation({ design: validated.pedagogicalDesign, evidence: pedagogicalEvidence, verification: pedagogicalVerification });
+        conceptSignals = canonicalizeConceptSignals(deriveConceptSignals({
+          experiment: result.experiment,
+          comparison: result.experimentWorkspace?.comparison,
+          pedagogicalDesign: validated.pedagogicalDesign,
+          pedagogicalVerification,
+          pedagogicalObservation,
+          fidelity: executionFidelity,
+        })) ?? { version: 1, concepts: [] };
         for (const question of derivePedagogicalNextQuestionCandidates({
           design: validated.pedagogicalDesign,
           observation: pedagogicalObservation,
@@ -956,6 +966,7 @@ export function createPlaygroundHost({ getDataset, scriptGenerator } = {}) {
         followUps: followUps.slice(0, 2),
         pedagogicalEvidence,
         pedagogicalObservation,
+        conceptSignals,
         nextQuestions: nextQuestions.slice(0, 2),
         pedagogicalVerification,
       };

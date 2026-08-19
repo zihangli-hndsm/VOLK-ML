@@ -609,3 +609,9 @@
 
 - Made active World-only pedagogical context take priority over stale model comparison/default presentation, while preserving explicit registered `SET_CONTROL` scenario variables.
 - Added a real KNN duplicate/change/compare regression proving the quick control disappears only for the World-only presentation context and returns when that context ends; browser validation remains unavailable in this environment.
+
+## 2026-08-19 — Grounded Concept Cards
+
+- Added a bounded localized concept catalog and deterministic concept-signal projection for exact, verified experiments: controlled comparison, held constant, distribution shift, observation noise, outliers, and class separation.
+- Successful pedagogical execution now returns canonical concept metadata, the existing Thread observation path derives the same metadata at the Host boundary, and the Agent result presents at most one new compact Concept Card without AI-authored IDs or causal claims.
+- Added no-AI runtime/render regressions for intervention priority, exact-fidelity gating, forged-ID rejection, session exposure, and compact-safe presentation; browser validation remains environment-dependent.

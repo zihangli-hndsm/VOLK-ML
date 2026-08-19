@@ -304,3 +304,20 @@ shared Evidence surface. Existing TeachingPlan and Visualization Script
 tooling is retained under an Advanced section. Persistent Exploration Threads,
 background tutoring, parameter sweeps, and a general Scenario Engine remain
 out of scope.
+
+## Grounded Concept Cards
+
+`src/core/exploration/concepts.js` contains a small versioned catalog whose
+learner copy is localized in `src/locales/ui.js`. `deriveConceptSignals()` is
+the only owner of concept IDs: it accepts verified pedagogical observations,
+the runtime comparison, and exact execution fidelity, then emits bounded
+direct signals with evidence references and registered reason codes. It never
+uses playground or model identity as a shortcut, and partial comparisons do
+not produce comparison concepts.
+
+Signals are ordered intervention-first, then exact held-constant evidence,
+then the generic controlled-comparison concept. The Agent result surfaces at
+most one new card per in-memory exploration session; repeated IDs are kept in
+a small presentation-only exposure list. Thread observation metadata is
+derived at the Host boundary and validated against the same catalog. Provider
+or UI input cannot author concept IDs, definitions, metrics, or causal claims.

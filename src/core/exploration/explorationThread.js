@@ -14,6 +14,7 @@ export const EXPLORATION_THREAD_LIMITS = Object.freeze({
 
 const ACTORS = new Set(['human', 'agent', 'system']);
 const ENTRY_KINDS = new Set(['question', 'prediction', 'experiment', 'observation']);
+import { canonicalizeConceptSignals } from './concepts.js';
 
 export function explorationThreadError(code, details = {}) {
   const error = new Error(code);
@@ -131,6 +132,13 @@ function validateEntry(entry) {
       }
     }
     normalized.evidence = safeRecord(entry.evidence ?? {}, 'entry.evidence');
+    if (normalized.evidence.conceptSignals !== undefined) {
+      const canonicalConceptSignals = canonicalizeConceptSignals(normalized.evidence.conceptSignals);
+      if (!canonicalConceptSignals || JSON.stringify(canonicalConceptSignals) !== JSON.stringify(normalized.evidence.conceptSignals)) {
+        throw explorationThreadError('EXPLORATION_THREAD_INVALID', { field: 'entry.evidence.conceptSignals', reason: 'canonical-concepts-required' });
+      }
+      normalized.evidence.conceptSignals = canonicalConceptSignals;
+    }
     for (const field of ['observables', 'derivedObservables', 'repeatEvidence']) {
       if (normalized.evidence[field] !== undefined
         && (!normalized.evidence[field] || typeof normalized.evidence[field] !== 'object' || Array.isArray(normalized.evidence[field]))) {
