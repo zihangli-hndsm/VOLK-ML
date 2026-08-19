@@ -660,3 +660,9 @@
 - Added an optional, event-triggered pedagogical AI guidance seam over existing deterministic inquiry candidates and prevalidated suggestions. It can only choose ignore, a current concept, a validated suggestion, or an available depth; it cannot author facts, concepts, operations, or execution.
 - Added local-session cooldown and interruption-budget policy, bounded provider-safe semantic context, strict structured response validation, and deterministic fallback for disabled, unavailable, malformed, or rejected provider responses.
 - Preserved the existing TeachingGoal/script/fidelity path and manual no-provider experience; the default policy remains quiet. Goal 6 causal concept-pack work remains deferred.
+
+## 2026-08-20 — Learner Inquiry Engine Goal 6
+
+- Added a bounded deterministic causal/scientific inquiry projection over existing facts: observed pattern, learner-stated hypothesis, registered intervention, controlled or mixed comparison, counterfactual reasoning, and repeat variation.
+- Kept ordinary detector/metric evidence distinct from association and causal conclusions; mixed comparisons now explicitly lead to factor isolation and repeat variation to uncertainty checking.
+- Added an inspectable design-only Causal World contract with explicit observable/intervenable/latent variables and mechanism-reveal policy, without a second World state machine, raw observations, Agent-only operations, or executable mechanism. A live Causal World remains a later capability.

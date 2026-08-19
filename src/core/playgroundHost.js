@@ -49,6 +49,7 @@ import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 import { createSemanticEventStore, deriveSemanticEventDrafts } from './exploration/semanticEvents.js';
 import { deriveLearnerInquiryState } from './exploration/learnerInquiry.js';
 import { deriveInquirySuggestions } from './exploration/inquirySuggestion.js';
+import { deriveCausalInquiryState } from './exploration/causalInquiry.js';
 import {
   deriveInquiryGuidanceTrigger,
   nextInquiryGuidanceHistory,
@@ -450,11 +451,17 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
   const present = (snapshot) => {
     if (!snapshot) return null;
     const semanticEvents = semanticEventStore.snapshot();
+    const learnerInquiry = deriveLearnerInquiryState({ semanticEvents, snapshot });
     return {
       ...snapshot,
       provenance: scriptProvenance,
       semanticEvents,
-      learnerInquiry: deriveLearnerInquiryState({ semanticEvents, snapshot }),
+      learnerInquiry,
+      causalInquiry: deriveCausalInquiryState({
+        inquiry: learnerInquiry,
+        semanticEvents,
+        activeExplorationThread: snapshot.activeExplorationThread,
+      }),
     };
   };
 
@@ -615,6 +622,13 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
       const transactionActions = ['APPLY_WORLD_TRANSACTION', 'UNDO_WORLD_ACTION', 'REDO_WORLD_ACTION'];
       const viewActions = ['SET_WORKSPACE_VIEW'];
       const experimentOperations = ['DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS', 'REPEAT_EXPERIMENT', 'UNDO_EXPERIMENT_ACTION'];
+      const semanticEvents = semanticEventStore.snapshot();
+      const learnerInquiry = deriveLearnerInquiryState({ semanticEvents, snapshot });
+      const causalInquiry = deriveCausalInquiryState({
+        inquiry: learnerInquiry,
+        semanticEvents,
+        activeExplorationThread: snapshot.activeExplorationThread,
+      });
       const context = {
         version: 1,
         playground: { id: session.playgroundId, modelAdapter: session.adapterId, task: data.task ?? null },
@@ -647,11 +661,9 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
         affordances: [...AFFORDANCE_IDS],
         exploration: {
           version: 1,
-          semanticEvents: semanticEventStore.snapshot(),
-          learnerInquiry: deriveLearnerInquiryState({
-            semanticEvents: semanticEventStore.snapshot(),
-            snapshot,
-          }),
+          semanticEvents,
+          learnerInquiry,
+          causalInquiry,
           worldMode: snapshot.world?.mode ?? 'sample',
           generator: snapshot.world?.generator ?? null,
           observables: snapshot.observables ?? {},

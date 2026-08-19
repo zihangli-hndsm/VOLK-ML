@@ -9,6 +9,8 @@ export {
   deriveInquiryGuidanceTrigger,
   validateInquiryGuidance,
 } from './exploration/inquiryGuidance.js';
+export { deriveCausalInquiryState, listCausalInquirySteps } from './exploration/causalInquiry.js';
+export { getCausalWorldPrototype } from './exploration/causalWorldPrototype.js';
 
 const copy = (value) => structuredClone(value);
 
