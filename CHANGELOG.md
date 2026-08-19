@@ -629,3 +629,9 @@
 - Unified control-event eligibility with Experiment comparison semantics, excluding view-only and derived model controls; World events now retain bounded train/test, input, noise, outlier, relation, sample-count, seed, and lifecycle factor references without learner data.
 - Replaced session-wide observation suppression with active-state transition tracking so persistent detector output is quiet, insignificant evidence changes do not spam events, and a cleared observation can truthfully re-enter later.
 - Validation: `node scripts/check-semantic-events.mjs` and full `npm run check` passed. `npm run build` is blocked in this managed sandbox because esbuild cannot read the parent directory while loading Vite config; `git diff --check` passed. Goal 2 remains deferred.
+
+## 2026-08-19 — Semantic Event World Undo/Redo truthfulness correction
+
+- Preserved canonical World-factor identity through Undo and Redo by deriving a bounded projection from each history entry's forward operations when that entry is created; reversal events now use that projection instead of their control-flow wrapper action.
+- Added regressions for noise, Test input, first-action Train/Test point Undo/Redo, provenance, and the absence of raw history/transaction data in the semantic log.
+- Validation: `node scripts/check-semantic-events.mjs`, `npm run check`, `npm run build`, and `git diff --check` passed; Goal 2 remains deferred.

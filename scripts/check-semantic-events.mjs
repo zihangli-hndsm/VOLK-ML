@@ -115,6 +115,15 @@ const trainGesture = materializeWorldGesture({
 });
 factors = await factorHost.dispatch({ type: 'APPLY_WORLD_TRANSACTION', transaction: trainGesture });
 assert.deepEqual(factors.semanticEvents.events.findLast((event) => event.type === 'world.intervened').semanticFactors, ['world.train.observations'], 'train-only gestures retain a bounded Train observation factor');
+factors = await factorHost.dispatch({ type: 'UNDO_WORLD_ACTION', actor: 'human' });
+const firstUndoEvent = factors.semanticEvents.events.findLast((event) => event.type === 'world.intervened');
+assert.equal(firstUndoEvent.reasonCode, 'world-undo', 'Undo records a bounded reversal event even when the first World entry leaves past empty');
+assert.deepEqual(firstUndoEvent.semanticFactors, ['world.train.observations'], 'Undo of a Train point gesture retains the original Train observation factor');
+assert.equal(factors.actionHistory.past.length, 0, 'the first World action legitimately leaves the public past history empty after Undo');
+factors = await factorHost.dispatch({ type: 'REDO_WORLD_ACTION', actor: 'human' });
+const firstRedoEvent = factors.semanticEvents.events.findLast((event) => event.type === 'world.intervened');
+assert.equal(firstRedoEvent.reasonCode, 'world-redo', 'Redo records a bounded replay event');
+assert.deepEqual(firstRedoEvent.semanticFactors, ['world.train.observations'], 'Redo of a Train point gesture retains the original Train observation factor');
 const factorCount = () => factors.semanticEvents.events.filter((event) => event.type === 'experiment.factor-changed').length;
 const beforeViewControls = factorCount();
 factors = await factorHost.dispatch({ type: 'SET_CONTROL', key: 'showResiduals', value: false, actor: 'human' });
@@ -141,10 +150,50 @@ generatorSnapshot = await generatorHost.dispatch({
 });
 generatorSnapshot = await generatorHost.dispatch({ type: 'SET_GENERATOR_PARAMETER', actor: 'human', path: 'test.input.params.min', value: 1 });
 assert.ok(generatorSnapshot.semanticEvents.events.findLast((event) => event.type === 'world.intervened').semanticFactors.includes('world.test.input'), 'test generator edits retain a test-input factor');
+generatorSnapshot = await generatorHost.dispatch({ type: 'UNDO_WORLD_ACTION', actor: 'human' });
+const testInputUndo = generatorSnapshot.semanticEvents.events.findLast((event) => event.type === 'world.intervened');
+assert.deepEqual(testInputUndo.semanticFactors, ['world.test.input'], 'Undo of a Test input edit retains the test-input factor');
+assert.equal(testInputUndo.actor, 'human', 'human World Undo retains human provenance');
+generatorSnapshot = await generatorHost.dispatch({ type: 'REDO_WORLD_ACTION', actor: 'human' });
+const testInputRedo = generatorSnapshot.semanticEvents.events.findLast((event) => event.type === 'world.intervened');
+assert.deepEqual(testInputRedo.semanticFactors, ['world.test.input'], 'Redo of a Test input edit retains the test-input factor');
 generatorSnapshot = await generatorHost.dispatch({ type: 'SET_GENERATOR_PARAMETER', actor: 'human', path: 'noise.amount', value: 0.8 });
 assert.ok(generatorSnapshot.semanticEvents.events.findLast((event) => event.type === 'world.intervened').semanticFactors.includes('world.noise'), 'noise edits retain a noise factor');
+generatorSnapshot = await generatorHost.dispatch({ type: 'UNDO_WORLD_ACTION', actor: 'human' });
+const noiseUndo = generatorSnapshot.semanticEvents.events.findLast((event) => event.type === 'world.intervened');
+assert.deepEqual(noiseUndo.semanticFactors, ['world.noise'], 'Undo of a noise change preserves world.noise instead of degrading to observations');
+generatorSnapshot = await generatorHost.dispatch({ type: 'REDO_WORLD_ACTION', actor: 'human' });
+const noiseRedo = generatorSnapshot.semanticEvents.events.findLast((event) => event.type === 'world.intervened');
+assert.deepEqual(noiseRedo.semanticFactors, ['world.noise'], 'Redo of a noise change preserves world.noise');
+assert.equal(noiseRedo.actor, 'human', 'human World Redo retains human provenance');
 generatorSnapshot = await generatorHost.dispatch({ type: 'SET_GENERATOR_PARAMETER', actor: 'human', path: 'outliers.count', value: 1 });
 assert.ok(generatorSnapshot.semanticEvents.events.findLast((event) => event.type === 'world.intervened').semanticFactors.includes('world.outliers'), 'registered outlier edits retain an outlier factor');
+generatorSnapshot = await generatorHost.dispatch({ type: 'UNDO_WORLD_ACTION', actor: 'agent' });
+const agentUndo = generatorSnapshot.semanticEvents.events.findLast((event) => event.type === 'world.intervened');
+assert.deepEqual(agentUndo.semanticFactors, ['world.outliers'], 'Agent-triggered Undo retains the original World factor');
+assert.equal(agentUndo.actor, 'agent', 'Agent-triggered Undo retains agent provenance');
+generatorSnapshot = await generatorHost.dispatch({ type: 'REDO_WORLD_ACTION', actor: 'agent' });
+const agentRedo = generatorSnapshot.semanticEvents.events.findLast((event) => event.type === 'world.intervened');
+assert.deepEqual(agentRedo.semanticFactors, ['world.outliers'], 'Agent-triggered Redo retains the original World factor');
+assert.equal(agentRedo.actor, 'agent', 'Agent-triggered Redo retains agent provenance');
+const reversalPayload = JSON.stringify(generatorSnapshot.semanticEvents.events.filter((event) => ['world-undo', 'world-redo'].includes(event.reasonCode)));
+assert.ok(!/pointId|forward|inverse|historyEntry|observations|coordinates/.test(reversalPayload), 'World reversal events retain no raw history entry, transaction, point, or World payload');
+
+const testPointStore = createSemanticEventStore({ now: () => '2026-08-19T00:00:00.000Z' });
+const testPointHost = createPlaygroundHost({ getDataset: () => null, semanticEventStore: testPointStore });
+let testPoints = await testPointHost.open({ playgroundId: 'linear-regression', seed: 37 });
+const testGesture = materializeWorldGesture({
+  id: 'semantic-test-undo-gesture',
+  tool: 'brush',
+  path: [{ x: -0.4, y: 0.2 }, { x: 0.2, y: 0.4 }],
+  membership: 'test',
+  existingPointCount: testPoints.world.observations.length,
+});
+testPoints = await testPointHost.dispatch({ type: 'APPLY_WORLD_TRANSACTION', transaction: testGesture });
+testPoints = await testPointHost.dispatch({ type: 'UNDO_WORLD_ACTION', actor: 'human' });
+assert.deepEqual(testPoints.semanticEvents.events.findLast((event) => event.type === 'world.intervened').semanticFactors, ['world.test.observations'], 'Undo of a Test point gesture retains the Test observation factor');
+testPoints = await testPointHost.dispatch({ type: 'REDO_WORLD_ACTION', actor: 'human' });
+assert.deepEqual(testPoints.semanticEvents.events.findLast((event) => event.type === 'world.intervened').semanticFactors, ['world.test.observations'], 'Redo of a Test point gesture retains the Test observation factor');
 
 const systemStore = createSemanticEventStore({ now: () => '2026-08-19T00:00:00.000Z' });
 const systemHost = createPlaygroundHost({ getDataset: () => null, semanticEventStore: systemStore });
@@ -163,6 +212,7 @@ assert.ok(agentHost.getState().semanticEvents.events.some((event) => event.actor
 
 await factorHost.close();
 await generatorHost.close();
+await testPointHost.close();
 await systemHost.close();
 await agentHost.close();
 

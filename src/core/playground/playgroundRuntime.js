@@ -37,6 +37,7 @@ import {
   restoreExperimentRuntime,
 } from '../exploration/experimentRuntime.js';
 import { isPublicWorldOperation, listWorldOperations } from '../exploration/operationRegistry.js';
+import { deriveWorldSemanticFactors } from '../exploration/worldSemanticFactors.js';
 import {
   playgroundError,
   validateActionShape,
@@ -1063,7 +1064,19 @@ export function dispatchRuntimeAction(session, action) {
       throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, reason: 'duplicate transaction id', id });
     }
     const result = applyWorldTransaction(session.experiment.world, { ...action.transaction, id });
-    const historyEntry = { record: result.record, forward: result.forward, inverse: result.inverse };
+    // The bounded factor projection is derived at the same point as the
+    // canonical forward/inverse operations. Undo and Redo can therefore keep
+    // the original intervention identity without retaining World data in the
+    // semantic event log.
+    const historyEntry = {
+      record: result.record,
+      forward: result.forward,
+      inverse: result.inverse,
+      semanticFactors: deriveWorldSemanticFactors({
+        operations: result.forward.operations,
+        beforeWorld: session.experiment.world,
+      }),
+    };
     return {
       ...synchronizeWorldSession(session, result, {
         history: {

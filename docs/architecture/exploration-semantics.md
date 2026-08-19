@@ -356,6 +356,16 @@ DOM references, or runtime mutation objects. Continuous tools already
 materialize one World transaction on gesture completion; the event layer records
 that one semantic intervention rather than individual pointer updates.
 
+Undo and Redo preserve that same factor identity. When a World history entry is
+created, the runtime derives a bounded factor projection from its canonical
+forward operations. Semantic Event derivation reads that projection from the
+entry being reversed or replayed; `UNDO_WORLD_ACTION` and
+`REDO_WORLD_ACTION` are control-flow metadata only, never the source of World
+meaning. This also means undoing the first World action emits a truthful event
+even though the resulting `past` history is empty. The event retains only the
+bounded factor references and Undo/Redo metadata, never the entry's
+forward/inverse transactions, IDs, snapshots, or raw World values.
+
 The store retains at most 100 ordered events per open Playground session and
 resets when that session closes. It is visible in normal snapshots and the
 Agent inspection context for future deterministic inquiry derivation, while

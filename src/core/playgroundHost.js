@@ -460,6 +460,10 @@ export function createPlaygroundHost({ getDataset, scriptGenerator, semanticEven
           after: derivePlaygroundSnapshot(next),
           action,
           controlDescriptors: controlPlayground?.controls ?? [],
+          // The detailed World history remains runtime-private. It is passed
+          // only to the deterministic event derivation so Undo/Redo can read
+          // the entry they reverse/replay, including when Undo empties past.
+          beforeWorldHistory: before.worldHistory,
         }));
       } catch {
         // Inquiry history is presentation context and must never block a

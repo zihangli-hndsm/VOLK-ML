@@ -102,6 +102,61 @@ function worldEvent(before, after, action, operations = action?.transaction?.ope
   };
 }
 
+function semanticFactorsForHistoryEntry(entry, beforeWorld) {
+  const stored = boundedStrings(entry?.semanticFactors);
+  if (stored.length) return stored;
+  return boundedStrings(deriveWorldSemanticFactors({
+    operations: entry?.forward?.operations ?? [],
+    beforeWorld,
+  }));
+}
+
+function reversalEntry(beforeWorldHistory, type) {
+  if (type === 'UNDO_WORLD_ACTION') return beforeWorldHistory?.past?.at(-1) ?? null;
+  if (type === 'REDO_WORLD_ACTION') return beforeWorldHistory?.future?.[0] ?? null;
+  return null;
+}
+
+function worldReversalEvent(before, after, action, beforeWorldHistory) {
+  const type = action?.type;
+  const entry = reversalEntry(beforeWorldHistory, type);
+  if (!entry) return null;
+  return {
+    type: 'world.intervened',
+    actor: actorFor(action),
+    experimentIds: boundedStrings([activeExperimentId(after)], 1),
+    // The wrapper action only controls history. Factor identity comes from
+    // the original canonical World entry, not from UNDO/REDO itself.
+    semanticFactors: semanticFactorsForHistoryEntry(entry, before?.world),
+    operationTypes: [type],
+    reasonCode: type === 'UNDO_WORLD_ACTION' ? 'world-undo' : 'world-redo',
+  };
+}
+
+function reversalEventsFromExecution(before, after, action, beforeWorldHistory) {
+  const events = [];
+  let history = {
+    past: [...(beforeWorldHistory?.past ?? [])],
+    future: [...(beforeWorldHistory?.future ?? [])],
+  };
+  for (const change of action?.changes ?? []) {
+    if (!['UNDO_WORLD_ACTION', 'REDO_WORLD_ACTION'].includes(change.operation)) continue;
+    const event = worldReversalEvent(before, after, {
+      type: change.operation,
+      actor: action.actor,
+    }, history);
+    if (!event) continue;
+    events.push(event);
+    const entry = reversalEntry(history, change.operation);
+    if (change.operation === 'UNDO_WORLD_ACTION') {
+      history = { past: history.past.slice(0, -1), future: [entry, ...history.future] };
+    } else {
+      history = { past: [...history.past, entry], future: history.future.slice(1) };
+    }
+  }
+  return events;
+}
+
 function worldEventFromHistory(before, after, action) {
   const previous = before?.actionHistory?.past?.at(-1)?.id ?? null;
   const current = after?.actionHistory?.past?.at(-1) ?? null;
@@ -165,7 +220,7 @@ function observationEvents(after, action) {
     }));
 }
 
-function executionEvents(before, after, action, controlDescriptors) {
+function executionEvents(before, after, action, controlDescriptors, beforeWorldHistory) {
   const events = [];
   const changes = action?.changes ?? [];
   if (action?.execution?.duplicateBaseline || changes.some((change) => change.operation === 'DUPLICATE_EXPERIMENT')) {
@@ -179,10 +234,11 @@ function executionEvents(before, after, action, controlDescriptors) {
     }
   }
   const worldOperations = changes
-    .filter((change) => !['SET_CONTROL', 'REPEAT_EXPERIMENT', 'DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS'].includes(change.operation))
+    .filter((change) => !['SET_CONTROL', 'REPEAT_EXPERIMENT', 'DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS', 'UNDO_WORLD_ACTION', 'REDO_WORLD_ACTION'].includes(change.operation))
     .map((change) => ({ type: change.operation, ...(change.parameters ?? {}) }));
   const world = worldEvent(before, after, { ...action, transaction: { actor: action.actor, intent: 'exploration-scenario', operations: worldOperations } });
   if (world) events.push(world);
+  events.push(...reversalEventsFromExecution(before, after, action, beforeWorldHistory));
   if (action?.execution?.compare || changes.some((change) => ['SET_COMPARE', 'COMPARE_EXPERIMENTS'].includes(change.operation))) {
     const event = comparisonEvent(after, action);
     if (event) events.push(event);
@@ -197,7 +253,13 @@ function executionEvents(before, after, action, controlDescriptors) {
 
 // Produces event drafts only after a runtime action has returned a committed
 // candidate snapshot. No draft can dispatch or alter runtime state.
-export function deriveSemanticEventDrafts({ before, after, action, controlDescriptors = [] } = {}) {
+export function deriveSemanticEventDrafts({
+  before,
+  after,
+  action,
+  controlDescriptors = [],
+  beforeWorldHistory = null,
+} = {}) {
   const events = [];
   if (!after || !action?.type) return events;
   if (action.type === 'DUPLICATE_EXPERIMENT') {
@@ -215,8 +277,11 @@ export function deriveSemanticEventDrafts({ before, after, action, controlDescri
   } else if (action.type === 'REPEAT_EXPERIMENT') {
     const event = repeatEvent(after, action);
     if (event) events.push(event);
+  } else if (action.type === 'UNDO_WORLD_ACTION' || action.type === 'REDO_WORLD_ACTION') {
+    const event = worldReversalEvent(before, after, action, beforeWorldHistory);
+    if (event) events.push(event);
   } else if (action.type === 'EXECUTE_EXPLORATION') {
-    events.push(...executionEvents(before, after, action, controlDescriptors));
+    events.push(...executionEvents(before, after, action, controlDescriptors, beforeWorldHistory));
   }
   if (!events.some((event) => event.type === 'world.intervened')) {
     const event = worldEventFromHistory(before, after, action);
