@@ -1,5 +1,6 @@
 const IMPORTANCES = new Set(['primary', 'secondary', 'advanced']);
 const ROLES = new Set(['experiment', 'inspection']);
+const INQUIRY_ROLES = new Set(['capacity']);
 const FACTOR_BY_DOMAIN = Object.freeze({ model: 'model', learning: 'learning', evaluation: 'evaluation', view: 'evaluation' });
 
 const stable = (value) => {
@@ -20,6 +21,7 @@ export function normalizeControlPresentation(control = {}) {
     ...(typeof presentation.explanationKey === 'string' && presentation.explanationKey ? { explanationKey: presentation.explanationKey } : {}),
     ...(presentation.quickControl === true ? { quickControl: true } : {}),
     ...(presentation.quickControlDefault === true ? { quickControlDefault: true } : {}),
+    ...(INQUIRY_ROLES.has(presentation.inquiryRole) ? { inquiryRole: presentation.inquiryRole } : {}),
   };
 }
 
@@ -54,6 +56,10 @@ export function validatePlaygroundControlPresentation(playground = {}) {
     if (Object.prototype.hasOwnProperty.call(presentation, 'quickControlDefault')
       && typeof presentation.quickControlDefault !== 'boolean') {
       throw new Error(`Invalid control presentation quickControlDefault for ${control?.key ?? 'unknown control'}`);
+    }
+    if (Object.prototype.hasOwnProperty.call(presentation, 'inquiryRole')
+      && !INQUIRY_ROLES.has(presentation.inquiryRole)) {
+      throw new Error(`Invalid control presentation inquiryRole for ${control?.key ?? 'unknown control'}`);
     }
     if (presentation.quickControl === true && !presentation.roles.includes('experiment')) {
       throw new Error(`Quick control ${control?.key ?? 'unknown control'} must have the experiment role`);

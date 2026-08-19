@@ -1147,4 +1147,10 @@ export const messages = {
   'playground.worldBuilder.testSamples': { en: 'Test samples', zh: '测试样本' },
   'playground.worldBuilder.regenerate': { en: 'Generate / Regenerate', zh: '生成 / 重新生成' },
   'playground.worldBuilder.freeze': { en: 'Freeze as samples', zh: '冻结为样本' },
+  'playground.inquirySuggestion.support.question': { en: 'Would bringing Test support closer to Train change the result?', zh: '如果让测试集支持范围更接近训练集，结果会改变吗？' },
+  'playground.inquirySuggestion.support.hypothesis': { en: 'The current result may be sensitive to where Test observations appear.', zh: '当前结果可能对测试观测出现的位置敏感。' },
+  'playground.inquirySuggestion.support.intervention': { en: 'Change only the Test input support.', zh: '只改变测试输入的支持范围。' },
+  'playground.inquirySuggestion.capacity.question': { en: 'Would a different model capacity change this result?', zh: '不同的模型容量会改变这个结果吗？' },
+  'playground.inquirySuggestion.capacity.hypothesis': { en: 'The current result is also consistent with the model needing a different capacity.', zh: '当前结果也可能与模型需要不同容量一致。' },
+  'playground.inquirySuggestion.capacity.intervention': { en: 'Compare only the registered capacity control.', zh: '只比较已登记的容量控制。' },
 };
