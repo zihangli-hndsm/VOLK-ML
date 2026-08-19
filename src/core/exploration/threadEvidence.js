@@ -1,6 +1,7 @@
 import { conditionFingerprintForSession, deriveObservableSet, isRepeatEvidenceCurrent } from './observables.js';
 import { explorationThreadError, EXPLORATION_THREAD_LIMITS } from './explorationThread.js';
 import { derivePedagogicalObservationForScenario } from './pedagogicalObservation.js';
+import { canonicalizeConceptSignals, deriveConceptSignals } from './concepts.js';
 
 const clone = (value) => structuredClone(value);
 const DEFAULT_OBSERVABLES = ['model.slope', 'model.bias', 'outcome.trainMse', 'outcome.testMse', 'generalizationGap', 'coverageMismatch'];
@@ -124,6 +125,14 @@ export function captureThreadObservation({ session, snapshot, scenario, note, ac
   if (identity.againstId && !baselineState) throw explorationThreadError('EXPLORATION_THREAD_EXPERIMENT_UNAVAILABLE', { experimentId: identity.againstId });
   const activeFingerprint = identity.conditionFingerprints[identity.activeId];
   const pedagogicalObservation = derivePedagogicalObservationForScenario({ session, snapshot, scenario });
+  const conceptSignals = canonicalizeConceptSignals(deriveConceptSignals({
+    experiment: activeState.experiment,
+    comparison: snapshot.experimentWorkspace?.comparison,
+    pedagogicalDesign: scenario?.pedagogicalDesign,
+    pedagogicalVerification: { valid: Boolean(pedagogicalObservation) },
+    pedagogicalObservation,
+    fidelity: pedagogicalObservation ? { status: 'exact' } : null,
+  }));
   const activeEvidence = { raw: snapshot.observables, derived: snapshot.derivedObservables };
   const baselineEvidence = baselineState
     ? deriveObservableSet({ world: baselineState.experiment.world, result: baselineState.experiment.result })
@@ -147,6 +156,7 @@ export function captureThreadObservation({ session, snapshot, scenario, note, ac
       semanticDiff: compactSemanticDiff(snapshot.experimentWorkspace?.comparison?.diff),
       notices,
       ...(pedagogicalObservation ? { pedagogicalObservation: clone(pedagogicalObservation) } : {}),
+      ...(conceptSignals?.concepts?.length ? { conceptSignals: clone(conceptSignals) } : {}),
       ...(compactRepeat(snapshot.repeatEvidence, activeFingerprint) ? { repeatEvidence: compactRepeat(snapshot.repeatEvidence, activeFingerprint) } : {}),
     },
     ...(note ? { note: String(note).slice(0, EXPLORATION_THREAD_LIMITS.maxNoteLength) } : {}),
