@@ -6,6 +6,7 @@ import { deriveWorldSemanticFactors } from './worldSemanticFactors.js';
 export const SEMANTIC_EVENT_VERSION = 1;
 export const SEMANTIC_EVENT_LOG_VERSION = 1;
 export const MAX_SEMANTIC_EVENTS = 100;
+export const SEMANTIC_EVENT_AGGREGATE_VERSION = 1;
 
 export const SEMANTIC_EVENT_TYPES = Object.freeze([
   'experiment.duplicated',
@@ -52,6 +53,7 @@ function comparisonEvent(snapshot, action) {
     actor: actorFor(action),
     experimentIds: boundedStrings([againstId, activeId], 2),
     semanticFactors: boundedStrings(comparison.diff.changed),
+    semanticFactorPaths: boundedStrings(comparison.diff.semanticFactorPaths ?? comparison.diff.semanticChangedPaths ?? comparison.diff.changed),
     operationTypes: [],
     reasonCode: comparison.diff.clarity === 'mixed' ? 'comparison-mixed' : 'comparison-ready',
   };
@@ -84,6 +86,7 @@ function controlEvent(before, after, action, controlDescriptors) {
     actor: actorFor(action),
     experimentIds: boundedStrings([activeExperimentId(after)], 1),
     semanticFactors: [experimentalControl.comparisonFactor],
+    semanticFactorPaths: [`${experimentalControl.comparisonFactor}.controls.${experimentalControl.key}`],
     operationTypes: ['SET_CONTROL'],
     reasonCode: `control.${experimentalControl.key}`,
   };
@@ -97,6 +100,7 @@ function worldEvent(before, after, action, operations = action?.transaction?.ope
     actor: actorFor(action?.transaction?.actor ? { actor: action.transaction.actor } : action),
     experimentIds: boundedStrings([activeExperimentId(after)], 1),
     semanticFactors: boundedStrings(deriveWorldSemanticFactors({ operations, beforeWorld: before?.world })),
+    semanticFactorPaths: boundedStrings(deriveWorldSemanticFactors({ operations, beforeWorld: before?.world })),
     operationTypes,
     reasonCode: boundedString(action?.transaction?.intent, 'world-transaction'),
   };
@@ -128,6 +132,7 @@ function worldReversalEvent(before, after, action, beforeWorldHistory) {
     // The wrapper action only controls history. Factor identity comes from
     // the original canonical World entry, not from UNDO/REDO itself.
     semanticFactors: semanticFactorsForHistoryEntry(entry, before?.world),
+    semanticFactorPaths: semanticFactorsForHistoryEntry(entry, before?.world),
     operationTypes: [type],
     reasonCode: type === 'UNDO_WORLD_ACTION' ? 'world-undo' : 'world-redo',
   };
@@ -305,6 +310,7 @@ function canonicalEvent(draft, { sequence, occurredAt } = {}) {
     actor: ACTORS.has(draft.actor) ? draft.actor : 'system',
     experimentIds: boundedStrings(draft.experimentIds, 4),
     semanticFactors: boundedStrings(draft.semanticFactors),
+    semanticFactorPaths: boundedStrings(draft.semanticFactorPaths ?? draft.semanticFactors),
     operationTypes: boundedStrings(draft.operationTypes),
     reasonCode: boundedString(draft.reasonCode, 'semantic-action'),
     evidenceRefs: boundedStrings(draft.evidenceRefs),
@@ -316,12 +322,30 @@ export function createSemanticEventStore({ limit = MAX_SEMANTIC_EVENTS, now = ()
   let sequence = 0;
   let events = [];
   let activeObservationKeys = [];
+  let aggregates = {
+    version: SEMANTIC_EVENT_AGGREGATE_VERSION,
+    firstMeaningfulAt: null,
+    secondExperimentCreated: false,
+    duplicateCount: 0,
+    compareCount: 0,
+    oneFactorComparisonCount: 0,
+    repeatCount: 0,
+  };
 
   return {
     reset() {
       sequence = 0;
       events = [];
       activeObservationKeys = [];
+      aggregates = {
+        version: SEMANTIC_EVENT_AGGREGATE_VERSION,
+        firstMeaningfulAt: null,
+        secondExperimentCreated: false,
+        duplicateCount: 0,
+        compareCount: 0,
+        oneFactorComparisonCount: 0,
+        repeatCount: 0,
+      };
     },
     append(drafts = []) {
       const appended = [];
@@ -336,6 +360,20 @@ export function createSemanticEventStore({ limit = MAX_SEMANTIC_EVENTS, now = ()
         const event = canonicalEvent(draft, { sequence: sequence + 1, occurredAt: now() });
         sequence += 1;
         events = [...events, event].slice(-normalizedLimit);
+        if (event.actor === 'human') {
+          if (!aggregates.firstMeaningfulAt && ['world.intervened', 'experiment.factor-changed'].includes(event.type)) {
+            aggregates.firstMeaningfulAt = event.occurredAt;
+          }
+          if (event.type === 'experiment.duplicated') {
+            aggregates.secondExperimentCreated = true;
+            aggregates.duplicateCount += 1;
+          }
+          if (event.type === 'comparison.completed') {
+            aggregates.compareCount += 1;
+            if (event.semanticFactorPaths.length === 1) aggregates.oneFactorComparisonCount += 1;
+          }
+          if (event.type === 'repeat.completed') aggregates.repeatCount += 1;
+        }
         appended.push(structuredClone(event));
       }
       activeObservationKeys = nextObservationKeys;
@@ -345,6 +383,7 @@ export function createSemanticEventStore({ limit = MAX_SEMANTIC_EVENTS, now = ()
       return {
         version: SEMANTIC_EVENT_LOG_VERSION,
         events: structuredClone(events),
+        aggregates: structuredClone(aggregates),
       };
     },
   };

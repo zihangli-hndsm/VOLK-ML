@@ -2,6 +2,7 @@
 // verified experiment evidence; callers and AI providers cannot author them.
 
 import { PEDAGOGICAL_EXPERIMENT_GOALS } from './pedagogicalExperiment.js';
+import { comparisonFactorCount, hasCanonicalComparisonPaths } from './comparison.js';
 
 export const CONCEPT_CATALOG_VERSION = 1;
 
@@ -59,6 +60,60 @@ const CATALOG = Object.freeze({
   }),
 });
 
+// Shared metadata for the learner-inquiry projection. Keeping these IDs next
+// to the grounded concept catalog prevents the inquiry matcher and Concept
+// Cards from silently acquiring different definitions for the same concept.
+export const INQUIRY_CONCEPT_METADATA = Object.freeze({
+  [CONCEPT_IDS.CONTROLLED_COMPARISON]: Object.freeze({
+    ...CATALOG[CONCEPT_IDS.CONTROLLED_COMPARISON],
+    summaryKey: CATALOG[CONCEPT_IDS.CONTROLLED_COMPARISON].definitionKey,
+    evidenceRequirements: ['duplicated-baseline', 'one-factor-comparison'],
+    prerequisites: [],
+    relatedConceptIds: ['counterfactual-reasoning'],
+    nextInquiryActions: ['compare-another-factor'],
+  }),
+  'mixed-factor-comparison': Object.freeze({
+    titleKey: 'playground.inquiry.mixedComparison.title',
+    summaryKey: 'playground.inquiry.mixedComparison.summary',
+    evidenceRequirements: ['mixed-comparison'],
+    prerequisites: [],
+    relatedConceptIds: ['controlled-comparison'],
+    nextInquiryActions: ['isolate-one-factor'],
+  }),
+  [CONCEPT_IDS.TRAIN_TEST_DISTRIBUTION_SHIFT]: Object.freeze({
+    ...CATALOG[CONCEPT_IDS.TRAIN_TEST_DISTRIBUTION_SHIFT],
+    summaryKey: CATALOG[CONCEPT_IDS.TRAIN_TEST_DISTRIBUTION_SHIFT].definitionKey,
+    evidenceRequirements: ['test-world-change', 'coverage-mismatch'],
+    prerequisites: [],
+    relatedConceptIds: ['generalization'],
+    nextInquiryActions: ['adjust-test-support'],
+  }),
+  generalization: Object.freeze({
+    titleKey: 'playground.inquiry.generalization.title',
+    summaryKey: 'playground.inquiry.generalization.summary',
+    evidenceRequirements: ['test-world-change', 'test-error-changed-more'],
+    prerequisites: [],
+    relatedConceptIds: ['train-test-distribution-shift'],
+    nextInquiryActions: ['inspect-test-evidence'],
+  }),
+  stability: Object.freeze({
+    titleKey: 'playground.inquiry.stability.title',
+    summaryKey: 'playground.inquiry.stability.summary',
+    evidenceRequirements: ['repeat-completed', 'repeat-variation-observed'],
+    prerequisites: [],
+    relatedConceptIds: [],
+    nextInquiryActions: ['repeat-with-new-seed'],
+  }),
+  'counterfactual-reasoning': Object.freeze({
+    titleKey: 'playground.inquiry.counterfactual.title',
+    summaryKey: 'playground.inquiry.counterfactual.summary',
+    evidenceRequirements: ['duplicated-baseline', 'one-factor-comparison'],
+    prerequisites: ['controlled-comparison'],
+    relatedConceptIds: ['controlled-comparison'],
+    nextInquiryActions: ['change-one-condition'],
+  }),
+});
+
 const TRIGGERS = new Set([
   'exact-held-dimensions',
   'exact-comparison-fidelity',
@@ -83,9 +138,9 @@ function exactComparison({ comparison, fidelity } = {}) {
   return Boolean(
     comparison?.enabled
     && diff
+    && hasCanonicalComparisonPaths(diff)
     && fidelity?.status === 'exact'
-    && Array.isArray(diff.changed)
-    && diff.changed.length > 0,
+    && comparisonFactorCount(diff) > 0,
   );
 }
 
@@ -140,10 +195,10 @@ export function deriveConceptSignals({ comparison, pedagogicalDesign, pedagogica
     }
   }
 
-  if (Array.isArray(diff?.unchanged) && diff.unchanged.length > 0) {
+  if (Array.isArray(diff?.semanticUnchangedPaths) && diff.semanticUnchangedPaths.length > 0) {
     signals.push(directSignal(CONCEPT_IDS.HELD_CONSTANT, 'exact-held-dimensions', ['comparison.diff.unchanged']));
   }
-  if (Array.isArray(diff?.unchanged) && diff.unchanged.length > 0) {
+  if (Array.isArray(diff?.semanticUnchangedPaths) && diff.semanticUnchangedPaths.length > 0 && comparisonFactorCount(diff) === 1) {
     signals.push(directSignal(CONCEPT_IDS.CONTROLLED_COMPARISON, 'exact-comparison-fidelity', ['comparison.diff.changed', 'comparison.diff.unchanged']));
   }
 

@@ -8,12 +8,14 @@ import {
 } from '../src/core/exploration/learnerInquiry.js';
 import { materializeWorldGesture } from '../src/core/exploration/gestures.js';
 
-const event = ({ id, sequence, type, experimentIds = [], semanticFactors = [], reasonCode, evidenceRefs = [] }) => ({
+const event = ({ id, sequence, type, actor = 'human', experimentIds = [], semanticFactors = [], semanticFactorPaths, reasonCode, evidenceRefs = [] }) => ({
   id,
   sequence,
   type,
+  actor,
   experimentIds,
   semanticFactors,
+  ...(semanticFactorPaths ? { semanticFactorPaths } : {}),
   reasonCode,
   evidenceRefs,
 });
@@ -22,7 +24,12 @@ const comparison = (changed = ['world'], clarity = 'high') => ({
   enabled: true,
   activeExperimentId: 'experiment-b',
   againstExperimentId: 'experiment-a',
-  diff: { changed, unchanged: ['model', 'learning', 'evaluation', 'randomness'], clarity },
+  diff: {
+    changed,
+    semanticChangedPaths: changed.map((factor) => `${factor}.controls.value`),
+    unchanged: ['model', 'learning', 'evaluation', 'randomness'],
+    clarity,
+  },
 });
 
 assert.equal(listInquiryConcepts().length, 6, 'Goal 2 catalog remains deliberately bounded');
@@ -64,8 +71,18 @@ assert.equal(mixed.experimentWorkspace.comparison.diff.clarity, 'mixed', 'fixtur
 assert.ok(mixed.learnerInquiry.candidates.some((item) => item.conceptId === INQUIRY_CONCEPT_IDS.MIXED_FACTOR_COMPARISON), 'multiple changed semantic factors and comparison produce the mixed-factor candidate');
 assert.equal(mixed.learnerInquiry.candidates.some((item) => item.conceptId === INQUIRY_CONCEPT_IDS.CONTROLLED_COMPARISON), false, 'mixed comparison never becomes a controlled-comparison candidate');
 
+const mixedSemanticPaths = deriveLearnerInquiryState({
+  semanticEvents: { events: [
+    event({ id: 'mixed-duplicate', sequence: 1, type: 'experiment.duplicated', experimentIds: ['experiment-a', 'experiment-b'] }),
+    event({ id: 'mixed-compare', sequence: 2, type: 'comparison.completed', experimentIds: ['experiment-a', 'experiment-b'], semanticFactors: ['world', 'learning'], semanticFactorPaths: ['world.test.input', 'world.noise'] , reasonCode: 'comparison-mixed' }),
+  ] },
+  comparison: { ...comparison(['world', 'learning'], 'mixed'), diff: { ...comparison(['world', 'learning'], 'mixed').diff, semanticChangedPaths: ['world.test.input', 'world.noise'] } },
+  observations: [],
+});
+assert.equal(mixedSemanticPaths.candidates.some((item) => item.conceptId === INQUIRY_CONCEPT_IDS.CONTROLLED_COMPARISON), false, 'test distribution plus noise paths never become a controlled comparison');
+
 const distributionEvents = [
-  event({ id: 'event-world-test', sequence: 1, type: 'world.intervened', experimentIds: ['experiment-b'], semanticFactors: ['world.test.input'], reasonCode: 'world-transaction' }),
+  event({ id: 'event-world-test', sequence: 1, type: 'world.intervened', actor: 'human', experimentIds: ['experiment-b'], semanticFactors: ['world.test.input'], reasonCode: 'world-transaction' }),
   event({ id: 'event-compare', sequence: 2, type: 'comparison.completed', experimentIds: ['experiment-a', 'experiment-b'], semanticFactors: ['world'], reasonCode: 'comparison-ready' }),
   event({ id: 'event-coverage', sequence: 3, type: 'observation.detected', experimentIds: ['experiment-a', 'experiment-b'], reasonCode: 'COVERAGE_MISMATCH', evidenceRefs: ['coverageMismatch'] }),
   event({ id: 'event-test-error', sequence: 4, type: 'observation.detected', experimentIds: ['experiment-a', 'experiment-b'], reasonCode: 'TEST_ERROR_CHANGED_MORE', evidenceRefs: ['outcome.testMse', 'outcome.trainMse'] }),
@@ -103,6 +120,23 @@ const repeatEvents = [
 const stability = deriveLearnerInquiryState({ semanticEvents: { events: repeatEvents }, observations: [{ id: 'REPEAT_VARIATION' }] });
 assert.ok(stability.candidates.some((item) => item.conceptId === INQUIRY_CONCEPT_IDS.STABILITY), 'repeat completion plus repeat variation notice produces a stability candidate');
 assert.equal(deriveLearnerInquiryState({ semanticEvents: { events: repeatEvents.slice(0, 1) }, observations: [{ id: 'REPEAT_VARIATION' }] }).candidates.length, 0, 'repeat completion alone does not claim observed variation');
+
+const systemOnly = deriveLearnerInquiryState({
+  semanticEvents: {
+    events: distributionEvents.map((item) => ({ ...item, actor: 'system' })),
+  },
+  comparison: comparison(['world']),
+  observations: activeDistributionNotices,
+});
+assert.equal(systemOnly.candidates.length, 0, 'system setup and runtime events never become learner inquiry concepts');
+const agentOnly = deriveLearnerInquiryState({
+  semanticEvents: {
+    events: distributionEvents.map((item) => ({ ...item, actor: 'agent' })),
+  },
+  comparison: comparison(['world']),
+  observations: activeDistributionNotices,
+});
+assert.equal(agentOnly.candidates.length, 0, 'Agent actions never become learner inquiry concepts');
 
 const hypothesisState = deriveLearnerInquiryState({
   semanticEvents: { events: [] },

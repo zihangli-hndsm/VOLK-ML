@@ -1,5 +1,40 @@
 # Learner Inquiry Engine
 
+## Stability contract for Goal 2–7 projections
+
+Learner Inquiry consumes the same bounded semantic facts as comparison,
+Concept Cards, Causal Inquiry, and trajectory evaluation. A comparison keeps
+both `semanticChangedPaths` (the exact normalized leaves used for fidelity)
+and `semanticFactorPaths` (the canonical property-level intervention identity
+used for one-factor presentation and rates). Vector components belonging to a
+single semantic property are grouped only in the latter projection; an extra
+group, split, control, or property still creates an additional factor. The
+coarse `changed` domains remain useful for display but are not a truthfulness
+boundary.
+
+Semantic Event actors are trusted provenance: only explicit `human` events
+count as learner behavior in inquiry and trajectory metrics. `agent` and
+`system` events remain available as runtime facts but cannot create learner
+concepts, duplicate/compare rates, or independent-exploration signals.
+
+The Host owns the session-local presentation context (conceptual depth and
+bounded surfaced concept IDs) and validates concept/suggestion lifecycle
+events against the current inquiry projection. UI and Agent callers cannot
+install candidate concepts, suggestions, or presentation outcomes by ID.
+Suggestion access is read-only until the existing plan → compose → validate →
+dry-run → fidelity → explicit execution path is used.
+
+Current causal inquiry is relationship-bound: supporting event IDs must be in
+the bounded current event log and belong to the active comparison pair when a
+comparison is active. A mixed comparison is reported neutrally as a mixed
+comparison pattern; it is not renamed as an unverified causal condition.
+
+Semantic and presentation event windows are bounded, while session-local
+aggregate counters preserve completed human actions and guidance outcomes
+after older events are evicted. These counters are not telemetry or a learner
+profile and are reset when a Playground session is opened, restarted, or
+closed.
+
 ## Goal 7: learner trajectory and evaluation
 
 Goal 7 adds a bounded local-session `inquiryTrajectory` projection for product
