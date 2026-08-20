@@ -48,7 +48,7 @@ import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.
 import { isWorldModelCompatibilityError } from './exploration/worldModelCompatibility.js';
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
 import { worldRecipeSummary } from './exploration/worldRecipe.js';
-import { summarizeExplorationDomain } from './exploration/domainContract.js';
+import { getExplorationDomainCapabilities, projectDomainContext, summarizeExplorationDomain } from './exploration/domainContract.js';
 import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 import { createSemanticEventStore, deriveSemanticEventDrafts } from './exploration/semanticEvents.js';
 import { deriveLearnerInquiryState, INQUIRY_CONCEPT_REGISTRY } from './exploration/learnerInquiry.js';
@@ -696,6 +696,16 @@ export function createPlaygroundHost({
           semanticFields,
           semanticSchema: adapter.semanticSchema ?? {},
         } : null,
+        // This is the bounded cross-domain projection intended for Agent and
+        // provider adapters. The legacy `world`/`data` fields remain available
+        // to local deterministic planning for compatibility; provider
+        // projection must use this field and never serialize raw payloads.
+        domainContext: projectDomainContext({
+          domain: snapshot.domain ?? 'tabular',
+          world: snapshot.world,
+          data,
+          model: adapter?.capabilities,
+        }),
         data: {
           task: data.task ?? null,
           featureColumns: data.featureColumns ?? [],
@@ -721,6 +731,13 @@ export function createPlaygroundHost({
         exploration: {
           version: 1,
           domain: summarizeExplorationDomain(snapshot.domain ?? 'tabular'),
+          capabilities: getExplorationDomainCapabilities(snapshot.domain ?? 'tabular'),
+          contextProjection: projectDomainContext({
+            domain: snapshot.domain ?? 'tabular',
+            world: snapshot.world,
+            data,
+            model: adapter?.capabilities,
+          }),
           semanticEvents,
           learnerInquiry,
           causalInquiry,

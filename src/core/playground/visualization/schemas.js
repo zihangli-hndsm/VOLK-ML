@@ -230,6 +230,20 @@ export const PRIMITIVE_SCHEMAS = {
       items: ['$model.rankedResults'],
     },
   },
+  'grounded-answer': {
+    domains: ['rag'],
+    placement: 'side',
+    props: {
+      text: { type: 'string', required: true },
+      sourceIds: { type: 'array<string>', required: true },
+      query: { type: 'string', required: true },
+    },
+    compatibleBindings: {
+      text: ['$model.groundedAnswer.text'],
+      sourceIds: ['$model.groundedAnswer.sourceIds'],
+      query: ['$model.groundedAnswer.query'],
+    },
+  },
 };
 
 export function getPrimitiveSchema(type) {

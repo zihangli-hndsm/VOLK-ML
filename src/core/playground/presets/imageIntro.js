@@ -3,7 +3,7 @@ export const imageIntro = {
   id: 'image.intro',
   model: { adapter: 'image-cnn' },
   data: { source: 'image-example' },
-  controls: ['trainingSteps', 'showFeatureMap'],
+  controls: ['trainingSteps', 'learningRate', 'showFeatureMap'],
   layout: {
     stage: ['image-grid', 'attention-matrix'],
     side: ['metric-card'],
@@ -15,4 +15,3 @@ export const imageIntro = {
   ],
   steps: [],
 };
-

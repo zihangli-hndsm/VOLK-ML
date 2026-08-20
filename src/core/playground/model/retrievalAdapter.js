@@ -1,21 +1,54 @@
 import { playgroundError } from '../../playgrounds/session.js';
+import {
+  cosineSimilarity,
+  embedDocuments,
+  embedText,
+  EMBEDDING_DIMENSION_OPTIONS,
+  DEFAULT_EMBEDDING_DIMENSION,
+  projectEmbedding2d,
+} from '../domain/embedding.js';
 
-const tokens = (value) => String(value ?? '').toLowerCase().split(/[^a-z0-9]+/).filter(Boolean);
 const MAX_DOCUMENTS = 128;
+const MAX_SENTENCE_LENGTH = 320;
 
-function scoreDocument(query, document) {
-  const queryTokens = new Set(tokens(query));
-  const documentTokens = new Set(tokens(`${document.title} ${document.text}`));
-  if (!queryTokens.size) return 0;
-  return [...queryTokens].filter((token) => documentTokens.has(token)).length / queryTokens.size;
+function rankDocuments(query, documents, topK, dimensions) {
+  const queryVector = embedText(query, dimensions);
+  const documentVectors = embedDocuments(documents, dimensions);
+  return {
+    queryVector,
+    documentVectors,
+    rankedResults: documents
+      .map((document, index) => ({
+        ...document,
+        score: cosineSimilarity(queryVector, documentVectors[index].vector),
+        embedding: documentVectors[index].vector,
+      }))
+      .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))
+      .slice(0, topK)
+      .map((document, index) => ({
+        id: document.id,
+        rank: index + 1,
+        title: document.title,
+        score: Number(document.score.toFixed(6)),
+        embedding: [...document.embedding],
+        projection: projectEmbedding2d(document.embedding),
+      })),
+  };
 }
 
-function rankDocuments(query, documents, topK) {
-  return documents
-    .map((document) => ({ ...document, score: scoreDocument(query, document) }))
-    .sort((left, right) => right.score - left.score || left.id.localeCompare(right.id))
-    .slice(0, topK)
-    .map((document, index) => ({ id: document.id, rank: index + 1, title: document.title, score: document.score }));
+function groundedSentence(query, document) {
+  if (!document) return null;
+  const queryTerms = new Set(String(query).toLowerCase().split(/[^a-z0-9\u4e00-\u9fff]+/i).filter(Boolean));
+  const sentences = document.text.split(/[.!?。！？]+/).map((sentence) => sentence.trim()).filter(Boolean);
+  const ranked = sentences
+    .map((sentence, index) => ({
+      sentence,
+      index,
+      overlap: [...new Set(sentence.toLowerCase().split(/[^a-z0-9\u4e00-\u9fff]+/i).filter(Boolean))]
+        .filter((term) => queryTerms.has(term)).length,
+    }))
+    .sort((left, right) => right.overlap - left.overlap || left.index - right.index);
+  return (ranked[0]?.sentence ?? sentences[0] ?? '').slice(0, MAX_SENTENCE_LENGTH) || null;
 }
 
 export function validateDocumentSource(source, domain, task) {
@@ -51,51 +84,114 @@ function validateWorld(world, domain, task, payloadKind) {
   return world;
 }
 
+function deriveState({ source, controls, previousTraining, metricKey }) {
+  const dimensions = Number(controls.embeddingDimensions ?? DEFAULT_EMBEDDING_DIMENSION);
+  const ranked = rankDocuments(source.query, source.documents, controls.topK, dimensions);
+  const expectedIds = new Set(source.samples[0].payload.documentIds ?? source.samples[0].payload.sourceIds ?? []);
+  const metric = metricKey === 'groundedSourceCount'
+    ? ranked.rankedResults.filter((item) => expectedIds.has(item.id)).length
+    : ranked.rankedResults.length && expectedIds.has(ranked.rankedResults[0].id) ? 1 : 0;
+  const topDocument = source.documents.find((document) => document.id === ranked.rankedResults[0]?.id);
+  const groundedAnswer = metricKey === 'groundedSourceCount'
+    ? {
+      text: groundedSentence(source.query, topDocument),
+      sourceIds: ranked.rankedResults.filter((item) => expectedIds.has(item.id)).map((item) => item.id).slice(0, 4),
+      query: source.query,
+    }
+    : null;
+  return {
+    query: source.query,
+    documents: source.documents,
+    queryEmbedding: ranked.queryVector,
+    documentEmbeddings: ranked.documentVectors,
+    rankedResults: ranked.rankedResults,
+    metric,
+    expectedIds: [...expectedIds],
+    groundedAnswer,
+    controls,
+    training: previousTraining ?? { currentStep: 0, totalSteps: 0, history: [] },
+  };
+}
+
 function createAdapter({ id, domain, task, payloadKind, preset, metricKey, metricLabel, resultField }) {
+  const isRag = metricKey === 'groundedSourceCount';
   return {
     id,
     domain,
-    capabilities: { fit: true, predict: true, evaluate: true, traceFit: false, tracePredict: false, retrieval: true },
-    trainingMicroscopeCapabilities: { lossTrace: false, parameters: [], gradients: [], updates: false, preprocessing: ['token-normalization'] },
+    capabilities: {
+      fit: true,
+      predict: true,
+      evaluate: true,
+      traceFit: false,
+      tracePredict: false,
+      retrieval: true,
+      embedding: true,
+      ...(isRag ? { groundedAnswer: true } : {}),
+    },
+    trainingMicroscopeCapabilities: { lossTrace: false, parameters: [], gradients: [], updates: false, preprocessing: ['deterministic-hashing-embedding'] },
     defaultVisualizationPreset: preset,
     semanticSchema: {
-      rankedResults: { type: 'array<rankedResult>', description: 'Bounded ranked document results' },
+      rankedResults: { type: 'array<rankedResult>', description: 'Bounded ranked document results with deterministic cosine scores' },
+      embedding: { type: 'vectorState', description: 'Bounded local hashing embedding; not an external model claim' },
+      ...(isRag ? { groundedAnswer: { type: 'groundedAnswer', description: 'Extractive answer sentence with source IDs' } } : {}),
       metrics: { type: 'metrics', description: metricLabel },
     },
     scriptOperations: {},
     scriptOperationActions: {},
     initialize({ source, controls, recorder }) {
-      const merged = { topK: 3, showScores: true, ...controls };
-      const rankedResults = rankDocuments(source.query, source.documents, merged.topK);
-      const expectedIds = new Set(source.samples[0].payload.documentIds ?? source.samples[0].payload.sourceIds ?? []);
-      const metric = metricKey === 'groundedSourceCount'
-        ? rankedResults.filter((item) => expectedIds.has(item.id)).length
-        : rankedResults.length && expectedIds.has(rankedResults[0].id) ? 1 : 0;
-      const modelState = { query: source.query, documents: source.documents, rankedResults, metric, controls: merged, training: { currentStep: 0, totalSteps: 0, history: [] } };
-      recorder.emit('data.loaded', { samples: source.documents.length, domain });
+      const merged = { topK: 3, embeddingDimensions: String(DEFAULT_EMBEDDING_DIMENSION), showScores: true, ...controls };
+      const modelState = deriveState({ source, controls: merged, metricKey });
+      recorder.emit('data.loaded', { samples: source.documents.length, domain, embeddingDimensions: merged.embeddingDimensions });
       recorder.emit('split.created', { trainRows: source.samples.length, testRows: 0, kind: 'explicit-query' });
-      recorder.emit('evaluation.completed', { [metricKey]: metric });
+      recorder.emit('evaluation.completed', { [metricKey]: modelState.metric });
       return { controls: merged, modelState, totalSteps: 0 };
     },
     validateWorld(world) { return validateWorld(world, domain, task, payloadKind); },
-    applyModelAction(modelState, action, { controls, recorder }) {
+    applyModelAction(modelState, action, { controls }) {
       if (action.type !== 'SET_CONTROL') return {};
       if (action.key === 'topK') {
         const value = Number(action.value);
         if (!Number.isInteger(value) || value < 1 || value > 8) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
-        const rankedResults = rankDocuments(modelState.query, modelState.documents, value);
-        return { controls: { topK: value }, modelState: { ...modelState, rankedResults } };
+        const nextControls = { ...controls, topK: value };
+        const source = { domain, task, query: modelState.query, documents: modelState.documents, samples: [{ payload: { kind: payloadKind, ...(isRag ? { sourceIds: modelState.expectedIds } : { documentIds: modelState.expectedIds }) } }] };
+        const next = deriveState({ source, controls: nextControls, previousTraining: modelState.training, metricKey });
+        return { controls: { topK: value }, modelState: { ...modelState, ...next } };
+      }
+      if (action.key === 'embeddingDimensions') {
+        const value = Number(action.value);
+        if (!EMBEDDING_DIMENSION_OPTIONS.includes(value)) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
+        const nextControls = { ...controls, embeddingDimensions: String(value) };
+        const source = { domain, task, query: modelState.query, documents: modelState.documents, samples: [{ payload: { kind: payloadKind, ...(isRag ? { sourceIds: modelState.expectedIds } : { documentIds: modelState.expectedIds }) } }] };
+        const next = deriveState({ source, controls: nextControls, previousTraining: modelState.training, metricKey });
+        return { controls: { embeddingDimensions: String(value) }, modelState: { ...modelState, ...next } };
       }
       if (action.key === 'showScores') return { controls: { showScores: Boolean(action.value) } };
       throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
     },
     deriveScene(modelState) {
       return {
-        scene: { rankedResults: modelState.rankedResults.map((item) => ({ ...item, ...(modelState.controls.showScores ? {} : { score: undefined }) })) },
-        metrics: { [metricKey]: modelState.metric, [resultField]: modelState.metric },
+        scene: {
+          rankedResults: modelState.rankedResults.map((item) => ({ ...item, embedding: undefined, ...(modelState.controls.showScores ? {} : { score: undefined }) })),
+          queryEmbedding: modelState.queryEmbedding,
+          embeddingProjection: projectEmbedding2d(modelState.queryEmbedding),
+          ...(isRag ? { groundedAnswer: modelState.groundedAnswer } : {}),
+        },
+        metrics: {
+          [metricKey]: modelState.metric,
+          [resultField]: modelState.metric,
+          embeddingDimensions: modelState.controls.embeddingDimensions,
+        },
         observation: null,
         formula: null,
-        capabilities: { canPlay: false, canPause: false, canStep: false, canSeek: false, canReset: true, canEditData: false },
+        capabilities: {
+          canPlay: false,
+          canPause: false,
+          canStep: false,
+          canSeek: false,
+          canReset: true,
+          canEditData: false,
+          canInspectRepresentation: true,
+        },
       };
     },
   };
@@ -108,7 +204,7 @@ export const retrievalAdapter = createAdapter({
   payloadKind: 'retrieval',
   preset: 'retrieval.intro',
   metricKey: 'retrievalScore',
-  metricLabel: 'Deterministic retrieval relevance',
+  metricLabel: 'Deterministic cosine retrieval relevance',
   resultField: 'retrievalScore',
 });
 

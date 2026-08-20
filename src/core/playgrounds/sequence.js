@@ -12,8 +12,9 @@ export const sequenceAttentionPlayground = {
   supportedTasks: ['classification'],
   sourceKinds: ['example', 'sequence-dataset'],
   controls: [
-    { key: 'trainingSteps', type: 'number', min: 1, max: 20, step: 1, runObjective: 'fit', domain: 'learning', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], quickControl: true } },
-    { key: 'showAttention', type: 'boolean', domain: 'view', presentation: { importance: 'secondary', roles: ['inspection'] } },
+      { key: 'trainingSteps', type: 'number', min: 1, max: 20, step: 1, runObjective: 'fit', domain: 'learning', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], quickControl: true } },
+      { key: 'attentionTemperature', type: 'number', min: 0.25, max: 4, step: 0.25, runObjective: 'inspect', domain: 'model', presentation: { importance: 'secondary', roles: ['experiment', 'inspection'] } },
+      { key: 'showAttention', type: 'boolean', domain: 'view', presentation: { importance: 'secondary', roles: ['inspection'] } },
   ],
   actions: ['SET_CONTROL', 'START_TRAINING', 'STEP', 'SEEK', 'RESET', 'RUN_SCENARIO'],
   scenarios: [],

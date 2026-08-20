@@ -34,9 +34,28 @@ function squaredDistance(left, right) {
   return left.reduce((sum, value, index) => sum + (value - right[index]) ** 2, 0);
 }
 
-function fitPrototypes(samples) {
+function targetPrototypes(samples) {
   const labels = [...new Set(samples.map((sample) => sample.label))].sort();
   return Object.fromEntries(labels.map((label) => [label, prototypeFor(samples.filter((sample) => sample.label === label))]));
+}
+
+function fitPrototypes(samples, { steps = 1, learningRate = 1, evaluate = null } = {}) {
+  const targets = targetPrototypes(samples);
+  const labels = Object.keys(targets);
+  const size = labels[0] ? targets[labels[0]].length : 0;
+  let prototypes = Object.fromEntries(labels.map((label) => [label, Array.from({ length: size }, () => 0)]));
+  const history = [];
+  for (let step = 0; step < Math.max(1, steps); step += 1) {
+    prototypes = Object.fromEntries(labels.map((label) => [label, targets[label].map((target, index) => (
+      prototypes[label][index] + (target - prototypes[label][index]) * learningRate
+    ))]));
+    history.push({
+      step: step + 1,
+      trainAccuracy: accuracy(samples, prototypes),
+      testAccuracy: typeof evaluate === 'function' ? evaluate(prototypes) : null,
+    });
+  }
+  return { prototypes, history };
 }
 
 function predict(sample, prototypes) {
@@ -82,13 +101,19 @@ function validateImageWorld(world) {
 function deriveModelState(samples, controls, previous = {}) {
   const train = samples.filter((sample) => sample.membership !== 'test');
   const test = samples.filter((sample) => sample.membership === 'test');
-  const prototypes = fitPrototypes(train);
+  const fitted = fitPrototypes(train, {
+    steps: Math.max(1, Math.min(20, Math.round(Number(controls.trainingSteps) || 1))),
+    learningRate: Math.max(0.05, Math.min(1, Number(controls.learningRate) || 1)),
+    evaluate: (prototypes) => accuracy(test, prototypes),
+  });
+  const prototypes = fitted.prototypes;
   return {
     samples,
     prototypes,
     trainAccuracy: accuracy(train, prototypes),
     testAccuracy: accuracy(test, prototypes),
     training: previous.training ?? { currentStep: 0, totalSteps: 0, history: [] },
+    trainingHistory: fitted.history,
     featureMap: samples[0] ? featureMap(samples[0]) : { rows: 1, columns: 1, cells: [] },
     imageSamples: samples.map((sample) => ({
       id: sample.id,
@@ -111,6 +136,7 @@ export const imageCnnAdapter = {
     traceFit: true,
     tracePredict: false,
     imageFeatures: true,
+    learningRate: true,
   },
   trainingMicroscopeCapabilities: {
     lossTrace: true,
@@ -150,7 +176,7 @@ export const imageCnnAdapter = {
   },
 
   initialize({ source, controls, recorder }) {
-    const merged = { trainingSteps: 1, showFeatureMap: true, ...controls };
+    const merged = { trainingSteps: 1, learningRate: 1, showFeatureMap: true, ...controls };
     const modelState = deriveModelState(source.samples, merged);
     recorder.emit('data.loaded', { samples: source.samples.length, domain: 'image' });
     recorder.emit('split.created', {
@@ -173,6 +199,12 @@ export const imageCnnAdapter = {
         if (!Number.isFinite(value)) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
         return { controls: { trainingSteps: value }, modelState: { ...modelState, training: { currentStep: 0, totalSteps: 0, history: [] } } };
       }
+      if (action.key === 'learningRate') {
+        const value = Number(action.value);
+        if (!Number.isFinite(value) || value < 0.05 || value > 1) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
+        const nextControls = { ...controls, learningRate: value };
+        return { controls: { learningRate: value }, modelState: deriveModelState(modelState.samples, nextControls, { training: { currentStep: 0, totalSteps: 0, history: [] } }) };
+      }
       if (action.key === 'showFeatureMap') return { controls: { showFeatureMap: Boolean(action.value) } };
       throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
     }
@@ -180,11 +212,7 @@ export const imageCnnAdapter = {
       const nextState = deriveModelState(modelState.samples, controls, {
         training: { currentStep: 0, totalSteps: Math.max(1, Math.round(controls.trainingSteps)), history: [] },
       });
-      const history = Array.from({ length: nextState.training.totalSteps }, (_, index) => ({
-        step: index + 1,
-        trainAccuracy: nextState.trainAccuracy,
-        testAccuracy: nextState.testAccuracy,
-      }));
+      const history = nextState.trainingHistory.slice(0, nextState.training.totalSteps);
       recorder.emit('training.started', { totalSteps: history.length, domain: 'image' });
       recorder.emit('training.completed', { steps: history.length, requestedSteps: history.length, domain: 'image' });
       recorder.emit('evaluation.completed', { trainAccuracy: nextState.trainAccuracy, testAccuracy: nextState.testAccuracy });

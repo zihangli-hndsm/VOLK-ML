@@ -17,6 +17,7 @@ import ImageGridRenderer from './renderers/ImageGridRenderer.jsx';
 import TokenSequenceRenderer from './renderers/TokenSequenceRenderer.jsx';
 import AttentionMatrixRenderer from './renderers/AttentionMatrixRenderer.jsx';
 import RankedResultsRenderer from './renderers/RankedResultsRenderer.jsx';
+import GroundedAnswerRenderer from './renderers/GroundedAnswerRenderer.jsx';
 
 // The unified stage resolves primitive types through this registry. Renderers
 // draw JSON props only and never import model mathematics.
@@ -42,4 +43,5 @@ export const rendererByPrimitiveType = {
   'token-sequence': TokenSequenceRenderer,
   'attention-matrix': AttentionMatrixRenderer,
   'ranked-results': RankedResultsRenderer,
+  'grounded-answer': GroundedAnswerRenderer,
 };

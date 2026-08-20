@@ -6,6 +6,8 @@ export const EXPLORATION_INTENTS = Object.freeze({
   LINE_MOVE: 'line-move',
   LEARNING_RATE_INCREASE: 'learning-rate-increase',
   LEARNING_RATE_DECREASE: 'learning-rate-decrease',
+  DOMAIN_CONTROL: 'domain-control',
+  DOMAIN_REPRESENTATION: 'domain-representation',
 });
 
 export const EXPLORATION_INTENT_IDS = Object.freeze(Object.values(EXPLORATION_INTENTS));

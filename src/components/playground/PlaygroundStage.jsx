@@ -47,7 +47,7 @@ export default function PlaygroundStage({ snapshot, motionFrame, t, showSupporti
       xToSvg={xToSvg} yToSvg={yToSvg} colorByLabel={colorByLabel} plot={plot} motion={motion} t={t} />;
   };
   const domainNative = snapshot?.domain && snapshot.domain !== 'tabular';
-  const domainHtmlPrimitives = new Set(['metric-card', 'formula', 'annotation', 'ranked-results']);
+  const domainHtmlPrimitives = new Set(['metric-card', 'formula', 'annotation', 'ranked-results', 'grounded-answer']);
   if (domainNative) {
     const visualPrimitives = primaryPrimitives.filter((primitive) => !domainHtmlPrimitives.has(primitive.type));
     const htmlPrimitives = primaryPrimitives.filter((primitive) => domainHtmlPrimitives.has(primitive.type));

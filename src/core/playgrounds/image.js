@@ -13,6 +13,7 @@ export const imageClassificationPlayground = {
   sourceKinds: ['example', 'image-dataset'],
   controls: [
     { key: 'trainingSteps', type: 'number', min: 1, max: 20, step: 1, runObjective: 'fit', domain: 'learning', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], quickControl: true } },
+    { key: 'learningRate', type: 'number', min: 0.05, max: 1, step: 0.05, runObjective: 'fit', domain: 'learning', presentation: { importance: 'secondary', roles: ['experiment', 'inspection'] } },
     { key: 'showFeatureMap', type: 'boolean', domain: 'view', presentation: { importance: 'secondary', roles: ['inspection'] } },
   ],
   actions: ['SET_CONTROL', 'START_TRAINING', 'STEP', 'SEEK', 'RESET', 'RUN_SCENARIO'],

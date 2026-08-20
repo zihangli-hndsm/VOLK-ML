@@ -2,6 +2,20 @@ import { playgroundError } from '../../playgrounds/session.js';
 
 const SMOOTHING = 0.25;
 
+function tokenEmbedding(token, dimensions = 4) {
+  let hash = 2166136261;
+  for (const character of String(token)) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  const vector = Array.from({ length: dimensions }, (_, index) => {
+    const mixed = (hash + Math.imul(index + 1, 374761393)) >>> 0;
+    return ((mixed % 2001) / 1000) - 1;
+  });
+  const norm = Math.hypot(...vector) || 1;
+  return vector.map((value) => value / norm);
+}
+
 function vocabulary(samples) {
   return [...new Set(samples.flatMap((sample) => sample.payload.tokens))].sort();
 }
@@ -39,21 +53,20 @@ function accuracy(samples, tokenModel) {
   return samples.filter((sample) => predict(sample, tokenModel) === sample.label).length / samples.length;
 }
 
-function attentionFor(sample, tokenModel) {
+function attentionFor(sample, tokenModel, temperature = 1) {
   const tokens = sample.payload.tokens;
-  const labels = tokenModel.labels;
-  const raw = tokens.map((token) => {
-    const values = labels.map((label) => tokenModel.byLabel[label]?.[token] ?? 0);
-    return Math.max(...values) - Math.min(...values);
-  });
-  const max = Math.max(...raw, 1e-9);
+  const embeddings = tokens.map((token) => tokenEmbedding(token));
   const cells = [];
-  tokens.forEach((token, row) => {
-    tokens.forEach((_, column) => {
-      cells.push({ row, column, value: row === column ? raw[row] / max : 0 });
+  tokens.forEach((_, row) => {
+    const scores = tokens.map((__, column) => embeddings[row].reduce((sum, value, index) => sum + value * embeddings[column][index], 0) / Math.max(0.25, Number(temperature) || 1));
+    const maxScore = Math.max(...scores);
+    const weights = scores.map((score) => Math.exp(Math.max(-20, Math.min(20, score - maxScore))));
+    const total = weights.reduce((sum, value) => sum + value, 0) || 1;
+    tokens.forEach((__, column) => {
+      cells.push({ row, column, value: weights[column] / total });
     });
   });
-  return { rows: Math.max(1, tokens.length), columns: Math.max(1, tokens.length), cells };
+  return { rows: Math.max(1, tokens.length), columns: Math.max(1, tokens.length), cells, tokenEmbeddings: embeddings };
 }
 
 function deriveModelState(samples, controls, previous = {}) {
@@ -61,7 +74,13 @@ function deriveModelState(samples, controls, previous = {}) {
   const test = samples.filter((sample) => sample.membership === 'test');
   const tokenModel = fitTokenModel(train);
   const displaySample = test[0] ?? train[0];
-  const attention = displaySample ? attentionFor(displaySample, tokenModel) : { rows: 1, columns: 1, cells: [] };
+  const attention = displaySample ? attentionFor(displaySample, tokenModel, controls.attentionTemperature) : { rows: 1, columns: 1, cells: [] };
+  const highlighted = displaySample
+    ? displaySample.payload.tokens.map((_, index) => index).filter((index) => {
+      const row = attention.cells.slice(index * attention.columns, (index + 1) * attention.columns);
+      return Math.max(...row.map((cell) => cell.value), 0) >= 0.35;
+    })
+    : [];
   return {
     samples,
     tokenModel,
@@ -69,7 +88,7 @@ function deriveModelState(samples, controls, previous = {}) {
     testAccuracy: accuracy(test, tokenModel),
     training: previous.training ?? { currentStep: 0, totalSteps: 0, history: [] },
     tokens: displaySample?.payload.tokens ?? [],
-    highlightedTokenIndexes: displaySample ? displaySample.payload.tokens.map((_, index) => index).filter((index) => attention.cells[index * attention.columns + index]?.value > 0.5) : [],
+    highlightedTokenIndexes: highlighted,
     attention,
     controls,
   };
@@ -96,6 +115,8 @@ export const sequenceAttentionAdapter = {
     traceFit: true,
     tracePredict: false,
     attention: true,
+    attentionWeights: true,
+    embedding: true,
   },
   trainingMicroscopeCapabilities: {
     lossTrace: true,
@@ -115,7 +136,8 @@ export const sequenceAttentionAdapter = {
   },
   semanticSchema: {
     tokens: { type: 'array<string>', description: 'Finite tokens in the displayed sequence' },
-    attention: { type: 'matrixState', description: 'Bounded deterministic token attention weights' },
+    attention: { type: 'matrixState', description: 'Bounded deterministic content-dependent attention weights' },
+    tokenEmbeddings: { type: 'array<vector>', description: 'Bounded deterministic token representation vectors' },
     metrics: { type: 'metrics', description: 'Train and test sequence classification accuracy' },
   },
   scriptOperations: {
@@ -132,7 +154,7 @@ export const sequenceAttentionAdapter = {
   scriptOperationActions: { traceFit: () => ({ type: 'START_TRAINING' }) },
 
   initialize({ source, controls, recorder }) {
-    const merged = { trainingSteps: 1, showAttention: true, ...controls };
+    const merged = { trainingSteps: 1, attentionTemperature: 1, showAttention: true, ...controls };
     const modelState = deriveModelState(source.samples, merged);
     recorder.emit('data.loaded', { samples: source.samples.length, domain: 'sequence' });
     recorder.emit('split.created', {
@@ -156,6 +178,12 @@ export const sequenceAttentionAdapter = {
         return { controls: { trainingSteps: value }, modelState: { ...modelState, training: { currentStep: 0, totalSteps: 0, history: [] } } };
       }
       if (action.key === 'showAttention') return { controls: { showAttention: Boolean(action.value) } };
+      if (action.key === 'attentionTemperature') {
+        const value = Number(action.value);
+        if (!Number.isFinite(value) || value < 0.25 || value > 4) throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
+        const nextControls = { ...controls, attentionTemperature: value };
+        return { controls: { attentionTemperature: value }, modelState: deriveModelState(modelState.samples, nextControls, { training: { ...modelState.training, history: [] } }) };
+      }
       throw playgroundError('INVALID_PLAYGROUND_CONTROL', { key: action.key });
     }
     if (action.type === 'START_TRAINING') {
@@ -180,6 +208,7 @@ export const sequenceAttentionAdapter = {
         tokens: modelState.tokens,
         highlightedTokenIndexes: modelState.highlightedTokenIndexes,
         attention: modelState.attention,
+        tokenEmbeddings: modelState.attention.tokenEmbeddings,
       },
       metrics: {
         trainAccuracy: modelState.trainAccuracy,

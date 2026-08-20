@@ -18,6 +18,8 @@ export const EXPLORATION_DOMAIN_CONTRACTS = Object.freeze({
     coordinateSpaces: ['plot2d'],
     semanticDepths: ['phenomenon', 'evidence', 'mechanism', 'representation'],
     evidenceFamilies: ['distribution', 'outcome', 'comparison', 'training'],
+    interventions: ['world-observations', 'generator-parameters', 'model-controls'],
+    representation: ['plot2d'],
     probeId: 'tabular-regression',
   }),
   image: Object.freeze({
@@ -27,6 +29,8 @@ export const EXPLORATION_DOMAIN_CONTRACTS = Object.freeze({
     coordinateSpaces: ['image', 'feature-map', 'embedding-2d'],
     semanticDepths: ['phenomenon', 'evidence', 'mechanism', 'representation'],
     evidenceFamilies: ['image-prediction', 'class-balance', 'comparison', 'training'],
+    interventions: ['model-controls', 'representation-visibility'],
+    representation: ['image', 'feature-map', 'embedding-2d'],
     probeId: 'image-classification',
   }),
   sequence: Object.freeze({
@@ -36,6 +40,8 @@ export const EXPLORATION_DOMAIN_CONTRACTS = Object.freeze({
     coordinateSpaces: ['token-sequence', 'attention-matrix', 'embedding-2d'],
     semanticDepths: ['phenomenon', 'evidence', 'mechanism', 'representation'],
     evidenceFamilies: ['sequence-prediction', 'attention', 'comparison', 'training'],
+    interventions: ['model-controls', 'attention-temperature', 'representation-visibility'],
+    representation: ['token-sequence', 'attention-matrix', 'embedding-2d'],
     probeId: 'sequence-attention',
   }),
   retrieval: Object.freeze({
@@ -45,6 +51,8 @@ export const EXPLORATION_DOMAIN_CONTRACTS = Object.freeze({
     coordinateSpaces: ['ranked-list', 'embedding-2d'],
     semanticDepths: ['phenomenon', 'evidence', 'mechanism', 'representation'],
     evidenceFamilies: ['ranking', 'coverage', 'comparison'],
+    interventions: ['top-k', 'embedding-dimensions'],
+    representation: ['ranked-list', 'embedding-2d'],
     probeId: 'retrieval-ranking',
   }),
   rag: Object.freeze({
@@ -54,6 +62,8 @@ export const EXPLORATION_DOMAIN_CONTRACTS = Object.freeze({
     coordinateSpaces: ['ranked-list', 'source-evidence'],
     semanticDepths: ['phenomenon', 'evidence', 'mechanism', 'representation'],
     evidenceFamilies: ['retrieval', 'citation', 'generation', 'comparison'],
+    interventions: ['top-k', 'embedding-dimensions'],
+    representation: ['ranked-list', 'source-evidence'],
     probeId: 'rag-grounding',
   }),
 });
@@ -84,6 +94,47 @@ export function domainSupportsTask(domain, task) {
 export function summarizeExplorationDomain(domain) {
   const contract = getExplorationDomainContract(domain);
   return contract ? structuredClone(contract) : null;
+}
+
+export function getExplorationDomainCapabilities(domain) {
+  const contract = getExplorationDomainContract(domain);
+  if (!contract) return null;
+  return {
+    version: 1,
+    domain: contract.id,
+    interventions: [...(contract.interventions ?? [])],
+    representation: [...(contract.representation ?? [])],
+    evidenceFamilies: [...contract.evidenceFamilies],
+    semanticDepths: [...contract.semanticDepths],
+  };
+}
+
+// Agent-safe projection. Domain payloads remain available to deterministic
+// adapters, but this projection intentionally contains only bounded semantic
+// counts and capability metadata. It never serializes pixels, tokens, rows,
+// document text, embeddings, or query content.
+export function projectDomainContext({ domain, world, data, model } = {}) {
+  const normalized = normalizeExplorationDomain(domain);
+  const observations = Array.isArray(world?.observations) ? world.observations : [];
+  const memberships = {
+    train: observations.filter((item) => item.membership !== 'test').length,
+    test: observations.filter((item) => item.membership === 'test').length,
+  };
+  const labels = [...new Set(observations.map((item) => item.label).filter(Boolean))].slice(0, 16);
+  return {
+    version: 1,
+    domain: normalized,
+    task: world?.task ?? data?.task ?? null,
+    coordinateSpace: world?.coordinateSpace ?? getExplorationDomainContract(normalized)?.coordinateSpaces?.[0] ?? null,
+    observationCount: observations.length,
+    memberships,
+    labelCount: labels.length,
+    labels,
+    capabilities: getExplorationDomainCapabilities(normalized),
+    modelCapabilities: model && typeof model === 'object'
+      ? Object.fromEntries(Object.entries(model).filter(([key, value]) => typeof value === 'boolean' && value).map(([key]) => [key, true]))
+      : {},
+  };
 }
 
 function finite(value, field) {

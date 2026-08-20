@@ -29,6 +29,7 @@ export const PRIMITIVE_TYPES = [
   'token-sequence',
   'attention-matrix',
   'ranked-results',
+  'grounded-answer',
 ];
 
 // Renderer-neutral metadata keeps domain and coordinate-space decisions out
@@ -41,6 +42,7 @@ export const PRIMITIVE_PRESENTATION = Object.freeze({
   'token-sequence': { coordinateSpace: 'token-sequence', domains: ['sequence'] },
   'attention-matrix': { coordinateSpace: 'attention-matrix', domains: ['sequence'] },
   'ranked-results': { coordinateSpace: 'ranked-list', domains: ['retrieval', 'rag'] },
+  'grounded-answer': { coordinateSpace: 'source-evidence', domains: ['rag'] },
 });
 
 export function primitivePresentation(type) {

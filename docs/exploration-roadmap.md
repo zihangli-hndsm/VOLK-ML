@@ -1737,18 +1737,22 @@ The goal is not merely to add new components. Each new domain should answer:
 6. What can Guided Explore scaffold without AI?
 7. What can the Agent safely accelerate?
 
-### Phase 9A status — cross-domain contract probes and Image slice
+### Phase 9 status — bounded cross-domain exploration slice
 
-The first accepted implementation slice is now represented by the bounded
-domain contract, static probes for tabular/image/sequence surfaces, and a
-small deterministic Image classification playground. The existing tabular
-World remains backward-compatible; non-tabular payloads use explicit bounded
-observation payloads and domain-native visualization primitives. See
-`docs/architecture/phase9-cross-domain.md` for the contract and limits.
+Phase 9 is implemented as one shared-runtime vertical slice for deterministic
+Image/CNN, Sequence/attention, Embeddings/vector retrieval, and grounded RAG.
+Each domain has finite bounded data, domain-native primitives, truthful
+observables/traces, manual controls, and capability metadata. A small
+cross-domain Agent planner can navigate representation depth or propose one
+supported model-control experiment through the existing ScenarioSpec,
+preflight, fidelity, and explicit-execution path. The provider context remains
+bounded and payload-safe, and the async runner is a seam rather than an
+artificial loading implementation.
 
-Sequence execution, attention/Transformer runtime, embeddings/retrieval, RAG,
-async execution, and bounded Agent planning remain separate later vertical
-slices. No Phase 9 domain is implied by the static probes alone.
+The slice does not claim remote inference, pretrained semantic embeddings, a
+general Transformer/CNN framework, or a full visual Composer. Those are
+implementation limits of this bounded Phase 9 foundation, not alternate
+runtime semantics. See `docs/architecture/phase9-cross-domain.md`.
 
 ## Later infrastructure after the core loop is proven
 

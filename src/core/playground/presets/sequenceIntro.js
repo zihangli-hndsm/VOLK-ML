@@ -3,7 +3,7 @@ export const sequenceIntro = {
   id: 'sequence.intro',
   model: { adapter: 'sequence-attention' },
   data: { source: 'sequence-example' },
-  controls: ['trainingSteps', 'showAttention'],
+  controls: ['trainingSteps', 'attentionTemperature', 'showAttention'],
   layout: {
     stage: ['token-sequence', 'attention-matrix'],
     side: ['metric-card'],

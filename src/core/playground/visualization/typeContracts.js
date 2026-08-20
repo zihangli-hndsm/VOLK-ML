@@ -110,6 +110,11 @@ const STRUCTURAL_CONTRACTS = {
     && typeof value.bodyKey === 'string'
     && isRecord(value.params ?? {}),
   metrics: (value) => isRecord(value),
+  groundedAnswer: (value) => isRecord(value)
+    && (value.text === null || typeof value.text === 'string')
+    && Array.isArray(value.sourceIds)
+    && value.sourceIds.every((id) => typeof id === 'string')
+    && typeof value.query === 'string',
 };
 
 const PRIMITIVE_ARRAY_TYPES = new Set(['number', 'string', 'id']);

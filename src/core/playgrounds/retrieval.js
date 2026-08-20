@@ -27,6 +27,7 @@ function descriptor({ id, domain, adapterId, task, titleKey, descriptionKey, sup
     sourceKinds: ['example', `${domain}-dataset`],
     controls: [
       { key: 'topK', type: 'number', min: 1, max: 8, step: 1, runObjective: 'retrieve', domain: 'model', presentation: { importance: 'primary', roles: ['experiment', 'inspection'], quickControl: true } },
+      { key: 'embeddingDimensions', type: 'select', options: ['4', '8', '16'], runObjective: 'retrieve', domain: 'model', presentation: { importance: 'secondary', roles: ['experiment', 'inspection'] } },
       { key: 'showScores', type: 'boolean', domain: 'view', presentation: { importance: 'secondary', roles: ['inspection'] } },
     ],
     actions: ['SET_CONTROL', 'RESET'],

@@ -692,3 +692,10 @@
 - Added deterministic Sequence/attention, Retrieval ranking, and grounded-retrieval playground slices using the same finite World, Experiment, trace, observable, primitive, and Host inspection contracts.
 - Added bounded token-sequence, attention-matrix, and ranked-list surfaces with explicit domain/coordinate-space metadata and no remote inference or unrestricted generation.
 - Extended the Agent inspection projection with normalized domain and coordinate-space capability context; execution authority remains in the existing runtime boundaries.
+
+## 2026-08-20 — Phase 9 cross-domain completion hardening
+
+- Replaced local retrieval token overlap with deterministic bounded hashing embeddings and cosine ranking; added an extractive grounded-answer primitive with source IDs for RAG.
+- Made Sequence attention content-dependent and temperature-controlled, and made Image/CNN prototype training produce bounded deterministic updates and history.
+- Added provider-safe domain context projection, bounded cross-domain Agent navigation/control proposals, exact-fidelity preflight coverage, unsupported-intervention clarification, and a cancellable adapter-neutral execution runner seam.
+- Preserved the shared World/Experiment/ScenarioSpec/runtime authority boundary; no remote inference, arbitrary code, raw domain payloads, or World Composer expansion was introduced.

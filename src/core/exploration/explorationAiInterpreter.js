@@ -193,6 +193,7 @@ export function projectExplorationAiContext(context = {}) {
     pedagogicalObservation,
     recentActions,
     worldComposer: context?.exploration?.worldComposer ?? null,
+    domainContext: context?.domainContext ?? context?.exploration?.contextProjection ?? null,
   };
 }
 

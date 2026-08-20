@@ -3,7 +3,7 @@ export const retrievalIntro = {
   id: 'retrieval.intro',
   model: { adapter: 'retrieval-ranking' },
   data: { source: 'retrieval-example' },
-  controls: ['topK', 'showScores'],
+  controls: ['topK', 'embeddingDimensions', 'showScores'],
   layout: { stage: ['ranked-results'], side: ['metric-card'] },
   primitives: [
     { id: 'ranked-results', type: 'ranked-results', props: { items: '$model.rankedResults' } },

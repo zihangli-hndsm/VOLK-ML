@@ -78,6 +78,21 @@ function localWorldDesign(text) {
   return { mode: 'create', recipe: getWorldRecipePreset(preset), patch: null };
 }
 
+function domainRepresentationDepth(snapshot = {}) {
+  if (snapshot.domain === 'sequence') return CONCEPTUAL_DEPTHS.MECHANISM;
+  if (['image', 'retrieval', 'rag'].includes(snapshot.domain)) return CONCEPTUAL_DEPTHS.REPRESENTATION;
+  return null;
+}
+
+function supportsLocalDomainControl(text, domain) {
+  if (domain === 'image') return /training\s*steps?|steps?|训练步|训练轮/i.test(text);
+  if (domain === 'sequence') return /attention|temperature|training\s*steps?|steps?|注意力|温度|训练步/i.test(text);
+  if (domain === 'retrieval' || domain === 'rag') {
+    return /top\s*-?\s*k|rank|embedding|dimension|size|检索数|嵌入|向量|维度/i.test(text);
+  }
+  return false;
+}
+
 export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot = {} } = {}) {
   const text = String(request ?? '').trim();
   if (!text) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'empty-request' };
@@ -92,6 +107,12 @@ export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot
     return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, design: pedagogicalDesign, source: 'local' };
   }
   const intent = isExperiment ? proposalIntent(text) : null;
+  if (isExperiment && ['image', 'sequence', 'retrieval', 'rag'].includes(snapshot.domain)) {
+    if (!supportsLocalDomainControl(text, snapshot.domain)) {
+      return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'unsupported-domain-experiment', useAi: true };
+    }
+    return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent: 'domain-control', source: 'local' };
+  }
   if (intent && has(snapshot, 'model')) {
     return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent };
   }
@@ -99,6 +120,10 @@ export function classifyAgentGuideRequest({ request, capabilities = {}, snapshot
   if (NAVIGATION_RE.test(text)) {
     if (/noise|outlier|异常|噪声/i.test(text)) {
       return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'world-control', target: 'world-tools' };
+    }
+    const domainDepth = domainRepresentationDepth(snapshot);
+    if (domainDepth && capabilities[domainDepth] !== false) {
+      return { kind: AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH, depth: domainDepth };
     }
     if (capabilities[CONCEPTUAL_DEPTHS.REPRESENTATION] !== false) {
       return { kind: AGENT_GUIDANCE_OUTCOMES.OPEN_DEPTH, depth: CONCEPTUAL_DEPTHS.REPRESENTATION };
