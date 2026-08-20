@@ -65,4 +65,26 @@ assert.deepEqual(deriveInquirySuggestions({ inquiry: { candidates: [] }, context
 assert.deepEqual(host.suggestInquiry().suggestions, [], 'Host suggestions consume its own deterministic inquiry projection rather than caller input');
 await host.close();
 
+const reachableHost = createPlaygroundHost({ getDataset: () => null });
+let reachable = await reachableHost.openBigIdeaEntrance({ id: 'distribution-shift' });
+const reachableBaselineId = reachable.experimentWorkspace.activeExperimentId;
+reachable = await reachableHost.dispatch({ type: 'DUPLICATE_EXPERIMENT', actor: 'human' });
+reachable = await reachableHost.dispatch({
+  type: 'APPLY_WORLD_TRANSACTION',
+  transaction: {
+    id: 'inquiry-suggestion-reachability',
+    actor: 'human',
+    intent: 'test-support',
+    operations: [
+      { type: 'SET_GENERATOR_PARAMETER', path: 'test.input.params.min', value: 1.2 },
+      { type: 'REGENERATE_WORLD', seed: 7104 },
+    ],
+  },
+});
+reachable = await reachableHost.dispatch({ type: 'RUN', actor: 'human' });
+reachable = await reachableHost.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: reachableBaselineId, actor: 'human' });
+assert.ok(reachable.learnerInquiry.candidates.some((candidate) => candidate.conceptId === INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT), 'a real coverage mismatch creates a current inquiry candidate');
+assert.ok(reachableHost.suggestInquiry().suggestions.length > 0, 'Host API resolves a real current inquiry candidate into a reachable suggestion');
+await reachableHost.close();
+
 console.log('Inquiry suggestion checks passed: bounded deterministic support/capacity proposals, explicit holds and evidence, manual World parity, TeachingGoal planning/composition/dry-run/fidelity/runtime path, no mutation before execution, and forged-candidate rejection.');

@@ -47,7 +47,7 @@ import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration
 import { worldRecipeSummary } from './exploration/worldRecipe.js';
 import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 import { createSemanticEventStore, deriveSemanticEventDrafts } from './exploration/semanticEvents.js';
-import { deriveLearnerInquiryState } from './exploration/learnerInquiry.js';
+import { deriveLearnerInquiryState, INQUIRY_CONCEPT_REGISTRY } from './exploration/learnerInquiry.js';
 import { deriveInquirySuggestions } from './exploration/inquirySuggestion.js';
 import { deriveCausalInquiryState } from './exploration/causalInquiry.js';
 import { createInquiryTrajectoryStore, deriveInquiryTrajectory } from './exploration/inquiryTrajectory.js';
@@ -452,12 +452,33 @@ export function createPlaygroundHost({
   // Presentation-only local session history. This prevents repeated AI
   // interruptions without adding a second runtime or persisted learner model.
   let inquiryGuidanceHistory = [];
+  let inquiryPresentationContext = { conceptualDepth: null, conceptsPreviouslySurfaced: [] };
+  let presentedSuggestionIds = [];
+  let presentedConceptIds = [];
+  let conceptExposureIds = [];
+  let lastCanonicalConceptSignalIds = [];
   const subscribers = new Set();
+
+  const resetInquirySessionState = () => {
+    semanticEventStore.reset();
+    inquiryGuidanceHistory = [];
+    inquiryPresentationContext = { conceptualDepth: null, conceptsPreviouslySurfaced: [] };
+    presentedSuggestionIds = [];
+    presentedConceptIds = [];
+    conceptExposureIds = [];
+    lastCanonicalConceptSignalIds = [];
+    inquiryTrajectoryStore.reset();
+  };
 
   const present = (snapshot) => {
     if (!snapshot) return null;
     const semanticEvents = semanticEventStore.snapshot();
-    const learnerInquiry = deriveLearnerInquiryState({ semanticEvents, snapshot });
+    const learnerInquiry = deriveLearnerInquiryState({
+      semanticEvents,
+      snapshot,
+      conceptualDepth: inquiryPresentationContext.conceptualDepth,
+      conceptsPreviouslySurfaced: inquiryPresentationContext.conceptsPreviouslySurfaced,
+    });
     const inquiryTrajectory = deriveInquiryTrajectory({
       ...inquiryTrajectoryStore.snapshot(),
       semanticEvents,
@@ -474,8 +495,14 @@ export function createPlaygroundHost({
         activeExplorationThread: snapshot.activeExplorationThread,
       }),
       inquiryTrajectory,
+      conceptExposure: { version: 1, shownConceptIds: [...conceptExposureIds] },
     };
   };
+
+  // One projection boundary for normal snapshots, inquiry suggestions, and
+  // guidance triggers. Consumers must not derive a second inquiry state from
+  // the raw runtime session.
+  const currentPresentedSnapshot = () => (session ? present(derivePlaygroundSnapshot(session)) : null);
 
   const notify = () => {
     const snapshot = present(session ? derivePlaygroundSnapshot(session) : null);
@@ -548,9 +575,7 @@ export function createPlaygroundHost({
         dataset: getDataset(),
       });
       scriptProvenance = 'preset';
-      semanticEventStore.reset();
-      inquiryGuidanceHistory = [];
-      inquiryTrajectoryStore.reset();
+      resetInquirySessionState();
       commit(created);
       return present(derivePlaygroundSnapshot(session));
     },
@@ -562,7 +587,7 @@ export function createPlaygroundHost({
 
     getState() {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      return present(derivePlaygroundSnapshot(session));
+      return currentPresentedSnapshot();
     },
 
     async dispatch(action) {
@@ -636,7 +661,12 @@ export function createPlaygroundHost({
       const viewActions = ['SET_WORKSPACE_VIEW'];
       const experimentOperations = ['DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS', 'REPEAT_EXPERIMENT', 'UNDO_EXPERIMENT_ACTION'];
       const semanticEvents = semanticEventStore.snapshot();
-      const learnerInquiry = deriveLearnerInquiryState({ semanticEvents, snapshot });
+      const learnerInquiry = deriveLearnerInquiryState({
+        semanticEvents,
+        snapshot,
+        conceptualDepth: inquiryPresentationContext.conceptualDepth,
+        conceptsPreviouslySurfaced: inquiryPresentationContext.conceptsPreviouslySurfaced,
+      });
       const causalInquiry = deriveCausalInquiryState({
         inquiry: learnerInquiry,
         semanticEvents,
@@ -674,6 +704,7 @@ export function createPlaygroundHost({
         experimentWorkspace: snapshot.experimentWorkspace ?? null,
         explorationThreads: snapshot.explorationThreads ?? [],
         activeExplorationThread: snapshot.activeExplorationThread ?? null,
+        conceptExposure: { version: 1, shownConceptIds: [...conceptExposureIds] },
         recipes: structuredClone(EXPLORATION_RECIPES),
         thingsToTry: structuredClone(THINGS_TO_TRY),
         affordances: [...AFFORDANCE_IDS],
@@ -683,6 +714,7 @@ export function createPlaygroundHost({
           learnerInquiry,
           causalInquiry,
           inquiryTrajectory,
+          conceptExposure: { version: 1, shownConceptIds: [...conceptExposureIds] },
           worldMode: snapshot.world?.mode ?? 'sample',
           generator: snapshot.world?.generator ?? null,
           observables: snapshot.observables ?? {},
@@ -798,6 +830,7 @@ export function createPlaygroundHost({
       if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: id });
       const candidate = initializeBigIdeaSession(entrance, { getDataset, seed });
       scriptProvenance = 'preset';
+      resetInquirySessionState();
       commit(candidate);
       return present(derivePlaygroundSnapshot(session));
     },
@@ -809,6 +842,7 @@ export function createPlaygroundHost({
       if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: activeId });
       const candidate = initializeBigIdeaSession(entrance, { getDataset, seed });
       scriptProvenance = 'preset';
+      resetInquirySessionState();
       commit(candidate);
       return present(derivePlaygroundSnapshot(session));
     },
@@ -965,8 +999,43 @@ export function createPlaygroundHost({
     // composeScript(), and explicit loadScript() for an executable goal.
     suggestInquiry() {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      const snapshot = derivePlaygroundSnapshot(session);
-      return deriveInquirySuggestions({ inquiry: snapshot.learnerInquiry, context: this.inspectContext() });
+      const snapshot = currentPresentedSnapshot();
+      const context = this.inspectContext();
+      const derived = deriveInquirySuggestions({ inquiry: snapshot.learnerInquiry, context });
+      const suggestions = derived.suggestions.map((suggestion) => {
+        if (!suggestion.teachingGoal) {
+          return {
+            ...suggestion,
+            preflightAssessment: { kind: 'manual-world', valid: true, execution: 'inspectable-manual' },
+          };
+        }
+        try {
+          const plan = planTeachingGoal({ goal: suggestion.teachingGoal, context });
+          const script = composeScriptFromPlan({ plan, context });
+          const dryRun = runDryRun({ script, session });
+          if (!dryRun.valid) return null;
+          const execution = replayScriptForFidelity({ script, session });
+          const fidelity = evaluateGoalFidelity({ plan, script, context, execution });
+          if (!fidelity.valid) return null;
+          return {
+            ...suggestion,
+            preflightAssessment: {
+              kind: 'teaching-goal',
+              valid: true,
+              fidelity,
+              dryRun: { valid: true },
+            },
+          };
+        } catch {
+          return null;
+        }
+      }).filter(Boolean);
+      return { ...derived, suggestions };
+    },
+
+    getInquirySuggestion({ suggestionId } = {}) {
+      const suggestions = this.suggestInquiry().suggestions;
+      return suggestions.find((suggestion) => suggestion.id === suggestionId) ?? null;
     },
 
     // Consumers may ask for an event-triggered guidance opportunity. This
@@ -974,10 +1043,9 @@ export function createPlaygroundHost({
     // provider, mutates the runtime, or runs continuously during rendering.
     getInquiryGuidanceTrigger() {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      const snapshot = derivePlaygroundSnapshot(session);
-      const context = this.inspectContext();
-      const inquiry = deriveLearnerInquiryState({ semanticEvents: semanticEventStore.snapshot(), snapshot });
-      const suggestions = deriveInquirySuggestions({ inquiry, context });
+      const snapshot = currentPresentedSnapshot();
+      const inquiry = snapshot.learnerInquiry;
+      const suggestions = this.suggestInquiry().suggestions;
       return deriveInquiryGuidanceTrigger({
         inquiry,
         semanticEvents: semanticEventStore.snapshot(),
@@ -998,6 +1066,7 @@ export function createPlaygroundHost({
       if (!canonical) throw playgroundError('INVALID_ACTION');
       inquiryGuidanceHistory = nextInquiryGuidanceHistory(inquiryGuidanceHistory, { trigger, guidance: canonical });
       if (canonical.policy !== 'ignore') {
+        if (canonical.suggestionId) presentedSuggestionIds = [...new Set([...presentedSuggestionIds, canonical.suggestionId])].slice(-8);
         inquiryTrajectoryStore.append({
           type: canonical.policy === 'suggest-experiment' ? 'suggestion-surfaced' : 'agent-guidance-surfaced',
           afterSemanticEventSequence: trigger.eventSequence,
@@ -1008,13 +1077,47 @@ export function createPlaygroundHost({
 
     // Goal 7 presentation signal boundary. This never changes semantic
     // runtime state and retains only a bounded event type and event sequence.
-    recordInquiryPresentationEvent({ type, afterSemanticEventSequence } = {}) {
+    recordInquiryPresentationEvent({ type, conceptId = null, suggestionId = null, afterSemanticEventSequence } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const snapshot = currentPresentedSnapshot();
+      if (type === 'concept-card-surfaced' || type === 'concept-card-engaged') {
+        const validInquiryConcept = conceptId && snapshot.learnerInquiry.candidates.some((candidate) => candidate.conceptId === conceptId);
+        const validRuntimeConcept = conceptId && lastCanonicalConceptSignalIds.includes(conceptId);
+        const valid = validInquiryConcept || validRuntimeConcept;
+        if (!valid || (type === 'concept-card-surfaced' && conceptExposureIds.includes(conceptId))
+          || (type === 'concept-card-engaged' && !presentedConceptIds.includes(conceptId))) return null;
+        if (type === 'concept-card-surfaced') {
+          presentedConceptIds = [...new Set([...presentedConceptIds, conceptId])].slice(-8);
+          conceptExposureIds = [...new Set([...conceptExposureIds, conceptId])].slice(-12);
+          inquiryPresentationContext = {
+            ...inquiryPresentationContext,
+            conceptsPreviouslySurfaced: [...new Set([...inquiryPresentationContext.conceptsPreviouslySurfaced, conceptId])].slice(-Object.keys(INQUIRY_CONCEPT_REGISTRY).length),
+          };
+        }
+      }
+      if (type === 'suggestion-surfaced' || type === 'suggestion-accepted' || type === 'suggestion-modified') {
+        const valid = suggestionId && this.suggestInquiry().suggestions.some((suggestion) => suggestion.id === suggestionId);
+        if (!valid || (type !== 'suggestion-surfaced' && !presentedSuggestionIds.includes(suggestionId))) return null;
+        if (type === 'suggestion-surfaced') presentedSuggestionIds = [...new Set([...presentedSuggestionIds, suggestionId])].slice(-8);
+      }
       const latestSequence = semanticEventStore.snapshot().events.at(-1)?.sequence ?? 0;
-      return inquiryTrajectoryStore.append({
+      const recorded = inquiryTrajectoryStore.append({
         type,
         afterSemanticEventSequence: afterSemanticEventSequence ?? latestSequence,
       });
+      notify();
+      return recorded;
+    },
+
+    setInquiryPresentationContext({ conceptualDepth = null, conceptsPreviouslySurfaced = [] } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      inquiryPresentationContext = {
+        conceptualDepth: typeof conceptualDepth === 'string' && conceptualDepth.length <= 64 ? conceptualDepth : null,
+        conceptsPreviouslySurfaced: [...new Set((Array.isArray(conceptsPreviouslySurfaced) ? conceptsPreviouslySurfaced : [])
+          .filter((id) => typeof id === 'string' && INQUIRY_CONCEPT_REGISTRY[id]))].slice(-Object.keys(INQUIRY_CONCEPT_REGISTRY).length),
+      };
+      notify();
+      return inquiryPresentationContext;
     },
 
     preflightExplorationScenario({ scenario } = {}) {
@@ -1079,6 +1182,7 @@ export function createPlaygroundHost({
       let conceptSignals = { version: 1, concepts: [] };
       const nextQuestions = [];
       const pedagogicalVerification = candidate.pedagogicalVerification;
+      lastCanonicalConceptSignalIds = [];
       if (validated.pedagogicalDesign) {
         pedagogicalEvidence = derivePedagogicalEvidence({ snapshot: result, scenario: validated, verification: pedagogicalVerification });
         pedagogicalObservation = derivePedagogicalObservation({ design: validated.pedagogicalDesign, evidence: pedagogicalEvidence, verification: pedagogicalVerification });
@@ -1090,6 +1194,7 @@ export function createPlaygroundHost({
           pedagogicalObservation,
           fidelity: executionFidelity,
         })) ?? { version: 1, concepts: [] };
+        lastCanonicalConceptSignalIds = conceptSignals.concepts.map((signal) => signal.id).slice(0, 8);
         for (const question of derivePedagogicalNextQuestionCandidates({
           design: validated.pedagogicalDesign,
           observation: pedagogicalObservation,
@@ -1306,9 +1411,7 @@ export function createPlaygroundHost({
 
     async close() {
       session = null;
-      semanticEventStore.reset();
-      inquiryGuidanceHistory = [];
-      inquiryTrajectoryStore.reset();
+      resetInquirySessionState();
       notify();
     },
 

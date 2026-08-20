@@ -5,6 +5,7 @@
 export const LEARNER_INQUIRY_VERSION = 1;
 export const MAX_INQUIRY_EVENTS = 24;
 export const MAX_INQUIRY_CANDIDATES = 6;
+const ACTORS = new Set(['human', 'agent', 'system']);
 
 export const INQUIRY_CONCEPT_IDS = Object.freeze({
   CONTROLLED_COMPARISON: 'controlled-comparison',
@@ -15,71 +16,18 @@ export const INQUIRY_CONCEPT_IDS = Object.freeze({
   COUNTERFACTUAL_REASONING: 'counterfactual-reasoning',
 });
 
-// This is a recognition registry, not a lesson sequence or a learner ranking.
-// Each requirement is a bounded reason code implemented below, so candidate
-// provenance remains inspectable without trusting an LLM or caller prose.
-export const INQUIRY_CONCEPT_REGISTRY = Object.freeze({
-  [INQUIRY_CONCEPT_IDS.CONTROLLED_COMPARISON]: Object.freeze({
-    id: INQUIRY_CONCEPT_IDS.CONTROLLED_COMPARISON,
+import { INQUIRY_CONCEPT_METADATA } from './concepts.js';
+import { hasCanonicalComparisonPaths } from './comparison.js';
+
+// This is the canonical recognition registry shared with grounded Concept
+// Cards. It remains a matcher contract, not a lesson sequence or ranking.
+export const INQUIRY_CONCEPT_REGISTRY = Object.freeze(Object.fromEntries(
+  Object.entries(INQUIRY_CONCEPT_METADATA).map(([id, metadata]) => [id, Object.freeze({
+    id,
     version: LEARNER_INQUIRY_VERSION,
-    titleKey: 'playground.inquiry.controlledComparison.title',
-    summaryKey: 'playground.inquiry.controlledComparison.summary',
-    evidenceRequirements: ['duplicated-baseline', 'one-factor-comparison'],
-    prerequisites: [],
-    relatedConceptIds: [INQUIRY_CONCEPT_IDS.COUNTERFACTUAL_REASONING],
-    nextInquiryActions: ['compare-another-factor'],
-  }),
-  [INQUIRY_CONCEPT_IDS.MIXED_FACTOR_COMPARISON]: Object.freeze({
-    id: INQUIRY_CONCEPT_IDS.MIXED_FACTOR_COMPARISON,
-    version: LEARNER_INQUIRY_VERSION,
-    titleKey: 'playground.inquiry.mixedComparison.title',
-    summaryKey: 'playground.inquiry.mixedComparison.summary',
-    evidenceRequirements: ['mixed-comparison'],
-    prerequisites: [],
-    relatedConceptIds: [INQUIRY_CONCEPT_IDS.CONTROLLED_COMPARISON],
-    nextInquiryActions: ['isolate-one-factor'],
-  }),
-  [INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT]: Object.freeze({
-    id: INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT,
-    version: LEARNER_INQUIRY_VERSION,
-    titleKey: 'playground.inquiry.distributionShift.title',
-    summaryKey: 'playground.inquiry.distributionShift.summary',
-    evidenceRequirements: ['test-world-change', 'coverage-mismatch'],
-    prerequisites: [],
-    relatedConceptIds: [INQUIRY_CONCEPT_IDS.GENERALIZATION],
-    nextInquiryActions: ['adjust-test-support'],
-  }),
-  [INQUIRY_CONCEPT_IDS.GENERALIZATION]: Object.freeze({
-    id: INQUIRY_CONCEPT_IDS.GENERALIZATION,
-    version: LEARNER_INQUIRY_VERSION,
-    titleKey: 'playground.inquiry.generalization.title',
-    summaryKey: 'playground.inquiry.generalization.summary',
-    evidenceRequirements: ['test-world-change', 'test-error-changed-more'],
-    prerequisites: [],
-    relatedConceptIds: [INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT],
-    nextInquiryActions: ['inspect-test-evidence'],
-  }),
-  [INQUIRY_CONCEPT_IDS.STABILITY]: Object.freeze({
-    id: INQUIRY_CONCEPT_IDS.STABILITY,
-    version: LEARNER_INQUIRY_VERSION,
-    titleKey: 'playground.inquiry.stability.title',
-    summaryKey: 'playground.inquiry.stability.summary',
-    evidenceRequirements: ['repeat-completed', 'repeat-variation-observed'],
-    prerequisites: [],
-    relatedConceptIds: [],
-    nextInquiryActions: ['repeat-with-new-seed'],
-  }),
-  [INQUIRY_CONCEPT_IDS.COUNTERFACTUAL_REASONING]: Object.freeze({
-    id: INQUIRY_CONCEPT_IDS.COUNTERFACTUAL_REASONING,
-    version: LEARNER_INQUIRY_VERSION,
-    titleKey: 'playground.inquiry.counterfactual.title',
-    summaryKey: 'playground.inquiry.counterfactual.summary',
-    evidenceRequirements: ['duplicated-baseline', 'one-factor-comparison'],
-    prerequisites: [INQUIRY_CONCEPT_IDS.CONTROLLED_COMPARISON],
-    relatedConceptIds: [INQUIRY_CONCEPT_IDS.CONTROLLED_COMPARISON],
-    nextInquiryActions: ['change-one-condition'],
-  }),
-});
+    ...metadata,
+  })]),
+));
 
 const EVENT_TYPES = new Set([
   'experiment.duplicated',
@@ -115,8 +63,10 @@ function safeEvent(event) {
     id: event.id,
     sequence: Number.isInteger(event.sequence) && event.sequence > 0 ? event.sequence : 0,
     type: event.type,
+    actor: ACTORS.has(event.actor) ? event.actor : 'system',
     experimentIds: safeStrings(event.experimentIds, 4),
     semanticFactors: safeStrings(event.semanticFactors),
+    semanticFactorPaths: safeStrings(event.semanticFactorPaths ?? event.semanticFactors),
     reasonCode: safeString(event.reasonCode),
     evidenceRefs: safeStrings(event.evidenceRefs),
   };
@@ -142,6 +92,15 @@ function normalizedComparison(comparison) {
     againstExperimentId,
     experimentIds: [againstExperimentId, activeExperimentId],
     changedFactors,
+    semanticChangedPaths: safeStrings(comparison.diff.semanticChangedPaths ?? changedFactors, 24),
+    semanticFactorPaths: safeStrings(comparison.diff.semanticFactorPaths ?? comparison.diff.semanticChangedPaths ?? changedFactors, 24),
+    semanticUnchangedPaths: safeStrings(comparison.diff.semanticUnchangedPaths ?? comparison.diff.unchanged, 24),
+    hasCanonicalSemanticPaths: hasCanonicalComparisonPaths(comparison.diff),
+    semanticFactorCount: Array.isArray(comparison.diff.semanticFactorPaths)
+      ? comparison.diff.semanticFactorPaths.length
+      : Array.isArray(comparison.diff.semanticChangedPaths)
+        ? comparison.diff.semanticChangedPaths.length
+      : changedFactors.length,
     heldFactors: safeStrings(comparison.diff.unchanged),
     clarity,
   };
@@ -195,13 +154,17 @@ function candidate(conceptId, supportingEvents, supportingObservations, reasonCo
 function directCandidates(events, comparison, activeObservations) {
   const candidates = [];
   const comparisonEvent = lastEvent(events, (event) => event.type === 'comparison.completed' && sameExperimentPair(event, comparison));
-  const duplicated = lastEvent(events, (event) => event.type === 'experiment.duplicated' && sameExperimentPair(event, comparison));
+  const duplicated = lastEvent(events, (event) => event.actor === 'human' && event.type === 'experiment.duplicated' && sameExperimentPair(event, comparison));
+  const humanComparison = comparisonEvent?.actor === 'human' ? comparisonEvent : null;
   const oneFactor = Boolean(comparisonEvent
+    && humanComparison
     && comparison?.clarity === 'high'
-    && comparison.changedFactors.length === 1
+    && comparison.hasCanonicalSemanticPaths
+    && comparison.semanticFactorCount === 1
     && duplicated);
 
-  if (comparisonEvent?.reasonCode === 'comparison-mixed' && comparison?.clarity === 'mixed' && comparison.changedFactors.length > 1) {
+  if (humanComparison?.reasonCode === 'comparison-mixed' && comparison?.clarity === 'mixed'
+    && comparison.hasCanonicalSemanticPaths && comparison.semanticFactorCount > 1) {
     candidates.push(candidate(INQUIRY_CONCEPT_IDS.MIXED_FACTOR_COMPARISON, [comparisonEvent], [], 'mixed-factor-comparison'));
   }
   if (oneFactor) {
@@ -210,6 +173,7 @@ function directCandidates(events, comparison, activeObservations) {
   }
 
   const testWorldEvent = lastEvent(events, (event) => event.type === 'world.intervened'
+    && event.actor === 'human'
     && eventForActiveExperiment(event, comparison)
     && event.semanticFactors.some((factor) => factor === 'world.test.input' || factor === 'world.test.observations'));
   const coverage = lastEvent(events, (event) => event.type === 'observation.detected'
@@ -227,7 +191,7 @@ function directCandidates(events, comparison, activeObservations) {
     candidates.push(candidate(INQUIRY_CONCEPT_IDS.GENERALIZATION, [testWorldEvent, testError], [testError], 'test-world-change-with-test-error-difference'));
   }
 
-  const repeated = lastEvent(events, (event) => event.type === 'repeat.completed' && eventForActiveExperiment(event, comparison));
+  const repeated = lastEvent(events, (event) => event.type === 'repeat.completed' && event.actor === 'human' && eventForActiveExperiment(event, comparison));
   const repeatVariation = lastEvent(events, (event) => event.type === 'observation.detected'
     && event.reasonCode === 'REPEAT_VARIATION'
     && activeObservations.has('REPEAT_VARIATION')
@@ -245,10 +209,12 @@ function explicitHypothesis(activeThread) {
   return { entryId: safeString(prediction.id), text };
 }
 
-function stageFor(events, comparison) {
+function stageFor(events, comparison, activeObservations) {
   const last = events.at(-1);
-  if (last?.type === 'repeat.completed') return 'repeating';
-  if (last?.type === 'observation.detected') return 'observing';
+  if (last?.type === 'repeat.completed' && last.actor === 'human') return 'repeating';
+  if (last?.type === 'observation.detected'
+    && OBSERVATION_IDS.has(last.reasonCode)
+    && activeObservations.has(last.reasonCode)) return 'observing';
   if (comparison?.enabled) return 'comparing';
   return 'exploring';
 }
@@ -279,7 +245,7 @@ export function deriveLearnerInquiryState({
     .filter((item, index, all) => all.findIndex((candidateItem) => candidateItem.conceptId === item.conceptId) === index)
     .slice(0, MAX_INQUIRY_CANDIDATES);
   const normalizedDepth = safeString(conceptualDepth);
-  const stage = stageFor(events, currentComparison);
+  const stage = stageFor(events, currentComparison, currentObservations);
   return {
     version: LEARNER_INQUIRY_VERSION,
     recentEventIds: events.map((event) => event.id),

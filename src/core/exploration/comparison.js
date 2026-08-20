@@ -91,6 +91,28 @@ function worldGeneratorDetails(left, right) {
   return {
     changed: fields.filter(([, leftValue, rightValue]) => stable(leftValue) !== stable(rightValue)).map(([key]) => key),
     unchanged: fields.filter(([, leftValue, rightValue]) => stable(leftValue) === stable(rightValue)).map(([key]) => key),
+    changedPaths: fields
+      .filter(([, leftValue, rightValue]) => stable(leftValue) !== stable(rightValue))
+      .map(([key]) => ({
+        trainInputDistribution: 'world.train.input',
+        testInputDistribution: 'world.test.input',
+        linearRelation: 'world.relation',
+        noise: 'world.noise',
+        sampleCount: 'world.sampleCount',
+        outliers: 'world.outliers',
+        seedPolicy: 'world.seed-policy',
+      }[key] ?? `world.${key}`)),
+    unchangedPaths: fields
+      .filter(([, leftValue, rightValue]) => stable(leftValue) === stable(rightValue))
+      .map(([key]) => ({
+        trainInputDistribution: 'world.train.input',
+        testInputDistribution: 'world.test.input',
+        linearRelation: 'world.relation',
+        noise: 'world.noise',
+        sampleCount: 'world.sampleCount',
+        outliers: 'world.outliers',
+        seedPolicy: 'world.seed-policy',
+      }[key] ?? `world.${key}`)),
     left: a,
     right: b,
   };
@@ -109,6 +131,75 @@ function worldRecipeDetails(left, right) {
 const trainTestSemantic = (world, sharedIds = null) => world.observations
   .filter(({ id }) => !sharedIds || sharedIds.has(id))
   .map(({ id, membership }) => ({ id, membership: membership === 'test' ? 'test' : 'train' }));
+
+function changedObjectPaths(left, right, prefix) {
+  const keys = [...new Set([...Object.keys(left ?? {}), ...Object.keys(right ?? {})])].sort();
+  return keys.filter((key) => stable(left?.[key]) !== stable(right?.[key]))
+    .map((key) => `${prefix}.${key}`);
+}
+
+function unchangedObjectPaths(left, right, prefix) {
+  const keys = [...new Set([...Object.keys(left ?? {}), ...Object.keys(right ?? {})])].sort();
+  return keys.filter((key) => stable(left?.[key]) === stable(right?.[key]))
+    .map((key) => `${prefix}.${key}`);
+}
+
+// Runtime fidelity retains leaf paths (including vector components), while
+// learner-facing factor identity groups components that belong to one
+// semantic property. This keeps a two-component translation one intervention
+// without losing the exact leaf paths used by fidelity.
+function semanticFactorPath(path) {
+  return String(path)
+    .replace(/(\.points\.\d+)\.\d+$/, '$1')
+    .replace(/\.(translate|scale|innerOffset|radii|start|end|center|min|max)\.\d+$/, '.$1');
+}
+
+function semanticChangedPaths(a, b, details) {
+  const worldPaths = a.world?.generator?.kind === 'world-recipe' || b.world?.generator?.kind === 'world-recipe'
+    ? (details.worldRecipe?.changedPaths ?? []).map((path) => `world.recipe${path}`)
+    : (details.worldGenerator?.changedPaths ?? []);
+  const trainTestChanged = stable(a.trainTest) !== stable(b.trainTest) ? ['world.train-test.membership'] : [];
+  const worldObservationChanged = stable(a.world) !== stable(b.world)
+    && worldPaths.length === 0
+    ? ['world.observations']
+    : [];
+  const modelPaths = [
+    ...changedObjectPaths(a.model?.controls, b.model?.controls, 'model.controls'),
+    ...(a.model?.adapterId !== b.model?.adapterId ? ['model.adapter'] : []),
+  ];
+  const learningPaths = changedObjectPaths(a.learning?.controls, b.learning?.controls, 'learning.controls');
+  const evaluationPaths = changedObjectPaths(a.evaluation?.controls, b.evaluation?.controls, 'evaluation.controls');
+  const randomnessPaths = changedObjectPaths(a.randomness, b.randomness, 'randomness');
+  return [...new Set([...worldPaths, ...worldObservationChanged, ...trainTestChanged, ...modelPaths, ...learningPaths, ...evaluationPaths, ...randomnessPaths])];
+}
+
+function semanticUnchangedPaths(a, b, details) {
+  const worldPaths = a.world?.generator?.kind === 'world-recipe' || b.world?.generator?.kind === 'world-recipe'
+    ? (details.worldRecipe?.unchangedPaths ?? []).map((path) => `world.recipe${path}`)
+    : (details.worldGenerator?.unchangedPaths ?? []);
+  const trainTestPaths = stable(a.trainTest) === stable(b.trainTest) ? ['world.train-test.membership'] : [];
+  const modelPaths = [...new Set([...Object.keys(a.model?.controls ?? {}), ...Object.keys(b.model?.controls ?? {})])].sort().filter((key) => canonicalExperimentalControl(null, key)
+    && stable(a.model.controls[key]) === stable(b.model?.controls?.[key]))
+    .map((key) => `model.controls.${key}`);
+  const learningPaths = unchangedObjectPaths(a.learning?.controls, b.learning?.controls, 'learning.controls');
+  const evaluationPaths = unchangedObjectPaths(a.evaluation?.controls, b.evaluation?.controls, 'evaluation.controls');
+  const randomnessPaths = unchangedObjectPaths(a.randomness, b.randomness, 'randomness');
+  return [...new Set([...worldPaths, ...trainTestPaths, ...modelPaths, ...learningPaths, ...evaluationPaths, ...randomnessPaths])];
+}
+
+export function comparisonChangedPaths(diff) {
+  if (Array.isArray(diff?.semanticChangedPaths)) return [...new Set(diff.semanticChangedPaths)];
+  return Array.isArray(diff?.changed) ? [...new Set(diff.changed)] : [];
+}
+
+export function hasCanonicalComparisonPaths(diff) {
+  return Array.isArray(diff?.semanticChangedPaths);
+}
+
+export function comparisonFactorCount(diff) {
+  if (Array.isArray(diff?.semanticFactorPaths)) return [...new Set(diff.semanticFactorPaths)].length;
+  return comparisonChangedPaths(diff).length;
+}
 
 export function semanticFactors(experiment, { sharedObservationIds = null } = {}) {
   const value = validateExperiment(experiment);
@@ -139,16 +230,24 @@ export function compareExperiments(left, right) {
     right: b[factor],
   }]));
   const changed = FACTORS.filter((factor) => factors[factor].changed);
+  const details = {
+    worldGenerator: worldGeneratorDetails(leftValue.world, rightValue.world),
+    worldRecipe: worldRecipeDetails(leftValue.world, rightValue.world),
+  };
+  const semanticPaths = semanticChangedPaths(a, b, details);
+  const semanticFactorPaths = [...new Set(semanticPaths.map(semanticFactorPath))];
+  const semanticHeldPaths = semanticUnchangedPaths(a, b, details);
   return {
     identical: changed.length === 0,
     changed,
     unchanged: FACTORS.filter((factor) => !factors[factor].changed),
     factors,
-    details: {
-      worldGenerator: worldGeneratorDetails(leftValue.world, rightValue.world),
-      worldRecipe: worldRecipeDetails(leftValue.world, rightValue.world),
-    },
-    clarity: changed.length === 0 ? 'identical' : changed.length === 1 ? 'high' : 'mixed',
+    semanticChangedPaths: semanticPaths,
+    semanticFactorPaths,
+    semanticUnchangedPaths: semanticHeldPaths,
+    semanticFactorCount: semanticFactorPaths.length,
+    details,
+    clarity: semanticFactorPaths.length === 0 ? 'identical' : semanticFactorPaths.length === 1 ? 'high' : 'mixed',
   };
 }
 

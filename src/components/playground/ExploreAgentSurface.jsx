@@ -70,7 +70,6 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   const [proposal, setProposal] = useState(null);
   const [result, setResult] = useState(null);
   const [conceptCard, setConceptCard] = useState(null);
-  const [shownConceptIds, setShownConceptIds] = useState([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [aiFallback, setAiFallback] = useState(false);
@@ -172,10 +171,13 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         }
       }
       setResult(nextResult);
+      const shownConceptIds = new Set(snapshot?.conceptExposure?.shownConceptIds ?? []);
       const nextConcept = nextResult.conceptSignals?.concepts
-        ?.find((signal) => !shownConceptIds.includes(signal.id)) ?? null;
-      setConceptCard(nextConcept);
-      if (nextConcept) setShownConceptIds((shown) => [...shown, nextConcept.id].slice(-6));
+        ?.find((signal) => !shownConceptIds.has(signal.id)) ?? null;
+      const surfaced = nextConcept
+        ? agent.recordInquiryPresentationEvent?.({ type: 'concept-card-surfaced', conceptId: nextConcept.id })
+        : null;
+      setConceptCard(surfaced ? nextConcept : null);
       setProposal(null);
     } catch (caught) {
       setError(caught);

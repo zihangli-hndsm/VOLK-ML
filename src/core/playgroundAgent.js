@@ -75,11 +75,19 @@ export function createPlaygroundAgentApi(host) {
           comparisonActive: Boolean(presentation.comparisonActive),
           availableDepths: Array.isArray(presentation.availableDepths) ? [...presentation.availableDepths] : [],
         };
+        if (context.exploration?.learnerInquiry) {
+          context.exploration.learnerInquiry = {
+            ...context.exploration.learnerInquiry,
+            conceptualDepth: context.presentation.currentDepth,
+          };
+        }
       }
       return context;
     }),
     proposeExploration: (request) => invoke('proposeExploration', () => copy(host.proposeExploration(typeof request === 'string' ? { request } : copy(request ?? {})))),
     proposeCleanerComparison: () => invoke('proposeCleanerComparison', () => copy(host.proposeCleanerComparison())),
+    suggestInquiry: () => invoke('suggestInquiry', () => copy(host.suggestInquiry())),
+    getInquirySuggestion: (request) => invoke('getInquirySuggestion', () => copy(host.getInquirySuggestion(copy(request ?? {})))),
     getInquiryGuidanceTrigger: () => invoke('getInquiryGuidanceTrigger', () => copy(host.getInquiryGuidanceTrigger())),
     recordInquiryGuidance: (request) => invoke('recordInquiryGuidance', () => copy(host.recordInquiryGuidance(copy(request ?? {})))),
     recordInquiryPresentationEvent: (request) => invoke('recordInquiryPresentationEvent', () => copy(host.recordInquiryPresentationEvent(copy(request ?? {})))),

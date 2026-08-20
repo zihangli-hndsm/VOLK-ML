@@ -50,6 +50,24 @@ assert.equal(noHypothesis.steps.some((item) => item.id === 'association'), false
 assert.ok(!JSON.stringify(clean).match(/caus|caused|proves|because/i), 'the runtime projection retains no causal conclusion language');
 assert.deepEqual(clean, deriveCausalInquiryState({ inquiry: cleanInquiry, semanticEvents: { events } }), 'the same semantic inputs produce a deterministic causal-inquiry projection');
 
+const staleComparison = deriveCausalInquiryState({
+  inquiry: {
+    activeComparison: {
+      experimentIds: ['experiment-b', 'experiment-c'],
+      activeExperimentId: 'experiment-c',
+      againstExperimentId: 'experiment-b',
+    },
+    candidates: [],
+  },
+  semanticEvents: {
+    events: [
+      { id: 'stale-world', sequence: 1, type: 'world.intervened', experimentIds: ['experiment-a'], semanticFactors: ['world.test.input'] },
+      { id: 'stale-observation', sequence: 2, type: 'observation.detected', experimentIds: ['experiment-a', 'experiment-b'], reasonCode: 'COVERAGE_MISMATCH', semanticFactors: [] },
+    ],
+  },
+});
+assert.equal(staleComparison.steps.some((item) => [CAUSAL_INQUIRY_STEP_IDS.OBSERVED_PATTERN, CAUSAL_INQUIRY_STEP_IDS.INTERVENTION].includes(item.id)), false, 'events from an older experiment/comparison pair cannot become current causal inquiry evidence');
+
 const prototype = getCausalWorldPrototype();
 assert.equal(prototype.status, 'design-only', 'the prototype is an inspectable design seam, not a second live World state machine');
 assert.deepEqual(prototype.observables, ['study-effort', 'assessment-outcome'], 'the prototype declares observable variables explicitly');

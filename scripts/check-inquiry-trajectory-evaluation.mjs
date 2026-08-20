@@ -59,12 +59,32 @@ const independent = deriveInquiryTrajectory({
 });
 assert.equal(independent.guidance.transitionedToIndependentExploration, true, 'a later human semantic action after guidance is a process signal for independent exploration, not a mastery claim');
 
+const boundedSemanticStore = createSemanticEventStore({ limit: 2, now: () => '2026-08-20T00:00:05.000Z' });
+boundedSemanticStore.reset();
+boundedSemanticStore.append([
+  { type: 'world.intervened', actor: 'human', semanticFactors: ['world.train.observations'], semanticFactorPaths: ['world.train.observations'] },
+  { type: 'experiment.duplicated', actor: 'human', semanticFactors: [] },
+  { type: 'comparison.completed', actor: 'human', semanticFactors: ['learning'], semanticFactorPaths: ['learning.controls.learningRate'] },
+  { type: 'repeat.completed', actor: 'human', semanticFactors: [] },
+]);
+const aggregateTrajectory = deriveInquiryTrajectory({
+  sessionStartedAt: '2026-08-20T00:00:00.000Z',
+  semanticEvents: boundedSemanticStore.snapshot(),
+});
+assert.equal(aggregateTrajectory.session.timeToFirstMeaningfulManipulationMs, 5000, 'session aggregate preserves first human manipulation after event-window eviction');
+assert.equal(aggregateTrajectory.session.hasSecondExperiment, true, 'session aggregate preserves duplicate behavior after event-window eviction');
+assert.equal(aggregateTrajectory.experiments.compareCount, 1, 'session aggregate preserves comparison count after event-window eviction');
+assert.equal(aggregateTrajectory.experiments.oneFactorComparisonRate, 1, 'session aggregate uses precise semantic paths for one-factor rates');
+assert.equal(aggregateTrajectory.experiments.repeatCount, 1, 'session aggregate preserves repeat count after event-window eviction');
+
 const clock = ['2026-08-20T00:00:00.000Z', '2026-08-20T00:00:01.000Z', '2026-08-20T00:00:02.000Z'];
 const trajectoryStore = createInquiryTrajectoryStore({ now: () => clock.shift() ?? '2026-08-20T00:00:03.000Z' });
 trajectoryStore.reset();
 assert.equal(trajectoryStore.append({ type: 'concept-card-surfaced', afterSemanticEventSequence: 2 }).type, 'concept-card-surfaced', 'the presentation store accepts only bounded event types');
 assert.equal(trajectoryStore.append({ type: 'forged-event', afterSemanticEventSequence: 2 }), null, 'unrecognized presentation events are rejected');
 assert.equal(JSON.stringify(trajectoryStore.snapshot()).includes('concept-card-surfaced'), true, 'the local store retains only bounded event identity');
+for (let index = 0; index < 40; index += 1) trajectoryStore.append({ type: 'depth-opened', afterSemanticEventSequence: index });
+assert.equal(deriveInquiryTrajectory({ ...trajectoryStore.snapshot() }).guidance.depthTransitions, 40, 'presentation aggregates remain monotonic after the bounded event window evicts old entries');
 
 const eventClock = ['2026-08-20T00:00:04.000Z'];
 const host = createPlaygroundHost({
@@ -79,9 +99,15 @@ snapshot = await host.dispatch({
   type: 'APPLY_WORLD_TRANSACTION',
   transaction: { id: 'trajectory-move', actor: 'human', intent: 'move-point', operations: [{ type: 'MOVE_POINT', pointId: originalPoint.id, x: originalPoint.features.x + 0.25, y: originalPoint.target }] },
 });
+const baselineId = snapshot.experimentWorkspace.activeExperimentId;
+snapshot = await host.dispatch({ type: 'DUPLICATE_EXPERIMENT', actor: 'human' });
+snapshot = await host.dispatch({ type: 'SET_CONTROL', key: 'learningRate', value: 0.2, actor: 'human' });
+snapshot = await host.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: baselineId, actor: 'human' });
 const beforePresentation = host.inspectContext().conditionFingerprint;
-host.recordInquiryPresentationEvent({ type: 'concept-card-surfaced' });
-host.recordInquiryPresentationEvent({ type: 'concept-card-engaged' });
+host.recordInquiryPresentationEvent({ type: 'concept-card-surfaced', conceptId: 'controlled-comparison' });
+host.recordInquiryPresentationEvent({ type: 'concept-card-engaged', conceptId: 'controlled-comparison' });
+assert.equal(host.recordInquiryPresentationEvent({ type: 'concept-card-surfaced', conceptId: 'forged-concept' }), null, 'forged concept presentation IDs cannot enter the canonical trajectory');
+assert.equal(host.recordInquiryPresentationEvent({ type: 'suggestion-accepted', suggestionId: 'forged-suggestion' }), null, 'suggestion acceptance requires a currently valid, previously surfaced suggestion');
 assert.equal(host.inspectContext().conditionFingerprint, beforePresentation, 'presentation recording never mutates the World/Experiment condition');
 assert.equal(snapshot.inquiryTrajectory.session.timeToFirstMeaningfulManipulationMs, 4000, 'normal snapshots expose the trajectory derived from real completed runtime events');
 assert.equal(host.getState().inquiryTrajectory.guidance.conceptCardsSurfaced, 1, 'presentation engagement is visible through the same normal snapshot boundary');

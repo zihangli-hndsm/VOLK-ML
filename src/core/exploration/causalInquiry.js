@@ -10,7 +10,8 @@ export const CAUSAL_INQUIRY_STEP_IDS = Object.freeze({
   INTERVENTION: 'intervention',
   CONTROLLED_COMPARISON: 'controlled-comparison',
   COUNTERFACTUAL: 'counterfactual-reasoning',
-  CONFOUNDED_COMPARISON: 'confounded-comparison',
+  MIXED_COMPARISON: 'mixed-comparison',
+  CONFOUNDED_COMPARISON: 'mixed-comparison',
   REPEAT_UNCERTAINTY: 'repeat-uncertainty',
 });
 
@@ -45,8 +46,8 @@ export const CAUSAL_INQUIRY_REGISTRY = Object.freeze({
     summaryKey: 'playground.causalInquiry.counterfactual.summary',
     evidenceRequirements: ['duplicated-baseline', 'exact-one-factor-comparison'],
   }),
-  [CAUSAL_INQUIRY_STEP_IDS.CONFOUNDED_COMPARISON]: Object.freeze({
-    id: CAUSAL_INQUIRY_STEP_IDS.CONFOUNDED_COMPARISON,
+  [CAUSAL_INQUIRY_STEP_IDS.MIXED_COMPARISON]: Object.freeze({
+    id: CAUSAL_INQUIRY_STEP_IDS.MIXED_COMPARISON,
     titleKey: 'playground.causalInquiry.confoundedComparison.title',
     summaryKey: 'playground.causalInquiry.confoundedComparison.summary',
     evidenceRequirements: ['mixed-factor-comparison'],
@@ -79,17 +80,19 @@ function normalizedEvents(semanticEvents) {
     type: safeString(event?.type),
     reasonCode: safeString(event?.reasonCode),
     semanticFactors: safeIds(event?.semanticFactors),
+    experimentIds: safeIds(event?.experimentIds, 4),
   })).filter((event) => event.id && event.sequence > 0 && event.type)
     .sort((left, right) => left.sequence - right.sequence || left.id.localeCompare(right.id));
 }
 
-function directCandidate(inquiry, conceptId) {
+function directCandidate(inquiry, conceptId, eventIds = new Set()) {
   return (inquiry?.candidates ?? []).find((candidate) => (
     candidate?.conceptId === conceptId
     && candidate.confidence === 'direct'
     && typeof candidate.reasonCode === 'string'
     && Array.isArray(candidate.supportingEventIds)
     && candidate.supportingEventIds.length > 0
+    && candidate.supportingEventIds.every((id) => eventIds.has(id))
   )) ?? null;
 }
 
@@ -117,9 +120,15 @@ function explicitPrediction(inquiry, activeExplorationThread) {
   return prediction ? { entryId: prediction.id, text: prediction.text } : null;
 }
 
+function belongsToCurrentComparison(event, comparison) {
+  if (!comparison) return true;
+  return event.experimentIds.length === 0
+    || event.experimentIds.every((id) => comparison.experimentIds.includes(id));
+}
+
 function nextStepFor(steps) {
   const ids = new Set(steps.map((item) => item.id));
-  if (ids.has(CAUSAL_INQUIRY_STEP_IDS.CONFOUNDED_COMPARISON)) return 'isolate-one-factor';
+  if (ids.has(CAUSAL_INQUIRY_STEP_IDS.MIXED_COMPARISON)) return 'isolate-one-factor';
   if (ids.has(CAUSAL_INQUIRY_STEP_IDS.REPEAT_UNCERTAINTY)) return 'compare-repeat-variation';
   if (ids.has(CAUSAL_INQUIRY_STEP_IDS.CONTROLLED_COMPARISON)) return 'consider-counterfactual';
   if (ids.has(CAUSAL_INQUIRY_STEP_IDS.INTERVENTION)) return 'compare-with-baseline';
@@ -132,29 +141,34 @@ function nextStepFor(steps) {
 // an observed pattern, not a measured association or causal relationship.
 export function deriveCausalInquiryState({ inquiry, semanticEvents, activeExplorationThread } = {}) {
   const events = normalizedEvents(semanticEvents);
+  const comparison = inquiry?.activeComparison ?? null;
+  const currentEventIds = new Set(events
+    .filter((event) => belongsToCurrentComparison(event, comparison))
+    .map((event) => event.id));
   const steps = [];
-  const observed = latest(events, (event) => event.type === 'observation.detected');
+  const observed = latest(events, (event) => event.type === 'observation.detected' && belongsToCurrentComparison(event, comparison));
   if (observed) steps.push(step(CAUSAL_INQUIRY_STEP_IDS.OBSERVED_PATTERN, 'detector-notice', [observed.id]));
 
   const prediction = explicitPrediction(inquiry, activeExplorationThread);
-  if (prediction) steps.push(step(CAUSAL_INQUIRY_STEP_IDS.HYPOTHESIS, 'explicit-thread-prediction', []));
+  if (prediction) steps.push(step(CAUSAL_INQUIRY_STEP_IDS.HYPOTHESIS, 'explicit-thread-prediction', prediction.entryId ? [prediction.entryId] : []));
 
   const intervention = latest(events, (event) => (
     (event.type === 'world.intervened' || event.type === 'experiment.factor-changed')
     && event.semanticFactors.length > 0
+    && belongsToCurrentComparison(event, comparison)
   ));
   if (intervention) steps.push(step(CAUSAL_INQUIRY_STEP_IDS.INTERVENTION, 'semantic-factor-change', [intervention.id]));
 
-  const controlled = directCandidate(inquiry, INQUIRY_CONCEPT_IDS.CONTROLLED_COMPARISON);
+  const controlled = directCandidate(inquiry, INQUIRY_CONCEPT_IDS.CONTROLLED_COMPARISON, currentEventIds);
   if (controlled) steps.push(step(CAUSAL_INQUIRY_STEP_IDS.CONTROLLED_COMPARISON, 'exact-one-factor-comparison', controlled.supportingEventIds));
 
-  const counterfactual = directCandidate(inquiry, INQUIRY_CONCEPT_IDS.COUNTERFACTUAL_REASONING);
+  const counterfactual = directCandidate(inquiry, INQUIRY_CONCEPT_IDS.COUNTERFACTUAL_REASONING, currentEventIds);
   if (counterfactual) steps.push(step(CAUSAL_INQUIRY_STEP_IDS.COUNTERFACTUAL, 'duplicated-baseline-one-factor', counterfactual.supportingEventIds));
 
-  const mixed = directCandidate(inquiry, INQUIRY_CONCEPT_IDS.MIXED_FACTOR_COMPARISON);
-  if (mixed) steps.push(step(CAUSAL_INQUIRY_STEP_IDS.CONFOUNDED_COMPARISON, 'mixed-factor-comparison', mixed.supportingEventIds));
+  const mixed = directCandidate(inquiry, INQUIRY_CONCEPT_IDS.MIXED_FACTOR_COMPARISON, currentEventIds);
+  if (mixed) steps.push(step(CAUSAL_INQUIRY_STEP_IDS.MIXED_COMPARISON, 'mixed-factor-comparison', mixed.supportingEventIds));
 
-  const repeat = directCandidate(inquiry, INQUIRY_CONCEPT_IDS.STABILITY);
+  const repeat = directCandidate(inquiry, INQUIRY_CONCEPT_IDS.STABILITY, currentEventIds);
   if (repeat) steps.push(step(CAUSAL_INQUIRY_STEP_IDS.REPEAT_UNCERTAINTY, 'repeat-variation-observed', repeat.supportingEventIds));
 
   const bounded = steps.slice(0, MAX_CAUSAL_STEPS);

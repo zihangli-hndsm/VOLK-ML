@@ -5,13 +5,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { canonicalizeConceptSignals, CONCEPT_IDS, deriveConceptSignals, getConcept, listConcepts } from '../src/core/exploration/concepts.js';
+import { getInquiryConcept } from '../src/core/exploration/learnerInquiry.js';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { getWorldRecipePreset } from '../src/core/exploration/worldRecipePresets.js';
 import { createPedagogicalExperimentDesign } from '../src/core/exploration/pedagogicalExperiment.js';
 
 const exact = (changed = ['world'], unchanged = ['model', 'learning']) => ({
   enabled: true,
-  diff: { changed, unchanged, clarity: 'high' },
+  diff: { changed, semanticChangedPaths: changed.map((factor) => `${factor}.value`), semanticUnchangedPaths: unchanged.map((factor) => `${factor}.value`), unchanged, clarity: 'high' },
 });
 const fidelity = { status: 'exact' };
 const observation = (goal, facts) => ({ version: 1, goal, available: true, summaryKey: 'playground.pedagogical.observation.classSeparation', facts, changed: ['world'], held: ['model'] });
@@ -20,6 +21,8 @@ const verification = { valid: true };
 
 assert.equal(listConcepts().length, 6, 'V1 catalog remains deliberately bounded');
 assert.equal(getConcept(CONCEPT_IDS.CLASS_SEPARATION).id, CONCEPT_IDS.CLASS_SEPARATION);
+assert.equal(getInquiryConcept(CONCEPT_IDS.CONTROLLED_COMPARISON).titleKey, getConcept(CONCEPT_IDS.CONTROLLED_COMPARISON).titleKey, 'shared concept IDs use one authoritative title descriptor across grounded cards and inquiry cards');
+assert.equal(getInquiryConcept(CONCEPT_IDS.TRAIN_TEST_DISTRIBUTION_SHIFT).summaryKey, getConcept(CONCEPT_IDS.TRAIN_TEST_DISTRIBUTION_SHIFT).definitionKey, 'shared distribution-shift descriptor does not fork its definition across pipelines');
 
 const supportSignals = deriveConceptSignals({
   comparison: exact(['world'], ['model', 'learning']),
@@ -53,6 +56,18 @@ const controlled = deriveConceptSignals({ comparison: exact(['learningRate'], ['
 assert.deepEqual(controlled.concepts.map((item) => item.id), [CONCEPT_IDS.HELD_CONSTANT, CONCEPT_IDS.CONTROLLED_COMPARISON], 'exact one-factor comparison emits controlled-comparison and held-constant');
 const partial = deriveConceptSignals({ comparison: exact(['learningRate'], ['world']), fidelity: { status: 'partial' } });
 assert.deepEqual(partial.concepts, [], 'partial fidelity emits no comparison concept');
+const mixedExact = deriveConceptSignals({
+  comparison: {
+    ...exact(['world', 'noise'], ['model', 'learning']),
+    diff: {
+      ...exact(['world', 'noise'], ['model', 'learning']).diff,
+      semanticChangedPaths: ['world.test.input', 'world.noise'],
+      semanticFactorPaths: ['world.test.input', 'world.noise'],
+    },
+  },
+  fidelity,
+});
+assert.equal(mixedExact.concepts.some((item) => item.id === CONCEPT_IDS.CONTROLLED_COMPARISON), false, 'test distribution plus noise never becomes a controlled-comparison concept even when coarse domain labels are available');
 const noHeld = deriveConceptSignals({ comparison: exact(['world'], []), fidelity });
 assert.deepEqual(noHeld.concepts.map((item) => item.id), [], 'missing exact held evidence emits no generic comparison concepts');
 
@@ -78,6 +93,10 @@ const runtimeResult = await runtimeHost.executeExploration({ scenario: pedagogic
 assert.equal(runtimeResult.fidelity.status, 'exact', 'runtime pedagogical experiment is exact before concept derivation');
 assert.equal(runtimeResult.conceptSignals.concepts[0].id, CONCEPT_IDS.CLASS_SEPARATION, 'successful runtime experiment returns an intervention-grounded concept');
 assert.equal(runtimeResult.conceptSignals.concepts.some((item) => item.id === 'overlap'), false, 'runtime concept signal never renames separation as overlap');
+const runtimeConceptId = runtimeResult.conceptSignals.concepts[0].id;
+assert.ok(runtimeHost.recordInquiryPresentationEvent({ type: 'concept-card-surfaced', conceptId: runtimeConceptId }), 'Host accepts only the freshly derived runtime concept signal for presentation');
+assert.ok(runtimeHost.getState().conceptExposure.shownConceptIds.includes(runtimeConceptId), 'concept exposure is owned by the Host session rather than a local card component');
+assert.equal(runtimeHost.recordInquiryPresentationEvent({ type: 'concept-card-surfaced', conceptId: runtimeConceptId }), null, 'the same canonical concept is not surfaced twice in one session');
 await runtimeHost.close();
 
 const dir = mkdtempSync(path.join(tmpdir(), 'volk-concept-card-'));

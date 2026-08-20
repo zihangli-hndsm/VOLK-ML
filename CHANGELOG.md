@@ -672,3 +672,10 @@
 - Added a bounded local-session inquiry trajectory projection for completed exploration process: first meaningful manipulation, second Experiment, Duplicate/Compare/one-factor/Repeat use, concept/depth/suggestion outcomes, later independent human exploration, and Thread question/prediction follow-up counts.
 - Added a strict presentation-event boundary used by the quiet Concept Card and conceptual-depth surface; recording is presentation-only and cannot mutate World, Experiment, comparison, Agent, or Thread runtime semantics.
 - Preserved vendor-independent/no-provider operation and excluded learner text, raw World data, Experiment IDs, suggestion/card content, model results, project persistence, and cloud telemetry. The projection is evaluation context, not learner scoring or a click-optimization target.
+
+## 2026-08-20 — Goal 2–7 inquiry stability boundaries
+
+- Unified fine-grained comparison projections: exact normalized paths remain the fidelity boundary while canonical property-level factor paths drive controlled-comparison recognition and trajectory rates.
+- Preserved trusted actor provenance in learner inquiry; only explicit human events count as learner behavior, while agent/system events remain bounded runtime facts.
+- Made Host inquiry suggestions reachable from the same presented inquiry snapshot, secured concept/suggestion presentation events, reset inquiry session state on Playground restart/entry, and retained bounded monotonic evaluation aggregates after event-window eviction.
+- Bound Causal Inquiry support to the current comparison/event relationship and shared grounded concept metadata across inquiry and Concept Card pipelines; no Goal 8 or Phase 9 work was added.

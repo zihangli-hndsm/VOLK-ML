@@ -23,7 +23,7 @@ import ExploreExperimentRegion from './ExploreExperimentRegion.jsx';
 import ExploreDetailsRegion from './ExploreDetailsRegion.jsx';
 import { REDUCED_MOTION_QUERY } from './motion.js';
 import { openFullWorldWorkspacePresentation } from '../../core/ui/layerNavigation.js';
-import { nextInquiryConceptEventExposure, nextInquiryConceptExposure, selectInquiryConceptCard } from '../../core/exploration/inquiryConceptCard.js';
+import { nextInquiryConceptExposure, selectInquiryConceptCard } from '../../core/exploration/inquiryConceptCard.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -34,8 +34,6 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [activeDepth, setActiveDepth] = useState(null);
   const [fullWorldToolsOpen, setFullWorldToolsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
-  const [shownInquiryConceptIds, setShownInquiryConceptIds] = useState([]);
-  const [shownInquiryEventIds, setShownInquiryEventIds] = useState([]);
   const [activeInquiryCard, setActiveInquiryCard] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
@@ -69,8 +67,6 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setActiveDepth(null);
     setFullWorldToolsOpen(false);
     setAgentOpen(false);
-    setShownInquiryConceptIds([]);
-    setShownInquiryEventIds([]);
     setActiveInquiryCard(null);
     setPresentationMode(false);
     setActiveTab(initialTab);
@@ -100,16 +96,19 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       && snapshot.learnerInquiry.candidates?.some((candidate) => candidate.conceptId === activeInquiryCard.conceptId
         && candidate.supportingEventIds?.join('|') === activeInquiryCard.supportingEventIds?.join('|'));
     if (currentStillValid) return;
-    const next = selectInquiryConceptCard({ inquiry: snapshot.learnerInquiry, shownConceptIds: shownInquiryConceptIds, shownEventIds: shownInquiryEventIds });
+    const next = selectInquiryConceptCard({
+      inquiry: snapshot.learnerInquiry,
+      shownConceptIds: snapshot.learnerInquiry.conceptsPreviouslySurfaced,
+    });
     if (!next) {
       setActiveInquiryCard(null);
       return;
     }
     setActiveInquiryCard(next);
-    host.recordInquiryPresentationEvent?.({ type: 'concept-card-surfaced' });
-    setShownInquiryConceptIds((shown) => nextInquiryConceptExposure(shown, next.conceptId));
-    setShownInquiryEventIds((shown) => nextInquiryConceptEventExposure(shown, next.supportingEventIds));
-  }, [snapshot?.learnerInquiry, shownInquiryConceptIds, shownInquiryEventIds, activeInquiryCard]);
+    host.recordInquiryPresentationEvent?.({ type: 'concept-card-surfaced', conceptId: next.conceptId });
+    const nextShownConceptIds = nextInquiryConceptExposure(snapshot.learnerInquiry.conceptsPreviouslySurfaced, next.conceptId);
+    host.setInquiryPresentationContext?.({ conceptsPreviouslySurfaced: nextShownConceptIds, conceptualDepth: activeDepth });
+  }, [snapshot?.learnerInquiry, activeInquiryCard, activeDepth, host]);
 
   useEffect(() => {
     if (!open || !snapshot || snapshot.playgroundId !== playgroundId || !readySessionRef.current) return;
@@ -180,6 +179,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setAgentOpen(false);
     const telemetryType = depthTelemetryType(nextDepth);
     if (telemetryType) safeTrackExplorationEvent({ version: 1, type: telemetryType, payload: {} }, telemetry);
+    host.setInquiryPresentationContext?.({ conceptualDepth: nextDepth, conceptsPreviouslySurfaced: snapshot?.learnerInquiry?.conceptsPreviouslySurfaced ?? [] });
     if (nextDepth) host.recordInquiryPresentationEvent?.({ type: 'depth-opened' });
     setActiveDepth(nextDepth);
   };
@@ -198,7 +198,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
 
   const dismissInquiryCard = () => setActiveInquiryCard(null);
   const openInquiryEvidence = () => {
-    host.recordInquiryPresentationEvent?.({ type: 'concept-card-engaged' });
+    if (activeInquiryCard?.conceptId) host.recordInquiryPresentationEvent?.({ type: 'concept-card-engaged', conceptId: activeInquiryCard.conceptId });
     changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE);
   };
 
