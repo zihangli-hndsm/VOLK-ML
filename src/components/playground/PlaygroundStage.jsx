@@ -46,6 +46,22 @@ export default function PlaygroundStage({ snapshot, motionFrame, t, showSupporti
     return <Renderer key={primitive.id} props={primitive.props} variant={primitive.type}
       xToSvg={xToSvg} yToSvg={yToSvg} colorByLabel={colorByLabel} plot={plot} motion={motion} t={t} />;
   };
+  const domainNative = snapshot?.domain && snapshot.domain !== 'tabular';
+  const domainHtmlPrimitives = new Set(['metric-card', 'formula', 'annotation', 'ranked-results']);
+  if (domainNative) {
+    const visualPrimitives = primaryPrimitives.filter((primitive) => !domainHtmlPrimitives.has(primitive.type));
+    const htmlPrimitives = primaryPrimitives.filter((primitive) => domainHtmlPrimitives.has(primitive.type));
+    return <div data-visual-stage data-visual-domain={snapshot.domain} className="min-w-0 space-y-3">
+      <svg viewBox="0 0 640 360" className="block h-auto w-full" role="img" aria-label={t('playground.chartLabel')}>
+        <rect x="0" y="0" width="640" height="360" fill="#f8fafc" />
+        {visualPrimitives.map((primitive) => renderPrimitive(primitive, { left: 24, right: 616, top: 24, bottom: 336 }))}
+      </svg>
+      {htmlPrimitives.map((primitive) => <div key={primitive.id} className="min-w-0">{renderPrimitive(primitive)}</div>)}
+      {showSupporting && supportingPrimitives.length > 0 && <div data-supporting-visuals className="grid min-w-0 gap-3 sm:grid-cols-2">
+        {supportingPrimitives.map((primitive) => <div key={primitive.id} className="min-w-0 rounded-xl border border-slate-200 bg-white p-2"><svg viewBox="0 0 640 360" className="block h-auto w-full" role="img" aria-label={t('playground.matrixGridTitle')}>{renderPrimitive(primitive)}</svg></div>)}
+      </div>}
+    </div>;
+  }
   return <div data-visual-stage className="min-w-0">
     <svg viewBox="0 0 640 360" className="block h-auto w-full" role="img" aria-label={t('playground.chartLabel')}>
       <rect x={PLOT.left} y={PLOT.top} width={PLOT.right - PLOT.left} height={PLOT.bottom - PLOT.top} fill="#f8fafc" />

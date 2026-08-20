@@ -6,6 +6,7 @@ const finite = (value) => (Number.isFinite(Number(value)) ? Number(value) : null
 // shared World shell but intentionally has no model adapter of its own.
 export const dataLabPlayground = {
   id: 'data-lab',
+  domain: 'tabular',
   kind: 'session',
   version: 1,
   adapterId: null,

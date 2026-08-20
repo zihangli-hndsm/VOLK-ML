@@ -56,6 +56,22 @@ export function buildDataState({ source, workspaceDataset }) {
   if (source?.usingDataset && workspaceDataset) {
     return inspectDataset(workspaceDataset);
   }
+  if (source?.domain && source.domain !== 'tabular') {
+    return {
+      domain: source.domain,
+      schema: [],
+      rows: (source.samples ?? []).map((sample) => ({
+        id: sample.id,
+        label: sample.label,
+        membership: sample.membership ?? sample.split,
+        payload: sample.payload,
+      })),
+      task: source.task ?? null,
+      featureColumns: [],
+      targetColumn: null,
+      trainRatio: source.trainRatio ?? null,
+    };
+  }
   const inferredClassification = source?.task === 'classification'
     || (!source?.task && Array.isArray(source?.featureColumns) && source.featureColumns.length >= 2 && !source?.target);
   if (inferredClassification && Array.isArray(source?.featureColumns) && source.featureColumns.length >= 2) {

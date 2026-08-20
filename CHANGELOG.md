@@ -679,3 +679,16 @@
 - Preserved trusted actor provenance in learner inquiry; only explicit human events count as learner behavior, while agent/system events remain bounded runtime facts.
 - Made Host inquiry suggestions reachable from the same presented inquiry snapshot, secured concept/suggestion presentation events, reset inquiry session state on Playground restart/entry, and retained bounded monotonic evaluation aggregates after event-window eviction.
 - Bound Causal Inquiry support to the current comparison/event relationship and shared grounded concept metadata across inquiry and Concept Card pipelines; no Goal 8 or Phase 9 work was added.
+
+## 2026-08-20 — Phase 9A cross-domain contracts and Image slice
+
+- Added bounded domain contracts and static probes for tabular, image, sequence, retrieval, and RAG surfaces while preserving the legacy tabular World default and existing Experiment/runtime semantics.
+- Added JSON-safe image/token/attention/ranked-list primitive contracts and domain-native stage rendering without putting model math in the UI.
+- Added a deterministic Image classification playground with explicit Train/Test membership, a fixed local convolution feature step plus prototype head, shared accuracy observables, truthful traces, and a compact Phenomenon surface.
+- Kept sequence execution, retrieval/RAG, async execution, and Agent planning as later Phase 9 vertical slices; no Phase 9 domain expansion or World Composer v2 was included.
+
+## 2026-08-20 — Phase 9 domain vertical slices
+
+- Added deterministic Sequence/attention, Retrieval ranking, and grounded-retrieval playground slices using the same finite World, Experiment, trace, observable, primitive, and Host inspection contracts.
+- Added bounded token-sequence, attention-matrix, and ranked-list surfaces with explicit domain/coordinate-space metadata and no remote inference or unrestricted generation.
+- Extended the Agent inspection projection with normalized domain and coordinate-space capability context; execution authority remains in the existing runtime boundaries.

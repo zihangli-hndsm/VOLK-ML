@@ -13,6 +13,10 @@ import ParameterTrajectoryRenderer from './renderers/ParameterTrajectoryRenderer
 import NetworkGraphRenderer from './renderers/NetworkGraphRenderer.jsx';
 import MatrixGridRenderer from './renderers/MatrixGridRenderer.jsx';
 import HistogramRenderer from './renderers/HistogramRenderer.jsx';
+import ImageGridRenderer from './renderers/ImageGridRenderer.jsx';
+import TokenSequenceRenderer from './renderers/TokenSequenceRenderer.jsx';
+import AttentionMatrixRenderer from './renderers/AttentionMatrixRenderer.jsx';
+import RankedResultsRenderer from './renderers/RankedResultsRenderer.jsx';
 
 // The unified stage resolves primitive types through this registry. Renderers
 // draw JSON props only and never import model mathematics.
@@ -34,4 +38,8 @@ export const rendererByPrimitiveType = {
   'network-graph': NetworkGraphRenderer,
   'matrix-grid': MatrixGridRenderer,
   histogram: HistogramRenderer,
+  'image-grid': ImageGridRenderer,
+  'token-sequence': TokenSequenceRenderer,
+  'attention-matrix': AttentionMatrixRenderer,
+  'ranked-results': RankedResultsRenderer,
 };

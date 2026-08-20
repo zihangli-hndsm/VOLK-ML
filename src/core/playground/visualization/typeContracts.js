@@ -51,6 +51,18 @@ const ELEMENT_CONTRACTS = {
     && ELEMENT_CONTRACTS.number(value.start)
     && ELEMENT_CONTRACTS.number(value.end)
     && ELEMENT_CONTRACTS.number(value.count),
+  imageSample: (value) => isRecord(value)
+    && ELEMENT_CONTRACTS.id(value.id)
+    && Number.isInteger(value.width) && value.width > 0
+    && Number.isInteger(value.height) && value.height > 0
+    && Array.isArray(value.pixels)
+    && value.pixels.length <= 4096
+    && value.pixels.every((pixel) => ELEMENT_CONTRACTS.number(pixel) && pixel >= 0 && pixel <= 1),
+  rankedResult: (value) => isRecord(value)
+    && ELEMENT_CONTRACTS.id(value.id)
+    && Number.isInteger(value.rank) && value.rank > 0
+    && typeof value.title === 'string'
+    && (value.score === undefined || ELEMENT_CONTRACTS.number(value.score)),
 };
 
 // Structural contracts for composite semantic types: they validate the fields

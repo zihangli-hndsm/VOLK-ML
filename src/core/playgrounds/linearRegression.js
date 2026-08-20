@@ -6,6 +6,7 @@ const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) 
 // playground runtime and the linear-regression model adapter.
 export const linearRegressionPlayground = {
   id: 'linear-regression',
+  domain: 'tabular',
   version: 1,
   adapterId: 'linear-regression',
   titleKey: 'playground.linearRegression.title',

@@ -19,6 +19,13 @@ const RESPONSE_PRIMITIVES = new Set([
   'vote-bars',
 ]);
 
+const DOMAIN_PRIMITIVES = new Set([
+  'image-grid',
+  'token-sequence',
+  'attention-matrix',
+  'ranked-results',
+]);
+
 export function derivePhenomenonCapabilities(snapshot) {
   const world = snapshot?.world;
   const operations = new Set((snapshot?.capabilities?.worldOperations ?? []).map((operation) => operation.type));
@@ -29,11 +36,15 @@ export function derivePhenomenonCapabilities(snapshot) {
     && [...EDITABLE_WORLD_OPERATIONS].every((operation) => operations.has(operation));
   const hasPoints = (snapshot?.primitives ?? []).some((primitive) => primitive.type === 'scatter');
   const hasModelResponse = (snapshot?.primitives ?? []).some((primitive) => RESPONSE_PRIMITIVES.has(primitive.type));
+  const domainNative = snapshot?.domain !== 'tabular'
+    && (snapshot?.primitives ?? []).some((primitive) => DOMAIN_PRIMITIVES.has(primitive.type));
   return {
-    available: Boolean(snapshot?.model) && twoDimensional && editableWorld && hasPoints && hasModelResponse,
+    available: Boolean(snapshot?.model) && (domainNative || (twoDimensional && editableWorld && hasPoints && hasModelResponse)),
     editableWorld,
     twoDimensional,
     hasPoints,
     hasModelResponse,
+    domainNative,
+    domain: snapshot?.domain ?? 'tabular',
   };
 }

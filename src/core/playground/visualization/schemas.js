@@ -182,6 +182,54 @@ export const PRIMITIVE_SCHEMAS = {
       bins: ['$model.histogram.bins'],
     },
   },
+  'image-grid': {
+    domains: ['image'],
+    placement: 'stage',
+    props: {
+      images: { type: 'array<imageSample>', required: true },
+      columns: { type: 'integer', required: false },
+    },
+    compatibleBindings: {
+      images: ['$model.imageSamples'],
+      columns: ['$model.imageGrid.columns'],
+    },
+  },
+  'token-sequence': {
+    domains: ['sequence'],
+    placement: 'stage',
+    props: {
+      tokens: { type: 'array<string>', required: true },
+      highlights: { type: 'array<integer>', required: false },
+    },
+    compatibleBindings: {
+      tokens: ['$model.tokens'],
+      highlights: ['$model.highlightedTokenIndexes'],
+    },
+  },
+  'attention-matrix': {
+    domains: ['sequence'],
+    placement: 'stage',
+    props: {
+      rows: { type: 'integer', required: true },
+      columns: { type: 'integer', required: true },
+      cells: { type: 'array<matrixCell>', required: true },
+    },
+    compatibleBindings: {
+      rows: ['$model.attention.rows', '$model.featureMap.rows'],
+      columns: ['$model.attention.columns', '$model.featureMap.columns'],
+      cells: ['$model.attention.cells', '$model.featureMap.cells'],
+    },
+  },
+  'ranked-results': {
+    domains: ['retrieval', 'rag'],
+    placement: 'stage',
+    props: {
+      items: { type: 'array<rankedResult>', required: true },
+    },
+    compatibleBindings: {
+      items: ['$model.rankedResults'],
+    },
+  },
 };
 
 export function getPrimitiveSchema(type) {
@@ -221,6 +269,7 @@ export function listPrimitiveSchemas() {
     props: PRIMITIVE_SCHEMAS[type]?.props ?? {},
     compatibleBindings: PRIMITIVE_SCHEMAS[type]?.compatibleBindings ?? {},
     ...(PRIMITIVE_SCHEMAS[type]?.placement ? { placement: PRIMITIVE_SCHEMAS[type].placement } : {}),
+    ...(PRIMITIVE_SCHEMAS[type]?.domains ? { domains: [...PRIMITIVE_SCHEMAS[type].domains] } : {}),
     ...(PRIMITIVE_SCHEMAS[type]?.whenControl ? { whenControl: PRIMITIVE_SCHEMAS[type].whenControl } : {}),
   }));
 }

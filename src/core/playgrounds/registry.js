@@ -2,14 +2,18 @@ import { linearRegressionPlayground } from './linearRegression.js';
 import { knnPlayground } from './knn.js';
 import { mlpPlayground } from './mlp.js';
 import { dataLabPlayground } from './dataLab.js';
+import { imageClassificationPlayground } from './image.js';
+import { sequenceAttentionPlayground } from './sequence.js';
+import { ragPlayground, retrievalPlayground } from './retrieval.js';
 import { validatePlaygroundControlPresentation } from '../ui/contextualTune.js';
 
-const playgrounds = [linearRegressionPlayground, knnPlayground, mlpPlayground, dataLabPlayground];
+const playgrounds = [linearRegressionPlayground, knnPlayground, mlpPlayground, imageClassificationPlayground, sequenceAttentionPlayground, retrievalPlayground, ragPlayground, dataLabPlayground];
 playgrounds.forEach(validatePlaygroundControlPresentation);
 const byId = new Map(playgrounds.map((playground) => [playground.id, playground]));
 
 const summarize = (playground) => ({
   id: playground.id,
+  domain: playground.domain ?? 'tabular',
   version: playground.version,
   titleKey: playground.titleKey,
   descriptionKey: playground.descriptionKey,

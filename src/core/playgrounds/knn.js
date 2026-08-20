@@ -7,6 +7,7 @@ const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) 
 // playground runtime and the KNN model adapter.
 export const knnPlayground = {
   id: 'knn-classification',
+  domain: 'tabular',
   version: 1,
   adapterId: 'knn',
   titleKey: 'playground.knn.title',

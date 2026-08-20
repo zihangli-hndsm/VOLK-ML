@@ -9,6 +9,15 @@ export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTab
   const phenomenonQuestion = bigIdea ? t(bigIdea.questionKey) : t('playground.phenomenon.question');
 
   if (phenomenon.available && !fullWorldToolsOpen) {
+    if (phenomenon.domainNative) {
+      return <section data-ui-region="world-region" data-ui-layer="play" data-phenomenon-available="true" data-phenomenon-domain={phenomenon.domain} aria-label={t('playground.phenomenon.regionLabel')} className="relative min-w-0 space-y-3">
+        <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
+          <h2 className="text-base font-black text-slate-900 sm:text-lg">{phenomenonQuestion}</h2>
+          <p className="mt-1 text-xs leading-5 text-slate-500">{t('playground.phenomenon.domainSurfaceHint')}</p>
+          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50"><PlaygroundStage snapshot={snapshot} t={t} /></div>
+        </div>
+      </section>;
+    }
     return <section data-ui-region="world-region" data-ui-layer="play" data-phenomenon-available="true" aria-label={t('playground.phenomenon.regionLabel')} className="relative min-w-0 space-y-3">
       <DataWorkspace snapshot={snapshot} onDispatch={onDispatch} t={t} question={phenomenonQuestion} variant="phenomenon" onOpenFullWorkspace={() => openFullWorldTools()} highlightedAffordances={highlightedAffordances} />
     </section>;

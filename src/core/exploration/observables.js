@@ -13,17 +13,17 @@ function rangeFor(points) {
   return values.length ? { min: Math.min(...values), max: Math.max(...values), count: values.length } : null;
 }
 
-function descriptor(id, level, labelKey, valueType, derive) {
-  return { id, level, labelKey, valueType, derive };
+function descriptor(id, level, labelKey, valueType, derive, domains = ['tabular']) {
+  return { id, level, labelKey, valueType, derive, domains: [...domains] };
 }
 
 export const RAW_OBSERVABLES = [
   descriptor('world.trainSampleCount', 'WORLD', 'playground.evidence.trainSampleCount', 'number', ({ world }) => (
     world ? world.observations.filter((point) => point.membership === 'train').length : null
-  )),
+  ), ['tabular', 'image', 'sequence', 'retrieval', 'rag']),
   descriptor('world.testSampleCount', 'WORLD', 'playground.evidence.testSampleCount', 'number', ({ world }) => (
     world ? world.observations.filter((point) => point.membership === 'test').length : null
-  )),
+  ), ['tabular', 'image', 'sequence', 'retrieval', 'rag']),
   descriptor('world.trainXRange', 'WORLD', 'playground.evidence.trainXRange', 'range', ({ world }) => (
     rangeFor(world?.observations.filter((point) => point.membership === 'train'))
   )),
@@ -41,8 +41,10 @@ export const RAW_OBSERVABLES = [
   descriptor('model.hiddenUnits', 'MODEL', 'playground.evidence.hiddenUnits', 'number', ({ result }) => finite(result?.model?.hiddenUnits)),
   descriptor('outcome.trainMse', 'OUTCOME', 'playground.evidence.trainMse', 'number', ({ result }) => finite(result?.metrics?.trainMse ?? result?.metrics?.mse)),
   descriptor('outcome.testMse', 'OUTCOME', 'playground.evidence.testMse', 'number', ({ result }) => finite(result?.metrics?.testMse)),
-  descriptor('outcome.trainAccuracy', 'OUTCOME', 'playground.evidence.trainAccuracy', 'number', ({ result }) => finite(result?.metrics?.trainAccuracy ?? result?.metrics?.accuracy)),
-  descriptor('outcome.testAccuracy', 'OUTCOME', 'playground.evidence.testAccuracy', 'number', ({ result }) => finite(result?.metrics?.testAccuracy ?? result?.metrics?.runtimeAccuracy)),
+  descriptor('outcome.trainAccuracy', 'OUTCOME', 'playground.evidence.trainAccuracy', 'number', ({ result }) => finite(result?.metrics?.trainAccuracy ?? result?.metrics?.accuracy), ['tabular', 'image', 'sequence']),
+  descriptor('outcome.testAccuracy', 'OUTCOME', 'playground.evidence.testAccuracy', 'number', ({ result }) => finite(result?.metrics?.testAccuracy ?? result?.metrics?.runtimeAccuracy), ['tabular', 'image', 'sequence']),
+  descriptor('outcome.retrievalScore', 'OUTCOME', 'playground.evidence.retrievalScore', 'number', ({ result }) => finite(result?.metrics?.retrievalScore), ['retrieval']),
+  descriptor('outcome.groundedSourceCount', 'OUTCOME', 'playground.evidence.groundedSourceCount', 'number', ({ result }) => finite(result?.metrics?.groundedSourceCount), ['rag']),
   descriptor('learning.currentStep', 'LEARNING', 'playground.evidence.currentStep', 'number', ({ result }) => finite(result?.model?.trainingStep)),
   descriptor('comparison.changedFactorCount', 'EVIDENCE', 'playground.evidence.changedFactorCount', 'number', ({ comparison }) => (
     comparison?.diff ? comparison.diff.changed.length : null
@@ -68,6 +70,7 @@ function valueRecord(item, value) {
     level: item.level,
     labelKey: item.labelKey,
     valueType: item.valueType,
+    domains: [...(item.domains ?? ['tabular'])],
     available: value !== null && value !== undefined,
     value: value === undefined ? null : value,
   };
@@ -174,6 +177,8 @@ export function conditionFingerprintForSession({ world, adapterId, experiment = 
       mode: world.mode,
       executionMode,
       task: world.task,
+      domain: world.domain ?? 'tabular',
+      coordinateSpace: world.coordinateSpace ?? 'plot2d',
       featureNames: world.featureNames,
       metadata: world.metadata,
       generator: world.generator ? {
