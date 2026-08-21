@@ -256,8 +256,12 @@ export function createExplorationAiInterpreter({ gateway, fetchImpl = globalThis
             }),
           },
         });
-        return { ...validateInterpretation(parseJsonText(response.text), context), providerId: response.protocol };
+        const parsed = parseJsonText(response.text);
+        const validated = validateInterpretation(parsed, context);
+        providerGateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'passed' });
+        return { ...validated, providerId: response.protocol };
       } catch (error) {
+        providerGateway.recordTrace?.({ stage: 'interpreter-validation', status: 'failed' });
         if (error?.code?.startsWith('AI_')) throw error;
         throw interpreterError('AI_PROVIDER_UNAVAILABLE', 'The exploration AI interpreter is unavailable.');
       }

@@ -719,3 +719,10 @@
 - Added session-local bounded learner annotations with stable semantic anchors and localized understood/unclear/ask-about-this actions.
 - Added data-driven provider/model presets, native OpenAI/compatible transport-aware defaults, staged connection probing, redacted diagnostics, and focused reliability checks.
 - Kept provider context free of secrets, raw observations, coordinates, imported rows, and executable operations; adaptive curriculum, long-term learner modeling, and new domains remain deferred.
+
+## 2026-08-21 — Phase 10A acceptance hardening
+
+- Applied model-aware provider request profiles through the shared gateway and connection probe; Gemini presets now omit unsupported temperature/top-p/top-k fields while custom and compatible providers retain their existing contracts.
+- Added Host-owned stable learning-message identities, reusable bounded annotations for Concept/Evidence/Agent-answer surfaces, semantic “What VOLK knows” context disclosure, and evidence-preserving Ask/interpretation presentation.
+- Added reusable redacted diagnostics and bounded request tracing. Exact configured API keys, prompts, raw provider responses, and hidden reasoning never enter diagnostics or copied text.
+- Added focused regressions for Gemini request shape, stable answer identity, exact-key redaction, provider lifecycle traces, and bounded learning-assistant context.

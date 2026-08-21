@@ -3,8 +3,9 @@ import { changeAiProtocol, defaultAiConfig, endpointSafety } from '../core/ai/ai
 import { getProviderProtocol, listProviderProtocols } from '../core/ai/providerRegistry.js';
 import { getProviderPreset, listProviderPresets } from '../core/ai/providerPresets.js';
 import { probeProviderConnection } from '../core/ai/connectionProbe.js';
-import { createAiDiagnostic, diagnosticText } from '../core/ai/diagnostics.js';
+import { createAiDiagnostic } from '../core/ai/diagnostics.js';
 import { useAiProvider } from './ai/AiProviderContext.jsx';
+import AiDiagnosticPanel from './ai/AiDiagnosticPanel.jsx';
 
 export default function AiSettingsDialog({ t }) {
   const { config, gateway, settingsOpen, closeSettings, setConfig, clearKey, clearConfig } = useAiProvider();
@@ -69,10 +70,7 @@ export default function AiSettingsDialog({ t }) {
       setTesting(false);
     }
   };
-  const copyDiagnostics = async () => {
-    const failed = diagnostic?.stages?.find((item) => item.status === 'failed')?.diagnostic;
-    if (failed && navigator.clipboard?.writeText) await navigator.clipboard.writeText(diagnosticText(failed));
-  };
+  const failedDiagnostic = diagnostic?.stages?.find((item) => item.status === 'failed')?.diagnostic ?? null;
 
   return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/60 p-4" onMouseDown={closeSettings}>
     <section className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
@@ -118,7 +116,7 @@ export default function AiSettingsDialog({ t }) {
       {diagnostic && <section className={`mt-4 rounded-2xl p-3 text-xs ${diagnostic.status === 'ready' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`} aria-live="polite">
         <p className="font-black">{diagnostic.status === 'ready' ? t('ai.connectionReady') : t('ai.connectionFailed')}</p>
         <div className="mt-2 grid gap-1 sm:grid-cols-2">{diagnostic.stages.map((item) => <div key={item.id} className="flex items-center justify-between gap-2"><span>{t(`ai.stage.${item.id}`)}</span><span className="font-black">{t(`ai.stage.${item.status}`)}</span></div>)}</div>
-        {diagnostic.status !== 'ready' && <div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={copyDiagnostics} className="rounded-lg bg-white px-2 py-1 font-black">{t('ai.copyDiagnostics')}</button><details><summary className="cursor-pointer px-2 py-1 font-black">{t('ai.showDetails')}</summary><pre className="mt-2 max-w-full whitespace-pre-wrap">{diagnostic.stages.find((item) => item.status === 'failed')?.diagnostic?.providerMessage ?? ''}</pre></details></div>}
+        {diagnostic.status !== 'ready' && <AiDiagnosticPanel diagnostic={failedDiagnostic} trace={diagnostic.requestTrace} t={t} />}
       </section>}
       <p className="mt-4 rounded-2xl bg-slate-100 p-3 text-xs leading-5 text-slate-600">{t('ai.memoryBoundary')}</p>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2">

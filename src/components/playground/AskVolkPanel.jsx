@@ -1,38 +1,39 @@
-import { useMemo, useState } from 'react';
-import { createAiDiagnostic, diagnosticText } from '../../core/ai/diagnostics.js';
+import { useEffect, useMemo, useState } from 'react';
+import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
 import { createLearningAssistant } from '../../core/exploration/learningAssistant.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
+import AiDiagnosticPanel from '../ai/AiDiagnosticPanel.jsx';
+import LearningContextDisclosure from './LearningContextDisclosure.jsx';
+import { InstructionalAnnotationActions, instructionalAnchor, selectedTextWithin } from './InstructionalAnnotationSurface.jsx';
 
-const MAX_SELECTED_QUOTE = 280;
-
-function selectionQuote() {
-  if (typeof window === 'undefined' || typeof window.getSelection !== 'function') return '';
-  return String(window.getSelection()?.toString() ?? '').trim().slice(0, MAX_SELECTED_QUOTE);
+function initialSelectionFor(value) {
+  if (!value?.anchor || !value?.quote) return null;
+  return { messageId: value.messageId ?? value.anchor.messageId ?? null, anchor: value.anchor, quote: value.quote };
 }
 
-function answerAnchor() {
-  return {
-    surface: 'agent-answer',
-    contentId: 'ask-volk-answer',
-    messageId: 'ask-volk-answer',
-    localizationKey: 'ai.askAnswer',
-  };
-}
-
-export default function AskVolkPanel({ agent, presentation, onOpenAiSettings, onTryExperiment, t }) {
+export default function AskVolkPanel({ agent, presentation, initialSelection = null, onOpenAiSettings, onTryExperiment, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const assistant = useMemo(() => createLearningAssistant({ gateway }), [gateway]);
   const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState(null);
-  const [selectedQuote, setSelectedQuote] = useState('');
+  const [selection, setSelection] = useState(initialSelectionFor(initialSelection));
   const [busy, setBusy] = useState(false);
   const [diagnostic, setDiagnostic] = useState(null);
   const [annotationMessage, setAnnotationMessage] = useState('');
 
-  const anchor = answerAnchor();
-  const captureSelection = () => {
-    const quote = selectionQuote();
-    if (quote) setSelectedQuote(quote);
+  useEffect(() => {
+    setSelection(initialSelectionFor(initialSelection));
+    if (initialSelection?.quote) setQuestion(`${t('ai.askSelectedPrefix')} “${initialSelection.quote}”`);
+  }, [initialSelection?.messageId, initialSelection?.quote, initialSelection?.anchor?.contentId, t]);
+
+  const answerIdentity = answer?.messageId ?? null;
+  const answerAnchor = answerIdentity
+    ? instructionalAnchor({ surface: 'agent-answer', contentId: `${answerIdentity}.answer`, messageId: answerIdentity, localizationKey: 'ai.askAnswer' })
+    : null;
+  const captureAnswerSelection = (event) => {
+    const quote = selectedTextWithin(event.currentTarget);
+    if (!quote || !answerIdentity) return;
+    setSelection({ messageId: answerIdentity, anchor: answerAnchor, quote });
   };
 
   const ask = async () => {
@@ -47,13 +48,14 @@ export default function AskVolkPanel({ agent, presentation, onOpenAiSettings, on
     try {
       const context = agent.getLearningAssistantContext({
         presentation,
-        selectedAnchor: selectedQuote ? anchor : null,
-        selectedQuote: selectedQuote || null,
+        selectedAnchor: selection?.anchor ?? null,
+        selectedQuote: selection?.quote ?? null,
       });
       const nextAnswer = await assistant.ask({ question, config, context });
       agent.recordLearningTurn({ role: 'user', text: question });
-      agent.recordLearningTurn({ role: 'assistant', text: nextAnswer.answer });
-      setAnswer(nextAnswer);
+      const assistantTurn = agent.recordLearningTurn({ role: 'assistant', text: nextAnswer.answer });
+      setAnswer({ ...nextAnswer, messageId: assistantTurn?.id ?? null });
+      setSelection(null);
     } catch (error) {
       setDiagnostic(createAiDiagnostic({ error, config, stage: 'failed' }));
     } finally {
@@ -61,21 +63,17 @@ export default function AskVolkPanel({ agent, presentation, onOpenAiSettings, on
     }
   };
 
-  const annotate = (kind) => {
-    if (!answer) return;
-    try {
-      agent.addLearnerAnnotation({ kind, anchor, quote: selectedQuote || null });
-      setAnnotationMessage(t('ai.annotationSaved'));
-    } catch (error) {
-      setDiagnostic(createAiDiagnostic({ error, config, stage: 'failed' }));
-    }
-  };
-
-  const askAboutSelection = () => {
-    if (!selectedQuote) return;
-    setQuestion(`${t('ai.askSelectedPrefix')} “${selectedQuote}”`);
+  const askAboutSelection = (selected) => {
+    if (!selected?.quote) return;
+    setQuestion(`${t('ai.askSelectedPrefix')} “${selected.quote}”`);
     setAnnotationMessage('');
   };
+
+  const context = agent.getLearningAssistantContext({
+    presentation,
+    selectedAnchor: selection?.anchor ?? null,
+    selectedQuote: selection?.quote ?? null,
+  });
 
   return <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
     <p className="text-xs leading-5 text-slate-600">{t('ai.askIntro')}</p>
@@ -84,13 +82,14 @@ export default function AskVolkPanel({ agent, presentation, onOpenAiSettings, on
       <button type="button" disabled={!question.trim() || busy} onClick={ask} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t('playground.agentGuide.ask')}</button>
     </div>
     {!isConfigured && <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500"><span>{t('ai.askNeedsProvider')}</span><button type="button" onClick={onOpenAiSettings} className="rounded-lg px-2 py-1 font-bold text-violet-700 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('ai.configure')}</button></div>}
+    <LearningContextDisclosure context={context} selection={selection} onClearSelection={() => setSelection(null)} t={t} />
     {answer && <section className="mt-3 rounded-xl border border-violet-100 bg-white p-3" aria-live="polite">
       <p className="text-[10px] font-black uppercase tracking-wide text-violet-700">{t('ai.askAnswer')}</p>
-      <p id="ask-volk-answer" data-annotation-surface="agent-answer" onMouseUp={captureSelection} onTouchEnd={captureSelection} className="mt-1 select-text text-sm leading-6 text-slate-800">{answer.answer}</p>
-      {selectedQuote && <div className="mt-2 rounded-lg bg-violet-50 p-2 text-xs text-violet-950"><p className="font-bold">{selectedQuote}</p><div className="mt-2 flex flex-wrap gap-2"><button type="button" onClick={() => annotate('understood')} className="rounded-lg bg-white px-2 py-1 font-bold ring-1 ring-violet-200">{t('ai.annotationUnderstood')}</button><button type="button" onClick={() => annotate('unclear')} className="rounded-lg bg-white px-2 py-1 font-bold ring-1 ring-violet-200">{t('ai.annotationUnclear')}</button><button type="button" onClick={askAboutSelection} className="rounded-lg bg-white px-2 py-1 font-bold ring-1 ring-violet-200">{t('ai.annotationAsk')}</button></div></div>}
+      <p data-annotation-surface="agent-answer" onMouseUp={captureAnswerSelection} onTouchEnd={captureAnswerSelection} className="mt-1 select-text text-sm leading-6 text-slate-800">{answer.answer}</p>
+      {selection?.messageId === answerIdentity && <InstructionalAnnotationActions selection={selection} agent={agent} onAskAbout={askAboutSelection} t={t} />}
       {annotationMessage && <p className="mt-2 text-xs font-bold text-emerald-700">{annotationMessage}</p>}
       {answer.tryExperiment && <button type="button" onClick={() => onTryExperiment?.(answer.tryExperiment)} className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('ai.tryInWorld')}</button>}
     </section>}
-    {diagnostic && <section role="alert" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-2 text-xs text-amber-950"><p className="font-black">{t(`ai.diagnostic.${diagnostic.errorCode}`)}</p><details className="mt-1"><summary className="cursor-pointer font-mono text-[10px]">{diagnostic.errorCode}</summary><pre className="mt-1 max-w-full whitespace-pre-wrap">{diagnosticText(diagnostic)}</pre></details></section>}
+    <AiDiagnosticPanel diagnostic={diagnostic} trace={gateway.getRequestTrace?.()} t={t} />
   </div>;
 }

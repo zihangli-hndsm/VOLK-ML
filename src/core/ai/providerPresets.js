@@ -5,12 +5,12 @@
 export const PROVIDER_PRESET_VERSION = 1;
 export const PROVIDER_CATALOG_VERIFIED_AT = '2026-08-21';
 
-const model = (id, labelKey, tier, capabilities = {}) => Object.freeze({
+const model = (id, labelKey, tier, requestProfile = {}) => Object.freeze({
   id,
   labelKey,
   tier,
   status: 'verified',
-  requestProfile: Object.freeze({ ...capabilities }),
+  requestProfile: Object.freeze({ ...requestProfile }),
 });
 
 const PRESETS = Object.freeze([
@@ -20,12 +20,12 @@ const PRESETS = Object.freeze([
     protocolId: 'openai-responses',
     endpoint: 'https://api.openai.com/v1/responses',
     verifiedAt: PROVIDER_CATALOG_VERIFIED_AT,
-    capabilities: Object.freeze({ structuredOutput: true, temperature: false }),
+    capabilities: Object.freeze({ structuredOutput: true, temperature: false, topP: false, topK: false }),
     models: Object.freeze([
-      model('gpt-5.6', 'ai.model.gpt56', 'frontier', { structuredOutput: true }),
-      model('gpt-5.6-sol', 'ai.model.gpt56Sol', 'frontier', { structuredOutput: true }),
-      model('gpt-5.6-terra', 'ai.model.gpt56Terra', 'frontier', { structuredOutput: true }),
-      model('gpt-5.6-luna', 'ai.model.gpt56Luna', 'frontier', { structuredOutput: true }),
+      model('gpt-5.6', 'ai.model.gpt56', 'frontier', { structuredOutput: true, temperature: false }),
+      model('gpt-5.6-sol', 'ai.model.gpt56Sol', 'frontier', { structuredOutput: true, temperature: false }),
+      model('gpt-5.6-terra', 'ai.model.gpt56Terra', 'frontier', { structuredOutput: true, temperature: false }),
+      model('gpt-5.6-luna', 'ai.model.gpt56Luna', 'frontier', { structuredOutput: true, temperature: false }),
     ]),
   }),
   Object.freeze({
@@ -59,11 +59,11 @@ const PRESETS = Object.freeze([
     protocolId: 'gemini-compatible',
     endpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
     verifiedAt: PROVIDER_CATALOG_VERIFIED_AT,
-    capabilities: Object.freeze({ structuredOutput: 'json-mime', temperature: true }),
+    capabilities: Object.freeze({ structuredOutput: 'json-mime', temperature: false, topP: false, topK: false }),
     models: Object.freeze([
-      model('gemini-3.7-flash', 'ai.model.gemini37Flash', 'fast'),
-      model('gemini-3.5-flash-lite', 'ai.model.gemini35FlashLite', 'fast'),
-      model('gemini-3.1-pro-preview', 'ai.model.gemini31ProPreview', 'frontier'),
+      model('gemini-3.7-flash', 'ai.model.gemini37Flash', 'fast', { structuredOutput: 'json-mime', temperature: false, topP: false, topK: false }),
+      model('gemini-3.5-flash-lite', 'ai.model.gemini35FlashLite', 'fast', { structuredOutput: 'json-mime', temperature: false, topP: false, topK: false }),
+      model('gemini-3.1-pro-preview', 'ai.model.gemini31ProPreview', 'frontier', { structuredOutput: 'json-mime', temperature: false, topP: false, topK: false }),
     ]),
   }),
 ]);

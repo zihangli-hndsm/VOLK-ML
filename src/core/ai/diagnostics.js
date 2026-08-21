@@ -17,18 +17,24 @@ export const AI_DIAGNOSTIC_CODES = Object.freeze([
 const DIAGNOSTIC_STAGES = new Set([
   'configuration',
   'network',
+  'request-started',
+  'provider-response',
+  'parse',
+  'interpreter-validation',
+  'fallback',
   'authentication',
   'model',
   'basic-text',
   'structured-output',
   'interpreter',
-  'fallback',
   'completed',
   'failed',
 ]);
 
-function boundedText(value, max = 280) {
+function boundedText(value, max = 280, knownSecret = '') {
+  const secret = String(knownSecret ?? '');
   return String(value ?? '')
+    .replace(secret && secret.length >= 4 ? new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g') : /$^/g, '[redacted]')
     .replace(/authorization\s*:\s*bearer\s+\S+/gi, 'authorization: [redacted]')
     .replace(/(api[_ -]?key|token|secret)\s*[:=]\s*\S+/gi, '$1: [redacted]')
     .slice(0, max);
@@ -71,7 +77,7 @@ export function createAiDiagnostic({ error, config = {}, stage = 'failed', fallb
     model: String(config?.model ?? '').slice(0, 120) || null,
     endpoint: sanitizeEndpoint(config?.endpoint),
     httpStatus: Number(error?.details?.status) || null,
-    providerMessage: boundedText(error?.details?.providerMessage ?? error?.message),
+    providerMessage: boundedText(error?.details?.providerMessage ?? error?.message, 280, config?.apiKey),
     fallbackUsed: Boolean(fallbackUsed),
     latencyMs: Number.isFinite(latencyMs) ? Math.max(0, Math.round(latencyMs)) : null,
     requestId: requestId ? String(requestId).slice(0, 80) : null,

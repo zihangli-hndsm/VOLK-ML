@@ -49,6 +49,10 @@ assert.throws(() => validateLearningAnswer({ answer: 'ok', tryExperiment: null, 
 assert.match(learningAssistantPrompt({ question: 'Why?', context: projected }), /suggestion/);
 
 const conversations = createLearningConversationStore();
+const firstMessage = conversations.append({ role: 'user', text: 'first', at: 0 });
+const secondMessage = conversations.append({ role: 'assistant', text: 'second', at: 1 });
+assert.notEqual(firstMessage.id, secondMessage.id, 'conversation turns have stable unique identities');
+assert.match(firstMessage.id, /^learning-message-/);
 for (let index = 0; index < 20; index += 1) conversations.append({ role: index % 2 ? 'assistant' : 'user', text: `turn-${index}`, at: index });
 assert.equal(conversations.snapshot().length, 8, 'conversation history is bounded');
 assert.equal(conversations.snapshot()[0].text, 'turn-12', 'only the newest bounded turns are retained');

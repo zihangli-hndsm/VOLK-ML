@@ -46,7 +46,35 @@ Responses protocol; compatible providers retain their existing transports.
 configuration, network, authentication/model access, basic text, structured
 output, and the existing Exploration interpreter. Failures are normalized to
 bounded diagnostic codes. Diagnostic text redacts authorization, key, token,
-and secret-like values and is never part of runtime or project state.
+and secret-like values and is never part of runtime or project state. Provider
+model request profiles are applied by the shared gateway adapter: native
+OpenAI/Responses and compatible transports remain distinct, and Gemini
+profiles omit unsupported sampling fields rather than sending a guessed
+configuration. The connection probe uses that same gateway path as Ask and
+Agent requests.
+
+Diagnostics retain only bounded stage/status/model metadata. They never retain
+prompts, request bodies, raw provider responses, hidden reasoning, or API keys;
+the configured key is redacted by exact value before provider messages are
+shown or copied. Recent request traces are limited to lifecycle markers such as
+request-started, provider-response, parse, validation, fallback, and
+completed/failed.
+
+## Stable answers, annotations, and context
+
+Learning conversation turns receive Host-owned session-local message IDs.
+Selection anchors reference the semantic surface and message identity, so a
+selection from answer A cannot attach to answer B. Concept, Evidence, and
+Agent-answer surfaces use the same bounded annotation actions. “Ask about
+this” carries a stable anchor and bounded quote into Ask VOLK, while the
+learner can remove the attached selection before sending the question.
+
+The “What VOLK knows” disclosure is a semantic projection of task, model,
+depth, concepts, comparison, and bounded annotation counts. It intentionally
+does not expose raw World data, coordinates, rows, documents, tokens,
+Experiment internals, or credentials. Deterministic Observation/Evidence
+content remains visible while optional AI interpretation is rendered as a
+separate diagnostic/interpretation layer.
 
 ## Deliberate non-goals
 

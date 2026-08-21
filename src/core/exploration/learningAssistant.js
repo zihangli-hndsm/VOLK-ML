@@ -2,6 +2,7 @@ import { projectLearnerAnnotations } from './learnerAnnotations.js';
 
 export const LEARNING_ASSISTANT_VERSION = 1;
 export const MAX_LEARNING_TURNS = 8;
+export const LEARNING_MESSAGE_VERSION = 1;
 const MAX_CONTEXT_TEXT = 260;
 const DEPTHS = new Set(['phenomenon', 'tune', 'evidence', 'mechanism', 'representation']);
 
@@ -54,6 +55,7 @@ export function projectLearningAssistantContext({ context = {}, annotations = []
       : null,
     selectedQuote: bounded(selectedQuote, 280),
     conversation: (Array.isArray(conversation) ? conversation : []).slice(-MAX_LEARNING_TURNS).map((turn) => ({
+      id: bounded(turn?.id, 100),
       role: turn?.role === 'assistant' ? 'assistant' : 'user',
       text: bounded(turn?.text, 400),
     })).filter((turn) => turn.text),
@@ -91,17 +93,24 @@ export function learningAssistantPrompt({ question, context } = {}) {
 
 export function createLearningConversationStore() {
   let turns = [];
+  let sequence = 0;
   return Object.freeze({
     append(turn) {
       const role = turn?.role === 'assistant' ? 'assistant' : 'user';
       const text = bounded(turn?.text, 1200);
       if (!text) return null;
-      const next = { role, text, at: Number.isFinite(turn?.at) ? turn.at : Date.now() };
+      const next = {
+        version: LEARNING_MESSAGE_VERSION,
+        id: `learning-message-${++sequence}`,
+        role,
+        text,
+        at: Number.isFinite(turn?.at) ? turn.at : Date.now(),
+      };
       turns = [...turns, next].slice(-MAX_LEARNING_TURNS);
       return structuredClone(next);
     },
     snapshot() { return structuredClone(turns); },
-    reset() { turns = []; },
+    reset() { turns = []; sequence = 0; },
   });
 }
 
@@ -126,7 +135,14 @@ export function createLearningAssistant({ gateway } = {}) {
         error.code = 'AI_RESPONSE_INVALID';
         throw error;
       }
-      return { ...validateLearningAnswer(parsed), providerId: response.protocol };
+      try {
+        const answer = validateLearningAnswer(parsed);
+        gateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'passed' });
+        return { ...answer, providerId: response.protocol };
+      } catch (error) {
+        gateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'failed' });
+        throw error;
+      }
     },
   });
 }

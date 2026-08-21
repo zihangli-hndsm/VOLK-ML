@@ -3,10 +3,11 @@ import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, deriveAgentSemanticExplanation, routeAgentAiInterpretation, AGENT_GUIDANCE_OUTCOMES } from '../../core/ui/agentGuide.js';
 import { deriveCleanerComparisonProposal } from '../../core/exploration/cleanerComparison.js';
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
-import { createAiDiagnostic, diagnosticText } from '../../core/ai/diagnostics.js';
+import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
 import AskVolkPanel from './AskVolkPanel.jsx';
+import AiDiagnosticPanel from '../ai/AiDiagnosticPanel.jsx';
 import CompactBottomSheet from '../CompactBottomSheet.jsx';
 import ConceptCard from './ConceptCard.jsx';
 
@@ -63,7 +64,7 @@ function compactProposal(proposal, t) {
   } : null;
 }
 
-export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, t }) {
+export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, initialSelection = null, onAskAboutSelection, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const aiInterpreter = useMemo(() => createExplorationAiInterpreter({ gateway }), [gateway]);
   const [request, setRequest] = useState('');
@@ -135,6 +136,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         nextOutcome = routeAgentAiInterpretation({ interpretation, request, snapshot, capabilities }) ?? nextOutcome;
       } catch (caught) {
         setAiFallback(true);
+        gateway.recordTrace?.({ stage: 'fallback', status: 'used' });
         setAiDiagnostic(createAiDiagnostic({ error: caught, config, stage: 'interpreter', fallbackUsed: true }));
       } finally {
         setBusy(false);
@@ -243,7 +245,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <button type="button" role="tab" aria-selected={mode === 'ask'} onClick={() => setMode('ask')} className={`rounded-lg px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-violet-500 ${mode === 'ask' ? 'bg-white text-violet-800 shadow-sm' : 'text-violet-600'}`}>{t('ai.askTab')}</button>
       <button type="button" role="tab" aria-selected={mode === 'experiment'} onClick={() => setMode('experiment')} className={`rounded-lg px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-violet-500 ${mode === 'experiment' ? 'bg-white text-violet-800 shadow-sm' : 'text-violet-600'}`}>{t('ai.experimentTab')}</button>
     </div>
-    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(text) => { setMode('experiment'); setRequest(text); setOutcome(null); setProposal(null); setResult(null); setConceptCard(null); setError(null); }} t={t} />}
+    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(text) => { setMode('experiment'); setRequest(text); setOutcome(null); setProposal(null); setResult(null); setConceptCard(null); setError(null); }} t={t} />}
     <div className={mode === 'ask' ? 'hidden' : ''}>
     <div className="mt-3 flex gap-2">
       <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') ask(); }} placeholder={t('playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
@@ -295,6 +297,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
 
     {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-950">{outcome.reason?.startsWith?.('playground.') ? t(outcome.reason) : outcome.reason === 'world-control' ? t('playground.agentGuide.worldTools') : t('playground.agentGuide.clarification')}</p>}
     {aiFallback && <p className="mt-2 text-xs font-bold text-slate-500">{t('playground.agentGuide.aiFallback')}</p>}
+    <AiDiagnosticPanel diagnostic={aiDiagnostic} trace={gateway.getRequestTrace?.()} fallback={aiFallback} t={t} />
     {result && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-950">
       <p className="font-black">{t('playground.agentGuide.completed')}</p>
       {result.pedagogicalObservation?.available ? <>
@@ -303,7 +306,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         <p className="mt-2 text-xs font-black uppercase tracking-wide text-emerald-800">{t('playground.pedagogical.evidenceTitle')}</p>
         {result.pedagogicalObservation.facts.map((fact) => <p key={fact.id} className="mt-1 text-xs">{t(fact.labelKey)}{fact.before !== undefined && fact.after !== undefined ? `: ${fact.before} → ${fact.after}` : `: ${t('playground.pedagogical.heldFixed')}`}</p>)}
       </> : result.pedagogicalEvidence && <p className="mt-2 text-xs">{t('playground.pedagogical.evidenceUnavailable')}</p>}
-      <ConceptCard signal={conceptCard} observation={result.pedagogicalObservation} nextQuestion={result.nextQuestions?.[0]} onNextQuestion={() => followUp(result.nextQuestions[0])} t={t} />
+      <ConceptCard signal={conceptCard} observation={result.pedagogicalObservation} nextQuestion={result.nextQuestions?.[0]} onNextQuestion={() => followUp(result.nextQuestions[0])} agent={agent} onAskAbout={onAskAboutSelection} t={t} />
       {result.nextQuestions?.length > 0 && <div className="mt-3"><p className="text-xs font-black">{t('playground.pedagogical.nextQuestions')}</p><div className="mt-1 flex flex-col gap-2">{result.nextQuestions.map((item, index) => <button key={`${item.goal}-${index}`} type="button" onClick={() => followUp(item)} className="rounded-lg bg-white px-3 py-2 text-left text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"><span className="block">{t(item.questionKey)}</span><span className="mt-1 block text-[10px] font-normal text-emerald-700">{t(item.rationaleKey)}</span></button>)}</div></div>}
       <button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button>
     </div>}

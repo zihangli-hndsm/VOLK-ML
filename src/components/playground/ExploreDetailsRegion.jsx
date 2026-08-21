@@ -17,7 +17,7 @@ import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import CompactBottomSheet from '../CompactBottomSheet.jsx';
 
-export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, t }) {
+export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, t }) {
   const { responsive } = usePresentationCapabilities();
   const { isConfigured, openSettings } = useAiProvider();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
@@ -87,7 +87,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
           {isConfigured ? t('ai.settings') : t('ai.configure')}
         </button>
       </div>
-      {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} t={t} /></div>}
+      {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} initialSelection={initialSelection} onAskAboutSelection={onAskAboutSelection} t={t} /></div>}
     </>}
 
     {activeDepth && <CompactBottomSheet compact={compact} open onClose={() => onDepthChange?.(null)} id={`explore-depth-${activeDepth}`} data-ui-motion="depth-panel" role="dialog" aria-modal="false" aria-labelledby={`explore-depth-title-${activeDepth}`} className={`ui-motion-overlay-enter ${panelClass}`}>
@@ -99,7 +99,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
         <button ref={panelCloseRef} type="button" aria-label={t('playground.depth.close')} onClick={() => onDepthChange?.(null)} className="ui-motion-interactive min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">{t('playground.depth.close')}</button>
       </div>
       {activeDepth === CONCEPTUAL_DEPTHS.TUNE && <TunePanel playground={modelPlayground} snapshot={snapshot} onDispatch={onDispatch} onOpenWorldTools={onOpenWorldTools} t={t} />}
-      {activeDepth === CONCEPTUAL_DEPTHS.EVIDENCE && <ExplorationEvidence snapshot={snapshot} t={t} openByDefault />}
+      {activeDepth === CONCEPTUAL_DEPTHS.EVIDENCE && <ExplorationEvidence snapshot={snapshot} t={t} openByDefault agent={agent} onAskAbout={onAskAboutSelection} />}
       {activeDepth === CONCEPTUAL_DEPTHS.MECHANISM && <MechanismContent snapshot={snapshot} capabilities={capabilities} formulaPrimitive={formulaPrimitive} onDispatch={onDispatch} t={t} />}
       {activeDepth === CONCEPTUAL_DEPTHS.REPRESENTATION && <PlaygroundInspector playground={modelPlayground} snapshot={snapshot} onDispatch={onDispatch} t={t} />}
     </CompactBottomSheet>}

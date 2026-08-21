@@ -21,6 +21,17 @@ function stage(id, status, diagnostic = null) {
   return { id, status, ...(diagnostic ? { code: diagnostic.errorCode, diagnostic } : {}) };
 }
 
+function result({ status, requestId, started, stages, gateway }) {
+  return {
+    version: 1,
+    status,
+    requestId,
+    latencyMs: Date.now() - started,
+    stages,
+    requestTrace: gateway?.getRequestTrace?.().slice(-8) ?? [],
+  };
+}
+
 export async function probeProviderConnection({ gateway, config } = {}) {
   const requestId = makeId();
   const stages = [];
@@ -36,7 +47,7 @@ export async function probeProviderConnection({ gateway, config } = {}) {
       requestId,
     });
     stages.push(stage('configuration', 'failed', diagnostic));
-    return { version: 1, status: 'failed', requestId, latencyMs: Date.now() - started, stages };
+    return result({ status: 'failed', requestId, started, stages, gateway });
   }
   if (!safety.safe) {
     const diagnostic = createAiDiagnostic({
@@ -46,7 +57,7 @@ export async function probeProviderConnection({ gateway, config } = {}) {
       requestId,
     });
     stages.push(stage('configuration', 'failed', diagnostic));
-    return { version: 1, status: 'failed', requestId, latencyMs: Date.now() - started, stages };
+    return result({ status: 'failed', requestId, started, stages, gateway });
   }
   stages.push(stage('configuration', 'passed'));
 
@@ -83,7 +94,7 @@ export async function probeProviderConnection({ gateway, config } = {}) {
     }
     return response;
   });
-  if (!basic) return { version: 1, status: 'failed', requestId, latencyMs: Date.now() - started, stages };
+  if (!basic) return result({ status: 'failed', requestId, started, stages, gateway });
   stages.push(stage('authentication', 'passed'));
   stages.push(stage('model', 'passed'));
   stages.push(stage('basic-text', 'passed'));
@@ -109,7 +120,7 @@ export async function probeProviderConnection({ gateway, config } = {}) {
     }
     return parsed;
   });
-  if (!structured) return { version: 1, status: 'failed', requestId, latencyMs: Date.now() - started, stages };
+  if (!structured) return result({ status: 'failed', requestId, started, stages, gateway });
 
   const interpreter = createExplorationAiInterpreter({ gateway });
   const interpreted = await call('interpreter', () => interpreter.interpret({
@@ -117,6 +128,6 @@ export async function probeProviderConnection({ gateway, config } = {}) {
     context: { presentation: { availableDepths: ['mechanism', 'evidence'] } },
     config,
   }));
-  if (!interpreted) return { version: 1, status: 'failed', requestId, latencyMs: Date.now() - started, stages };
-  return { version: 1, status: 'ready', requestId, latencyMs: Date.now() - started, stages };
+  if (!interpreted) return result({ status: 'failed', requestId, started, stages, gateway });
+  return result({ status: 'ready', requestId, started, stages, gateway });
 }
