@@ -63,6 +63,8 @@ import {
 } from './exploration/inquiryGuidance.js';
 import { deriveExploreDepthCapabilities } from './ui/exploreDepth.js';
 import { CONCEPTUAL_DEPTHS } from './ui/uiArchitecture.js';
+import { createLearnerAnnotationStore, projectLearnerAnnotations } from './exploration/learnerAnnotations.js';
+import { createLearningConversationStore, projectLearningAssistantContext } from './exploration/learningAssistant.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -468,6 +470,8 @@ export function createPlaygroundHost({
   let presentedConceptIds = [];
   let conceptExposureIds = [];
   let lastCanonicalConceptSignalIds = [];
+  const learnerAnnotationStore = createLearnerAnnotationStore();
+  const learningConversationStore = createLearningConversationStore();
   const subscribers = new Set();
 
   const resetInquirySessionState = () => {
@@ -478,6 +482,8 @@ export function createPlaygroundHost({
     presentedConceptIds = [];
     conceptExposureIds = [];
     lastCanonicalConceptSignalIds = [];
+    learnerAnnotationStore.reset();
+    learningConversationStore.reset();
     inquiryTrajectoryStore.reset();
   };
 
@@ -540,6 +546,8 @@ export function createPlaygroundHost({
       semanticEvents,
       learnerInquiry,
       curiosity,
+      learnerAnnotations: projectLearnerAnnotations(learnerAnnotationStore.snapshot(), { activeOnly: false }),
+      learningConversation: learningConversationStore.snapshot(),
       causalInquiry: deriveCausalInquiryState({
         inquiry: learnerInquiry,
         semanticEvents,
@@ -877,7 +885,57 @@ export function createPlaygroundHost({
         proposalLifecycle: ['propose', 'accept', 'execute', 'inspect'],
         pedagogicalExperimentGoals: pedagogicalGoalIds(),
       };
+      const learningAssistant = projectLearningAssistantContext({
+        context,
+        annotations: learnerAnnotationStore.snapshot(),
+        conversation: learningConversationStore.snapshot(),
+      });
+      context.learningAssistant = learningAssistant;
+      context.exploration.learningAssistant = learningAssistant;
       return context;
+    },
+
+    getLearningAssistantContext({ presentation = null, selectedAnchor = null, selectedQuote = null } = {}) {
+      const context = this.inspectContext();
+      return projectLearningAssistantContext({
+        context: presentation ? { ...context, presentation } : context,
+        annotations: learnerAnnotationStore.snapshot(),
+        conversation: learningConversationStore.snapshot(),
+        selectedAnchor,
+        selectedQuote,
+      });
+    },
+
+    addLearnerAnnotation(request = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const annotation = learnerAnnotationStore.add({
+        kind: request.kind,
+        anchor: request.anchor,
+        quote: request.quote,
+      });
+      notify();
+      return annotation;
+    },
+
+    resolveLearnerAnnotation(annotationId) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const annotation = learnerAnnotationStore.resolve(annotationId);
+      if (annotation) notify();
+      return annotation;
+    },
+
+    removeLearnerAnnotation(annotationId) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const removed = learnerAnnotationStore.remove(annotationId);
+      if (removed) notify();
+      return removed;
+    },
+
+    recordLearningTurn({ role, text } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const turn = learningConversationStore.append({ role, text });
+      if (turn) notify();
+      return turn;
     },
 
     createExplorationThread({ title, question, actor = 'human', source, activate = true } = {}) {

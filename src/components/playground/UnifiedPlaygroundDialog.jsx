@@ -34,6 +34,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [activeDepth, setActiveDepth] = useState(null);
   const [fullWorldToolsOpen, setFullWorldToolsOpen] = useState(false);
   const [agentOpen, setAgentOpen] = useState(false);
+  const [pendingLearningSelection, setPendingLearningSelection] = useState(null);
   const [activeInquiryCard, setActiveInquiryCard] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
@@ -67,6 +68,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setActiveDepth(null);
     setFullWorldToolsOpen(false);
     setAgentOpen(false);
+    setPendingLearningSelection(null);
     setActiveInquiryCard(null);
     setPresentationMode(false);
     setActiveTab(initialTab);
@@ -186,6 +188,14 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
 
   const openAgent = () => {
     setActiveDepth(null);
+    setPendingLearningSelection(null);
+    setAgentOpen(true);
+  };
+
+  const openAskAboutSelection = (selection) => {
+    if (!selection?.quote) return;
+    setActiveDepth(null);
+    setPendingLearningSelection(selection);
     setAgentOpen(true);
   };
 
@@ -216,8 +226,8 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} fullWorldToolsOpen={fullWorldToolsOpen} onFullWorldToolsChange={setFullWorldToolsOpen} onOpenFullWorldTools={openFullWorldWorkspaceFromTune} />;
-  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onDispatch={dispatchAction} t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
-  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => setAgentOpen(false)} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} t={t} />;
+  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} /></ExploreExperimentRegion>;
+  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} t={t} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}

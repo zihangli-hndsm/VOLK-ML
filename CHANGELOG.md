@@ -712,3 +712,17 @@
 - Made Sequence attention content-dependent and temperature-controlled, and made Image/CNN prototype training produce bounded deterministic updates and history.
 - Added provider-safe domain context projection, bounded cross-domain Agent navigation/control proposals, exact-fidelity preflight coverage, unsupported-intervention clarification, and a cancellable adapter-neutral execution runner seam.
 - Preserved the shared World/Experiment/ScenarioSpec/runtime authority boundary; no remote inference, arbitrary code, raw domain payloads, or World Composer expansion was introduced.
+
+## 2026-08-21 — Phase 10A embedded learning assistant
+
+- Added the answer-only Ask VOLK surface with bounded structured answers, optional learner-reviewed experiment questions, and no runtime execution authority.
+- Added session-local bounded learner annotations with stable semantic anchors and localized understood/unclear/ask-about-this actions.
+- Added data-driven provider/model presets, native OpenAI/compatible transport-aware defaults, staged connection probing, redacted diagnostics, and focused reliability checks.
+- Kept provider context free of secrets, raw observations, coordinates, imported rows, and executable operations; adaptive curriculum, long-term learner modeling, and new domains remain deferred.
+
+## 2026-08-21 — Phase 10A acceptance hardening
+
+- Applied model-aware provider request profiles through the shared gateway and connection probe; Gemini presets now omit unsupported temperature/top-p/top-k fields while custom and compatible providers retain their existing contracts.
+- Added Host-owned stable learning-message identities, reusable bounded annotations for Concept/Evidence/Agent-answer surfaces, semantic “What VOLK knows” context disclosure, and evidence-preserving Ask/interpretation presentation.
+- Added reusable redacted diagnostics and bounded request tracing. Exact configured API keys, prompts, raw provider responses, and hidden reasoning never enter diagnostics or copied text.
+- Added focused regressions for Gemini request shape, stable answer identity, exact-key redaction, provider lifecycle traces, and bounded learning-assistant context.

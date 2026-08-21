@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import InstructionalAnnotationSurface from './InstructionalAnnotationSurface.jsx';
 
 function number(value) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(3) : '—';
@@ -17,7 +18,7 @@ const rows = [
   'outcome.trainMse', 'outcome.testMse', 'learning.currentStep', 'generalizationGap', 'coverageMismatch',
 ];
 
-export default function ExplorationEvidence({ snapshot, t, openByDefault = false }) {
+export default function ExplorationEvidence({ snapshot, t, openByDefault = false, agent, onAskAbout }) {
   const [open, setOpen] = useState(openByDefault);
   const [dismissed, setDismissed] = useState([]);
   const notices = (snapshot.observations ?? []).filter((item) => !dismissed.includes(item.id));
@@ -29,7 +30,8 @@ export default function ExplorationEvidence({ snapshot, t, openByDefault = false
     const e = notice.evidence ?? {};
     return Object.fromEntries(Object.entries(e).map(([key, item]) => [key, typeof item === 'number' ? number(item) : item]));
   };
-  return <section className="rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.evidence.ariaLabel')}>
+  return <InstructionalAnnotationSurface surface="evidence" contentId={`evidence-${snapshot.experimentWorkspace?.activeExperimentId ?? snapshot.playgroundId}`} messageId={`evidence-${snapshot.experimentWorkspace?.activeExperimentId ?? snapshot.playgroundId}`} localizationKey="playground.evidence.ariaLabel" agent={agent} onAskAbout={onAskAbout} t={t}>
+    <section className="rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.evidence.ariaLabel')}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="text-sm font-black text-slate-900">{t('playground.evidence.title')}</button>
       <span className="text-xs font-bold text-slate-500">{notices.length ? t('playground.evidence.noticeCount', { count: notices.length }) : t('playground.evidence.quiet')}</span>
@@ -55,5 +57,6 @@ export default function ExplorationEvidence({ snapshot, t, openByDefault = false
         })}</div>
       </div>}
     </div>}
-  </section>;
+    </section>
+  </InstructionalAnnotationSurface>;
 }

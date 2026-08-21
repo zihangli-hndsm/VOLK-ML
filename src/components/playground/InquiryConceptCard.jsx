@@ -1,9 +1,11 @@
 import React, { useState } from 'react';
+import InstructionalAnnotationSurface from './InstructionalAnnotationSurface.jsx';
 
-export default function InquiryConceptCard({ card, onDismiss, onOpenEvidence, t }) {
+export default function InquiryConceptCard({ card, onDismiss, onOpenEvidence, agent, onAskAbout, t }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
   if (!card) return null;
-  return <section data-ui-inquiry-concept-card="true" className="rounded-2xl border border-blue-200 bg-blue-50/70 p-3 text-sm text-blue-950" aria-label={t('playground.inquiry.card.ariaLabel')}>
+  return <InstructionalAnnotationSurface surface="inquiry-card" contentId={`inquiry-${card.conceptId}`} messageId={`inquiry-${card.conceptId}`} localizationKey={card.titleKey} agent={agent} onAskAbout={onAskAbout} t={t}>
+    <section data-ui-inquiry-concept-card="true" className="rounded-2xl border border-blue-200 bg-blue-50/70 p-3 text-sm text-blue-950" aria-label={t('playground.inquiry.card.ariaLabel')}>
     <div className="flex items-start justify-between gap-3">
       <div>
         <p className="text-[10px] font-black uppercase tracking-wide text-blue-700">{t('playground.inquiry.card.eyebrow')}</p>
@@ -19,5 +21,6 @@ export default function InquiryConceptCard({ card, onDismiss, onOpenEvidence, t 
       {detailsOpen && <p className="mt-1 text-xs text-blue-900">{t('playground.inquiry.card.deeperBody')}</p>}
     </details>
     {card.action && <button type="button" onClick={onOpenEvidence} className="ui-motion-interactive mt-3 rounded-xl bg-white px-3 py-2 text-xs font-black text-blue-800 ring-1 ring-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500">{t(card.action.labelKey)}</button>}
-  </section>;
+    </section>
+  </InstructionalAnnotationSurface>;
 }

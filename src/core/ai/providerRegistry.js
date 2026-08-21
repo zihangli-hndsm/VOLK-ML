@@ -1,3 +1,6 @@
+import { getModelPreset, getProviderPreset, providerPresetForProtocol } from './providerPresets.js';
+import { createRequestTraceStore } from './diagnostics.js';
+
 const PROTOCOLS = Object.freeze([
   Object.freeze({
     id: 'openai-responses',
@@ -15,13 +18,13 @@ const PROTOCOLS = Object.freeze([
     id: 'anthropic-compatible',
     labelKey: 'ai.provider.anthropicCompatible',
     defaultEndpoint: 'https://api.anthropic.com/v1/messages',
-    defaultModel: 'claude-3-5-haiku-latest',
+    defaultModel: 'claude-sonnet-4-6',
   }),
   Object.freeze({
     id: 'gemini-compatible',
     labelKey: 'ai.provider.geminiCompatible',
     defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-    defaultModel: 'gemini-2.0-flash',
+    defaultModel: 'gemini-3.7-flash',
   }),
 ]);
 
@@ -51,7 +54,34 @@ function requireConfig(config) {
   const model = String(config?.model ?? protocol.defaultModel).trim();
   if (!apiKey) throw providerError('AI_KEY_REQUIRED', 'Enter an API key to use the configured AI provider.');
   if (!model) throw providerError('AI_MODEL_REQUIRED', 'Enter a model name to use the configured AI provider.');
-  return { protocol, apiKey, model, endpoint: String(config?.endpoint ?? '').trim(), displayName: String(config?.displayName ?? '').trim() };
+  return {
+    protocol,
+    apiKey,
+    model,
+    endpoint: String(config?.endpoint ?? '').trim(),
+    displayName: String(config?.displayName ?? '').trim(),
+    requestProfile: requestProfileFor(config, protocol, model),
+  };
+}
+
+function requestProfileFor(config, protocol, model) {
+  const preset = config?.vendorId
+    ? getProviderPreset(config.vendorId)
+    : protocol.id === 'gemini-compatible' ? providerPresetForProtocol(protocol.id) : null;
+  const selected = config?.vendorId ? getModelPreset(config.vendorId, model) : null;
+  return Object.freeze({
+    temperature: selected?.requestProfile?.temperature ?? preset?.capabilities?.temperature ?? true,
+    topP: selected?.requestProfile?.topP ?? preset?.capabilities?.topP ?? true,
+    topK: selected?.requestProfile?.topK ?? preset?.capabilities?.topK ?? true,
+    structuredOutput: selected?.requestProfile?.structuredOutput ?? preset?.capabilities?.structuredOutput ?? true,
+  });
+}
+
+export function resolveProviderRequestProfile(config) {
+  const protocol = getProviderProtocol(config?.protocol ?? config?.providerId);
+  if (!protocol) return null;
+  const model = String(config?.model ?? protocol.defaultModel).trim();
+  return requestProfileFor(config, protocol, model);
 }
 
 function endpointFor(config) {
@@ -163,13 +193,15 @@ const adapters = Object.freeze({
     },
   }),
   'openai-compatible': Object.freeze({
-    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode }) {
+    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode, requestProfile }) {
+      const sampling = {};
+      if (requestProfile?.temperature !== false) sampling.temperature = 0;
       const request = (includeJsonMode) => fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
         body: JSON.stringify({
           model,
-          temperature: 0,
+          ...sampling,
           ...(includeJsonMode ? { response_format: { type: 'json_object' } } : {}),
           messages: [{ role: 'system', content: system }, ...messages],
         }),
@@ -188,18 +220,24 @@ const adapters = Object.freeze({
     },
   }),
   'anthropic-compatible': Object.freeze({
-    async complete({ fetchImpl, endpoint, apiKey, model, system, messages }) {
+    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, requestProfile }) {
       const response = await fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
-        body: JSON.stringify({ model, max_tokens: 1200, temperature: 0, system, messages }),
+        body: JSON.stringify({ model, max_tokens: 1200, ...(requestProfile?.temperature !== false ? { temperature: 0 } : {}), system, messages }),
       });
       const payload = await readJson(response);
       return textFromContent(payload?.content);
     },
   }),
   'gemini-compatible': Object.freeze({
-    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode }) {
+    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode, requestProfile }) {
+      const generationConfig = {
+        ...(requestProfile?.temperature !== false ? { temperature: 0 } : {}),
+        ...(requestProfile?.topP !== false ? { topP: 1 } : {}),
+        ...(requestProfile?.topK !== false ? { topK: 1 } : {}),
+        ...(responseMode === 'json' ? { responseMimeType: 'application/json' } : {}),
+      };
       const response = await fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
@@ -209,7 +247,7 @@ const adapters = Object.freeze({
             role: message.role === 'assistant' ? 'model' : 'user',
             parts: [{ text: String(message.content ?? '') }],
           })),
-          generationConfig: { temperature: 0, ...(responseMode === 'json' ? { responseMimeType: 'application/json' } : {}) },
+          generationConfig,
         }),
       });
       const payload = await readJson(response);
@@ -218,13 +256,15 @@ const adapters = Object.freeze({
   }),
 });
 
-export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterRegistry = adapters } = {}) {
+export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterRegistry = adapters, traceStore = createRequestTraceStore() } = {}) {
   return Object.freeze({
     async complete({ config, system = '', messages = [], responseMode = 'text', responseSchema = null }) {
       if (typeof fetchImpl !== 'function') throw providerError('AI_PROVIDER_UNAVAILABLE', 'No browser fetch implementation is available.');
       const resolved = requireConfig(config);
       const adapter = adapterRegistry[resolved.protocol.id];
       if (!adapter) throw providerError('AI_PROVIDER_UNSUPPORTED', 'The selected AI protocol is not supported.');
+      const requestId = globalThis.crypto?.randomUUID?.() ?? `ai-request-${Date.now()}`;
+      traceStore.append({ id: requestId, stage: 'request-started', protocol: resolved.protocol.id, model: resolved.model, status: 'started' });
       let text;
       try {
         text = await adapter.complete({
@@ -236,11 +276,16 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
           messages: messages.map((message) => ({ role: message.role, content: String(message.content ?? '') })),
           responseMode,
           responseSchema,
+          requestProfile: resolved.requestProfile,
         });
+        traceStore.append({ id: requestId, stage: 'provider-response', protocol: resolved.protocol.id, model: resolved.model, status: 'received' });
+        traceStore.append({ id: requestId, stage: 'parse', protocol: resolved.protocol.id, model: resolved.model, status: responseMode === 'json' ? 'structured' : 'text' });
       } catch (error) {
+        traceStore.append({ id: requestId, stage: 'failed', protocol: resolved.protocol.id, model: resolved.model, status: error?.code ?? 'failed' });
         if (error?.code?.startsWith('AI_')) throw error;
         throw providerError('AI_PROVIDER_UNAVAILABLE', 'The AI provider request was unavailable.');
       }
+      traceStore.append({ id: requestId, stage: 'completed', protocol: resolved.protocol.id, model: resolved.model, status: 'completed' });
       return {
         text: String(text ?? ''),
         provider: resolved.displayName || resolved.protocol.id,
@@ -248,6 +293,8 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
         model: resolved.model,
       };
     },
+    recordTrace(entry) { return traceStore.append(entry); },
+    getRequestTrace() { return traceStore.snapshot(); },
   });
 }
 
