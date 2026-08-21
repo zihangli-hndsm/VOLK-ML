@@ -52,6 +52,7 @@ import { getExplorationDomainCapabilities, projectDomainContext, summarizeExplor
 import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 import { createSemanticEventStore, deriveSemanticEventDrafts } from './exploration/semanticEvents.js';
 import { deriveLearnerInquiryState, INQUIRY_CONCEPT_REGISTRY } from './exploration/learnerInquiry.js';
+import { CURIOSITY_ACTIONS, deriveCuriosityState, resolveCuriosityOpportunities } from './exploration/curiosity.js';
 import { deriveInquirySuggestions } from './exploration/inquirySuggestion.js';
 import { deriveCausalInquiryState } from './exploration/causalInquiry.js';
 import { createInquiryTrajectoryStore, deriveInquiryTrajectory } from './exploration/inquiryTrajectory.js';
@@ -60,6 +61,8 @@ import {
   nextInquiryGuidanceHistory,
   validateInquiryGuidance,
 } from './exploration/inquiryGuidance.js';
+import { deriveExploreDepthCapabilities } from './ui/exploreDepth.js';
+import { CONCEPTUAL_DEPTHS } from './ui/uiArchitecture.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -478,8 +481,33 @@ export function createPlaygroundHost({
     inquiryTrajectoryStore.reset();
   };
 
-  const present = (snapshot) => {
-    if (!snapshot) return null;
+  const deriveCuriosityCapabilities = (snapshot) => {
+    const depths = deriveExploreDepthCapabilities(snapshot);
+    const availableActions = [];
+    if (depths[CONCEPTUAL_DEPTHS.MECHANISM]) availableActions.push(CURIOSITY_ACTIONS.INSPECT_MECHANISM);
+    if (depths[CONCEPTUAL_DEPTHS.EVIDENCE]) availableActions.push(CURIOSITY_ACTIONS.INSPECT_TEST_EVIDENCE);
+    if (snapshot?.experimentWorkspace?.activeExperimentId) availableActions.push(CURIOSITY_ACTIONS.REPEAT_WITH_NEW_SEED);
+
+    const controlPlayground = getPlayground(snapshot?.modelPlaygroundId ?? snapshot?.playgroundId);
+    const context = {
+      controls: snapshot?.controls ?? {},
+      controlSchemas: (controlPlayground?.controls ?? []).map((control) => ({ key: control.key, domain: control.domain })),
+      exploration: { worldOperations: listWorldOperations() },
+    };
+    const cleaner = deriveCleanerComparisonProposal({
+      snapshot,
+      comparison: snapshot?.experimentWorkspace?.comparison,
+      context,
+    });
+    if (cleaner.options.length) availableActions.push(CURIOSITY_ACTIONS.ISOLATE_ONE_FACTOR);
+    return { availableActions };
+  };
+
+  // Curiosity is derived beside the learner-inquiry projection so normal
+  // snapshots and Agent inspection cannot observe different event/evidence
+  // windows. It is presentation state only; runtime mutations still happen
+  // through the existing scenario and operation boundaries.
+  const deriveInquiryProjection = (snapshot) => {
     const semanticEvents = semanticEventStore.snapshot();
     const learnerInquiry = deriveLearnerInquiryState({
       semanticEvents,
@@ -487,6 +515,20 @@ export function createPlaygroundHost({
       conceptualDepth: inquiryPresentationContext.conceptualDepth,
       conceptsPreviouslySurfaced: inquiryPresentationContext.conceptsPreviouslySurfaced,
     });
+    const detectedCuriosity = deriveCuriosityState({ semanticEvents, inquiry: learnerInquiry });
+    return {
+      semanticEvents,
+      learnerInquiry,
+      curiosity: resolveCuriosityOpportunities({
+        curiosity: detectedCuriosity,
+        capabilities: deriveCuriosityCapabilities(snapshot),
+      }),
+    };
+  };
+
+  const present = (snapshot) => {
+    if (!snapshot) return null;
+    const { semanticEvents, learnerInquiry, curiosity } = deriveInquiryProjection(snapshot);
     const inquiryTrajectory = deriveInquiryTrajectory({
       ...inquiryTrajectoryStore.snapshot(),
       semanticEvents,
@@ -497,6 +539,7 @@ export function createPlaygroundHost({
       provenance: scriptProvenance,
       semanticEvents,
       learnerInquiry,
+      curiosity,
       causalInquiry: deriveCausalInquiryState({
         inquiry: learnerInquiry,
         semanticEvents,
@@ -668,13 +711,7 @@ export function createPlaygroundHost({
       const transactionActions = ['APPLY_WORLD_TRANSACTION', 'UNDO_WORLD_ACTION', 'REDO_WORLD_ACTION'];
       const viewActions = ['SET_WORKSPACE_VIEW'];
       const experimentOperations = ['DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS', 'REPEAT_EXPERIMENT', 'UNDO_EXPERIMENT_ACTION'];
-      const semanticEvents = semanticEventStore.snapshot();
-      const learnerInquiry = deriveLearnerInquiryState({
-        semanticEvents,
-        snapshot,
-        conceptualDepth: inquiryPresentationContext.conceptualDepth,
-        conceptsPreviouslySurfaced: inquiryPresentationContext.conceptsPreviouslySurfaced,
-      });
+      const { semanticEvents, learnerInquiry, curiosity } = deriveInquiryProjection(snapshot);
       const causalInquiry = deriveCausalInquiryState({
         inquiry: learnerInquiry,
         semanticEvents,
@@ -721,6 +758,7 @@ export function createPlaygroundHost({
         derivedObservables: snapshot.derivedObservables ?? {},
         observations: snapshot.observations ?? [],
         repeatEvidence: snapshot.repeatEvidence ?? null,
+        curiosity,
         experimentWorkspace: snapshot.experimentWorkspace ?? null,
         explorationThreads: snapshot.explorationThreads ?? [],
         activeExplorationThread: snapshot.activeExplorationThread ?? null,
@@ -740,6 +778,7 @@ export function createPlaygroundHost({
           }),
           semanticEvents,
           learnerInquiry,
+          curiosity,
           causalInquiry,
           inquiryTrajectory,
           conceptExposure: { version: 1, shownConceptIds: [...conceptExposureIds] },

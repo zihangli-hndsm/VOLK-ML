@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-08-21 — Phase 10.1 Curiosity Loop foundation
+
+- Added a bounded deterministic Curiosity State projection over Semantic Events, Learner Inquiry candidates, and current observation identities.
+- Added four localized curiosity-gap contracts with inspectable reflection references and existing capability directions; Curiosity does not infer confusion or causality and does not create runtime operations.
+- Exposed the same Curiosity projection through normal Host snapshots and Agent inspection, with a provider-safe projection that excludes raw World and observation payloads.
+- Added focused deterministic curiosity checks and architecture documentation; Goal 2 concept matching, Concept Cards, adaptive curriculum, and background AI remain deferred.
+
+## 2026-08-21 — Phase 10.1 acceptance hardening
+
+- Made the curiosity registry authoritative for gap, concept, question, direction, action, and capability fields; forged or oversized caller state is rejected.
+- Added deterministic priority and current-comparison-pair checks, plus capability filtering that preserves truthful reflections without exposing unavailable actions.
+- Tightened the provider projection and prompt contract to omit internal event/observation/Experiment identifiers and raw evidence while preserving bounded curiosity context.
+
 ## 2026-08-18 — Contextual Tune
 
 - Added bounded, model-owned control presentation metadata separating semantic domain from learner-facing importance and role.

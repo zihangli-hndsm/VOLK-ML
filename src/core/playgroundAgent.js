@@ -12,6 +12,14 @@ export {
 export { deriveCausalInquiryState, listCausalInquirySteps } from './exploration/causalInquiry.js';
 export { getCausalWorldPrototype } from './exploration/causalWorldPrototype.js';
 export { createInquiryTrajectoryStore, deriveInquiryTrajectory } from './exploration/inquiryTrajectory.js';
+export {
+  CURIOSITY_GAP_IDS,
+  CURIOSITY_ACTIONS,
+  deriveCuriosityState,
+  getCuriosityGap,
+  listCuriosityGaps,
+  projectCuriosityContext,
+} from './exploration/curiosity.js';
 
 const copy = (value) => structuredClone(value);
 
