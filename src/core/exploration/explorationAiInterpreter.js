@@ -4,6 +4,7 @@ import { EXPLORATION_INTENT_IDS } from './explorationIntents.js';
 import { applyWorldRecipePatch, normalizeWorldRecipe, worldRecipeJsonSchema, worldRecipePatchJsonSchema } from './worldRecipe.js';
 import { pedagogicalExperimentSchema, validateExplorationDesign, pedagogicalGoalIds } from './pedagogicalExperiment.js';
 import { canonicalizePedagogicalObservation } from './pedagogicalObservation.js';
+import { projectCuriosityContext } from './curiosity.js';
 
 const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
@@ -159,6 +160,7 @@ function validateInterpretation(value, context) {
 
 export function projectExplorationAiContext(context = {}) {
   const comparison = context?.experimentWorkspace?.comparison;
+  const curiosity = projectCuriosityContext(context?.curiosity ?? context?.exploration?.curiosity);
   const canonicalObservation = canonicalizePedagogicalObservation(context?.pedagogicalObservation);
   const pedagogicalObservation = canonicalObservation
     ? {
@@ -191,6 +193,7 @@ export function projectExplorationAiContext(context = {}) {
     supportedConcepts: [...EXPLANATION_TOPICS],
     supportedExperimentGoals: pedagogicalGoalIds(),
     pedagogicalObservation,
+    curiosity,
     recentActions,
     worldComposer: context?.exploration?.worldComposer ?? null,
     domainContext: context?.domainContext ?? context?.exploration?.contextProjection ?? null,
@@ -214,6 +217,12 @@ function promptFor({ request, context }) {
       'If causal evidence is insufficient, use language such as "is consistent with", "one possible interpretation is", or "we can test that by...".',
       'For class-separation, never say or imply that geometric overlap increased.',
       'The AI cannot author canonical observation/evidence or authorize runtime execution.',
+    ] : []),
+    ...(context?.curiosity?.available || context?.exploration?.curiosity?.available ? [
+      'Curiosity is a deterministic unresolved exploration opportunity, not a diagnosis of confusion, ability, or learner knowledge.',
+      'The supplied curiosity gap, related concept, question key, and available action are authoritative bounded context. Do not invent new curiosity types or concept IDs.',
+      'You may phrase a supplied reflection question, but do not create runtime operations, observations, metrics, or causal conclusions from it.',
+      'If the supplied evidence is insufficient, preserve uncertainty and frame any interpretation as a possible idea to test.',
     ] : []),
     `Allowed explanation topics: ${EXPLANATION_TOPICS.join(', ')}`,
     'The deterministic planner and capability registry will choose all executable operations after this response.',

@@ -2071,3 +2071,15 @@ The intended direction can be summarized as:
 > Videos provide ways of seeing. The Lab provides Worlds to manipulate and experiments to compare. Guided Explore helps learners discover useful actions without AI. The Agent optionally helps turn curiosity into experiments.
 
 The long-term differentiator is not the number of supported layers or frameworks. It is the ability to make abstract ML ideas physically explorable while preserving enough semantic rigor that the learner's conclusions remain trustworthy.
+
+## Phase 10.1 — Curiosity Loop foundation
+
+The first Phase 10 slice adds a bounded deterministic Curiosity projection on
+top of the accepted Semantic Event and Learner Inquiry contracts. Curiosity
+names an unresolved exploration opportunity; it is not a diagnosis of learner
+confusion, knowledge, ability, or intent. The initial registry is limited to
+single-factor mechanism questions, mixed-factor comparisons, distribution
+shift questions, and repeat variation. Reflection questions and available
+directions are localization-key and capability references, not generated
+runtime operations. Goal 10.2 concept matching, Concept Card UI, adaptive
+curriculum, learner profiles, and background AI remain deferred.
