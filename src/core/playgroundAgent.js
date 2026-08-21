@@ -20,6 +20,19 @@ export {
   listCuriosityGaps,
   projectCuriosityContext,
 } from './exploration/curiosity.js';
+export {
+  LEARNER_ANNOTATION_KINDS,
+  canonicalizeLearnerAnnotation,
+  createLearnerAnnotationStore,
+  projectLearnerAnnotations,
+} from './exploration/learnerAnnotations.js';
+export {
+  LEARNING_ANSWER_SCHEMA,
+  createLearningAssistant,
+  learningAssistantPrompt,
+  projectLearningAssistantContext,
+  validateLearningAnswer,
+} from './exploration/learningAssistant.js';
 
 const copy = (value) => structuredClone(value);
 
@@ -92,6 +105,11 @@ export function createPlaygroundAgentApi(host) {
       }
       return context;
     }),
+    getLearningAssistantContext: (options = {}) => invoke('getLearningAssistantContext', () => copy(host.getLearningAssistantContext(copy(options ?? {})))),
+    addLearnerAnnotation: (request) => invoke('addLearnerAnnotation', () => copy(host.addLearnerAnnotation(copy(request ?? {})))),
+    resolveLearnerAnnotation: (annotationId) => invoke('resolveLearnerAnnotation', () => copy(host.resolveLearnerAnnotation(annotationId))),
+    removeLearnerAnnotation: (annotationId) => invoke('removeLearnerAnnotation', () => copy(host.removeLearnerAnnotation(annotationId))),
+    recordLearningTurn: (request) => invoke('recordLearningTurn', () => copy(host.recordLearningTurn(copy(request ?? {})))),
     proposeExploration: (request) => invoke('proposeExploration', () => copy(host.proposeExploration(typeof request === 'string' ? { request } : copy(request ?? {})))),
     proposeCleanerComparison: () => invoke('proposeCleanerComparison', () => copy(host.proposeCleanerComparison())),
     suggestInquiry: () => invoke('suggestInquiry', () => copy(host.suggestInquiry())),

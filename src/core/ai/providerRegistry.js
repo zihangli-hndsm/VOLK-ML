@@ -15,13 +15,13 @@ const PROTOCOLS = Object.freeze([
     id: 'anthropic-compatible',
     labelKey: 'ai.provider.anthropicCompatible',
     defaultEndpoint: 'https://api.anthropic.com/v1/messages',
-    defaultModel: 'claude-3-5-haiku-latest',
+    defaultModel: 'claude-sonnet-4-6',
   }),
   Object.freeze({
     id: 'gemini-compatible',
     labelKey: 'ai.provider.geminiCompatible',
     defaultEndpoint: 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent',
-    defaultModel: 'gemini-2.0-flash',
+    defaultModel: 'gemini-3.7-flash',
   }),
 ]);
 

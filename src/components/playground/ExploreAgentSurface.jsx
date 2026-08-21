@@ -3,8 +3,10 @@ import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, deriveAgentSemanticExplanation, routeAgentAiInterpretation, AGENT_GUIDANCE_OUTCOMES } from '../../core/ui/agentGuide.js';
 import { deriveCleanerComparisonProposal } from '../../core/exploration/cleanerComparison.js';
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
+import { createAiDiagnostic, diagnosticText } from '../../core/ai/diagnostics.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
+import AskVolkPanel from './AskVolkPanel.jsx';
 import CompactBottomSheet from '../CompactBottomSheet.jsx';
 import ConceptCard from './ConceptCard.jsx';
 
@@ -73,6 +75,8 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState(null);
   const [aiFallback, setAiFallback] = useState(false);
+  const [aiDiagnostic, setAiDiagnostic] = useState(null);
+  const [mode, setMode] = useState('ask');
   const [cleanerOptions, setCleanerOptions] = useState(null);
   const [cleanerUnavailable, setCleanerUnavailable] = useState(false);
   const comparison = deriveAgentComparisonExplanation(snapshot);
@@ -113,6 +117,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   const ask = async () => {
     if (!request.trim() || busy) return;
     setAiFallback(false);
+    setAiDiagnostic(null);
     setCleanerOptions(null);
     setCleanerUnavailable(false);
     let nextOutcome = classifyAgentGuideRequest({ request, capabilities, snapshot });
@@ -128,8 +133,9 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
           config,
         });
         nextOutcome = routeAgentAiInterpretation({ interpretation, request, snapshot, capabilities }) ?? nextOutcome;
-      } catch {
+      } catch (caught) {
         setAiFallback(true);
+        setAiDiagnostic(createAiDiagnostic({ error: caught, config, stage: 'interpreter', fallbackUsed: true }));
       } finally {
         setBusy(false);
       }
@@ -233,6 +239,12 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       </div>
       <button ref={closeRef} type="button" aria-label={t('playground.agentGuide.close')} onClick={onClose} className="ui-motion-interactive min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('playground.agentGuide.close')}</button>
     </div>
+    <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-violet-50 p-1" role="tablist" aria-label={t('playground.agentGuide.title')}>
+      <button type="button" role="tab" aria-selected={mode === 'ask'} onClick={() => setMode('ask')} className={`rounded-lg px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-violet-500 ${mode === 'ask' ? 'bg-white text-violet-800 shadow-sm' : 'text-violet-600'}`}>{t('ai.askTab')}</button>
+      <button type="button" role="tab" aria-selected={mode === 'experiment'} onClick={() => setMode('experiment')} className={`rounded-lg px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-violet-500 ${mode === 'experiment' ? 'bg-white text-violet-800 shadow-sm' : 'text-violet-600'}`}>{t('ai.experimentTab')}</button>
+    </div>
+    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(text) => { setMode('experiment'); setRequest(text); setOutcome(null); setProposal(null); setResult(null); setConceptCard(null); setError(null); }} t={t} />}
+    <div className={mode === 'ask' ? 'hidden' : ''}>
     <div className="mt-3 flex gap-2">
       <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') ask(); }} placeholder={t('playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
       <button type="button" disabled={!request.trim() || busy} onClick={ask} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t('playground.agentGuide.ask')}</button>
@@ -301,5 +313,6 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <summary className="cursor-pointer text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('playground.agentGuide.advanced')}</summary>
       <div className="mt-3"><ExplorationAgentPanel agent={agent} snapshot={snapshot} presentation={presentation} t={t} /></div>
     </details>
+    </div>
   </CompactBottomSheet>;
 }

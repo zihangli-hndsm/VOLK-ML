@@ -1,5 +1,21 @@
 # Exploration semantic foundation
 
+## Phase 10A — embedded learning assistance
+
+The embedded Ask VOLK surface is an answer-only presentation layer over the
+existing Host and Agent contracts. Its provider context is a bounded semantic
+projection; raw World observations, coordinates, imported rows, secrets, and
+runtime operations never cross the provider boundary. A returned answer may
+contain a learner-facing experiment question, but it is not a proposal and
+cannot execute or authorize a mutation.
+
+Learner annotations are session-local, bounded, and attached to registered
+semantic surfaces. They are optional learner signals, not canonical runtime
+facts. Their stable anchors and selected quotes are validated before storage.
+Provider/model presets and staged connection diagnostics are likewise
+presentation/configuration concerns and do not change the runtime authority
+boundary.
+
 Phase 0 introduces a small domain layer for exploration without creating a
 second playground state machine.
 
