@@ -36,6 +36,8 @@ const stable = (value) => {
 const worldSemantic = (world) => ({
   kind: world.kind,
   dimension: world.dimension,
+  domain: world.domain ?? 'tabular',
+  coordinateSpace: world.coordinateSpace ?? 'plot2d',
   task: world.task,
   featureNames: world.featureNames,
   mode: world.mode ?? 'sample',

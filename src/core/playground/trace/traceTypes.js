@@ -43,6 +43,30 @@ export const TRACE_EVENTS = {
     'mlp.hiddenActivated',
     'prediction.emitted',
   ],
+  'image-cnn': [
+    'data.loaded',
+    'split.created',
+    'evaluation.completed',
+    'training.started',
+    'training.completed',
+  ],
+  'sequence-attention': [
+    'data.loaded',
+    'split.created',
+    'evaluation.completed',
+    'training.started',
+    'training.completed',
+  ],
+  'retrieval-ranking': [
+    'data.loaded',
+    'split.created',
+    'evaluation.completed',
+  ],
+  'rag-grounding': [
+    'data.loaded',
+    'split.created',
+    'evaluation.completed',
+  ],
 };
 
 import { validateType } from '../visualization/typeContracts.js';
@@ -52,8 +76,8 @@ import { validateType } from '../visualization/typeContracts.js';
 // data.loaded carries different fields for regression vs classification).
 export const TRACE_PAYLOAD_SCHEMAS = {
   'data.loaded': {
-    required: { points: 'integer' },
-    optional: { feature: 'string', target: 'string', features: 'array<string>', trainRatio: 'number' },
+    required: {},
+    optional: { points: 'integer', samples: 'integer', domain: 'string', feature: 'string', target: 'string', features: 'array<string>', trainRatio: 'number' },
   },
   'split.created': {
     required: { trainRows: 'integer', testRows: 'integer' },
@@ -82,14 +106,15 @@ export const TRACE_PAYLOAD_SCHEMAS = {
     },
     optional: {},
   },
-  'training.completed': { required: { steps: 'integer', requestedSteps: 'integer' }, optional: { stoppedReason: 'string' } },
+  'training.started': { required: { totalSteps: 'integer' }, optional: { domain: 'string' } },
+  'training.completed': { required: { steps: 'integer', requestedSteps: 'integer' }, optional: { stoppedReason: 'string', domain: 'string' } },
   'knn.samplesStored': { required: { count: 'integer' }, optional: { trainIds: 'array' } },
   'query.received': { required: { x: 'number', y: 'number' }, optional: { vector: 'array<number>' } },
   'knn.distancesComputed': { required: { count: 'integer' }, optional: { nearest: 'number' } },
   'knn.neighborSelected': { required: { rank: 'integer', pointId: 'id', distance: 'number', label: 'string' }, optional: {} },
   'knn.voteUpdated': { required: { counts: 'object' }, optional: { predictedLabel: 'string', tie: 'boolean' } },
   'prediction.emitted': { required: { label: 'string' }, optional: { k: 'integer', hiddenUnits: 'integer' } },
-  'evaluation.completed': { required: {}, optional: { accuracy: 'number|null', k: 'integer' } },
+  'evaluation.completed': { required: {}, optional: { accuracy: 'number|null', trainAccuracy: 'number|null', testAccuracy: 'number|null', k: 'integer' } },
   'mlp.initialized': { required: { hiddenSize: 'integer' }, optional: { inputSize: 'integer', outputSize: 'integer' } },
   'mlp.hiddenActivated': { required: { index: 'integer' }, optional: { activation: 'number' } },
 };

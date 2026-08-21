@@ -9,6 +9,7 @@ import {
   PEDAGOGICAL_EXPERIMENT_GOALS,
   validateExplorationDesign,
 } from './pedagogicalExperiment.js';
+import { planCrossDomainIntent, planCrossDomainRequest } from './crossDomainPlanner.js';
 
 const clone = (value) => structuredClone(value);
 
@@ -408,6 +409,17 @@ export function planPedagogicalExperiment(designInput, request, context) {
 }
 
 export function planExplorationRequest(request, context) {
+  const crossDomain = planCrossDomainRequest(request, context);
+  if (crossDomain) return crossDomain.kind === 'proposal'
+    ? { ...crossDomain, scenario: validateScenarioSpec(crossDomain.scenario, context) }
+    : crossDomain;
+  if (['image', 'sequence', 'retrieval', 'rag'].includes(context?.playground?.domain)) {
+    return {
+      kind: 'clarification',
+      request,
+      interpretation: { ambiguity: 'unsupported-domain-intervention', messageKey: 'playground.explorationAgent.unsupported' },
+    };
+  }
   const interpretation = interpretExplorationRequest(request);
   if (interpretation.ambiguity) return { kind: 'clarification', request, interpretation };
   const draft = intentSpec(interpretation.intent, request, context);
@@ -427,6 +439,17 @@ export function planExplorationRequest(request, context) {
 }
 
 export function planExplorationIntent(intent, request, context) {
+  const crossDomain = planCrossDomainIntent(intent, request, context);
+  if (crossDomain) return crossDomain.kind === 'proposal'
+    ? { ...crossDomain, scenario: validateScenarioSpec(crossDomain.scenario, context) }
+    : crossDomain;
+  if (['image', 'sequence', 'retrieval', 'rag'].includes(context?.playground?.domain)) {
+    return {
+      kind: 'clarification',
+      request,
+      interpretation: { ambiguity: 'unsupported-domain-intervention', messageKey: 'playground.explorationAgent.unsupported' },
+    };
+  }
   const draft = intentSpec(intent, request, context);
   if (!draft && intent === 'line-move') {
     return {

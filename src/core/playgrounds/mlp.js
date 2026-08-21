@@ -7,6 +7,7 @@ const finiteOrNull = (value) => (Number.isFinite(Number(value)) ? Number(value) 
 // model adapter.
 export const mlpPlayground = {
   id: 'mlp-classification',
+  domain: 'tabular',
   version: 1,
   adapterId: 'mlp',
   titleKey: 'playground.mlp.title',

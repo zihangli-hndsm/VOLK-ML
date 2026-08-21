@@ -8,6 +8,9 @@ import {
 import { fallbackRegressionPoints, regressionPointsFromDataset } from './linearRegressionPlayground.js';
 import { teachingDatasetById } from './teachingDatasets.js';
 import { generateXorDataset } from './playground/model/mlpMath.js';
+import { createImageClassificationSource } from './playground/domain/imageDataset.js';
+import { createSequenceAttentionSource } from './playground/domain/sequenceDataset.js';
+import { createRagSource, createRetrievalSource } from './playground/domain/retrievalDataset.js';
 import { getPreset, listPresets } from './playground/visualization/presetRegistry.js';
 import { validateScript as validateScriptDeclaration } from './playground/visualization/scriptValidator.js';
 import { dryRunScript as runDryRun } from './playground/agent/dryRun.js';
@@ -45,6 +48,7 @@ import { scenarioError, validateScenarioSpec } from './exploration/scenarioSpec.
 import { isWorldModelCompatibilityError } from './exploration/worldModelCompatibility.js';
 import { SCENARIO_FIDELITY_STATUSES, SCENARIO_SPEC_VERSION } from './exploration/scenarioSpec.js';
 import { worldRecipeSummary } from './exploration/worldRecipe.js';
+import { getExplorationDomainCapabilities, projectDomainContext, summarizeExplorationDomain } from './exploration/domainContract.js';
 import { pedagogicalGoalIds } from './exploration/pedagogicalExperiment.js';
 import { createSemanticEventStore, deriveSemanticEventDrafts } from './exploration/semanticEvents.js';
 import { deriveLearnerInquiryState, INQUIRY_CONCEPT_REGISTRY } from './exploration/learnerInquiry.js';
@@ -410,6 +414,10 @@ function resolveSource(playground, dataset) {
       usingDataset: false,
     };
   }
+  if (playground.id === 'image-classification') return createImageClassificationSource({ seed: 7 });
+  if (playground.id === 'sequence-attention') return createSequenceAttentionSource();
+  if (playground.id === 'retrieval-ranking') return createRetrievalSource();
+  if (playground.id === 'rag-grounding') return createRagSource();
   throw playgroundError('INVALID_PLAYGROUND_SOURCE', { playgroundId: playground.id });
 }
 
@@ -679,13 +687,25 @@ export function createPlaygroundHost({
       });
       const context = {
         version: 1,
-        playground: { id: session.playgroundId, modelAdapter: session.adapterId, task: data.task ?? null },
+        playground: { id: session.playgroundId, domain: snapshot.domain ?? 'tabular', coordinateSpace: snapshot.world?.coordinateSpace ?? 'plot2d', modelAdapter: session.adapterId, task: data.task ?? null },
         model: adapter ? {
+          domain: adapter.domain ?? snapshot.domain ?? 'tabular',
+          execution: snapshot.execution,
           capabilities: { ...adapter.capabilities },
           operations: adapter.scriptOperations ?? {},
           semanticFields,
           semanticSchema: adapter.semanticSchema ?? {},
         } : null,
+        // This is the bounded cross-domain projection intended for Agent and
+        // provider adapters. The legacy `world`/`data` fields remain available
+        // to local deterministic planning for compatibility; provider
+        // projection must use this field and never serialize raw payloads.
+        domainContext: projectDomainContext({
+          domain: snapshot.domain ?? 'tabular',
+          world: snapshot.world,
+          data,
+          model: adapter?.capabilities,
+        }),
         data: {
           task: data.task ?? null,
           featureColumns: data.featureColumns ?? [],
@@ -710,6 +730,14 @@ export function createPlaygroundHost({
         affordances: [...AFFORDANCE_IDS],
         exploration: {
           version: 1,
+          domain: summarizeExplorationDomain(snapshot.domain ?? 'tabular'),
+          capabilities: getExplorationDomainCapabilities(snapshot.domain ?? 'tabular'),
+          contextProjection: projectDomainContext({
+            domain: snapshot.domain ?? 'tabular',
+            world: snapshot.world,
+            data,
+            model: adapter?.capabilities,
+          }),
           semanticEvents,
           learnerInquiry,
           causalInquiry,

@@ -5,6 +5,7 @@
 
 import { cloneGeneratorSpec, GENERATOR_VERSION } from './generator.js';
 import { normalizeWorldRecipe, WORLD_RECIPE_VERSION } from './worldRecipe.js';
+import { domainSupportsTask, getExplorationDomainContract, normalizeDomainObservationPayload, normalizeExplorationDomain } from './domainContract.js';
 
 export const WORLD_VERSION = 1;
 export const WORLD_KIND = 'sample';
@@ -44,13 +45,13 @@ function normalizeProvenance(value, fallback) {
   return provenance;
 }
 
-function normalizeObservation(input, index, defaultProvenance) {
+function normalizeObservation(input, index, defaultProvenance, domain = 'tabular') {
   if (!input || typeof input !== 'object' || Array.isArray(input)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: `observations[${index}]` });
   }
   const position = input.position ?? {};
-  const x = finite(input.x ?? position.x, `observations[${index}].x`);
-  const y = finite(input.y ?? position.y, `observations[${index}].y`);
+  const x = finite(input.x ?? position.x ?? (domain === 'tabular' ? undefined : index), `observations[${index}].x`);
+  const y = finite(input.y ?? position.y ?? (domain === 'tabular' ? undefined : 0), `observations[${index}].y`);
   const id = String(input.id ?? `observation-${index + 1}`);
   if (!id) throw explorationError('EXPLORATION_INVALID_WORLD', { field: `observations[${index}].id` });
   const features = input.features && typeof input.features === 'object' && !Array.isArray(input.features)
@@ -69,6 +70,19 @@ function normalizeObservation(input, index, defaultProvenance) {
   if (input.generation && typeof input.generation === 'object' && !Array.isArray(input.generation)) {
     observation.generation = clone(input.generation);
   }
+  let payload;
+  try {
+    payload = normalizeDomainObservationPayload(domain, input.payload, `observations[${index}].payload`);
+  } catch (error) {
+    if (error?.code === 'EXPLORATION_DOMAIN_PAYLOAD_INVALID' || error?.code === 'EXPLORATION_DOMAIN_UNSUPPORTED') {
+      throw explorationError('EXPLORATION_INVALID_WORLD', {
+        field: error.details?.field ?? `observations[${index}].payload`,
+        reason: error.code,
+      });
+    }
+    throw error;
+  }
+  if (payload !== undefined) observation.payload = payload;
   return observation;
 }
 
@@ -133,6 +147,8 @@ export function createWorld({
   id = 'world-1',
   name = 'Untitled sample world',
   task = null,
+  domain = 'tabular',
+  coordinateSpace = null,
   featureNames = ['x', 'y'],
   observations = [],
   provenance = 'manual',
@@ -142,16 +158,22 @@ export function createWorld({
   mode = 'sample',
   generator = null,
 } = {}) {
-  if (!['regression', 'classification', null].includes(task)) {
+  const normalizedDomain = normalizeExplorationDomain(domain);
+  const normalizedCoordinateSpace = coordinateSpace ?? getExplorationDomainContract(normalizedDomain)?.coordinateSpaces?.[0] ?? 'plot2d';
+  if (!getExplorationDomainContract(normalizedDomain)?.coordinateSpaces.includes(normalizedCoordinateSpace)) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'coordinateSpace', value: normalizedCoordinateSpace, domain: normalizedDomain });
+  }
+  if (task !== null && task !== undefined && !domainSupportsTask(normalizedDomain, task)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'task', value: task });
   }
-  if (!Array.isArray(featureNames) || featureNames.length < 2 || featureNames.some((name) => typeof name !== 'string' || !name)) {
+  const minimumFeatureNames = normalizedDomain === 'tabular' ? 2 : 0;
+  if (!Array.isArray(featureNames) || featureNames.length < minimumFeatureNames || featureNames.some((name) => typeof name !== 'string' || !name)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'featureNames' });
   }
   if (!Array.isArray(observations) || observations.length > MAX_WORLD_OBSERVATIONS) {
     throw explorationError('EXPLORATION_RESOURCE_LIMIT', { field: 'observations', max: MAX_WORLD_OBSERVATIONS });
   }
-  const normalized = observations.map((observation, index) => normalizeObservation(observation, index, provenance));
+  const normalized = observations.map((observation, index) => normalizeObservation(observation, index, provenance, normalizedDomain));
   const ids = new Set();
   for (const observation of normalized) {
     if (ids.has(observation.id)) throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'observation.id', value: observation.id });
@@ -171,6 +193,8 @@ export function createWorld({
     id: String(id),
     name: String(name),
     task,
+    domain: normalizedDomain,
+    coordinateSpace: normalizedCoordinateSpace,
     featureNames: [...featureNames],
     observations: normalized,
     source: source ? clone(source) : null,
@@ -191,10 +215,16 @@ export function validateWorld(world) {
   if (!Array.isArray(world.observations) || world.observations.length > MAX_WORLD_OBSERVATIONS) {
     throw explorationError('EXPLORATION_RESOURCE_LIMIT', { field: 'observations', max: MAX_WORLD_OBSERVATIONS });
   }
-  if (!['regression', 'classification', null].includes(world.task ?? null)) {
+  const domain = normalizeExplorationDomain(world.domain ?? 'tabular');
+  const coordinateSpace = world.coordinateSpace ?? getExplorationDomainContract(domain)?.coordinateSpaces?.[0] ?? 'plot2d';
+  if (!getExplorationDomainContract(domain)?.coordinateSpaces.includes(coordinateSpace)) {
+    throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'coordinateSpace', value: coordinateSpace, domain });
+  }
+  if (world.task !== null && world.task !== undefined && !domainSupportsTask(domain, world.task)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'task', value: world.task });
   }
-  if (!Array.isArray(world.featureNames) || world.featureNames.length < 2 || world.featureNames.some((name) => typeof name !== 'string' || !name)) {
+  const minimumFeatureNames = domain === 'tabular' ? 2 : 0;
+  if (!Array.isArray(world.featureNames) || world.featureNames.length < minimumFeatureNames || world.featureNames.some((name) => typeof name !== 'string' || !name)) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'featureNames' });
   }
   const mode = world.mode ?? 'sample';
@@ -223,7 +253,7 @@ export function validateWorld(world) {
     }
   }
   const defaultProvenance = world.observations[0]?.provenance ?? 'manual';
-  const observations = world.observations.map((observation, index) => normalizeObservation(observation, index, defaultProvenance));
+  const observations = world.observations.map((observation, index) => normalizeObservation(observation, index, defaultProvenance, domain));
   const ids = new Set();
   for (const observation of observations) {
     if (ids.has(observation.id)) throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'observation.id', value: observation.id });
@@ -236,6 +266,8 @@ export function validateWorld(world) {
     id: String(world.id),
     name: String(world.name),
     task: world.task ?? null,
+    domain,
+    coordinateSpace,
     featureNames: [...world.featureNames],
     observations,
     source: world.source ? clone(world.source) : null,
@@ -252,8 +284,38 @@ export function validateWorld(world) {
 export const cloneWorld = (world) => validateWorld(clone(world));
 
 export function worldFromPlaygroundSource(source, { seed = null, id = 'world-1' } = {}) {
-  if (!source || typeof source !== 'object' || !Array.isArray(source.points)) {
+  if (!source || typeof source !== 'object' || (!Array.isArray(source.points) && !Array.isArray(source.samples))) {
     throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'source' });
+  }
+  if (source.domain && source.domain !== 'tabular') {
+    const domain = normalizeExplorationDomain(source.domain);
+    const samples = source.samples ?? [];
+    const labels = [...new Set(samples.map((sample) => String(sample.label ?? '')))].filter(Boolean);
+    const labelIndex = new Map(labels.map((label, index) => [label, index]));
+    const observations = samples.map((sample, index) => ({
+      id: sample.id ?? `observation-${index + 1}`,
+      x: index,
+      y: labelIndex.get(String(sample.label ?? '')) ?? 0,
+      label: sample.label,
+      membership: sample.membership ?? sample.split,
+      provenance: sample.provenance,
+      payload: sample.payload,
+    }));
+    const contract = getExplorationDomainContract(domain);
+    if (!contract?.taskKinds.includes(source.task)) {
+      throw explorationError('EXPLORATION_INVALID_WORLD', { field: 'task', value: source.task, domain });
+    }
+    return createWorld({
+      id,
+      name: source.name ?? `${domain} sample world`,
+      task: source.task,
+      domain,
+      featureNames: [],
+      observations,
+      provenance: source.kind === 'workspace-dataset' ? 'imported' : 'generated',
+      seed,
+      source: { kind: source.kind ?? null, fingerprint: source.fingerprint ?? null, name: source.name ?? null },
+    });
   }
   const classification = source.task === 'classification'
     || (!source.task && Array.isArray(source.featureColumns) && source.featureColumns.length >= 2 && !source.target);
@@ -310,6 +372,7 @@ export function worldFromPlaygroundSource(source, { seed = null, id = 'world-1' 
     id,
     name: source.name ?? 'Playground sample world',
     task: classification ? 'classification' : 'regression',
+    domain: source.domain ?? 'tabular',
     featureNames,
     observations,
     provenance: defaultProvenance,

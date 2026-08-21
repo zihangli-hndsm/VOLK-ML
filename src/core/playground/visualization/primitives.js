@@ -25,7 +25,29 @@ export const PRIMITIVE_TYPES = [
   'network-graph',
   'matrix-grid',
   'histogram',
+  'image-grid',
+  'token-sequence',
+  'attention-matrix',
+  'ranked-results',
+  'grounded-answer',
 ];
+
+// Renderer-neutral metadata keeps domain and coordinate-space decisions out
+// of PlaygroundStage. Existing primitives retain their tabular defaults.
+export const PRIMITIVE_PRESENTATION = Object.freeze({
+  scatter: { coordinateSpace: 'plot2d', domains: ['tabular'] },
+  'regression-line': { coordinateSpace: 'plot2d', domains: ['tabular'] },
+  'decision-region': { coordinateSpace: 'plot2d', domains: ['tabular'] },
+  'image-grid': { coordinateSpace: 'image', domains: ['image'] },
+  'token-sequence': { coordinateSpace: 'token-sequence', domains: ['sequence'] },
+  'attention-matrix': { coordinateSpace: 'attention-matrix', domains: ['sequence'] },
+  'ranked-results': { coordinateSpace: 'ranked-list', domains: ['retrieval', 'rag'] },
+  'grounded-answer': { coordinateSpace: 'source-evidence', domains: ['rag'] },
+});
+
+export function primitivePresentation(type) {
+  return PRIMITIVE_PRESENTATION[type] ?? { coordinateSpace: 'generic', domains: ['tabular', 'image', 'sequence', 'retrieval', 'rag'] };
+}
 
 export function isKnownPrimitiveType(type) {
   return PRIMITIVE_TYPES.includes(type);

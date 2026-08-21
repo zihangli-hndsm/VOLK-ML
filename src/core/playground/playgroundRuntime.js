@@ -55,6 +55,7 @@ import {
 } from '../exploration/explorationThread.js';
 import { captureThreadExperiment, captureThreadObservation, captureThreadPrediction } from '../exploration/threadEvidence.js';
 import { deriveTrainingMicroscope } from '../exploration/trainingMicroscope.js';
+import { normalizeExecutionCapability } from './execution/executionContract.js';
 
 // The unified playground runtime. This module owns the session reducer: the
 // UI, the Agent and the visualization script runtime all dispatch the same
@@ -195,11 +196,18 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     adapterId: adapter?.id ?? null,
     seed,
     traces: recorder.list(),
+    result: resultForSession({
+      adapterId: adapter?.id ?? null,
+      modelState: initialized.modelState ?? null,
+      controls: initialized.controls,
+      sourceData: normalizedSource,
+    }),
   });
   const session = {
     apiVersion: 1,
     sessionId: resolvedSessionId,
     playgroundId: playground.id,
+    domain: playground.domain ?? 'tabular',
     modelPlaygroundId: adapter ? playground.id : null,
     adapterId: adapter?.id ?? null,
     status: 'ready',
@@ -1375,15 +1383,18 @@ export function deriveRuntimeSnapshot(session) {
     apiVersion: 1,
     sessionId: session.sessionId,
     playgroundId: session.playgroundId,
+    domain: modelPlaygroundFor(session)?.domain ?? session.domain ?? 'tabular',
     modelPlaygroundId: session.modelPlaygroundId ?? null,
     model: adapter
       ? {
         adapterId: session.adapterId,
         playgroundId: session.modelPlaygroundId ?? session.playgroundId,
+        domain: modelPlaygroundFor(session)?.domain ?? session.domain ?? 'tabular',
         titleKey: modelPlaygroundFor(session)?.titleKey ?? null,
         descriptionKey: modelPlaygroundFor(session)?.descriptionKey ?? null,
       }
       : null,
+    execution: normalizeExecutionCapability(adapter?.execution),
     availableModels: session.playgroundId === 'data-lab'
       ? compatibleModelPlaygrounds(session).map((playground) => ({
         id: playground.id,

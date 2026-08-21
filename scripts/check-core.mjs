@@ -2508,7 +2508,7 @@ assert.throws(
     }
 
     // 2. Model adapters must not import React.
-    for (const file of ['linearRegressionAdapter.js', 'knnAdapter.js', 'mlpAdapter.js']) {
+    for (const file of ['linearRegressionAdapter.js', 'knnAdapter.js', 'mlpAdapter.js', 'imageCnnAdapter.js']) {
       const source = readFileSync(new URL(`../src/core/playground/model/${file}`, import.meta.url), 'utf-8');
       assert.ok(!/from\s+['"]react['"]/.test(source) && !/from\s+['"]react-dom['"]/.test(source), `${file} must not import React`);
     }
@@ -2525,7 +2525,7 @@ assert.throws(
 
     // 3. Every preset is a valid, JSON-safe declaration; serialize ->
     // deserialize -> replay produces the identical trace.
-    assert.deepEqual(listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro', 'mlp.intro']);
+    assert.deepEqual(listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro', 'mlp.intro', 'image.intro', 'sequence.intro', 'retrieval.intro', 'rag.intro']);
     for (const preset of listPresets()) {
       const declaration = getPreset(preset.id);
       assert.doesNotThrow(() => validateScript(declaration), `${preset.id} validates`);
@@ -3594,7 +3594,7 @@ assert.throws(
       assert.equal(capabilities.apiVersion, 1, 'agent capabilities version');
       assert.ok(capabilities.models.some((model) => model.id === 'linear-regression' && model.operations.includes('traceFit')), 'LR capabilities expose operations');
       assert.ok(capabilities.models.some((model) => model.id === 'knn' && model.operations.includes('tracePredict')), 'KNN capabilities expose operations');
-      assert.deepEqual(agentC.listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro', 'mlp.intro'], 'agent lists presets');
+      assert.deepEqual(agentC.listPresets().map((preset) => preset.id), ['linear-regression.intuition', 'knn.intro', 'mlp.intro', 'image.intro', 'sequence.intro', 'retrieval.intro', 'rag.intro'], 'agent lists presets');
       assert.ok(capabilities.primitives.includes('scatter') && capabilities.primitives.includes('vote-bars'), 'agent lists primitives');
 
       await agentC.open({ playgroundId: 'knn-classification' });
@@ -3756,7 +3756,7 @@ assert.throws(
       // bindings in the presets.
       assert.deepEqual(Object.keys(getPrimitiveSchema('scatter')?.props ?? {}), ['points', 'axes'], 'scatter schema');
       assert.ok(PRIMITIVE_TYPES.every((type) => getPrimitiveSchema(type)), 'every primitive type has a schema');
-      for (const presetId of ['linear-regression.intuition', 'knn.intro', 'mlp.intro']) {
+      for (const presetId of ['linear-regression.intuition', 'knn.intro', 'mlp.intro', 'image.intro', 'sequence.intro', 'retrieval.intro', 'rag.intro']) {
         const preset = getPreset(presetId);
         for (const declaration of preset.primitives) {
           const schema = getPrimitiveSchema(declaration.type);
@@ -3888,6 +3888,7 @@ assert.throws(
       // 2. semanticSchema <-> compatibleBindings consistency.
       const resolvePath = (obj, parts) => parts.reduce((current, key) => (current == null ? undefined : current[key]), obj);
       for (const schema of listPrimitiveSchemas()) {
+        if (schema.domains && !schema.domains.includes('tabular')) continue;
         for (const bindings of Object.values(schema.compatibleBindings ?? {})) {
           for (const binding of bindings) {
             if (!binding.startsWith('$model.')) continue;
