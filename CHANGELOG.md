@@ -13,6 +13,12 @@
 - Added deterministic priority and current-comparison-pair checks, plus capability filtering that preserves truthful reflections without exposing unavailable actions.
 - Tightened the provider projection and prompt contract to omit internal event/observation/Experiment identifiers and raw evidence while preserving bounded curiosity context.
 
+## 2026-08-23 — OpenAI Responses exploration schema compatibility
+
+- Fixed strict JSON Schema compatibility for exploration guidance by adding explicit primitive types to all constant-constrained shape, density, region, noise, patch, and pedagogical experiment fields.
+- Added recursive regression coverage for constant schema nodes used by the OpenAI Responses request path.
+- Acceptance: `node scripts/check-openai-responses.mjs`, full `npm run check`, `npm run build`, and `git diff --check` passed; no runtime or persisted-data behavior changed.
+
 ## 2026-08-18 — Contextual Tune
 
 - Added bounded, model-owned control presentation metadata separating semantic domain from learner-facing importance and role.

@@ -13,6 +13,25 @@ assert.equal(normalizeAiConfig({ protocol: 'openai-compatible', model: 'legacy',
 
 const teachingSchema = teachingGoalResponseSchema({ allowedControls: [{ key: 'hiddenUnits' }] });
 const explorationSchema = explorationGuidanceResponseSchema({ availableDepths: ['evidence', 'mechanism', 'representation'] });
+function assertStrictConstSchemas(schema, path = 'schema') {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return;
+  if (Object.prototype.hasOwnProperty.call(schema, 'const')) {
+    assert.equal(typeof schema.type, 'string', `${path} const schemas declare their primitive type`);
+  }
+  for (const [key, value] of Object.entries(schema)) {
+    if (key === 'properties' && value && typeof value === 'object') {
+      for (const [property, propertySchema] of Object.entries(value)) {
+        assertStrictConstSchemas(propertySchema, `${path}.properties.${property}`);
+      }
+    } else if (['items', 'additionalItems', 'contains', 'propertyNames', 'not', 'if', 'then', 'else'].includes(key)) {
+      assertStrictConstSchemas(value, `${path}.${key}`);
+    } else if (['anyOf', 'allOf', 'oneOf', 'prefixItems'].includes(key) && Array.isArray(value)) {
+      value.forEach((item, index) => assertStrictConstSchemas(item, `${path}.${key}[${index}]`));
+    }
+  }
+}
+assertStrictConstSchemas(teachingSchema, 'teachingSchema');
+assertStrictConstSchemas(explorationSchema, 'explorationSchema');
 assert.deepEqual(teachingSchema.properties.type.enum, ['explain-process', 'compare-control', 'what-if']);
 assert.deepEqual(teachingSchema.properties.control.anyOf[0].enum, ['hiddenUnits']);
 assert.equal(teachingSchema.properties.values.anyOf[0].maxItems, 2);

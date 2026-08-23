@@ -24,6 +24,9 @@ export const PEDAGOGICAL_EVIDENCE = Object.freeze({
   OUTCOME_AND_STABILITY: 'outcome-and-stability',
 });
 
+const integerConstant = (value) => ({ type: 'integer', const: value });
+const stringConstant = (value) => ({ type: 'string', const: value });
+
 const GOAL_CONTRACTS = Object.freeze({
   [PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION]: {
     intervention: PEDAGOGICAL_INTERVENTIONS.MOVE_CLASS_TOWARD_CLASS,
@@ -50,8 +53,8 @@ export function pedagogicalExperimentSchema() {
     type: 'object',
     additionalProperties: false,
     properties: {
-      version: { const: PEDAGOGICAL_EXPERIMENT_VERSION },
-      kind: { const: 'exploration-design' },
+      version: integerConstant(PEDAGOGICAL_EXPERIMENT_VERSION),
+      kind: stringConstant('exploration-design'),
       goal: { type: 'string', enum: Object.keys(GOAL_CONTRACTS) },
       intervention: { type: 'string', enum: Object.values(PEDAGOGICAL_INTERVENTIONS) },
       evidence: { type: 'string', enum: Object.values(PEDAGOGICAL_EVIDENCE) },

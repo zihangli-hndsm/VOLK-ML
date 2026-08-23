@@ -430,6 +430,7 @@ const densityWeightNumber = { type: 'number', exclusiveMinimum: 0, maximum: WORL
 const turnsNumber = { type: 'number', exclusiveMinimum: 0, maximum: WORLD_RECIPE_LIMITS.maxTurns };
 const vectorSchema = { type: 'array', minItems: 2, maxItems: 2, items: coordinateNumber };
 const positiveVectorSchema = { type: 'array', minItems: 2, maxItems: 2, items: scaleNumber };
+const stringConstant = (value) => ({ type: 'string', const: value });
 const transformSchema = {
   type: 'object', additionalProperties: false,
   properties: { translate: vectorSchema, rotate: rotationNumber, scale: positiveVectorSchema },
@@ -437,10 +438,10 @@ const transformSchema = {
 };
 const densitySchema = {
   anyOf: [
-    { type: 'object', additionalProperties: false, properties: { type: { const: 'uniform' } }, required: ['type'] },
-    { type: 'object', additionalProperties: false, properties: { type: { const: 'center-heavy' }, strength: densityStrengthNumber }, required: ['type', 'strength'] },
-    { type: 'object', additionalProperties: false, properties: { type: { const: 'edge-heavy' }, strength: densityStrengthNumber }, required: ['type', 'strength'] },
-    { type: 'object', additionalProperties: false, properties: { type: { const: 'gradient' }, from: densityWeightNumber, to: densityWeightNumber, axis: { type: 'string', enum: ['x', 'path'] } }, required: ['type', 'from', 'to', 'axis'] },
+    { type: 'object', additionalProperties: false, properties: { type: stringConstant('uniform') }, required: ['type'] },
+    { type: 'object', additionalProperties: false, properties: { type: stringConstant('center-heavy'), strength: densityStrengthNumber }, required: ['type', 'strength'] },
+    { type: 'object', additionalProperties: false, properties: { type: stringConstant('edge-heavy'), strength: densityStrengthNumber }, required: ['type', 'strength'] },
+    { type: 'object', additionalProperties: false, properties: { type: stringConstant('gradient'), from: densityWeightNumber, to: densityWeightNumber, axis: { type: 'string', enum: ['x', 'path'] } }, required: ['type', 'from', 'to', 'axis'] },
   ],
 };
 const samplingSchema = {
@@ -452,7 +453,7 @@ const boolean = { type: 'boolean' };
 const shapeParams = (properties) => ({ type: 'object', additionalProperties: false, properties, required: Object.keys(properties) });
 const shapeVariant = (type, properties) => ({
   type: 'object', additionalProperties: false,
-  properties: { type: { const: type }, params: shapeParams(properties) },
+  properties: { type: stringConstant(type), params: shapeParams(properties) },
   required: ['type', 'params'],
 });
 const pointsSchema = { type: 'array', minItems: 2, maxItems: WORLD_RECIPE_LIMITS.maxPointsPerShape, items: vectorSchema };
@@ -472,14 +473,14 @@ const shapeSchema = {
 };
 const regionSchema = {
   anyOf: [
-    { type: 'object', additionalProperties: false, properties: { type: { const: 'bbox' }, min: vectorSchema, max: vectorSchema }, required: ['type', 'min', 'max'] },
-    { type: 'object', additionalProperties: false, properties: { type: { const: 'circle' }, center: vectorSchema, radius: positiveRadiusNumber }, required: ['type', 'center', 'radius'] },
+    { type: 'object', additionalProperties: false, properties: { type: stringConstant('bbox'), min: vectorSchema, max: vectorSchema }, required: ['type', 'min', 'max'] },
+    { type: 'object', additionalProperties: false, properties: { type: stringConstant('circle'), center: vectorSchema, radius: positiveRadiusNumber }, required: ['type', 'center', 'radius'] },
   ],
 };
 const localNoiseSchema = {
   anyOf: [
-    { type: 'object', additionalProperties: false, properties: { region: regionSchema, kind: { const: 'position' }, amount: noiseAmountNumber }, required: ['region', 'kind', 'amount'] },
-    { type: 'object', additionalProperties: false, properties: { region: regionSchema, kind: { const: 'label' }, probability: probabilityNumber }, required: ['region', 'kind', 'probability'] },
+    { type: 'object', additionalProperties: false, properties: { region: regionSchema, kind: stringConstant('position'), amount: noiseAmountNumber }, required: ['region', 'kind', 'amount'] },
+    { type: 'object', additionalProperties: false, properties: { region: regionSchema, kind: stringConstant('label'), probability: probabilityNumber }, required: ['region', 'kind', 'probability'] },
   ],
 };
 const noiseSchema = {
@@ -525,7 +526,7 @@ const patchGroupIdSchema = { type: 'string', pattern: '^[A-Za-z0-9][A-Za-z0-9_-]
 const patchVariant = (type, properties, required) => ({
   type: 'object',
   additionalProperties: false,
-  properties: { type: { const: type }, ...properties },
+  properties: { type: stringConstant(type), ...properties },
   required: ['type', ...required],
 });
 
@@ -546,8 +547,8 @@ export function worldRecipePatchJsonSchema() {
           patchVariant('SET_GROUP_SAMPLE_COUNT', { groupId: patchGroupIdSchema, split: patchSplitOnlySchema, count: { type: 'integer', minimum: 0, maximum: WORLD_RECIPE_LIMITS.maxSamplesPerGroupSplit } }, ['groupId', 'split', 'count']),
           {
             anyOf: [
-              patchVariant('SET_NOISE', { split: { type: 'string', enum: ['train', 'test'] }, kind: { const: 'position' }, amount: noiseAmountNumber }, ['split', 'kind', 'amount']),
-              patchVariant('SET_NOISE', { split: { type: 'string', enum: ['train', 'test'] }, kind: { const: 'label' }, probability: probabilityNumber }, ['split', 'kind', 'probability']),
+              patchVariant('SET_NOISE', { split: { type: 'string', enum: ['train', 'test'] }, kind: stringConstant('position'), amount: noiseAmountNumber }, ['split', 'kind', 'amount']),
+              patchVariant('SET_NOISE', { split: { type: 'string', enum: ['train', 'test'] }, kind: stringConstant('label'), probability: probabilityNumber }, ['split', 'kind', 'probability']),
             ],
           },
           patchVariant('SET_OUTLIERS', { split: { type: 'string', enum: ['train', 'test'] }, fraction: outlierFractionNumber, placement: { type: 'string', enum: ['radial', 'bbox'] }, distance: outlierDistanceNumber }, ['split', 'fraction', 'placement', 'distance']),
