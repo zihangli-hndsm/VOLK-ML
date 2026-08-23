@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   materializeWorldGesture,
   MAX_GESTURE_PATH_POINTS,
@@ -11,10 +11,13 @@ import {
 } from '../../core/exploration/projection.js';
 import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 import {
+  axisTicks,
   clientToLocalPoint,
   clientToSvgPoint,
+  formatAxisTick,
   nearestPointInLocal,
   selectScatterBounds,
+  zoomScatterBounds,
 } from './dataWorkspaceGeometry.js';
 import { getVisiblePrimitives, resolveMotionConfig } from './motion.js';
 import { usePrimitiveMotion, useReducedMotionPreference } from './usePrimitiveMotion.js';
@@ -110,6 +113,14 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     && operations.has('SET_TRAIN_TEST_MEMBERSHIP');
   const points = world?.observations ?? [];
   const featureNames = world?.featureNames ?? ['x', 'y'];
+  useEffect(() => {
+    const nextX = snapshot.viewState?.xFeature ?? featureNames[0] ?? 'x';
+    const nextY = snapshot.viewState?.yFeature ?? featureNames[1] ?? nextX;
+    setViewMode(snapshot.viewState?.mode ?? 'scatter');
+    setXFeature(nextX);
+    setYFeature(nextY);
+    setInterventionFeature((current) => featureNames.includes(current) ? current : nextX);
+  }, [snapshot.viewState?.mode, snapshot.viewState?.xFeature, snapshot.viewState?.yFeature, featureNames.join('\u0000')]);
   const projectedPoints = points.map((point) => projectObservation(point, xFeature, yFeature))
     .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
   const projectedViewBounds = projectedBounds(points, xFeature, yFeature);
@@ -151,8 +162,16 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
       xFeature,
       yFeature,
       autoBounds: phenomenonMode ? phenomenonRanges : projectedViewBounds,
+      manualBounds: snapshot.viewState?.bounds,
+      boundsMode: snapshot.viewState?.boundsMode,
+      equalScale: snapshot.viewState?.equalScale,
+      plot,
     })
     : baseBounds;
+  const xAxisTicks = axisTicks(bounds.xMin, bounds.xMax);
+  const yAxisTicks = axisTicks(bounds.yMin, bounds.yMax);
+  const xTickStep = Math.abs((xAxisTicks[1]?.value ?? bounds.xMax) - (xAxisTicks[0]?.value ?? bounds.xMin));
+  const yTickStep = Math.abs((yAxisTicks[1]?.value ?? bounds.yMax) - (yAxisTicks[0]?.value ?? bounds.yMin));
   const canCreateObservation = Boolean(snapshot.capabilities?.canCreateObservationFromProjection);
   const highlight = (id) => highlightedAffordances.includes(id) ? ' ring-2 ring-amber-400 ring-offset-1' : '';
   const creationUnavailableMessage = world?.task === 'classification'
@@ -384,13 +403,21 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   };
   const fitView = () => onDispatch({
     type: 'SET_WORKSPACE_VIEW',
-    patch: { bounds: projectedBounds(points, xFeature, yFeature), autoFitRevision: (snapshot.viewState?.autoFitRevision ?? 0) + 1 },
+    patch: { bounds: projectedBounds(points, xFeature, yFeature), boundsMode: 'auto', autoFitRevision: (snapshot.viewState?.autoFitRevision ?? 0) + 1 },
+  });
+  const zoomView = (factor) => onDispatch({
+    type: 'SET_WORKSPACE_VIEW',
+    patch: { bounds: zoomScatterBounds(bounds, factor), boundsMode: 'manual' },
+  });
+  const toggleEqualScale = () => onDispatch({
+    type: 'SET_WORKSPACE_VIEW',
+    patch: { equalScale: !snapshot.viewState?.equalScale },
   });
   const selectFeatureView = (nextX, nextY, nextMode = viewMode) => {
     setViewMode(nextMode);
     if (nextX) setXFeature(nextX);
     if (nextY) setYFeature(nextY);
-    onDispatch({ type: 'SET_WORKSPACE_VIEW', patch: { mode: nextMode, xFeature: nextX ?? xFeature, yFeature: nextY ?? yFeature } });
+    onDispatch({ type: 'SET_WORKSPACE_VIEW', patch: { mode: nextMode, xFeature: nextX ?? xFeature, yFeature: nextY ?? yFeature, boundsMode: 'auto' } });
   };
   const scopeIds = interventionScope === 'selected'
     ? (selectedId ? [selectedId] : [])
@@ -451,6 +478,15 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     </div>}
     <div className={`mt-3 min-w-0 ${phenomenonMode ? 'space-y-3' : 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]'}`}>
       <div className="ui-motion-surface overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
+        {effectiveViewMode === 'scatter' && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-2 py-2 text-[10px] text-slate-600">
+          <span className="font-mono" aria-live="polite">{t('playground.workspace.rangeSummary', { xMin: formatAxisTick(bounds.xMin, xTickStep), xMax: formatAxisTick(bounds.xMax, xTickStep), yMin: formatAxisTick(bounds.yMin, yTickStep), yMax: formatAxisTick(bounds.yMax, yTickStep) })}</span>
+          <div className="flex flex-wrap items-center gap-1" aria-label={t('playground.workspace.scaleControls')}>
+            <button type="button" onClick={() => zoomView(0.8)} aria-label={t('playground.workspace.zoomIn')} title={t('playground.workspace.zoomIn')} className="min-h-8 rounded-lg border border-slate-300 bg-white px-2 font-black text-slate-700">+</button>
+            <button type="button" onClick={() => zoomView(1.25)} aria-label={t('playground.workspace.zoomOut')} title={t('playground.workspace.zoomOut')} className="min-h-8 rounded-lg border border-slate-300 bg-white px-2 font-black text-slate-700">−</button>
+            <button type="button" onClick={fitView} className="min-h-8 rounded-lg border border-slate-300 bg-white px-2 font-black text-slate-700">{t('playground.workspace.fitView')}</button>
+            <button type="button" aria-pressed={Boolean(snapshot.viewState?.equalScale)} onClick={toggleEqualScale} className={`min-h-8 rounded-lg border px-2 font-black ${snapshot.viewState?.equalScale ? 'border-blue-600 bg-blue-600 text-white' : 'border-slate-300 bg-white text-slate-700'}`}>{t('playground.workspace.equalScale')}</button>
+          </div>
+        </div>}
         {!phenomenonMode && viewMode === 'distribution' ? <DistributionView points={visiblePoints} feature={xFeature} t={t} /> : <svg ref={svgRef} viewBox="0 0 640 360" className="block h-auto w-full touch-none select-none" role="img"
           aria-label={t('playground.workspace.canvasAria')} onPointerDown={onPointerDown} onPointerMove={onPointerMove}
           onPointerUp={onPointerUp} onPointerCancel={cancelPointer}>
@@ -461,9 +497,13 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
             return <Renderer key={primitive.id} props={primitive.props} variant={primitive.type}
               xToSvg={xToSvg} yToSvg={yToSvg} colorByLabel={phenomenonColorByLabel} plot={plot} t={t} />;
           })}
-          {[0, 0.25, 0.5, 0.75, 1].map((ratio) => <g key={`grid-${ratio}`}>
-            <line x1={plot.left} y1={plot.top + ratio * (plot.bottom - plot.top)} x2={plot.right} y2={plot.top + ratio * (plot.bottom - plot.top)} stroke="#e2e8f0" />
-            <line x1={plot.left + ratio * (plot.right - plot.left)} y1={plot.top} x2={plot.left + ratio * (plot.right - plot.left)} y2={plot.bottom} stroke="#e2e8f0" />
+          {xAxisTicks.map((tick) => <g key={`grid-x-${tick.value}`}>
+            <line x1={xToSvg(tick.value)} y1={plot.top} x2={xToSvg(tick.value)} y2={plot.bottom} stroke="#e2e8f0" />
+            <text x={xToSvg(tick.value)} y={plot.bottom + 15} textAnchor="middle" fontSize="9" fill="#64748b">{tick.label}</text>
+          </g>)}
+          {yAxisTicks.map((tick) => <g key={`grid-y-${tick.value}`}>
+            <line x1={plot.left} y1={yToSvg(tick.value)} x2={plot.right} y2={yToSvg(tick.value)} stroke="#e2e8f0" />
+            <text x={plot.left - 5} y={yToSvg(tick.value) + 3} textAnchor="end" fontSize="9" fill="#64748b">{tick.label}</text>
           </g>)}
           <path d={`M${plot.left} ${plot.top} V${plot.bottom} H${plot.right}`} fill="none" stroke="#475569" strokeWidth="2" />
           {!phenomenonMode && visiblePoints.map((point) => {
@@ -477,8 +517,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
           })}
           {phenomenonMode && draftPoint && <circle cx={xToSvg(getProjectedValue(draftPoint, xFeature))} cy={yToSvg(getProjectedValue(draftPoint, yFeature))} r="8" fill="none" stroke="#f59e0b" strokeWidth="3" strokeDasharray="4 3" />}
           {pathPreview.length > 1 && <polyline points={pathPreview.map((point) => `${xToSvg(point.x)},${yToSvg(point.y)}`).join(' ')} fill="none" stroke="#2563eb" strokeWidth="2" strokeDasharray="5 4" opacity="0.65" />}
-          <text x="331" y="350" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">{xFeature}</text>
-          <text x="14" y="170" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 14 170)">{yFeature}</text>
+          <text x="331" y="352" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155">{xFeature}</text>
+          <text x="10" y="170" textAnchor="middle" fontSize="12" fontWeight="700" fill="#334155" transform="rotate(-90 10 170)">{yFeature}</text>
         </svg>}
       </div>
       {!phenomenonMode && <div className="space-y-3">
@@ -505,7 +545,6 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
           <button type="submit" disabled={!selectedId && !canCreateObservation} className="mt-2 w-full rounded-lg bg-slate-900 px-3 py-2 text-xs font-bold text-white disabled:cursor-not-allowed disabled:opacity-40">{selectedId ? t('playground.workspace.updatePoint') : t('playground.workspace.addPoint')}</button>
         </form>
         <div className="flex gap-2"><button type="button" disabled={!snapshot.capabilities?.canUndoWorld} onClick={() => onDispatch({ type: 'UNDO_WORLD_ACTION' })} className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.workspace.undo')}</button><button type="button" disabled={!snapshot.capabilities?.canRedoWorld} onClick={() => onDispatch({ type: 'REDO_WORLD_ACTION' })} className="flex-1 rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.workspace.redo')}</button></div>
-        <button type="button" onClick={fitView} className="w-full rounded-xl border border-slate-300 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.workspace.fitView')}</button>
         {error && <p role="alert" className="rounded-xl bg-amber-50 p-2 text-xs font-bold text-amber-800">{typeof error === 'string' ? error : t('playground.workspace.actionFailed')}</p>}
       </div>}
     </div>

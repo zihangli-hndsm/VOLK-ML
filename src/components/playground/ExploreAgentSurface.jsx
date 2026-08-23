@@ -1,11 +1,11 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, deriveAgentSemanticExplanation, routeAgentAiInterpretation, AGENT_GUIDANCE_OUTCOMES } from '../../core/ui/agentGuide.js';
 import { deriveCleanerComparisonProposal } from '../../core/exploration/cleanerComparison.js';
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
 import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
+import { getWorldRecipePreset, WORLD_RECIPE_PRESET_IDS } from '../../core/exploration/worldRecipePresets.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
-import ExplorationAgentPanel from './ExplorationAgentPanel.jsx';
 import AskVolkPanel from './AskVolkPanel.jsx';
 import AiDiagnosticPanel from '../ai/AiDiagnosticPanel.jsx';
 import CompactBottomSheet from '../CompactBottomSheet.jsx';
@@ -78,6 +78,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   const [aiFallback, setAiFallback] = useState(false);
   const [aiDiagnostic, setAiDiagnostic] = useState(null);
   const [mode, setMode] = useState('ask');
+  const [askSubmitToken, setAskSubmitToken] = useState(0);
   const [cleanerOptions, setCleanerOptions] = useState(null);
   const [cleanerUnavailable, setCleanerUnavailable] = useState(false);
   const comparison = deriveAgentComparisonExplanation(snapshot);
@@ -90,6 +91,28 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     comparisonActive: Boolean(snapshot.experimentWorkspace?.comparison?.enabled),
     availableDepths: [CONCEPTUAL_DEPTHS.EVIDENCE, CONCEPTUAL_DEPTHS.MECHANISM, CONCEPTUAL_DEPTHS.REPRESENTATION]
       .filter((depth) => capabilities[depth]),
+  };
+  const worldSupported = Boolean(snapshot.capabilities?.canEditWorld);
+
+  useEffect(() => {
+    if (!initialSelection?.quote) return;
+    setMode('ask');
+    setRequest(`${t('ai.askSelectedPrefix')} “${initialSelection.quote}”`);
+  }, [initialSelection?.messageId, initialSelection?.quote, initialSelection?.anchor?.contentId, t]);
+
+  const clearResponse = () => {
+    setOutcome(null);
+    setProposal(null);
+    setResult(null);
+    setConceptCard(null);
+    setError(null);
+    setAiFallback(false);
+    setAiDiagnostic(null);
+  };
+
+  const selectMode = (nextMode) => {
+    setMode(nextMode);
+    clearResponse();
   };
 
   const loadProposal = async (nextOutcome, proposalRequest = request) => {
@@ -115,7 +138,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     }
   };
 
-  const ask = async () => {
+  const askExperiment = async () => {
     if (!request.trim() || busy) return;
     setAiFallback(false);
     setAiDiagnostic(null);
@@ -150,6 +173,61 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     setProposal(null);
     setResult(nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION && result ? result : null);
     setError(null);
+  };
+
+  const askWorld = async () => {
+    if (!request.trim() || busy || !worldSupported || !isConfigured) return;
+    setBusy(true);
+    setError(null);
+    setAiDiagnostic(null);
+    try {
+      const interpretation = await aiInterpreter.interpret({
+        request,
+        context: agent.inspectContext({ presentation }),
+        config,
+      });
+      if (interpretation.kind !== 'world-design') {
+        setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'playground.agentGuide.worldClarification' });
+        setProposal(null);
+        return;
+      }
+      await loadProposal({
+        kind: AGENT_GUIDANCE_OUTCOMES.WORLD_DESIGN_PROPOSAL,
+        worldDesign: interpretation.design,
+        requestedHolds: interpretation.requestedHolds ?? [],
+      });
+    } catch (caught) {
+      setAiDiagnostic(createAiDiagnostic({ error: caught, config, stage: 'interpreter', fallbackUsed: false }));
+      setError(caught);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const submitRequest = () => {
+    if (!request.trim() || busy) return;
+    if (mode === 'ask') {
+      setAskSubmitToken((value) => value + 1);
+      return;
+    }
+    if (mode === 'world') {
+      askWorld();
+      return;
+    }
+    askExperiment();
+  };
+
+  const proposeWorldPreset = (presetId) => {
+    if (!worldSupported || busy) return;
+    const recipe = getWorldRecipePreset(presetId);
+    if (!recipe) return;
+    const presetRequest = t(`playground.agentGuide.worldPreset.${presetId}`);
+    setRequest(presetRequest);
+    loadProposal({
+      kind: AGENT_GUIDANCE_OUTCOMES.WORLD_DESIGN_PROPOSAL,
+      worldDesign: { mode: 'create', recipe },
+      requestedHolds: [],
+    }, presetRequest);
   };
 
   const openDepth = (depth) => {
@@ -241,18 +319,30 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       </div>
       <button ref={closeRef} type="button" aria-label={t('playground.agentGuide.close')} onClick={onClose} className="ui-motion-interactive min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('playground.agentGuide.close')}</button>
     </div>
-    <div className="mt-3 grid grid-cols-2 gap-1 rounded-xl bg-violet-50 p-1" role="tablist" aria-label={t('playground.agentGuide.title')}>
-      <button type="button" role="tab" aria-selected={mode === 'ask'} onClick={() => setMode('ask')} className={`rounded-lg px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-violet-500 ${mode === 'ask' ? 'bg-white text-violet-800 shadow-sm' : 'text-violet-600'}`}>{t('ai.askTab')}</button>
-      <button type="button" role="tab" aria-selected={mode === 'experiment'} onClick={() => setMode('experiment')} className={`rounded-lg px-3 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-violet-500 ${mode === 'experiment' ? 'bg-white text-violet-800 shadow-sm' : 'text-violet-600'}`}>{t('ai.experimentTab')}</button>
+    <div className="mt-3 grid grid-cols-3 gap-1 rounded-xl bg-violet-50 p-1" role="tablist" aria-label={t('playground.agentGuide.title')}>
+      <button type="button" role="tab" aria-selected={mode === 'ask'} onClick={() => selectMode('ask')} className={`rounded-lg px-2 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-violet-500 ${mode === 'ask' ? 'bg-white text-violet-800 shadow-sm' : 'text-violet-600'}`}>{t('ai.askTab')}</button>
+      <button type="button" role="tab" aria-selected={mode === 'experiment'} onClick={() => selectMode('experiment')} className={`rounded-lg px-2 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-violet-500 ${mode === 'experiment' ? 'bg-white text-violet-800 shadow-sm' : 'text-violet-600'}`}>{t('ai.experimentTab')}</button>
+      <button type="button" role="tab" aria-selected={mode === 'world'} onClick={() => selectMode('world')} className={`rounded-lg px-2 py-2 text-xs font-black focus:outline-none focus:ring-2 focus:ring-violet-500 ${mode === 'world' ? 'bg-white text-violet-800 shadow-sm' : 'text-violet-600'}`}>{t('ai.worldTab')}</button>
     </div>
-    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(text) => { setMode('experiment'); setRequest(text); setOutcome(null); setProposal(null); setResult(null); setConceptCard(null); setError(null); }} t={t} />}
-    <div className={mode === 'ask' ? 'hidden' : ''}>
     <div className="mt-3 flex gap-2">
-      <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') ask(); }} placeholder={t('playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-      <button type="button" disabled={!request.trim() || busy} onClick={ask} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t('playground.agentGuide.ask')}</button>
+      <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitRequest(); }} placeholder={t(mode === 'ask' ? 'ai.askPlaceholder' : mode === 'world' ? 'playground.agentGuide.worldPlaceholder' : 'playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
+      <button type="button" disabled={!request.trim() || busy || (mode === 'world' && (!worldSupported || !isConfigured))} onClick={submitRequest} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t(mode === 'world' ? 'playground.agentGuide.proposeWorld' : 'playground.agentGuide.ask')}</button>
     </div>
+    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(text) => { selectMode('experiment'); setRequest(text); }} t={t} />}
+    <div className={mode === 'ask' ? 'hidden' : ''}>
+    {mode === 'world' && <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3">
+      <p className="text-xs font-black text-cyan-950">{t('playground.agentGuide.worldPresets')}</p>
+      <p className="mt-1 text-xs text-cyan-800">{t('playground.agentGuide.worldIntro')}</p>
+      <div className="mt-3 grid grid-cols-2 gap-2">
+        {WORLD_RECIPE_PRESET_IDS.map((presetId) => <button key={presetId} type="button" disabled={!worldSupported || busy} onClick={() => proposeWorldPreset(presetId)} className="rounded-xl border border-cyan-200 bg-white px-3 py-3 text-left text-xs font-black text-cyan-900 shadow-sm hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40">
+          {t(`playground.agentGuide.worldPreset.${presetId}`)}
+        </button>)}
+      </div>
+      {!worldSupported && <p role="status" className="mt-2 text-xs font-bold text-amber-800">{t('playground.agentGuide.worldUnavailable')}</p>}
+      {worldSupported && !isConfigured && <p className="mt-2 text-xs text-cyan-800">{t('playground.agentGuide.worldNeedsProvider')}</p>}
+    </div>}
     <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
-      <span>{isConfigured ? t('ai.statusConfigured') : t('ai.statusLocalFallback')}</span>
+      <span>{isConfigured ? t('ai.statusConfigured') : t(mode === 'world' ? 'playground.agentGuide.worldPresetLocal' : 'ai.statusLocalFallback')}</span>
       <button type="button" onClick={onOpenAiSettings} className="rounded-lg px-2 py-1 font-bold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500">
         {isConfigured ? t('ai.settings') : t('ai.configure')}
       </button>
@@ -312,10 +402,6 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     </div>}
     {error && <div role="alert" className="ui-motion-error mt-3 rounded-xl border border-red-100 bg-red-50 p-3 text-xs text-red-800"><p className="font-bold">{t('playground.agentGuide.errorGeneric')}</p><details className="mt-1"><summary className="cursor-pointer font-mono text-[10px]">{error.code ?? 'EXPLORATION_FAILED'}</summary><p className="mt-1 font-mono text-[10px]">{error.message}</p></details></div>}
 
-    <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-      <summary className="cursor-pointer text-xs font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('playground.agentGuide.advanced')}</summary>
-      <div className="mt-3"><ExplorationAgentPanel agent={agent} snapshot={snapshot} presentation={presentation} t={t} /></div>
-    </details>
     </div>
   </CompactBottomSheet>;
 }

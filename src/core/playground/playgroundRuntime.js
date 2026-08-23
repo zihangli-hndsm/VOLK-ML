@@ -69,6 +69,7 @@ const GENERIC_ACTIONS = [
   'PLAY',
   'PAUSE',
   'STEP',
+  'TRAINING_STEP',
   'SEEK',
   'RESET',
   'RESET_LEARNING',
@@ -125,6 +126,8 @@ function initialViewState(ranges = {}, featureNames = []) {
     xFeature: featureNames[0] ?? 'x',
     yFeature: featureNames[1] ?? 'y',
     autoFitRevision: 0,
+    boundsMode: 'auto',
+    equalScale: false,
   };
 }
 
@@ -138,6 +141,9 @@ function validateViewPatch(current, patch = {}, featureNames = []) {
     || Number(bounds.xMin) >= Number(bounds.xMax)
     || Number(bounds.yMin) >= Number(bounds.yMax)) {
     throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'SET_WORKSPACE_VIEW', field: 'bounds' });
+  }
+  if (patch.equalScale !== undefined && typeof patch.equalScale !== 'boolean') {
+    throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'SET_WORKSPACE_VIEW', field: 'equalScale' });
   }
   return {
     bounds: Object.fromEntries(Object.entries(bounds).map(([key, value]) => [key, Number(value)])),
@@ -154,6 +160,10 @@ function validateViewPatch(current, patch = {}, featureNames = []) {
     autoFitRevision: Number.isInteger(patch.autoFitRevision)
       ? patch.autoFitRevision
       : current.autoFitRevision,
+    boundsMode: ['auto', 'manual'].includes(patch.boundsMode ?? current.boundsMode ?? 'auto')
+      ? (patch.boundsMode ?? current.boundsMode ?? 'auto')
+      : (() => { throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'SET_WORKSPACE_VIEW', field: 'boundsMode' }); })(),
+    equalScale: patch.equalScale === undefined ? Boolean(current.equalScale) : patch.equalScale,
   };
 }
 
@@ -533,6 +543,19 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
   const merged = mergePatches(session, patch);
   const dataState = buildDataState({ source: sourceData, workspaceDataset: null });
   const effectiveSeed = transactionResult.world.randomness?.seed ?? session.seed ?? null;
+  const worldFeatures = transactionResult.world.featureNames ?? [];
+  const projectionStillValid = worldFeatures.includes(session.viewState?.xFeature)
+    && worldFeatures.includes(session.viewState?.yFeature)
+    && session.viewState.xFeature !== session.viewState.yFeature;
+  const viewState = projectionStillValid
+    ? session.viewState
+    : {
+      ...session.viewState,
+      xFeature: worldFeatures[0] ?? session.viewState?.xFeature,
+      yFeature: worldFeatures[1] ?? worldFeatures[0] ?? session.viewState?.yFeature,
+      boundsMode: 'auto',
+      autoFitRevision: (session.viewState?.autoFitRevision ?? 0) + 1,
+    };
   const worldMutationChangesObservations = JSON.stringify(transactionResult.world.observations)
     !== JSON.stringify(session.experiment.world.observations);
   const synced = synchronizeExperiment(session.experiment, {
@@ -553,6 +576,7 @@ function synchronizeWorldSession(session, transactionResult, { history, mutation
     seed: effectiveSeed,
     sourceData,
     dataState,
+    viewState,
     experiment: {
       ...synced,
       mutations: [...session.experiment.mutations, structuredClone(mutationRecord)],
@@ -1172,6 +1196,20 @@ export function dispatchRuntimeAction(session, action) {
   if (action.type === 'SET_SPEED') {
     const speed = Math.max(0.25, Math.min(4, Number(action.value) || 1));
     return { ...session, timeline: { ...session.timeline, speed } };
+  }
+  if (action.type === 'TRAINING_STEP') {
+    const adapter = modelAdapterFor(session);
+    if (!adapter?.trainingMicroscopeCapabilities) {
+      throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: action.type, reason: 'training microscope unavailable' });
+    }
+    const training = session.modelState?.training;
+    if (!training?.history?.length) {
+      const started = dispatchRuntimeAction(session, { type: 'START_TRAINING', actor: action.actor });
+      if (!started.modelState?.training?.history?.length) return started;
+      return dispatchRuntimeAction(started, { type: 'STEP', actor: action.actor });
+    }
+    if (training.currentStep >= training.totalSteps) return session;
+    return dispatchRuntimeAction(session, { type: 'STEP', actor: action.actor });
   }
   if (action.type === 'STEP' || action.type === 'SEEK' || action.type === 'START_TRAINING' || action.type === 'START_NEIGHBOR_REVEAL') {
     const { next, recorder } = applyModelAction(session, action);

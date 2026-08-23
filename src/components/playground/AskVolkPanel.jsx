@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
 import { createLearningAssistant } from '../../core/exploration/learningAssistant.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
@@ -11,20 +11,20 @@ function initialSelectionFor(value) {
   return { messageId: value.messageId ?? value.anchor.messageId ?? null, anchor: value.anchor, quote: value.quote };
 }
 
-export default function AskVolkPanel({ agent, presentation, initialSelection = null, onOpenAiSettings, onTryExperiment, t }) {
+export default function AskVolkPanel({ agent, presentation, initialSelection = null, question, onQuestionChange, submitToken = 0, onBusyChange, onOpenAiSettings, onTryExperiment, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const assistant = useMemo(() => createLearningAssistant({ gateway }), [gateway]);
-  const [question, setQuestion] = useState('');
   const [answer, setAnswer] = useState(null);
   const [selection, setSelection] = useState(initialSelectionFor(initialSelection));
   const [busy, setBusy] = useState(false);
   const [diagnostic, setDiagnostic] = useState(null);
   const [annotationMessage, setAnnotationMessage] = useState('');
+  const handledSubmitToken = useRef(0);
 
   useEffect(() => {
     setSelection(initialSelectionFor(initialSelection));
-    if (initialSelection?.quote) setQuestion(`${t('ai.askSelectedPrefix')} “${initialSelection.quote}”`);
-  }, [initialSelection?.messageId, initialSelection?.quote, initialSelection?.anchor?.contentId, t]);
+    if (initialSelection?.quote) onQuestionChange(`${t('ai.askSelectedPrefix')} “${initialSelection.quote}”`);
+  }, [initialSelection?.messageId, initialSelection?.quote, initialSelection?.anchor?.contentId, onQuestionChange, t]);
 
   const answerIdentity = answer?.messageId ?? null;
   const answerAnchor = answerIdentity
@@ -43,6 +43,7 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
       return;
     }
     setBusy(true);
+    onBusyChange?.(true);
     setDiagnostic(null);
     setAnnotationMessage('');
     try {
@@ -60,12 +61,19 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
       setDiagnostic(createAiDiagnostic({ error, config, stage: 'failed' }));
     } finally {
       setBusy(false);
+      onBusyChange?.(false);
     }
   };
 
+  useEffect(() => {
+    if (!submitToken || submitToken === handledSubmitToken.current) return;
+    handledSubmitToken.current = submitToken;
+    ask();
+  }, [submitToken]);
+
   const askAboutSelection = (selected) => {
     if (!selected?.quote) return;
-    setQuestion(`${t('ai.askSelectedPrefix')} “${selected.quote}”`);
+    onQuestionChange(`${t('ai.askSelectedPrefix')} “${selected.quote}”`);
     setAnnotationMessage('');
   };
 
@@ -77,10 +85,6 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
 
   return <div className="mt-3 rounded-2xl border border-slate-200 bg-slate-50 p-3">
     <p className="text-xs leading-5 text-slate-600">{t('ai.askIntro')}</p>
-    <div className="mt-3 flex gap-2">
-      <input value={question} onChange={(event) => setQuestion(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') ask(); }} placeholder={t('ai.askPlaceholder')} aria-label={t('ai.askPlaceholder')} className="min-w-0 flex-1 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-      <button type="button" disabled={!question.trim() || busy} onClick={ask} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t('playground.agentGuide.ask')}</button>
-    </div>
     {!isConfigured && <div className="mt-2 flex items-center justify-between gap-2 text-xs text-slate-500"><span>{t('ai.askNeedsProvider')}</span><button type="button" onClick={onOpenAiSettings} className="rounded-lg px-2 py-1 font-bold text-violet-700 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500">{t('ai.configure')}</button></div>}
     <LearningContextDisclosure context={context} selection={selection} onClearSelection={() => setSelection(null)} t={t} />
     {answer && <section className="mt-3 rounded-xl border border-violet-100 bg-white p-3" aria-live="polite">

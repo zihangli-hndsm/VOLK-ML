@@ -161,7 +161,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     const humanAction = action?.type === 'APPLY_WORLD_TRANSACTION'
       ? { ...action, transaction: { ...(action.transaction ?? {}), actor: 'human' } }
       : { ...action, actor: 'human' };
-    if (['PLAY', 'SCRIPT_PLAY', 'STEP', 'SCRIPT_STEP', 'RESET', 'SCRIPT_RESET'].includes(action.type)) {
+    if (['PLAY', 'SCRIPT_PLAY', 'STEP', 'TRAINING_STEP', 'SCRIPT_STEP', 'RESET', 'SCRIPT_RESET'].includes(action.type)) {
       setPlaybackError(null);
     }
     return dispatchWithFirstMeaningfulManipulation({

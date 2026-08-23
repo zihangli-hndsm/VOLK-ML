@@ -7,6 +7,18 @@ export const MAX_EXPERIMENT_UNDO = 50;
 
 const clone = (value) => structuredClone(value);
 
+function captureExperimentView(viewState = {}) {
+  // Scale is a session-only camera choice. Experiments retain semantic
+  // projection/layer choices, but never capture bounds, Fit state, or 1:1.
+  return Object.fromEntries(['visibility', 'mode', 'xFeature', 'yFeature']
+    .filter((key) => viewState[key] !== undefined)
+    .map((key) => [key, clone(viewState[key])]));
+}
+
+function restoreExperimentView(current = {}, captured = {}) {
+  return { ...clone(current), ...captureExperimentView(captured) };
+}
+
 export function captureExperimentRuntime(session) {
   return {
     baseline: clone(session.baseline),
@@ -18,7 +30,7 @@ export function captureExperimentRuntime(session) {
     experiment: cloneExperiment(session.experiment),
     worldHistory: clone(session.worldHistory),
     worldActionCounter: session.worldActionCounter,
-    viewState: clone(session.viewState),
+    viewState: captureExperimentView(session.viewState),
     timeline: clone(session.timeline),
     traces: clone(session.traces),
     visualState: clone(session.visualState),
@@ -136,6 +148,7 @@ export function duplicateActiveExperiment(session) {
   return {
     ...prepared,
     ...state,
+    viewState: clone(prepared.viewState),
     status: 'paused',
     experimentUndo: [],
     experimentWorkspace: {
@@ -176,6 +189,7 @@ export function switchExperiment(session, experimentId) {
   return {
     ...prepared,
     ...state,
+    viewState: restoreExperimentView(prepared.viewState, state.viewState),
     status: 'paused',
     experimentUndo: clone(target.undo ?? []),
     scriptState: state.scriptState ? { ...state.scriptState, status: 'paused' } : state.scriptState,
@@ -246,7 +260,7 @@ export function resetActiveExperiment(session) {
     experiment: cloneExperiment(baseline.experiment ?? prepared.experiment),
     worldHistory: clone(baseline.worldHistory ?? { past: [], future: [] }),
     worldActionCounter: 0,
-    viewState: clone(baseline.viewState ?? prepared.viewState),
+    viewState: restoreExperimentView(prepared.viewState, baseline.viewState),
     timeline: { step: 0, totalSteps: 0, speed: prepared.timeline.speed ?? 1 },
     traces: clone(baseline.traces ?? []),
     seed: baselineSeed,
@@ -262,6 +276,7 @@ export function restoreExperimentRuntime(session, state, { undo = [] } = {}) {
   return {
     ...session,
     ...clone(state),
+    viewState: restoreExperimentView(session.viewState, state.viewState),
     experimentWorkspace: session.experimentWorkspace,
     experimentUndo: clone(undo),
   };

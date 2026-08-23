@@ -81,7 +81,7 @@ export const UI_MIGRATION_SEAMS = Object.freeze({
   worldSurface: Object.freeze({ owner: 'explore', current: 'PlaygroundStage + DataWorkspace + WorldBuilder' }),
   experimentBar: Object.freeze({ owner: 'explore', current: 'ExperimentBar' }),
   depthDisclosure: Object.freeze({ owner: 'explore-depth', current: 'ExplorationEvidence + PlaygroundTimeline + TrainingMicroscopePanel + PlaygroundInspector' }),
-  agentEntry: Object.freeze({ owner: 'explore', current: 'ExplorationAgentPanel + PlaygroundAgentPanel' }),
+  agentEntry: Object.freeze({ owner: 'explore', current: 'ExploreAgentSurface + PlaygroundAgentPanel' }),
   buildEntry: Object.freeze({ owner: 'build', current: 'Workspace toolbar + component library + graph + parameters + export' }),
 });
 

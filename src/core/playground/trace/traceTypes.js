@@ -38,6 +38,7 @@ export const TRACE_EVENTS = {
     'loss.measured',
     'gradient.computed',
     'parameters.updated',
+    'training.step',
     'training.completed',
     'query.received',
     'mlp.hiddenActivated',

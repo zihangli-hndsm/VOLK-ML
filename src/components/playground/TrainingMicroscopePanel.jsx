@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 
-const numberText = (value) => Number.isFinite(Number(value)) ? Number(value).toFixed(5) : '—';
+const numberText = (value) => value !== null && value !== undefined && value !== '' && Number.isFinite(Number(value))
+  ? Number(value).toFixed(5)
+  : '—';
 
 function ObjectiveTiming({ objective, t }) {
   if (!objective) return null;
@@ -30,7 +32,7 @@ export default function TrainingMicroscopePanel({ snapshot, onDispatch, t, openB
     [microscope, selectedStep],
   );
   if (!microscope) return null;
-  const canStep = Boolean(snapshot.capabilities?.canStep);
+  const canStep = Boolean(microscope.canStep);
   return <details open={open} onToggle={(event) => setOpen(event.currentTarget.open)} className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
     <summary className="cursor-pointer font-black text-slate-900">{t('playground.trainingMicroscope.title')}</summary>
     <div className="mt-3 space-y-4">
@@ -41,7 +43,7 @@ export default function TrainingMicroscopePanel({ snapshot, onDispatch, t, openB
         <div className="flex flex-wrap items-center justify-between gap-2">
           <span className="text-sm font-black text-slate-800">{t('playground.trainingMicroscope.loss')}</span>
           <span className="text-xs font-bold text-slate-500">{t('playground.trainingMicroscope.currentStep')}: {microscope.currentRuntimeStep} / {microscope.totalSteps}</span>
-          {canStep && <button type="button" onClick={() => onDispatch({ type: 'STEP' })} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white">{t('playground.trainingMicroscope.nextStep')}</button>}
+          <button type="button" disabled={!canStep} onClick={() => onDispatch({ type: 'TRAINING_STEP' })} className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{t('playground.trainingMicroscope.nextStep')}</button>
         </div>
         {selected?.objective && <section className="rounded-xl bg-white p-3"><h4 className="text-xs font-black uppercase text-slate-500">{t('playground.trainingMicroscope.stepOutcome')}</h4><ObjectiveTiming objective={selected.objective} t={t} />{selected.outcome?.status === 'stopped' && <p role="status" className="mt-2 text-xs font-bold text-amber-800">{t('playground.trainingMicroscope.trainingStopped')}</p>}</section>}
         {microscope.lossTrace.length ? <div className="flex max-w-full gap-1 overflow-x-auto pb-1" aria-label={t('playground.trainingMicroscope.lossTrace')}>

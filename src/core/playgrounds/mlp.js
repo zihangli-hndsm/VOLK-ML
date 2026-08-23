@@ -35,6 +35,7 @@ export const mlpPlayground = {
     'SET_CONTROL',
     'START_TRAINING',
     'START_PREDICT',
+    'TRAINING_STEP',
     'STEP',
     'SEEK',
     'RESET',

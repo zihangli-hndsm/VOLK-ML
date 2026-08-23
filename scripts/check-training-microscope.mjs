@@ -27,6 +27,22 @@ function trainerForSnapshot(snapshot) {
   return createLinearRegressionTrainer(points);
 }
 
+// The learner-facing microscope action initializes training and advances one
+// model step even while the ordinary Visualization Script remains loaded.
+{
+  const run = await open();
+  const initial = run.agent.getState();
+  assert.ok(initial.script?.steps?.length, 'the regression teaching script is loaded');
+  assert.equal(initial.trainingMicroscope.canStep, true);
+  const first = await run.agent.dispatch({ type: 'TRAINING_STEP' });
+  assert.equal(first.trainingMicroscope.currentRuntimeStep, 1);
+  assert.notDeepEqual(first.scene.line, initial.scene.line, 'the first microscope step updates visible parameters');
+  const second = await run.agent.dispatch({ type: 'TRAINING_STEP' });
+  assert.equal(second.trainingMicroscope.currentRuntimeStep, 2, 'each microscope action advances exactly once');
+  assert.notDeepEqual(second.scene.line, first.scene.line);
+  await close(run);
+}
+
 // Normal Linear Regression mechanics: the trace comes from the same function
 // that performs the update, with explicit objective timing.
 {
@@ -154,19 +170,26 @@ function trainerForSnapshot(snapshot) {
 // Adapters without the full mechanic expose an honest reduced view.
 {
   const mlp = await open('mlp-classification');
-  const microscope = mlp.agent.getState().trainingMicroscope;
+  const initial = mlp.agent.getState();
+  const microscope = initial.trainingMicroscope;
   assert.equal(microscope.available, true);
+  assert.equal(microscope.canStep, true);
   assert.deepEqual(microscope.capabilities.gradients, []);
   assert.equal(microscope.capabilities.updates, false);
   assert.equal(microscope.steps.length, 0);
+  const stepped = await mlp.agent.dispatch({ type: 'TRAINING_STEP' });
+  assert.equal(stepped.trainingMicroscope.currentRuntimeStep, 1);
+  assert.equal(stepped.trainingMicroscope.lossTrace.length, stepped.trainingMicroscope.totalSteps, 'MLP microscope exposes the initialized loss trajectory');
+  assert.ok(Number.isFinite(stepped.trainingMicroscope.selectedStep.objective.after.loss), 'MLP first step selects its corresponding loss evidence');
+  assert.notDeepEqual(stepped.scene.network.edges, initial.scene.network.edges, 'MLP microscope stepping updates network parameters');
   await close(mlp);
 }
 
-// Phase 7's concept entrance keeps the same ordinary LR runtime and needs no AI.
+// A regression concept entrance keeps the same ordinary LR runtime and needs no AI.
 {
   const host = createPlaygroundHost({ getDataset: () => null });
   const agent = createPlaygroundAgentApi(host);
-  await agent.openBigIdeaEntrance({ id: 'distribution-shift' });
+  await agent.openBigIdeaEntrance({ id: 'finding-patterns' });
   assert.equal(agent.getState().model.adapterId, 'linear-regression');
   const trained = await agent.dispatch({ type: 'START_TRAINING' });
   assert.equal(trained.trainingMicroscope.available, true);

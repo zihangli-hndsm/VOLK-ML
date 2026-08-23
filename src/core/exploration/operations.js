@@ -162,6 +162,7 @@ function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
       world: createWorld({
         ...world,
         task: generated.recipe.task,
+        featureNames: ['x', 'y'],
         mode: 'generated',
         observations: generated.observations,
         seed: generated.seed,

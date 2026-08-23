@@ -101,12 +101,14 @@ export function deriveTrainingMicroscope({ session, adapter, traces = [], condit
   const currentRuntimeStep = finite(session?.modelState?.training?.currentStep ?? session?.timeline?.step) ?? 0;
   const totalSteps = finite(session?.modelState?.training?.totalSteps ?? session?.timeline?.totalSteps) ?? steps.length;
   const selected = steps.find((step) => step.step === currentRuntimeStep) ?? null;
+  const canStep = available && (totalSteps <= 0 || currentRuntimeStep < totalSteps);
   return clone({
     version: 1,
     available,
     status: !available ? 'unavailable' : (reduced ? 'reduced' : (steps.length ? 'available' : 'ready')),
     runIdentity: { runId, conditionFingerprint: fingerprint },
     currentConditionFingerprint: fingerprint,
+    canStep,
     capabilities,
     currentRuntimeStep,
     totalSteps,

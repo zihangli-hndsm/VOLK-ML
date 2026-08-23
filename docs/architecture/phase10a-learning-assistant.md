@@ -20,6 +20,14 @@ World or Experiment, create a ScenarioSpec, or claim that an experiment was
 run. The existing Agent proposal and explicit execution boundary remains the
 only route to semantic experimentation.
 
+The learner-facing Agent sheet uses one shared prompt with three explicit
+modes: Ask VOLK, Design experiment, and Generate World. Ask remains the
+answer-only path above. Experiment and free-form World requests use their
+existing bounded interpreters and produce reviewable proposals. The Rings,
+Moons, XOR, and Checkerboard presets work without a provider, but they also
+produce a proposal and never execute directly. The primary surface does not
+embed a second advanced request box.
+
 The provider receives a projection of the current task/model, conceptual
 depth, comparison summary, inquiry concepts, active annotations, and a short
 conversation window. It does not receive API secrets, raw observations,

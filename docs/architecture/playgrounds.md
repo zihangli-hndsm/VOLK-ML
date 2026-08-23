@@ -91,6 +91,11 @@ Since the PR B follow-up, **Visualization Scripts own visualization composition*
 - `playgroundHost` routes `play`/`pause`/`step`/`seek`/`reset` to `SCRIPT_*` actions whenever an active Visualization Script exists, and to the model actions otherwise — the UI and the Canvas Agent control exactly the same timeline.
 - The UI uses one scheduler decision for both modes: a playing Visualization Script dispatches `SCRIPT_STEP`; when no script is actively playing, model `PLAY` dispatches finite `STEP` actions until the model timeline completes. Operation metadata (`playback.revealCountControl`) maps sparse teaching reveals onto sampled model progress, so a three-step linear-regression explanation can expose the full declared training trajectory without conflating the script and model timelines.
 - Timeline patches use a defined-value merge: `undefined` means the adapter did not supply that field and the previous value is preserved; an explicit value replaces it. This keeps playback speed valid when `START_TRAINING` returns only `step` and `totalSteps`.
+- The Training Microscope owns a separate `TRAINING_STEP` action and
+  `trainingMicroscope.canStep` capability. Its first action initializes the
+  model trajectory and advances exactly once; later actions advance exactly
+  once even when a Visualization Script is loaded. The main timeline remains
+  responsible for `SCRIPT_STEP`.
 - The browser scheduler cancels its timer generation before rescheduling, catches rejected dispatches, pauses automatic playback, and renders a localized failure with the action, script step, operation and reason. It does not retry a failed action; the last valid semantic snapshot remains authoritative.
 
 ### Phase 2 Experiment Bar and controlled comparison
@@ -520,6 +525,11 @@ model branches.
   with payload schemas, and declarative teaching capabilities
   (`show_training` + `explain_prediction`). `show_failure_case` is honestly
   unsupported on MLP and rejected with `TEACHING_GOAL_UNSUPPORTED`.
+- The adapter validates and applies canonical two-dimensional binary
+  classification Worlds. Applying a World rebuilds explicit train/test
+  samples, train-fitted normalization, label mapping and seeded initial
+  parameters, then clears old training and prediction playback. Invalid
+  Worlds fail before live Experiment or model state changes.
 - `mlp-classification` playground: deterministic XOR source, controls
   (`hiddenUnits`, `learningRate`, `trainingSteps`, `queryX`, `queryY`,
   `showDecisionRegions`) and the `mlp.intro` preset. The preset trains,
