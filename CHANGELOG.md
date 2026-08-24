@@ -780,3 +780,9 @@
 - Preserved the semantic color contract: purple frontier, cyan current attention, green learner-confirmed illumination, orange experiment relation, and navy structure; no automatic `caused_by`, mastery, concept discovery, Agent planning, or persistence was introduced.
 - Added bilingual responsive/reduced-motion UI, Distribution Shift concept aliasing for the existing `train-test-distribution-shift` → `generalization` relationship, architecture documentation, and focused graph boundary checks.
 - Acceptance: focused Concept Graph and LUMI Journey checks, full `npm run check`, production `npm run build`, Distribution Shift desktop/concept-selection and 390px browser walkthrough with no console errors, and `git diff --check` passed.
+
+## 2026-08-24 — LUMI GitHub Pages asset packaging correction
+
+- Corrected LUMI SVG references to use literal Vite asset URLs with a non-browser fallback, so GitHub Pages' relative `base: './'` build rewrites and inlines all four visuals instead of traversing from the generated JavaScript path at runtime.
+- Added a focused regression asserting the four literal asset references and the GitHub Pages deployment base; no LUMI state or presentation semantics changed.
+- Acceptance: focused LUMI semantic checks, full `npm run check`, production `npm run build` with four inlined SVG resources, and `git diff --check` passed.
