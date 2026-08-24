@@ -99,6 +99,11 @@ existing factual observations, grounded conceptual relevance, and learner-
 reviewed next steps. It does not receive authority to execute an experiment or
 invent a result.
 
+The visual identity is implemented by the dedicated `src/assets/lumi/` vector
+set and a CSS-only presentation layer. Meaningful interventions may briefly
+show the Orange `intervene` pulse, while the underlying learning and Experiment
+contracts remain unchanged.
+
 LUMI keeps its Navy/Cyan identity with limited Orange intervention accents.
 Purple and Green belong to Concept Cards and their explicit session-local
 learning state. The signature Purple → Orange contact → Green → Cyan

@@ -882,6 +882,16 @@ bounded presence levels (`hidden`, `ambient`, `contextual`, `event`) and modes
 (`idle`, `observe`, `guide`, `intervene`, `illuminate`). It consumes the normal
 Playground snapshot and never owns World, Experiment, evidence, or Agent state.
 
+The visual mascot assets live under `src/assets/lumi/` and are selected only by
+the normalized semantic mode. The four vector assets keep LUMI's deep Navy body,
+Cyan eyes/wings, warm core, orbit/node motif, and translucent wings recognizable
+without introducing a new visual dependency. `idle` uses slow ambient float;
+`observe` adds a small Cyan focus orientation; `guide` remains contextual;
+`intervene` emits one bounded Orange pulse when a meaningful World/model
+intervention is committed; and `illuminate` uses the existing explicit
+`active` → `illuminated` transition to play a one-shot contact/confirmation
+sequence. These effects are CSS-only and have a reduced-motion equivalent.
+
 Semantic colors are centralized in `src/index.css`: Navy is structure, Cyan is
 observation and focus, Orange is intervention, Purple is an unexplored concept,
 and Green is an illuminated concept. The tokens are applied only at touched

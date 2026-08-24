@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-24 — LUMI visual identity integration
+
+- Replaced the abstract inline LUMI rendering with four dedicated firefly-inspired Navy/Cyan vector assets for idle, observe, guide, and illuminate presentation states; the semantic mode/presence API and learning logic remain unchanged.
+- Added lightweight CSS-only float, focus, Orange intervention pulse, and explicit active-to-illuminated confirmation motion with reduced-motion behavior; concept cards now expose subtle frontier/focus/illuminated visual states.
+- Connected transient intervention presentation to meaningful World/model control changes, added the localized accessibility label, extended the LUMI regression check, and documented the visual asset/state contract in the playground and exploration architecture docs.
+- Acceptance: focused LUMI check, playground render smoke, full `npm run check`, `npm run build`, `git diff --check`, and manual desktop/390×844 browser checks passed. Final illustrated art remains replaceable through the same four asset paths.
+
 ## 2026-08-21 — Phase 10.1 Curiosity Loop foundation
 
 - Added a bounded deterministic Curiosity State projection over Semantic Events, Learner Inquiry candidates, and current observation identities.

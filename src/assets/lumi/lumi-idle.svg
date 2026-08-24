@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 160 140" role="presentation">
+  <defs>
+    <radialGradient id="idle-core" cx="50%" cy="42%" r="65%"><stop offset="0" stop-color="#fffdf1"/><stop offset=".52" stop-color="#ffe9b3"/><stop offset="1" stop-color="#f7bf62" stop-opacity=".25"/></radialGradient>
+    <linearGradient id="idle-wing" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff" stop-opacity=".82"/><stop offset="1" stop-color="#cff6ff" stop-opacity=".2"/></linearGradient>
+  </defs>
+  <g fill="none" stroke="#8deeff" stroke-width="1.4" opacity=".75">
+    <path d="M43 64C18 48 16 25 35 17C51 10 62 27 54 43"/><path d="M117 64C142 48 144 25 125 17C109 10 98 27 106 43"/>
+    <path d="M23 31l15 8 13-11M137 31l-15 8-13-11"/><circle cx="23" cy="31" r="2.4" fill="#00e6ff"/><circle cx="137" cy="31" r="2.4" fill="#00e6ff"/>
+  </g>
+  <path d="M56 55C30 43 13 52 19 79c5 21 29 23 48 4z" fill="url(#idle-wing)" stroke="#00e6ff" stroke-opacity=".65"/>
+  <path d="M104 55c26-12 43-3 37 24-5 21-29 23-48 4z" fill="url(#idle-wing)" stroke="#00e6ff" stroke-opacity=".65"/>
+  <g fill="none" stroke="#fff" stroke-opacity=".72" stroke-width="1"><path d="M24 66l20-5 13 12M136 66l-20-5-13 12"/><circle cx="24" cy="66" r="2" fill="#fff"/><circle cx="136" cy="66" r="2" fill="#fff"/></g>
+  <path d="M65 40C61 22 53 13 42 12M95 40c4-18 12-27 23-28" fill="none" stroke="#0b1330" stroke-linecap="round" stroke-width="5"/>
+  <circle cx="41" cy="11" r="6" fill="#00e6ff" stroke="#fff" stroke-width="2"/><circle cx="119" cy="11" r="6" fill="#00e6ff" stroke="#fff" stroke-width="2"/>
+  <ellipse cx="80" cy="76" rx="39" ry="45" fill="#0b1330" stroke="#14376a" stroke-width="3"/>
+  <ellipse cx="80" cy="89" rx="18" ry="22" fill="url(#idle-core)"/>
+  <path d="M80 76v25M80 85l-9-7M80 85l9-7M80 95l-7 7M80 95l7 7" fill="none" stroke="#fffdf1" stroke-linecap="round" stroke-width="3"/>
+  <circle cx="66" cy="68" r="9" fill="#00e6ff" stroke="#fff" stroke-width="2"/><circle cx="94" cy="68" r="9" fill="#00e6ff" stroke="#fff" stroke-width="2"/><circle cx="63" cy="65" r="3" fill="#fff"/><circle cx="91" cy="65" r="3" fill="#fff"/>
+  <path d="M72 83c5 5 11 5 16 0" fill="none" stroke="#0b1330" stroke-linecap="round" stroke-width="3"/>
+</svg>

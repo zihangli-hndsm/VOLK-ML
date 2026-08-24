@@ -1291,6 +1291,7 @@ export const messages = {
   'playground.concept.illuminate': { en: 'Mark this understanding', zh: '标记为已理解' },
   'playground.lumi.name': { en: 'LUMI', zh: 'LUMI' },
   'playground.lumi.openGuidance': { en: 'Open LUMI guidance', zh: '打开 LUMI 引导' },
+  'playground.lumi.interventionPulse': { en: 'LUMI marks the intervention', zh: 'LUMI 标记了这次干预' },
   'playground.lumi.whatNoticed': { en: 'What I noticed', zh: '我注意到' },
   'playground.lumi.whyMatters': { en: 'Why it may matter', zh: '这可能意味着' },
   'playground.lumi.observationAvailable': { en: 'A new observation is available in Evidence.', zh: '证据面板中出现了新的观察。' },
