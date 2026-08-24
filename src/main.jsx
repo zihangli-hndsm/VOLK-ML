@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { ReactFlow, Background, BaseEdge, Controls, EdgeLabelRenderer, Handle, MiniMap, Position, addEdge, getNodesBounds, getSmoothStepPath, useEdgesState, useNodesState } from '@xyflow/react';
 import { motion } from 'framer-motion';
 import '@xyflow/react/dist/style.css';
+import './index.css';
 import { languages, localizedError, resolveMessage, translateError } from './i18n';
 import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
 import { describeRows, sampleDatasets } from './core/sampleDatasets';

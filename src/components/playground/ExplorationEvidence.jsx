@@ -37,16 +37,16 @@ export default function ExplorationEvidence({ snapshot, t, openByDefault = false
       <span className="text-xs font-bold text-slate-500">{notices.length ? t('playground.evidence.noticeCount', { count: notices.length }) : t('playground.evidence.quiet')}</span>
     </div>
     {notices.length > 0 && <div className="mt-3 space-y-2" aria-live="polite">
-      {notices.slice(0, 3).map((notice) => <div key={notice.id} role="status" className="flex items-start justify-between gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-950">
+      {notices.slice(0, 3).map((notice) => <div key={notice.id} role="status" data-evidence-kind="observation" className="flex items-start justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-950">
         <p><span className="font-black">{t(`playground.evidence.severity.${notice.severity}`)}</span> {t(notice.messageKey, messageParams(notice))}</p>
-        <button type="button" aria-label={t('playground.evidence.dismiss')} onClick={() => setDismissed((items) => [...items, notice.id])} className="shrink-0 rounded-lg px-2 py-1 font-black hover:bg-amber-100">×</button>
+        <button type="button" aria-label={t('playground.evidence.dismiss')} onClick={() => setDismissed((items) => [...items, notice.id])} className="shrink-0 rounded-lg px-2 py-1 font-black hover:bg-cyan-100">×</button>
       </div>)}
     </div>}
     {open && <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
       {available.map((id) => {
         const item = read(id);
         const focused = snapshot.visualState?.evidenceFocus?.includes(id);
-        return <div key={id} className={`rounded-xl bg-slate-50 p-2 text-xs${focused ? ' ring-2 ring-amber-400 ring-offset-1' : ''}`}><span className="block font-bold text-slate-500">{t(item.labelKey)}</span><span className="font-mono font-black text-slate-800">{value(item.value, item.valueType)}</span></div>;
+        return <div key={id} data-evidence-kind="observation" className={`rounded-xl bg-slate-50 p-2 text-xs${focused ? ' ring-2 ring-cyan-400 ring-offset-1' : ''}`}><span className="block font-bold text-slate-500">{t(item.labelKey)}</span><span className="font-mono font-black text-slate-800">{value(item.value, item.valueType)}</span></div>;
       })}
       {repeat && <div className="rounded-xl border border-blue-100 bg-blue-50 p-3 text-xs sm:col-span-2 lg:col-span-3">
         <p className="font-black text-blue-900">{t('playground.evidence.repeatTitle', { count: repeat.trialCount })}</p>

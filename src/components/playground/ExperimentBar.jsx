@@ -97,7 +97,7 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
           <span className="truncate">{t('playground.experiment.myExperiment')}</span>
         </div>
         <div className="flex items-center gap-1">
-          <button data-affordance-id="experiment.duplicate" type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className={`ui-motion-interactive rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white${highlight('experiment.duplicate')}`}>+ {t('playground.experiment.tryAnother')}</button>
+          <button data-affordance-id="experiment.duplicate" type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className={`ui-motion-interactive rounded-xl bg-orange-500 px-3 py-2 text-xs font-black text-white hover:bg-orange-600${highlight('experiment.duplicate')}`}>+ {t('playground.experiment.tryAnother')}</button>
           <button type="button" aria-expanded={moreOpen} aria-controls="experiment-more-actions" onClick={() => setMoreOpen((value) => !value)} className="ui-motion-interactive rounded-xl px-2 py-2 text-lg font-black leading-none text-slate-500 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500" aria-label={t('playground.experiment.moreActions')}>•••</button>
         </div>
       </div>
@@ -115,8 +115,8 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
         <p className="mt-1 text-sm font-black text-slate-900">{t('playground.experiment.instruction')}</p>
       </div>
       <div className="flex items-center gap-1">
-        <button data-affordance-id="experiment.duplicate" type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className={`ui-motion-interactive rounded-xl bg-blue-600 px-3 py-2 text-xs font-black text-white${highlight('experiment.duplicate')}`}>+ {t('playground.experiment.tryAnother')}</button>
-        {target && <button data-affordance-id="experiment.compare" type="button" aria-pressed={Boolean(comparison.enabled)} onClick={() => onDispatch({ type: 'SET_COMPARE', enabled: !comparison.enabled, againstExperimentId: target.id })} className={`ui-motion-interactive rounded-xl px-3 py-2 text-xs font-black ${comparison.enabled ? 'bg-violet-700 text-white' : 'bg-violet-100 text-violet-800'}${highlight('experiment.compare')}`}>{comparison.enabled ? t('playground.experiment.compareOn') : t('playground.experiment.compare')}</button>}
+        <button data-affordance-id="experiment.duplicate" type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className={`ui-motion-interactive rounded-xl bg-orange-500 px-3 py-2 text-xs font-black text-white hover:bg-orange-600${highlight('experiment.duplicate')}`}>+ {t('playground.experiment.tryAnother')}</button>
+        {target && <button data-affordance-id="experiment.compare" type="button" aria-pressed={Boolean(comparison.enabled)} onClick={() => onDispatch({ type: 'SET_COMPARE', enabled: !comparison.enabled, againstExperimentId: target.id })} className={`ui-motion-interactive rounded-xl px-3 py-2 text-xs font-black ${comparison.enabled ? 'bg-orange-500 text-white' : 'bg-orange-100 text-orange-800'}${highlight('experiment.compare')}`}>{comparison.enabled ? t('playground.experiment.compareOn') : t('playground.experiment.compare')}</button>}
         <button type="button" aria-expanded={moreOpen} aria-controls="experiment-more-actions" onClick={() => setMoreOpen((value) => !value)} className="ui-motion-interactive rounded-xl px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500">{t('playground.experiment.moreActions')}</button>
       </div>
     </div>
@@ -147,7 +147,7 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
           aria-pressed={selected}
           aria-label={`${t('playground.experiment.compareWith')} ${aliasFor(index)} ${learnerName(index, workspace.experiments.length, t)}`}
           onClick={() => onDispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: experiment.id })}
-          className={`rounded-lg px-2.5 py-1.5 text-xs font-black ${selected ? 'bg-violet-700 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'}`}
+          className={`rounded-lg px-2.5 py-1.5 text-xs font-black ${selected ? 'bg-orange-500 text-white' : 'bg-white text-slate-700 ring-1 ring-slate-200'}`}
         >{aliasFor(index)}</button>;
       })}
     </div>}
@@ -155,21 +155,21 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
     {moreOpen && <div id="experiment-more-actions" className="ui-motion-reveal mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
       <button type="button" onClick={() => dispatchSecondary({ type: 'RESET' })} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.experiment.reset')}</button>
       {snapshot.capabilities?.canUndoExperiment && <button type="button" onClick={() => dispatchSecondary({ type: 'UNDO_EXPERIMENT_ACTION' })} className="rounded-xl bg-slate-100 px-3 py-2 text-xs font-bold text-slate-700">{t('playground.experiment.undo')}</button>}
-      {snapshot.model && comparison.enabled && <div data-affordance-id="experiment.repeat" className={`flex items-center gap-1 rounded-xl bg-amber-50 px-2 py-1 text-xs font-black text-amber-800${highlight('experiment.repeat')}`}>
+      {snapshot.model && comparison.enabled && <div data-affordance-id="experiment.repeat" className={`flex items-center gap-1 rounded-xl bg-orange-50 px-2 py-1 text-xs font-black text-orange-800${highlight('experiment.repeat')}`}>
         <label htmlFor="repeat-trials">{t('playground.experiment.repeat')}</label>
         <select id="repeat-trials" value={repeatCount} onChange={(event) => setRepeatCount(Number(event.target.value))} className="rounded-lg border border-amber-200 bg-white px-1 py-1">
           <option value="2">2</option><option value="3">3</option><option value="5">5</option><option value="10">10</option><option value="20">20</option>
         </select>
-        <button type="button" onClick={() => dispatchSecondary({ type: 'REPEAT_EXPERIMENT', trials: repeatCount })} className="rounded-lg bg-amber-500 px-2 py-1 text-white">{t('playground.experiment.runRepeat')}</button>
+        <button type="button" onClick={() => dispatchSecondary({ type: 'REPEAT_EXPERIMENT', trials: repeatCount })} className="rounded-lg bg-orange-500 px-2 py-1 text-white">{t('playground.experiment.runRepeat')}</button>
       </div>}
     </div>}
 
     {comparison.enabled && diff && <div data-ui-motion="comparison" className="ui-motion-reveal mt-3 space-y-3">
       <div className="grid gap-3 md:grid-cols-2">
-        <div className="ui-motion-reveal ui-motion-stagger-1 rounded-xl border border-rose-100 bg-rose-50/60 p-3">
-          <p className="text-xs font-black uppercase tracking-wider text-rose-700">{t('playground.experiment.changed')}</p>
+        <div className="ui-motion-reveal ui-motion-stagger-1 rounded-xl border border-orange-100 bg-orange-50/60 p-3">
+          <p className="text-xs font-black uppercase tracking-wider text-orange-700">{t('playground.experiment.changed')}</p>
           <p className="mt-2 text-sm font-bold text-slate-700">{changed.length ? changed.map((factor) => t(factorKeys[factor])).join(', ') : t('playground.experiment.none')}</p>
-          {generatorChanged.length > 0 && <p className="mt-2 text-xs font-bold text-rose-700">{t('playground.experiment.worldDetails')}: {generatorChanged.map((key) => t(`playground.experiment.generator.${key}`)).join(', ')}</p>}
+          {generatorChanged.length > 0 && <p className="mt-2 text-xs font-bold text-orange-700">{t('playground.experiment.worldDetails')}: {generatorChanged.map((key) => t(`playground.experiment.generator.${key}`)).join(', ')}</p>}
         </div>
         <div className="ui-motion-reveal ui-motion-stagger-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
           <p className="text-xs font-black uppercase tracking-wider text-emerald-700">{t('playground.experiment.heldConstant')}</p>

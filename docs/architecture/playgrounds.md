@@ -874,6 +874,33 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
 - Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
 - The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.
 
+## LUMI semantic presentation layer
+
+`src/core/ui/lumiSemantics.js` and `src/components/playground/Lumi.jsx` provide
+the controlled presentation vocabulary for the learner-facing guide. LUMI has
+bounded presence levels (`hidden`, `ambient`, `contextual`, `event`) and modes
+(`idle`, `observe`, `guide`, `intervene`, `illuminate`). It consumes the normal
+Playground snapshot and never owns World, Experiment, evidence, or Agent state.
+
+Semantic colors are centralized in `src/index.css`: Navy is structure, Cyan is
+observation and focus, Orange is intervention, Purple is an unexplored concept,
+and Green is an illuminated concept. The tokens are applied only at touched
+surfaces; the existing canvas stage palette remains authoritative for canvas
+glyphs.
+
+Concept state is a session presentation projection with three explicit states:
+`unexplored`, `active`, and `illuminated`. Inquiry candidates and grounded
+concept signals can make a concept active, but neither model accuracy nor an
+animation can infer illumination. The current UI offers an explicit learner
+confirmation for the transition to `illuminated`; it is not persisted in the
+World, Experiment fingerprint, project JSON, or a second runtime store.
+
+The LUMI guidance surface reuses Observation Detector notices, Learner Inquiry
+candidates, and existing guided exploration recipes. It separates “What I
+noticed”, “Why it may matter”, and “Try next”; it does not fabricate evidence,
+turn hypotheses into facts, or authorize actions. Large Concept Map rendering
+and automatic mastery detection remain future work.
+
 ## Phase 4 guided exploration contracts
 
 `src/core/exploration/observables.js` is the shared semantic boundary for

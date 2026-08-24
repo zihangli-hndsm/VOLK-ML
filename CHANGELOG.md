@@ -741,3 +741,11 @@
 - Unified Agent exploration around one shared input with Ask VOLK, Design experiment, and Generate World modes; Rings, Moons, XOR, and Checkerboard presets remain provider-free proposals requiring explicit execution.
 - Added readable 1/2/5 axis ticks, centered zoom, Fit, and equal-unit controls over one shared coordinate frame; camera scale remains session-only and is excluded from Experiment/Undo capture.
 - Acceptance: focused exploration, World Composer, Training Microscope, Big Idea, Agent UI, responsive geometry and render checks; full `npm run check`; production build; desktop/narrow-screen English/Chinese browser walkthrough; and `git diff --check` passed.
+
+## 2026-08-24 — LUMI semantic learning UI
+
+- Added centralized semantic UI tokens and a controlled LUMI companion with ambient, contextual, observation, guidance, intervention, and illumination states.
+- Added grounded Concept Card states (`unexplored`, `active`, `illuminated`) with an explicit session-only learner confirmation for illumination; no model accuracy heuristic or persistence was introduced.
+- Applied Cyan to factual Evidence, Orange to Experiment interventions, and Purple/Green to concept exploration states while preserving existing World, Experiment, Agent, and evidence authority boundaries.
+- Added LUMI guidance presentation over existing observations, inquiry candidates, and guided recipes, with localized English/Chinese copy, keyboard-safe entry points, reduced-motion behavior, responsive narrow-screen handling, and architecture documentation updates.
+- Acceptance: focused LUMI semantic checks, full `npm run check`, production `npm run build`, desktop and 390px narrow-screen browser walkthrough, and `git diff --check` passed.

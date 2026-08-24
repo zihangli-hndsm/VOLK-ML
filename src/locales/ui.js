@@ -1285,4 +1285,13 @@ export const messages = {
   'playground.inquirySuggestion.capacity.question': { en: 'Would a different model capacity change this result?', zh: '不同的模型容量会改变这个结果吗？' },
   'playground.inquirySuggestion.capacity.hypothesis': { en: 'The current result is also consistent with the model needing a different capacity.', zh: '当前结果也可能与模型需要不同容量一致。' },
   'playground.inquirySuggestion.capacity.intervention': { en: 'Compare only the registered capacity control.', zh: '只比较已登记的容量控制。' },
+  'playground.concept.state.unexplored': { en: 'Unexplored', zh: '未探索' },
+  'playground.concept.state.active': { en: 'Active exploration', zh: '正在探索' },
+  'playground.concept.state.illuminated': { en: 'Illuminated', zh: '已照亮' },
+  'playground.concept.illuminate': { en: 'Mark this understanding', zh: '标记为已理解' },
+  'playground.lumi.name': { en: 'LUMI', zh: 'LUMI' },
+  'playground.lumi.openGuidance': { en: 'Open LUMI guidance', zh: '打开 LUMI 引导' },
+  'playground.lumi.whatNoticed': { en: 'What I noticed', zh: '我注意到' },
+  'playground.lumi.whyMatters': { en: 'Why it may matter', zh: '这可能意味着' },
+  'playground.lumi.observationAvailable': { en: 'A new observation is available in Evidence.', zh: '证据面板中出现了新的观察。' },
 };

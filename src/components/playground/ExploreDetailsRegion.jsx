@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
+import { deriveLumiMode } from '../../core/ui/lumiSemantics.js';
 import { deriveExploreDepthCapabilities } from '../../core/ui/exploreDepth.js';
 import { PRESENTATION_FOCUS_OWNERS, resolvePresentationFocusOwner } from '../../core/ui/presentationFocus.js';
 import BigIdeaPrompt from './BigIdeaPrompt.jsx';
@@ -16,8 +17,9 @@ import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import CompactBottomSheet from '../CompactBottomSheet.jsx';
+import Lumi from './Lumi.jsx';
 
-export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, t }) {
+export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, t }) {
   const { responsive } = usePresentationCapabilities();
   const { isConfigured, openSettings } = useAiProvider();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
@@ -80,6 +82,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
 
     {agent && <>
       <div className="flex min-w-0 items-center gap-2">
+        <Lumi presence="ambient" mode={deriveLumiMode({ hasObservation: Boolean(snapshot.observations?.length), hasGuidance: Boolean(snapshot.learnerInquiry?.candidates?.length) })} onClick={onAgentOpen} label={t('playground.lumi.openGuidance')} />
         <button ref={agentTriggerRef} type="button" aria-expanded={Boolean(agentOpen)} aria-controls="explore-agent-guide" onClick={onAgentOpen} className="ui-motion-interactive min-w-0 flex-1 rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2 text-left text-sm font-black text-violet-900 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
           {t('playground.agentGuide.entry')}
         </button>
@@ -87,7 +90,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
           {isConfigured ? t('ai.settings') : t('ai.configure')}
         </button>
       </div>
-      {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} initialSelection={initialSelection} onAskAboutSelection={onAskAboutSelection} t={t} /></div>}
+      {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} initialSelection={initialSelection} onAskAboutSelection={onAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} onIlluminateConcept={onIlluminateConcept} t={t} /></div>}
     </>}
 
     {activeDepth && <CompactBottomSheet compact={compact} open onClose={() => onDepthChange?.(null)} id={`explore-depth-${activeDepth}`} data-ui-motion="depth-panel" role="dialog" aria-modal="false" aria-labelledby={`explore-depth-title-${activeDepth}`} className={`ui-motion-overlay-enter ${panelClass}`}>

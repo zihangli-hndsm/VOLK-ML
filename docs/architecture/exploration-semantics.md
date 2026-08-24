@@ -421,3 +421,24 @@ infer causes, rank learners, invoke AI, execute experiments, or create UI
 cards. Runtime snapshots and detached Host inspection expose the same
 JSON-safe candidate contract so a later presentation layer can remain a
 consumer rather than a second source of truth.
+
+## LUMI semantic learning presentation
+
+LUMI is a presentation guide layered over the existing semantic event,
+observation, inquiry, and suggestion projections. It does not create a second
+source of truth. `deriveConceptState()` maps an explicitly identified concept
+to `unexplored`, `active`, or `illuminated`: inquiry relevance and grounded
+signals are sufficient for `active`, while `illuminated` requires an explicit
+session action. A model result alone is never treated as learner mastery.
+
+The visual contract is intentionally asymmetric. Cyan marks observable facts
+and attention; Orange marks an intentional intervention; Purple marks an
+unresolved possibility or frontier; Green marks learner-confirmed
+understanding; Navy provides structure. Guidance may combine these layers but
+must label observation, hypothesis, and suggestion separately.
+
+The LUMI UI is localized, keyboard reachable, responsive, and reduced-motion
+safe. Its ambient/contextual mascot is an entry point around existing controls
+and cannot obscure the World, Experiment, Evidence, or model surface. The
+session-only illumination projection is cleared with the exploration session
+and is excluded from project persistence and experiment identity.

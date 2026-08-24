@@ -5,6 +5,7 @@ import { deriveCleanerComparisonProposal } from '../../core/exploration/cleanerC
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
 import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
 import { getWorldRecipePreset, WORLD_RECIPE_PRESET_IDS } from '../../core/exploration/worldRecipePresets.js';
+import { deriveConceptState } from '../../core/ui/lumiSemantics.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import AskVolkPanel from './AskVolkPanel.jsx';
 import AiDiagnosticPanel from '../ai/AiDiagnosticPanel.jsx';
@@ -64,7 +65,7 @@ function compactProposal(proposal, t) {
   } : null;
 }
 
-export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, initialSelection = null, onAskAboutSelection, t }) {
+export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, initialSelection = null, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const aiInterpreter = useMemo(() => createExplorationAiInterpreter({ gateway }), [gateway]);
   const [request, setRequest] = useState('');
@@ -396,7 +397,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         <p className="mt-2 text-xs font-black uppercase tracking-wide text-emerald-800">{t('playground.pedagogical.evidenceTitle')}</p>
         {result.pedagogicalObservation.facts.map((fact) => <p key={fact.id} className="mt-1 text-xs">{t(fact.labelKey)}{fact.before !== undefined && fact.after !== undefined ? `: ${fact.before} → ${fact.after}` : `: ${t('playground.pedagogical.heldFixed')}`}</p>)}
       </> : result.pedagogicalEvidence && <p className="mt-2 text-xs">{t('playground.pedagogical.evidenceUnavailable')}</p>}
-      <ConceptCard signal={conceptCard} observation={result.pedagogicalObservation} nextQuestion={result.nextQuestions?.[0]} onNextQuestion={() => followUp(result.nextQuestions[0])} agent={agent} onAskAbout={onAskAboutSelection} t={t} />
+      <ConceptCard signal={conceptCard} observation={result.pedagogicalObservation} state={deriveConceptState({ conceptId: conceptCard?.id, conceptSignals: result.conceptSignals, inquiry: snapshot.learnerInquiry, illuminatedConceptIds })} onIlluminate={onIlluminateConcept} nextQuestion={result.nextQuestions?.[0]} onNextQuestion={() => followUp(result.nextQuestions[0])} agent={agent} onAskAbout={onAskAboutSelection} t={t} />
       {result.nextQuestions?.length > 0 && <div className="mt-3"><p className="text-xs font-black">{t('playground.pedagogical.nextQuestions')}</p><div className="mt-1 flex flex-col gap-2">{result.nextQuestions.map((item, index) => <button key={`${item.goal}-${index}`} type="button" onClick={() => followUp(item)} className="rounded-lg bg-white px-3 py-2 text-left text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500"><span className="block">{t(item.questionKey)}</span><span className="mt-1 block text-[10px] font-normal text-emerald-700">{t(item.rationaleKey)}</span></button>)}</div></div>}
       <button type="button" onClick={() => openDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.agentGuide.showEvidence')}</button>
     </div>}

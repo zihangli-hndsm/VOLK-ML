@@ -90,3 +90,19 @@ This slice does not implement adaptive curriculum, learner ability or mastery
 inference, video retrieval, long-term memory, new model/domain capabilities,
 automatic experiment execution, or unrestricted generation. Those require a
 separate accepted design.
+
+## LUMI guidance integration
+
+The LUMI layer is a visual companion to Phase 10A, not a replacement for Ask
+VOLK. Ask VOLK remains answer-only, while the LUMI guidance surface presents
+existing factual observations, grounded conceptual relevance, and learner-
+reviewed next steps. It does not receive authority to execute an experiment or
+invent a result.
+
+LUMI keeps its Navy/Cyan identity with limited Orange intervention accents.
+Purple and Green belong to Concept Cards and their explicit session-local
+learning state. The signature Purple → Orange contact → Green → Cyan
+confirmation sequence is driven by a real `active` → `illuminated` state
+transition, with a static reduced-motion equivalent. No concept mastery,
+adaptive curriculum, persistence, or new provider context is introduced by
+this presentation integration.
