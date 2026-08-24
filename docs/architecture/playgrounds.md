@@ -879,7 +879,7 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
 `src/core/ui/lumiSemantics.js` and `src/components/playground/Lumi.jsx` provide
 the controlled presentation vocabulary for the learner-facing guide. LUMI has
 bounded presence levels (`hidden`, `ambient`, `contextual`, `event`) and modes
-(`idle`, `observe`, `guide`, `intervene`, `illuminate`). It consumes the normal
+(`idle`, `observe`, `guide`, `intervene`, `illuminate`, `explore`). It consumes the normal
 Playground snapshot and never owns World, Experiment, evidence, or Agent state.
 
 The visual mascot assets live under `src/assets/lumi/` and are selected only by
@@ -910,6 +910,19 @@ candidates, and existing guided exploration recipes. It separates “What I
 noticed”, “Why it may matter”, and “Try next”; it does not fabricate evidence,
 turn hypotheses into facts, or authorize actions. Large Concept Map rendering
 and automatic mastery detection remain future work.
+
+### LUMI exploration interaction
+
+`src/core/ui/lumiInteraction.js` projects bounded `LumiTarget` values for
+existing `evidence`, `concept`, and `experiment` objects. The
+`LumiAttentionRail` consumes the current snapshot and transient control-change
+metadata to show cyan evidence attention, an evidence-to-concept connection,
+orange intervention focus, or a purple exploratory frontier. It is a
+presentation projection: it does not dispatch runtime actions, create
+evidence, execute an experiment, infer mastery, or change Agent authority.
+The Distribution Shift showcase makes the intended Observe → Intervene →
+Understand sequence visible while the existing explicit learner action remains
+the only path to illumination.
 
 ## Phase 4 guided exploration contracts
 

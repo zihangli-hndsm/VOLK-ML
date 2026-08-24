@@ -40,7 +40,7 @@ function clarityLabel(diff, t) {
   return t('playground.experiment.claritySignal.identical');
 }
 
-export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffordances = [], interventionPulseKey = null }) {
+export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffordances = [], interventionPulseKey = null, interventionTarget = null }) {
   const { responsive } = usePresentationCapabilities();
   const compact = responsive.band === 'compact';
   const [repeatCount, setRepeatCount] = useState(snapshot.repeatEvidence?.trialCount ?? 5);
@@ -117,7 +117,7 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
     </section>;
   }
 
-  return <section className="ui-motion-surface min-w-0 rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.experiment.ariaLabel')}>
+  return <section data-lumi-target={interventionTarget ? `experiment:${interventionTarget.id}` : undefined} className={`ui-motion-surface min-w-0 rounded-2xl border border-slate-200 bg-white p-3${interventionTarget ? ' lumi-control-focus' : ''}`} aria-label={t('playground.experiment.ariaLabel')}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div className="flex min-w-0 items-center gap-2">
         {interventionActive && <Lumi presence="event" mode="intervene" label={t('playground.lumi.interventionPulse')} />}

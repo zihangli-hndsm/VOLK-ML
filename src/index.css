@@ -53,6 +53,8 @@
 .lumi-observe { filter: drop-shadow(0 0 0.7rem color-mix(in srgb, var(--lumi-glow) 58%, transparent)); }
 .lumi-observe .lumi-visual { transform: translateX(.08rem) rotate(2deg); }
 .lumi-guide .lumi-visual { transform: translateX(.1rem); }
+.lumi-explore { position: relative; filter: drop-shadow(0 0 .65rem color-mix(in srgb, var(--volk-concept-unexplored) 48%, transparent)); }
+.lumi-explore::before { content: ''; position: absolute; inset: -.2rem; border: 1px dashed color-mix(in srgb, var(--volk-concept-unexplored) 60%, transparent); border-radius: 999px; animation: lumi-frontier 3.2s ease-in-out infinite; pointer-events: none; }
 .lumi-intervene .lumi-pulse { opacity: .95; animation: lumi-pulse 900ms ease-out both; }
 .lumi-illuminate { filter: drop-shadow(0 0 0.9rem color-mix(in srgb, var(--lumi-glow) 70%, transparent)); }
 .lumi-illuminate .lumi-visual { animation: lumi-illuminate 1.4s var(--motion-ease-emphasis) both; }
@@ -66,10 +68,21 @@
 @keyframes lumi-pulse { 0% { transform: translate(-50%, 0) scale(.65); opacity: .95; } 70%, 100% { transform: translate(-50%, -.95rem) scale(1.8); opacity: 0; } }
 @keyframes lumi-illumination-pulse { 0% { transform: translate(-50%, 0) scale(.7); opacity: .95; } 45% { transform: translate(-50%, -.7rem) scale(1.25); opacity: .9; } 100% { transform: translate(-50%, -1.15rem) scale(.4); opacity: 0; } }
 @keyframes lumi-illuminate { 0% { transform: translateX(-.45rem) scale(.96); filter: brightness(.95); } 45% { transform: translateX(.1rem) scale(1.04); filter: brightness(1.18); } 100% { transform: translateX(0) scale(1); filter: brightness(1); } }
+@keyframes lumi-frontier { 0%, 100% { opacity: .45; transform: scale(.94) rotate(-4deg); } 50% { opacity: .9; transform: scale(1.06) rotate(4deg); } }
+
+.lumi-attention-rail { transition: border-color 180ms ease, box-shadow 180ms ease; }
+.lumi-attention-path { display: flex; min-width: 0; align-items: center; gap: .5rem; }
+.lumi-target-chip { position: relative; min-width: 0; flex: 1 1 0; }
+.lumi-target-connection { display: grid; min-width: 3rem; place-items: center; color: var(--lumi-glow); }
+.lumi-target-connection .lumi { width: 3rem; height: 2.8rem; animation: lumi-target-travel 1.6s ease-in-out infinite; }
+.lumi-attention-path-settled .lumi-target-connection { opacity: 0; transform: scale(.7); transition: opacity 220ms ease, transform 220ms ease; }
+.lumi-control-focus { border-color: var(--lumi-pulse) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--lumi-pulse) 30%, transparent); }
+@keyframes lumi-target-travel { 0%, 100% { transform: translateX(-.25rem); } 50% { transform: translateX(.25rem); } }
 
 @media (prefers-reduced-motion: reduce) {
-  .lumi-idle, .lumi-intervene .lumi-pulse, .lumi-illuminate .lumi-pulse, .lumi-illuminate .lumi-visual { animation: none; }
+  .lumi-idle, .lumi-explore::before, .lumi-intervene .lumi-pulse, .lumi-illuminate .lumi-pulse, .lumi-illuminate .lumi-visual, .lumi-target-connection .lumi { animation: none; }
   .lumi-intervene .lumi-pulse, .lumi-illuminate .lumi-pulse { opacity: .95; }
+  .lumi-attention-path-settled .lumi-target-connection { transition: none; }
 }
 
 body { margin: 0; min-width: 320px; min-height: 100vh; }

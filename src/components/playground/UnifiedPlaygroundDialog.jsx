@@ -25,6 +25,7 @@ import { REDUCED_MOTION_QUERY } from './motion.js';
 import { openFullWorldWorkspacePresentation } from '../../core/ui/layerNavigation.js';
 import { nextInquiryConceptExposure, selectInquiryConceptCard } from '../../core/exploration/inquiryConceptCard.js';
 import { transitionConceptState, CONCEPT_STATES } from '../../core/ui/lumiSemantics.js';
+import { createLumiTarget } from '../../core/ui/lumiInteraction.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -38,6 +39,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [pendingLearningSelection, setPendingLearningSelection] = useState(null);
   const [activeInquiryCard, setActiveInquiryCard] = useState(null);
   const [illuminatedConceptIds, setIlluminatedConceptIds] = useState([]);
+  const [lumiIntervention, setLumiIntervention] = useState(null);
   const [interventionPulseKey, setInterventionPulseKey] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
@@ -74,6 +76,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setPendingLearningSelection(null);
     setActiveInquiryCard(null);
     setIlluminatedConceptIds([]);
+    setLumiIntervention(null);
     setInterventionPulseKey(null);
     setPresentationMode(false);
     setActiveTab(initialTab);
@@ -96,6 +99,12 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       host.close().catch(() => {});
     };
   }, [open, playgroundId, host]);
+
+  useEffect(() => {
+    if (!lumiIntervention) return undefined;
+    const timer = window.setTimeout(() => setLumiIntervention(null), 1250);
+    return () => window.clearTimeout(timer);
+  }, [lumiIntervention?.sequence]);
 
   useEffect(() => {
     if (!snapshot?.learnerInquiry) return;
@@ -172,6 +181,10 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     if (['PLAY', 'SCRIPT_PLAY', 'STEP', 'TRAINING_STEP', 'SCRIPT_STEP', 'RESET', 'SCRIPT_RESET'].includes(action.type)) {
       setPlaybackError(null);
     }
+    if (action.type === 'SET_CONTROL') {
+      const target = createLumiTarget('experiment', snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id);
+      if (target) setLumiIntervention((current) => ({ target, controlKey: action.key, sequence: (current?.sequence ?? 0) + 1 }));
+    }
     if (['APPLY_WORLD_TRANSACTION', 'SET_WORLD_GENERATOR', 'SET_GENERATOR_PARAMETER', 'SET_GENERATOR_SEED', 'REGENERATE_WORLD', 'FREEZE_AS_SAMPLES', 'SET_CONTROL', 'ATTACH_MODEL'].includes(action.type)) {
       setInterventionPulseKey((value) => (value ?? 0) + 1);
     }
@@ -246,8 +259,8 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} fullWorldToolsOpen={fullWorldToolsOpen} onFullWorldToolsChange={setFullWorldToolsOpen} onOpenFullWorldTools={openFullWorldWorkspaceFromTune} />;
-  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} t={t}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} interventionPulseKey={interventionPulseKey} /></ExploreExperimentRegion>;
-  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} onIlluminateConcept={illuminateConcept} t={t} />;
+  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} t={t} intervention={lumiIntervention}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} interventionPulseKey={lumiIntervention?.sequence ?? null} interventionTarget={lumiIntervention?.target ?? null} /></ExploreExperimentRegion>;
+  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} onIlluminateConcept={illuminateConcept} t={t} intervention={lumiIntervention} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}

@@ -446,3 +446,16 @@ identity is a local asset set under `src/assets/lumi/`; semantic modes select
 the asset while CSS owns only bounded float, focus, pulse, and illumination
 presentation. A meaningful World/model intervention may produce one transient
 Orange `intervene` pulse in the Experiment Bar, which is presentation-only.
+
+### LUMI target binding and attention
+
+The LUMI interaction layer in `src/core/ui/lumiInteraction.js` projects a
+bounded `LumiTarget` (`evidence`, `concept`, or `experiment`) from the current
+semantic snapshot. It is a view projection, not a second event system. The
+interaction rail can connect an existing observation to an inquiry concept,
+focus the changed experiment control for one transient pulse, and mark an
+unexplored concept as a purple frontier. It does not explain the observation,
+create evidence, execute experiments, claim causality, infer mastery, or choose
+the learner's path. The Distribution Shift showcase makes the intended flow
+visible as Observe → Intervene → Understand; the final green state remains an
+explicit learner illumination transition.

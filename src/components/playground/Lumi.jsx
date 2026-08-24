@@ -12,6 +12,7 @@ const MODE_LABELS = Object.freeze({
   guide: 'guide',
   intervene: 'intervene',
   illuminate: 'illuminate',
+  explore: 'explore',
 });
 
 const MODE_ASSETS = Object.freeze({
@@ -20,6 +21,7 @@ const MODE_ASSETS = Object.freeze({
   guide: guideAsset,
   intervene: guideAsset,
   illuminate: illuminateAsset,
+  explore: guideAsset,
 });
 
 export default function Lumi({ mode = 'idle', presence = 'ambient', label, onClick, className = '' }) {

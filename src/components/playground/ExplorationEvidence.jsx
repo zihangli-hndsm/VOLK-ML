@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import InstructionalAnnotationSurface from './InstructionalAnnotationSurface.jsx';
+import Lumi from './Lumi.jsx';
 
 function number(value) {
   return Number.isFinite(Number(value)) ? Number(value).toFixed(3) : '—';
@@ -18,7 +19,7 @@ const rows = [
   'outcome.trainMse', 'outcome.testMse', 'learning.currentStep', 'generalizationGap', 'coverageMismatch',
 ];
 
-export default function ExplorationEvidence({ snapshot, t, openByDefault = false, agent, onAskAbout }) {
+export default function ExplorationEvidence({ snapshot, t, openByDefault = false, agent, onAskAbout, attention = null }) {
   const [open, setOpen] = useState(openByDefault);
   const [dismissed, setDismissed] = useState([]);
   const notices = (snapshot.observations ?? []).filter((item) => !dismissed.includes(item.id));
@@ -33,11 +34,11 @@ export default function ExplorationEvidence({ snapshot, t, openByDefault = false
   return <InstructionalAnnotationSurface surface="evidence" contentId={`evidence-${snapshot.experimentWorkspace?.activeExperimentId ?? snapshot.playgroundId}`} messageId={`evidence-${snapshot.experimentWorkspace?.activeExperimentId ?? snapshot.playgroundId}`} localizationKey="playground.evidence.ariaLabel" agent={agent} onAskAbout={onAskAbout} t={t}>
     <section className="rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.evidence.ariaLabel')}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="text-sm font-black text-slate-900">{t('playground.evidence.title')}</button>
+      <div className="flex items-center gap-2"><Lumi presence="contextual" mode={attention?.evidenceTarget ? 'observe' : 'idle'} /><button type="button" aria-expanded={open} onClick={() => setOpen(!open)} className="text-sm font-black text-slate-900">{t('playground.evidence.title')}</button></div>
       <span className="text-xs font-bold text-slate-500">{notices.length ? t('playground.evidence.noticeCount', { count: notices.length }) : t('playground.evidence.quiet')}</span>
     </div>
     {notices.length > 0 && <div className="mt-3 space-y-2" aria-live="polite">
-      {notices.slice(0, 3).map((notice) => <div key={notice.id} role="status" data-evidence-kind="observation" className="flex items-start justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-950">
+      {notices.slice(0, 3).map((notice) => <div key={notice.id} role="status" data-lumi-target={`evidence:${notice.id}`} data-evidence-kind="observation" className="flex items-start justify-between gap-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3 text-xs text-cyan-950">
         <p><span className="font-black">{t(`playground.evidence.severity.${notice.severity}`)}</span> {t(notice.messageKey, messageParams(notice))}</p>
         <button type="button" aria-label={t('playground.evidence.dismiss')} onClick={() => setDismissed((items) => [...items, notice.id])} className="shrink-0 rounded-lg px-2 py-1 font-black hover:bg-cyan-100">×</button>
       </div>)}

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef } from 'react';
 import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { deriveLumiMode } from '../../core/ui/lumiSemantics.js';
+import { deriveLumiInteraction } from '../../core/ui/lumiInteraction.js';
 import { deriveExploreDepthCapabilities } from '../../core/ui/exploreDepth.js';
 import { PRESENTATION_FOCUS_OWNERS, resolvePresentationFocusOwner } from '../../core/ui/presentationFocus.js';
 import BigIdeaPrompt from './BigIdeaPrompt.jsx';
@@ -18,11 +19,13 @@ import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import CompactBottomSheet from '../CompactBottomSheet.jsx';
 import Lumi from './Lumi.jsx';
+import LumiAttentionRail from './LumiAttentionRail.jsx';
 
-export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, t }) {
+export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, t, intervention = null }) {
   const { responsive } = usePresentationCapabilities();
   const { isConfigured, openSettings } = useAiProvider();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
+  const attention = useMemo(() => deriveLumiInteraction({ snapshot, intervention, activeConceptId: bigIdea?.id }), [snapshot, intervention, bigIdea?.id]);
   const compact = responsive.band === 'compact';
   const panelCloseRef = useRef(null);
   const triggerRefs = useRef({});
@@ -80,6 +83,8 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
       </div>
     </section>
 
+    <LumiAttentionRail snapshot={snapshot} attention={attention} activeDepth={activeDepth} illuminatedConceptIds={illuminatedConceptIds} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} t={t} />
+
     {agent && <>
       <div className="flex min-w-0 items-center gap-2">
         <Lumi presence="ambient" mode={deriveLumiMode({ hasObservation: Boolean(snapshot.observations?.length), hasGuidance: Boolean(snapshot.learnerInquiry?.candidates?.length) })} onClick={onAgentOpen} label={t('playground.lumi.openGuidance')} />
@@ -102,7 +107,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
         <button ref={panelCloseRef} type="button" aria-label={t('playground.depth.close')} onClick={() => onDepthChange?.(null)} className="ui-motion-interactive min-h-10 rounded-xl border border-slate-300 px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 focus:outline-none focus:ring-2 focus:ring-blue-500">{t('playground.depth.close')}</button>
       </div>
       {activeDepth === CONCEPTUAL_DEPTHS.TUNE && <TunePanel playground={modelPlayground} snapshot={snapshot} onDispatch={onDispatch} onOpenWorldTools={onOpenWorldTools} t={t} />}
-      {activeDepth === CONCEPTUAL_DEPTHS.EVIDENCE && <ExplorationEvidence snapshot={snapshot} t={t} openByDefault agent={agent} onAskAbout={onAskAboutSelection} />}
+      {activeDepth === CONCEPTUAL_DEPTHS.EVIDENCE && <ExplorationEvidence snapshot={snapshot} t={t} openByDefault agent={agent} onAskAbout={onAskAboutSelection} attention={attention} />}
       {activeDepth === CONCEPTUAL_DEPTHS.MECHANISM && <MechanismContent snapshot={snapshot} capabilities={capabilities} formulaPrimitive={formulaPrimitive} onDispatch={onDispatch} t={t} />}
       {activeDepth === CONCEPTUAL_DEPTHS.REPRESENTATION && <PlaygroundInspector playground={modelPlayground} snapshot={snapshot} onDispatch={onDispatch} t={t} />}
     </CompactBottomSheet>}

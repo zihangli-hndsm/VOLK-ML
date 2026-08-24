@@ -24,7 +24,7 @@ const lumiAssets = ['idle', 'observe', 'guide', 'illuminate'].map((state) => `sr
 
 assert.deepEqual(Object.values(CONCEPT_STATES), ['unexplored', 'active', 'illuminated']);
 assert.deepEqual(Object.values(LUMI_PRESENCE), ['hidden', 'ambient', 'contextual', 'event']);
-assert.deepEqual(Object.values(LUMI_MODES), ['idle', 'observe', 'guide', 'intervene', 'illuminate']);
+assert.deepEqual(Object.values(LUMI_MODES), ['idle', 'observe', 'guide', 'intervene', 'illuminate', 'explore']);
 assert.equal(deriveConceptState({ conceptId: 'distribution-shift' }), CONCEPT_STATES.UNEXPLORED);
 assert.equal(deriveConceptState({ conceptId: 'distribution-shift', conceptSignals: { concepts: [{ id: 'distribution-shift' }] } }), CONCEPT_STATES.ACTIVE);
 assert.equal(deriveConceptState({ conceptId: 'distribution-shift', conceptSignals: { concepts: [{ id: 'distribution-shift' }] }, illuminatedConceptIds: ['distribution-shift'] }), CONCEPT_STATES.ILLUMINATED);

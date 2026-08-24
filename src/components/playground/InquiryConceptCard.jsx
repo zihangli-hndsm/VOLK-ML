@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import InstructionalAnnotationSurface from './InstructionalAnnotationSurface.jsx';
+import Lumi from './Lumi.jsx';
 
 export default function InquiryConceptCard({ card, onDismiss, onOpenEvidence, agent, onAskAbout, t }) {
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -7,9 +8,12 @@ export default function InquiryConceptCard({ card, onDismiss, onOpenEvidence, ag
   return <InstructionalAnnotationSurface surface="inquiry-card" contentId={`inquiry-${card.conceptId}`} messageId={`inquiry-${card.conceptId}`} localizationKey={card.titleKey} agent={agent} onAskAbout={onAskAbout} t={t}>
     <section data-ui-inquiry-concept-card="true" data-concept-state="active" className="rounded-2xl border border-purple-200 bg-purple-50/70 p-3 text-sm text-purple-950" aria-label={t('playground.inquiry.card.ariaLabel')}>
     <div className="flex items-start justify-between gap-3">
-      <div>
+      <div data-lumi-target={`concept:${card.conceptId}`} className="flex min-w-0 items-center gap-2">
+        <Lumi presence="contextual" mode="explore" />
+        <div>
         <p className="text-[10px] font-black uppercase tracking-wide text-purple-700">{t('playground.inquiry.card.eyebrow')}</p>
         <h3 className="mt-1 text-base font-black">{t(card.titleKey)}</h3>
+        </div>
       </div>
       <button type="button" aria-label={t('playground.inquiry.card.dismiss')} onClick={onDismiss} className="ui-motion-interactive min-h-10 rounded-xl px-2 text-xs font-black text-purple-800 hover:bg-purple-100 focus:outline-none focus:ring-2 focus:ring-purple-500">{t('playground.inquiry.card.dismiss')}</button>
     </div>

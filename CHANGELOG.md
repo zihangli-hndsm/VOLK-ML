@@ -756,3 +756,11 @@
 - Applied Cyan to factual Evidence, Orange to Experiment interventions, and Purple/Green to concept exploration states while preserving existing World, Experiment, Agent, and evidence authority boundaries.
 - Added LUMI guidance presentation over existing observations, inquiry candidates, and guided recipes, with localized English/Chinese copy, keyboard-safe entry points, reduced-motion behavior, responsive narrow-screen handling, and architecture documentation updates.
 - Acceptance: focused LUMI semantic checks, full `npm run check`, production `npm run build`, desktop and 390px narrow-screen browser walkthrough, and `git diff --check` passed.
+
+## 2026-08-24 — LUMI exploration interaction
+
+- Added presentation-only `LumiTarget` bindings for existing Evidence, Concept, and Experiment objects, including cyan evidence focus, evidence-to-concept connection, purple exploration mode, and explicit learner illumination staging.
+- Added a transient orange intervention pulse that highlights the changed experiment control without executing actions, inferring causality, creating evidence, or changing Agent authority.
+- Added the Distribution Shift Observe → Intervene → Understand showcase rail, localized interaction copy, reduced-motion styling, and focused target/boundary regressions.
+- Updated Playground and Exploration Semantics architecture notes; World, Experiment, Evidence, Agent, and persistence contracts remain unchanged.
+- Acceptance: focused LUMI interaction checks, full `npm run check`, production `npm run build`, Distribution Shift browser walkthrough, and `git diff --check` passed.
