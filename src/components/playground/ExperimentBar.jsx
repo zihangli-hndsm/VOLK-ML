@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { deriveNewExperimentIds } from '../../core/ui/presentationMotion.js';
 import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
+import Lumi from './Lumi.jsx';
 
 const factorKeys = {
   world: 'playground.experiment.factor.world',
@@ -39,12 +40,19 @@ function clarityLabel(diff, t) {
   return t('playground.experiment.claritySignal.identical');
 }
 
-export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffordances = [] }) {
+export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffordances = [], interventionPulseKey = null }) {
   const { responsive } = usePresentationCapabilities();
   const compact = responsive.band === 'compact';
   const [repeatCount, setRepeatCount] = useState(snapshot.repeatEvidence?.trialCount ?? 5);
   const [moreOpen, setMoreOpen] = useState(false);
   const [resultsOpen, setResultsOpen] = useState(false);
+  const [interventionActive, setInterventionActive] = useState(false);
+  useEffect(() => {
+    if (interventionPulseKey === null || interventionPulseKey === undefined) return undefined;
+    setInterventionActive(true);
+    const timer = window.setTimeout(() => setInterventionActive(false), 1100);
+    return () => window.clearTimeout(timer);
+  }, [interventionPulseKey]);
   const workspace = snapshot.experimentWorkspace;
   const experimentIds = workspace?.experiments?.map((experiment) => experiment.id) ?? [];
   const experimentIdsKey = experimentIds.join('\u0000');
@@ -95,6 +103,7 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
         <div className="flex min-w-0 items-center gap-2 text-sm font-black text-slate-900">
           <span aria-hidden="true" className="rounded-lg bg-slate-900 px-2 py-1 text-xs text-white">A</span>
           <span className="truncate">{t('playground.experiment.myExperiment')}</span>
+          {interventionActive && <Lumi presence="event" mode="intervene" label={t('playground.lumi.interventionPulse')} />}
         </div>
         <div className="flex items-center gap-1">
           <button data-affordance-id="experiment.duplicate" type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className={`ui-motion-interactive rounded-xl bg-orange-500 px-3 py-2 text-xs font-black text-white hover:bg-orange-600${highlight('experiment.duplicate')}`}>+ {t('playground.experiment.tryAnother')}</button>
@@ -110,9 +119,12 @@ export default function ExperimentBar({ snapshot, onDispatch, t, highlightedAffo
 
   return <section className="ui-motion-surface min-w-0 rounded-2xl border border-slate-200 bg-white p-3" aria-label={t('playground.experiment.ariaLabel')}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="min-w-0">
+      <div className="flex min-w-0 items-center gap-2">
+        {interventionActive && <Lumi presence="event" mode="intervene" label={t('playground.lumi.interventionPulse')} />}
+        <div className="min-w-0">
         <p className="text-[10px] font-black uppercase tracking-wider text-slate-500">{t('playground.experiment.title')}</p>
         <p className="mt-1 text-sm font-black text-slate-900">{t('playground.experiment.instruction')}</p>
+        </div>
       </div>
       <div className="flex items-center gap-1">
         <button data-affordance-id="experiment.duplicate" type="button" onClick={() => onDispatch({ type: 'DUPLICATE_EXPERIMENT' })} className={`ui-motion-interactive rounded-xl bg-orange-500 px-3 py-2 text-xs font-black text-white hover:bg-orange-600${highlight('experiment.duplicate')}`}>+ {t('playground.experiment.tryAnother')}</button>

@@ -441,4 +441,8 @@ The LUMI UI is localized, keyboard reachable, responsive, and reduced-motion
 safe. Its ambient/contextual mascot is an entry point around existing controls
 and cannot obscure the World, Experiment, Evidence, or model surface. The
 session-only illumination projection is cleared with the exploration session
-and is excluded from project persistence and experiment identity.
+and is excluded from project persistence and experiment identity. The visual
+identity is a local asset set under `src/assets/lumi/`; semantic modes select
+the asset while CSS owns only bounded float, focus, pulse, and illumination
+presentation. A meaningful World/model intervention may produce one transient
+Orange `intervene` pulse in the Experiment Bar, which is presentation-only.

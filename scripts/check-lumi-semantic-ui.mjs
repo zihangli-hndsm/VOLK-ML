@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
+import { existsSync } from 'node:fs';
 import {
   CONCEPT_STATES,
   LUMI_MODES,
@@ -19,6 +20,7 @@ const guidanceSource = read('src/components/playground/GuidedExplore.jsx');
 const evidenceSource = read('src/components/playground/ExplorationEvidence.jsx');
 const experimentSource = read('src/components/playground/ExperimentBar.jsx');
 const localeSource = read('src/locales/ui.js');
+const lumiAssets = ['idle', 'observe', 'guide', 'illuminate'].map((state) => `src/assets/lumi/lumi-${state}.svg`);
 
 assert.deepEqual(Object.values(CONCEPT_STATES), ['unexplored', 'active', 'illuminated']);
 assert.deepEqual(Object.values(LUMI_PRESENCE), ['hidden', 'ambient', 'contextual', 'event']);
@@ -38,16 +40,19 @@ for (const token of ['--volk-structure', '--volk-observation', '--volk-intervent
   assert.ok(css.includes(token), `semantic token exists: ${token}`);
 }
 assert.ok(css.includes('@media (prefers-reduced-motion: reduce)'), 'LUMI respects reduced motion');
+for (const asset of lumiAssets) assert.ok(existsSync(new URL(`../${asset}`, import.meta.url)), `LUMI asset exists: ${asset}`);
 assert.ok(mainSource.includes("import './index.css';"), 'active application entry loads semantic UI CSS');
 assert.ok(lumiSource.includes('data-lumi-presence'), 'LUMI exposes semantic presence');
 assert.ok(lumiSource.includes('data-lumi-mode'), 'LUMI exposes semantic mode');
+assert.ok(lumiSource.includes('MODE_ASSETS'), 'LUMI maps semantic modes to dedicated visual assets');
 assert.ok(conceptSource.includes('data-concept-state'), 'ConceptCard exposes semantic state');
 assert.ok(conceptSource.includes('onIlluminate'), 'ConceptCard requires an explicit illumination action');
 assert.ok(guidanceSource.includes('What I noticed') || guidanceSource.includes('whatNoticed'), 'guidance separates factual observations');
 assert.ok(guidanceSource.includes('candidateConcept.summaryKey'), 'guidance derives conceptual meaning from an inquiry candidate');
 assert.ok(evidenceSource.includes('data-evidence-kind="observation"'), 'Evidence marks factual observations');
 assert.ok(experimentSource.includes('bg-orange-500'), 'Experiment Bar uses orange for intervention actions');
-for (const key of ['playground.concept.state.unexplored', 'playground.concept.state.active', 'playground.concept.state.illuminated', 'playground.lumi.whatNoticed', 'playground.lumi.whyMatters']) {
+assert.ok(experimentSource.includes('interventionPulseKey'), 'Experiment Bar receives a bounded intervention pulse');
+for (const key of ['playground.concept.state.unexplored', 'playground.concept.state.active', 'playground.concept.state.illuminated', 'playground.lumi.whatNoticed', 'playground.lumi.whyMatters', 'playground.lumi.interventionPulse']) {
   assert.ok(localeSource.includes(`'${key}'`), `localized key exists: ${key}`);
 }
 
