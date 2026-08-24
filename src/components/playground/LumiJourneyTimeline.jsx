@@ -37,19 +37,23 @@ function targetLabel(event, snapshot, t) {
   return t('playground.lumi.target.experiment');
 }
 
-function JourneyNode({ event, current, snapshot, t }) {
+function JourneyNode({ event, current, snapshot, t, onSelectConcept }) {
   const isCurrent = current?.id === event.id;
-  return <div data-lumi-journey-event={event.type} data-lumi-current={isCurrent ? 'true' : undefined} role="listitem" className={`lumi-journey-node ${eventColor[event.type]} ${isCurrent ? 'lumi-journey-node-current' : ''}`}>
+  const selectable = (event.type === LUMI_JOURNEY_EVENT_TYPES.CONNECT || event.type === LUMI_JOURNEY_EVENT_TYPES.ILLUMINATE) && event.conceptId;
+  const content = <>
     <span className="lumi-journey-node-mark" aria-hidden="true" />
     <div className="min-w-0 flex-1">
       <p className="text-xs font-black">{t(eventLabelKey[event.type])}</p>
       <p className="mt-0.5 truncate text-[11px] text-slate-600">{targetLabel(event, snapshot, t)}</p>
     </div>
     {isCurrent && <Lumi presence="contextual" mode={eventMode[event.type]} />}
+  </>;
+  return <div data-lumi-journey-event={event.type} data-lumi-current={isCurrent ? 'true' : undefined} role="listitem">
+    {selectable ? <button type="button" data-lumi-journey-concept={event.conceptId} onClick={() => onSelectConcept?.(event.conceptId)} className={`lumi-journey-node lumi-journey-node-button w-full text-left ${eventColor[event.type]} ${isCurrent ? 'lumi-journey-node-current' : ''} focus:outline-none focus:ring-2 focus:ring-purple-500`}>{content}</button> : <div className={`lumi-journey-node ${eventColor[event.type]} ${isCurrent ? 'lumi-journey-node-current' : ''}`}>{content}</div>}
   </div>;
 }
 
-function TimelineBody({ journey, snapshot, t }) {
+function TimelineBody({ journey, snapshot, t, onSelectConcept }) {
   const events = journey?.events ?? [];
   const current = journey?.currentEvent;
   const frontier = journey?.frontierConceptIds ?? [];
@@ -57,7 +61,7 @@ function TimelineBody({ journey, snapshot, t }) {
     {events.length === 0 && frontier.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500">{t('playground.lumi.journey.empty')}</p>}
     {events.length > 0 && <div role="list" aria-label={t('playground.lumi.journey.eventsLabel')} className="lumi-journey-events">
       {events.map((event, index) => <div key={event.id}>
-        <JourneyNode event={event} current={current} snapshot={snapshot} t={t} />
+        <JourneyNode event={event} current={current} snapshot={snapshot} t={t} onSelectConcept={onSelectConcept} />
         {index < events.length - 1 && <span className="lumi-journey-connector" aria-hidden="true" />}
       </div>)}
     </div>}
@@ -66,18 +70,18 @@ function TimelineBody({ journey, snapshot, t }) {
       <div role="list" aria-label={t('playground.lumi.journey.frontierLabel')} className="space-y-2">
         {frontier.map((conceptId) => {
           const concept = getInquiryConcept(conceptId);
-          return <div key={conceptId} data-lumi-journey-frontier={conceptId} role="listitem" className="lumi-journey-frontier rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-black text-purple-950">
+          return <button type="button" key={conceptId} data-lumi-journey-frontier={conceptId} onClick={() => onSelectConcept?.(conceptId)} role="listitem" className="lumi-journey-frontier w-full rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-left text-xs font-black text-purple-950 focus:outline-none focus:ring-2 focus:ring-purple-500">
             <Lumi presence="ambient" mode="explore" />
             <span>{concept?.titleKey ? t(concept.titleKey) : t('playground.lumi.target.concept')}</span>
-          </div>;
+          </button>;
         })}
       </div>
     </div>}
   </div>;
 }
 
-export default function LumiJourneyTimeline({ journey, snapshot, compact = false, t }) {
-  const body = <TimelineBody journey={journey} snapshot={snapshot} t={t} />;
+export default function LumiJourneyTimeline({ journey, snapshot, compact = false, t, onSelectConcept }) {
+  const body = <TimelineBody journey={journey} snapshot={snapshot} t={t} onSelectConcept={onSelectConcept} />;
   if (compact) return <details data-lumi-journey="true" className="lumi-journey-timeline rounded-2xl border border-slate-200 bg-white p-3">
     <summary className="cursor-pointer list-none rounded-xl px-1 py-1 text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-cyan-500">{t('playground.lumi.journey.title')}</summary>
     <div className="mt-3">{body}</div>

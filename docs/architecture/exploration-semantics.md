@@ -471,3 +471,22 @@ that marker for development and testing. The timeline does not create
 evidence, execute actions, infer mastery, call Agent authority, or persist
 memory. Unconnected inquiry concepts are displayed as a purple frontier and
 are never selected or recommended automatically.
+
+### Concept Graph & Causal Exploration Map
+
+`src/core/ui/conceptGraph.js` is a bounded projection over the existing
+Inquiry concept registry, Journey path, Evidence connections, active concept,
+and explicit session illumination. It preserves the semantic color contract:
+purple for unexplored frontier, cyan for current attention, green for learner
+confirmation, orange for an active experiment relation, and navy for graph
+structure. The Distribution Shift presentation uses the registered
+`train-test-distribution-shift` and `generalization` concepts and their
+existing related relationship; it does not create a new concept for the
+visual example.
+
+The graph does not infer `caused_by`, mastery, prerequisites, or new concepts.
+Prerequisite and related edges are copied only from existing concept metadata,
+while connected Evidence is shown from existing Journey `connect` events.
+Clicking a node changes only local presentation focus. Concept Map and LUMI
+cannot dispatch runtime actions, alter World/Experiment/Evidence, invoke Agent
+planning, or persist a graph.

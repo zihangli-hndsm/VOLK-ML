@@ -91,10 +91,44 @@
 .lumi-journey-connector { display: block; width: 2px; height: .7rem; margin-left: .86rem; background: color-mix(in srgb, var(--volk-structure) 24%, transparent); }
 .lumi-journey-frontier { display: flex; min-width: 0; align-items: center; gap: .45rem; }
 .lumi-journey-frontier .lumi { width: 2.2rem; height: 2rem; flex: 0 0 auto; }
+.lumi-journey-node-button { border: 0; background: transparent; font: inherit; }
+.concept-map { color: var(--volk-text-primary); }
+.concept-map-body { min-width: 0; }
+.concept-map-legend { display: flex; flex-wrap: wrap; gap: .45rem .75rem; border-bottom: 1px solid color-mix(in srgb, var(--volk-structure) 12%, transparent); padding-bottom: .65rem; }
+.concept-map-legend-item { display: inline-flex; align-items: center; gap: .3rem; color: var(--volk-text-secondary); font-size: .68rem; font-weight: 800; }
+.concept-map-legend-dot { width: .55rem; height: .55rem; border-radius: 999px; background: var(--volk-structure); }
+.concept-map-legend-item.concept-map-node-unexplored .concept-map-legend-dot { background: var(--volk-concept-unexplored); }
+.concept-map-legend-item.concept-map-node-active .concept-map-legend-dot { background: var(--volk-observation); }
+.concept-map-legend-item.concept-map-node-illuminated .concept-map-legend-dot { background: var(--volk-concept-illuminated); }
+.concept-map-section-label { margin-bottom: .45rem; color: var(--volk-text-secondary); font-size: .63rem; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+.concept-map-path, .concept-map-frontier, .concept-map-edges, .concept-map-focus { margin-top: .85rem; }
+.concept-map-path-list { display: grid; gap: .2rem; }
+.concept-map-node { min-width: 0; border: 1px solid color-mix(in srgb, var(--volk-structure) 18%, transparent); border-radius: .9rem; background: white; transition: border-color var(--motion-normal) var(--motion-ease-standard), box-shadow var(--motion-normal) var(--motion-ease-standard), background-color var(--motion-normal) var(--motion-ease-standard); }
+.concept-map-node-button { display: flex; width: 100%; min-width: 0; align-items: center; justify-content: space-between; gap: .55rem; padding: .55rem .65rem; }
+.concept-map-node-copy { display: grid; min-width: 0; gap: .15rem; text-align: left; }
+.concept-map-node-title { overflow: hidden; color: var(--volk-text-primary); font-size: .76rem; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
+.concept-map-node-state { color: var(--volk-text-secondary); font-size: .63rem; font-weight: 800; }
+.concept-map-node-unexplored { border-color: color-mix(in srgb, var(--volk-concept-unexplored) 42%, white); background: color-mix(in srgb, var(--volk-concept-unexplored) 7%, white); }
+.concept-map-node-active { border-color: color-mix(in srgb, var(--volk-observation) 48%, white); background: color-mix(in srgb, var(--volk-observation) 8%, white); }
+.concept-map-node-illuminated { border-color: color-mix(in srgb, var(--volk-concept-illuminated) 55%, white); background: color-mix(in srgb, var(--volk-concept-illuminated) 9%, white); }
+.concept-map-node-selected { box-shadow: 0 0 0 3px color-mix(in srgb, var(--volk-observation) 22%, transparent); }
+.concept-map-node-current { box-shadow: 0 0 0 2px color-mix(in srgb, var(--volk-observation) 25%, transparent); }
+.concept-map-node .lumi { width: 2.1rem; height: 1.85rem; flex: 0 0 auto; }
+.concept-map-path-connector { display: block; width: 2px; height: .7rem; margin-left: .95rem; background: color-mix(in srgb, var(--volk-structure) 25%, transparent); }
+.concept-map-frontier-list { display: grid; gap: .45rem; }
+.concept-map-edge-list { display: grid; gap: .45rem; }
+.concept-map-edge { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: .4rem; border: 1px solid color-mix(in srgb, var(--volk-structure) 16%, transparent); border-radius: .8rem; padding: .5rem .55rem .85rem; background: color-mix(in srgb, var(--volk-structure) 3%, white); }
+.concept-map-edge-highlighted { border-color: color-mix(in srgb, var(--volk-observation) 42%, white); background: color-mix(in srgb, var(--volk-observation) 6%, white); }
+.concept-map-edge-node { min-width: 0; overflow: hidden; color: var(--volk-text-primary); font-size: .7rem; font-weight: 900; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
+.concept-map-edge-arrow { color: var(--volk-structure); font-weight: 900; }
+.concept-map-edge-relation { position: absolute; right: .55rem; bottom: .25rem; color: var(--volk-text-secondary); font-size: .58rem; font-weight: 800; }
+.concept-map-experiment { display: flex; align-items: center; gap: .45rem; margin-top: .85rem; border-radius: .75rem; padding: .5rem .65rem; background: color-mix(in srgb, var(--volk-intervention) 9%, white); color: color-mix(in srgb, var(--volk-intervention) 70%, black); font-size: .7rem; font-weight: 900; }
+.concept-map-experiment-dot { width: .55rem; height: .55rem; flex: 0 0 auto; border-radius: 999px; background: var(--volk-intervention); }
 
 @media (max-width: 640px) {
   .lumi-journey-timeline { padding: .7rem; }
   .lumi-journey-node { min-height: 2.6rem; }
+  .concept-map-edge { grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -102,6 +136,7 @@
   .lumi-intervene .lumi-pulse, .lumi-illuminate .lumi-pulse { opacity: .95; }
   .lumi-attention-path-settled .lumi-target-connection { transition: none; }
   .lumi-journey-node { transition: none; }
+  .concept-map-node { transition: none; }
 }
 
 body { margin: 0; min-width: 320px; min-height: 100vh; }

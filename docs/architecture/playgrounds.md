@@ -874,6 +874,25 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
 - Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
 - The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.
 
+### Concept Graph & Causal Exploration Map
+
+`src/core/ui/conceptGraph.js` derives a bounded Concept Map from the existing
+Inquiry concept registry, Journey path, connected Evidence, active concept,
+and session-only illumination state. Registry `prerequisites` and
+`relatedConceptIds` are the only relationship sources currently projected;
+the graph vocabulary may represent `caused_by` or `observed_with` for an
+explicit future semantic source, but this projection never creates either
+relationship automatically. In particular, a visual edge is not a causal
+claim.
+
+`ConceptMap` is a presentation surface. Selecting a Journey concept or
+frontier node only changes local UI focus and reveals the existing path,
+connected Evidence, neighboring concepts, and any current experiment marker.
+LUMI marks the current concept and frontier without choosing the learner's
+next step. Concept state remains `unexplored`, `active`, or explicitly
+`illuminated`; no mastery, knowledge database, Agent plan, runtime action,
+project field, or persistence contract is added.
+
 ## LUMI semantic presentation layer
 
 `src/core/ui/lumiSemantics.js` and `src/components/playground/Lumi.jsx` provide
@@ -939,6 +958,25 @@ store, explanation engine, or Agent surface. LUMI marks the current node, past
 nodes remain visually quiet, and unconnected existing concepts appear as a
 purple frontier without being recommended. No journey field enters World,
 Experiment, Evidence, Undo/Redo, project JSON, or cross-session persistence.
+
+### Concept Graph & Causal Exploration Map
+
+`src/core/ui/conceptGraph.js` derives a bounded Concept Map from the existing
+Inquiry concept registry, Journey path, connected Evidence, active concept,
+and session-only illumination state. Registry `prerequisites` and
+`relatedConceptIds` are the only relationship sources currently projected;
+the graph vocabulary may represent `caused_by` or `observed_with` for an
+explicit future semantic source, but this projection never creates either
+relationship automatically. In particular, a visual edge is not a causal
+claim.
+
+`ConceptMap` is a presentation surface. Selecting a Journey concept or
+frontier node only changes local UI focus and reveals the existing path,
+connected Evidence, neighboring concepts, and any current experiment marker.
+LUMI marks the current concept and frontier without choosing the learner's
+next step. Concept state remains `unexplored`, `active`, or explicitly
+`illuminated`; no mastery, knowledge database, Agent plan, runtime action,
+project field, or persistence contract is added.
 
 ## Phase 4 guided exploration contracts
 
