@@ -23,7 +23,7 @@ export default function ConceptCard({ signal, observation, nextQuestion, t, onNe
   return <InstructionalAnnotationSurface surface="concept-card" contentId={`concept-${signal.id}`} messageId={`concept-${signal.id}`} localizationKey={concept.titleKey} agent={agent} onAskAbout={onAskAbout} t={t} className="mt-3">
     <section data-ui-concept-card="true" data-concept-state={normalizedState} className={`ui-motion-surface rounded-2xl border p-3 text-sm ${stateClasses[normalizedState]}`} aria-label={t('playground.concept.cardTitle')}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div className="flex min-w-0 items-center gap-2"><Lumi presence="contextual" mode={normalizedState === CONCEPT_STATES.ILLUMINATED ? 'illuminate' : 'guide'} /><p className="text-[10px] font-black uppercase tracking-wide">{t('playground.concept.cardTitle')}</p></div>
+      <div data-lumi-target={`concept:${signal.id}`} className="flex min-w-0 items-center gap-2"><Lumi presence="contextual" mode={normalizedState === CONCEPT_STATES.ILLUMINATED ? 'illuminate' : normalizedState === CONCEPT_STATES.UNEXPLORED ? 'explore' : 'guide'} /><p className="text-[10px] font-black uppercase tracking-wide">{t('playground.concept.cardTitle')}</p></div>
       <span className="rounded-full border border-current px-2 py-0.5 text-[10px] font-black">{t(`playground.concept.state.${normalizedState}`)}</span>
     </div>
     <h4 className="mt-1 text-base font-black">{t(concept.titleKey)}</h4>

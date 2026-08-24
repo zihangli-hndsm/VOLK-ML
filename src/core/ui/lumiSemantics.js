@@ -14,6 +14,7 @@ export const LUMI_MODES = Object.freeze({
   GUIDE: 'guide',
   INTERVENE: 'intervene',
   ILLUMINATE: 'illuminate',
+  EXPLORE: 'explore',
 });
 
 export const CONCEPT_STATES = Object.freeze({
