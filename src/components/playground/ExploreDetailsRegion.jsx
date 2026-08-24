@@ -1,8 +1,9 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { deriveLumiMode } from '../../core/ui/lumiSemantics.js';
 import { deriveLumiInteraction } from '../../core/ui/lumiInteraction.js';
 import { deriveLumiJourneyProjection } from '../../core/ui/lumiJourney.js';
+import { deriveConceptGraph } from '../../core/ui/conceptGraph.js';
 import { deriveExploreDepthCapabilities } from '../../core/ui/exploreDepth.js';
 import { PRESENTATION_FOCUS_OWNERS, resolvePresentationFocusOwner } from '../../core/ui/presentationFocus.js';
 import BigIdeaPrompt from './BigIdeaPrompt.jsx';
@@ -22,11 +23,14 @@ import CompactBottomSheet from '../CompactBottomSheet.jsx';
 import Lumi from './Lumi.jsx';
 import LumiAttentionRail from './LumiAttentionRail.jsx';
 import LumiJourneyTimeline from './LumiJourneyTimeline.jsx';
+import ConceptMap from './ConceptMap.jsx';
 
 export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], journeyIlluminationEvents = [], onIlluminateConcept, t, intervention = null }) {
   const { responsive } = usePresentationCapabilities();
   const { isConfigured, openSettings } = useAiProvider();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
+  const [selectedConceptId, setSelectedConceptId] = useState(null);
+  useEffect(() => setSelectedConceptId(null), [bigIdea?.id]);
   const attention = useMemo(() => deriveLumiInteraction({ snapshot, intervention, activeConceptId: bigIdea?.id }), [snapshot, intervention, bigIdea?.id]);
   const journey = useMemo(() => deriveLumiJourneyProjection({
     semanticEvents: snapshot?.semanticEvents,
@@ -36,6 +40,13 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     illuminatedConceptIds,
     illuminationEvents: journeyIlluminationEvents,
   }), [snapshot?.semanticEvents, snapshot?.observations, snapshot?.learnerInquiry, bigIdea?.id, illuminatedConceptIds, journeyIlluminationEvents]);
+  const conceptGraph = useMemo(() => deriveConceptGraph({
+    inquiry: snapshot?.learnerInquiry,
+    journey,
+    activeConceptId: bigIdea?.id,
+    illuminatedConceptIds,
+    selectedConceptId,
+  }), [snapshot?.learnerInquiry, journey, bigIdea?.id, illuminatedConceptIds, selectedConceptId]);
   const compact = responsive.band === 'compact';
   const panelCloseRef = useRef(null);
   const triggerRefs = useRef({});
@@ -94,7 +105,8 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     </section>
 
     <LumiAttentionRail snapshot={snapshot} attention={attention} activeDepth={activeDepth} illuminatedConceptIds={illuminatedConceptIds} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} t={t} />
-    <LumiJourneyTimeline journey={journey} snapshot={snapshot} compact={compact} t={t} />
+    <LumiJourneyTimeline journey={journey} snapshot={snapshot} compact={compact} t={t} onSelectConcept={setSelectedConceptId} />
+    <ConceptMap graph={conceptGraph} snapshot={snapshot} compact={compact} t={t} onSelectConcept={setSelectedConceptId} />
 
     {agent && <>
       <div className="flex min-w-0 items-center gap-2">

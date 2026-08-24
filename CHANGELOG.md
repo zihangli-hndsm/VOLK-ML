@@ -772,3 +772,11 @@
 - Kept Journey presentation separate from World, Experiment, Evidence, Agent authority, persistence, project fingerprints, and Undo/Redo; `clearJourney()` resets the temporary session projection.
 - Added bilingual Journey copy, architecture documentation, and focused projection/boundary regressions for chronology, evidence-to-concept connection, illumination, clearing, and frontier state.
 - Acceptance: focused LUMI journey and interaction checks, full `npm run check`, production `npm run build`, Distribution Shift observation/Evidence and 390px layout walkthrough, and `git diff --check` passed.
+
+## 2026-08-24 — Concept Graph & Causal Exploration Map
+
+- Added a bounded Concept Map projection over the existing Inquiry registry, Journey path, connected Evidence, active concept, and explicit session illumination state.
+- Added selectable Journey and frontier concepts that focus the map, highlight the existing path and related neighbors, show connected Evidence, and mark the active experiment relation without dispatching runtime actions.
+- Preserved the semantic color contract: purple frontier, cyan current attention, green learner-confirmed illumination, orange experiment relation, and navy structure; no automatic `caused_by`, mastery, concept discovery, Agent planning, or persistence was introduced.
+- Added bilingual responsive/reduced-motion UI, Distribution Shift concept aliasing for the existing `train-test-distribution-shift` → `generalization` relationship, architecture documentation, and focused graph boundary checks.
+- Acceptance: focused Concept Graph and LUMI Journey checks, full `npm run check`, production `npm run build`, Distribution Shift desktop/concept-selection and 390px browser walkthrough with no console errors, and `git diff --check` passed.
