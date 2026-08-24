@@ -764,3 +764,11 @@
 - Added the Distribution Shift Observe → Intervene → Understand showcase rail, localized interaction copy, reduced-motion styling, and focused target/boundary regressions.
 - Updated Playground and Exploration Semantics architecture notes; World, Experiment, Evidence, Agent, and persistence contracts remain unchanged.
 - Acceptance: focused LUMI interaction checks, full `npm run check`, production `npm run build`, Distribution Shift browser walkthrough, and `git diff --check` passed.
+
+## 2026-08-24 — LUMI exploration journey timeline
+
+- Added a bounded, session-local Journey projection over existing human semantic events: Observe, Intervene, Connect, and explicit learner-confirmed Illuminate markers.
+- Added the responsive LUMI Journey Timeline with current-target guidance, concept frontier presentation, compact narrow-screen disclosure, and reduced-motion support.
+- Kept Journey presentation separate from World, Experiment, Evidence, Agent authority, persistence, project fingerprints, and Undo/Redo; `clearJourney()` resets the temporary session projection.
+- Added bilingual Journey copy, architecture documentation, and focused projection/boundary regressions for chronology, evidence-to-concept connection, illumination, clearing, and frontier state.
+- Acceptance: focused LUMI journey and interaction checks, full `npm run check`, production `npm run build`, Distribution Shift observation/Evidence and 390px layout walkthrough, and `git diff --check` passed.

@@ -79,10 +79,29 @@
 .lumi-control-focus { border-color: var(--lumi-pulse) !important; box-shadow: 0 0 0 3px color-mix(in srgb, var(--lumi-pulse) 30%, transparent); }
 @keyframes lumi-target-travel { 0%, 100% { transform: translateX(-.25rem); } 50% { transform: translateX(.25rem); } }
 
+.lumi-journey-timeline { color: var(--volk-text-primary); }
+.lumi-journey-body { min-width: 0; }
+.lumi-journey-node { position: relative; display: flex; min-height: 2.75rem; align-items: center; gap: .6rem; border-radius: .85rem; padding: .5rem .55rem; opacity: .58; transition: background-color var(--motion-normal) var(--motion-ease-standard), box-shadow var(--motion-normal) var(--motion-ease-standard), opacity var(--motion-normal) var(--motion-ease-standard); }
+.lumi-journey-node-current { opacity: 1; background: color-mix(in srgb, var(--volk-observation) 8%, white); box-shadow: 0 0 0 2px color-mix(in srgb, var(--volk-observation) 20%, transparent); }
+.lumi-journey-node-mark { width: .68rem; height: .68rem; flex: 0 0 auto; border: 2px solid var(--volk-structure); border-radius: 999px; background: white; }
+.lumi-journey-observe .lumi-journey-node-mark { border-color: var(--volk-observation); background: color-mix(in srgb, var(--volk-observation) 20%, white); }
+.lumi-journey-intervene .lumi-journey-node-mark { border-color: var(--volk-intervention); background: color-mix(in srgb, var(--volk-intervention) 24%, white); }
+.lumi-journey-connect .lumi-journey-node-mark { border-color: var(--volk-concept-unexplored); background: color-mix(in srgb, var(--volk-concept-unexplored) 20%, white); }
+.lumi-journey-illuminate .lumi-journey-node-mark { border-color: var(--volk-concept-illuminated); background: color-mix(in srgb, var(--volk-concept-illuminated) 22%, white); }
+.lumi-journey-connector { display: block; width: 2px; height: .7rem; margin-left: .86rem; background: color-mix(in srgb, var(--volk-structure) 24%, transparent); }
+.lumi-journey-frontier { display: flex; min-width: 0; align-items: center; gap: .45rem; }
+.lumi-journey-frontier .lumi { width: 2.2rem; height: 2rem; flex: 0 0 auto; }
+
+@media (max-width: 640px) {
+  .lumi-journey-timeline { padding: .7rem; }
+  .lumi-journey-node { min-height: 2.6rem; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .lumi-idle, .lumi-explore::before, .lumi-intervene .lumi-pulse, .lumi-illuminate .lumi-pulse, .lumi-illuminate .lumi-visual, .lumi-target-connection .lumi { animation: none; }
   .lumi-intervene .lumi-pulse, .lumi-illuminate .lumi-pulse { opacity: .95; }
   .lumi-attention-path-settled .lumi-target-connection { transition: none; }
+  .lumi-journey-node { transition: none; }
 }
 
 body { margin: 0; min-width: 320px; min-height: 100vh; }
