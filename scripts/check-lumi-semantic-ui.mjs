@@ -15,6 +15,7 @@ const read = (file) => readFileSync(new URL(`../${file}`, import.meta.url), 'utf
 const css = read('src/index.css');
 const mainSource = read('src/main.jsx');
 const lumiSource = read('src/components/playground/Lumi.jsx');
+const viteConfig = read('vite.config.ts');
 const conceptSource = read('src/components/playground/ConceptCard.jsx');
 const guidanceSource = read('src/components/playground/GuidedExplore.jsx');
 const evidenceSource = read('src/components/playground/ExplorationEvidence.jsx');
@@ -45,6 +46,11 @@ assert.ok(mainSource.includes("import './index.css';"), 'active application entr
 assert.ok(lumiSource.includes('data-lumi-presence'), 'LUMI exposes semantic presence');
 assert.ok(lumiSource.includes('data-lumi-mode'), 'LUMI exposes semantic mode');
 assert.ok(lumiSource.includes('MODE_ASSETS'), 'LUMI maps semantic modes to dedicated visual assets');
+for (const asset of ['lumi-idle.svg', 'lumi-observe.svg', 'lumi-guide.svg', 'lumi-illuminate.svg']) {
+  assert.ok(lumiSource.includes(`new URL('../../assets/lumi/${asset}', import.meta.url).href`), `LUMI uses a literal Vite URL for ${asset}`);
+}
+assert.ok(!lumiSource.includes('resolveAsset'), 'LUMI assets are not resolved from runtime path strings');
+assert.ok(viteConfig.includes("base: './'"), 'Vite keeps GitHub Pages relative deployment base');
 assert.ok(conceptSource.includes('data-concept-state'), 'ConceptCard exposes semantic state');
 assert.ok(conceptSource.includes('onIlluminate'), 'ConceptCard requires an explicit illumination action');
 assert.ok(guidanceSource.includes('What I noticed') || guidanceSource.includes('whatNoticed'), 'guidance separates factual observations');
