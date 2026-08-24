@@ -459,3 +459,15 @@ create evidence, execute experiments, claim causality, infer mastery, or choose
 the learner's path. The Distribution Shift showcase makes the intended flow
 visible as Observe → Intervene → Understand; the final green state remains an
 explicit learner illumination transition.
+
+### LUMI exploration journey projection
+
+`src/core/ui/lumiJourney.js` is a bounded presentation projection over the
+existing session semantic events. It maps human experiment/world interventions
+to orange nodes, deterministic observation notices to cyan nodes, and existing
+inquiry support links to Evidence → Concept connections. Explicit learner
+illumination contributes only a session-local marker; `clearJourney()` resets
+that marker for development and testing. The timeline does not create
+evidence, execute actions, infer mastery, call Agent authority, or persist
+memory. Unconnected inquiry concepts are displayed as a purple frontier and
+are never selected or recommended automatically.

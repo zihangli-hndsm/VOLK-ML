@@ -924,6 +924,22 @@ The Distribution Shift showcase makes the intended Observe → Intervene →
 Understand sequence visible while the existing explicit learner action remains
 the only path to illumination.
 
+### LUMI exploration journey timeline
+
+`src/core/ui/lumiJourney.js` projects the session-local journey from the
+existing semantic event log. Human `experiment.factor-changed` and
+`world.intervened` records become intervention nodes; deterministic
+`observation.detected` records become evidence nodes; existing inquiry support
+links become Evidence → Concept connections. Explicit illumination is the only
+presentation marker kept locally for the session, and `clearJourney()` removes
+that marker without touching runtime state.
+
+`LumiJourneyTimeline` is a learner-facing projection, not an event bus, memory
+store, explanation engine, or Agent surface. LUMI marks the current node, past
+nodes remain visually quiet, and unconnected existing concepts appear as a
+purple frontier without being recommended. No journey field enters World,
+Experiment, Evidence, Undo/Redo, project JSON, or cross-session persistence.
+
 ## Phase 4 guided exploration contracts
 
 `src/core/exploration/observables.js` is the shared semantic boundary for
