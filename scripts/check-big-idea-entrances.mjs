@@ -98,9 +98,24 @@ for (const entry of entries) {
   const { agent } = await open('distribution-shift');
   const initial = agent.inspectContext();
   assert.equal(initial.playground.id, 'data-lab');
-  assert.equal(initial.playground.modelAdapter, 'linear-regression');
+  assert.equal(initial.playground.modelAdapter, 'knn');
+  assert.deepEqual(initial.world.featureNames, ['x', 'y']);
+  assert.equal(agent.getState().viewState.xFeature, 'x', 'generated recipe synchronizes the visible x projection');
+  assert.equal(agent.getState().viewState.yFeature, 'y', 'generated recipe synchronizes the visible y projection');
+  assert.equal(agent.getState().viewState.boundsMode, 'auto', 'feature synchronization refits the generated World');
+  assert.equal(initial.world.generator.kind, 'world-recipe');
+  assert.equal(initial.world.generator.recipe.groups.every((group) => group.shape.type === 'ring' || group.shape.type === 'blob'), true);
+  assert.equal(initial.world.generator.recipe.groups.every((group) => group.splitTransforms.test.translate[0] === 1.6 && group.splitTransforms.test.translate[1] === 0.8), true);
   assert.ok(initial.world.observations.some((point) => point.membership === 'train'));
   assert.ok(initial.world.observations.some((point) => point.membership === 'test'));
+  const initialSnapshot = agent.getState();
+  const xs = initial.world.observations.map((point) => point.x);
+  const ys = initial.world.observations.map((point) => point.y);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > 1, 'distribution shift spans the x axis');
+  assert.ok(Math.max(...ys) - Math.min(...ys) > 1, 'distribution shift is a two-dimensional cloud, not a line');
+  assert.ok(initialSnapshot.metrics.trainAccuracy >= 0.95);
+  assert.ok(initialSnapshot.metrics.testAccuracy <= 0.65);
+  assert.ok(initialSnapshot.metrics.trainAccuracy - initialSnapshot.metrics.testAccuracy >= 0.25);
   const baseline = await agent.dispatch({ type: 'DUPLICATE_EXPERIMENT' });
   const baselineId = baseline.experimentWorkspace.experiments[0].id;
   const beforeRange = baseline.derivedObservables.coverageMismatch.value;
@@ -110,14 +125,14 @@ for (const entry of entries) {
       id: 'phase-7-distribution-shift-manual-test-intervention',
       intent: 'manual-test-support',
       operations: [
-        { type: 'SET_GENERATOR_PARAMETER', path: 'test.input.params.min', value: 1.2 },
+        { type: 'PATCH_WORLD_RECIPE', patch: { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'outer-ring', split: 'test', delta: [0.2, 0] }] } },
         { type: 'REGENERATE_WORLD', seed: 7104 },
       ],
     },
   });
   assert.notDeepEqual(changed.derivedObservables.coverageMismatch.value, beforeRange, 'Test intervention changes semantic coverage');
   changed = await agent.dispatch({ type: 'RUN' });
-  assert.equal(changed.observables['outcome.testMse'].available, true, 'Run updates Test evidence');
+  assert.equal(changed.observables['outcome.testAccuracy'].available, true, 'Run updates Test evidence');
   changed = await agent.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: baselineId });
   assert.equal(changed.experimentWorkspace.comparison.enabled, true);
   assert.ok(changed.experimentWorkspace.comparison.diff.changed.includes('world'), 'Compare identifies the World/train-test change');

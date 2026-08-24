@@ -36,6 +36,9 @@ World Composer v1 is an additional normalized generator kind. Its versioned
 WorldRecipe is materialized into the same finite World observations and uses
 the same seed, realization, transaction, comparison, and Agent preflight
 boundaries. See [World Composer](./world-composer.md).
+Two-dimensional WorldRecipe realization publishes canonical `x`/`y` feature
+names together with generated feature maps, so adapters never receive a stale
+source-specific feature declaration such as `x1`/`x2`.
 
 ## Experiment
 
@@ -131,17 +134,27 @@ only Phase 1.1 implementation. It rebuilds its point state from the canonical
 World, clears stale training playback, and computes fitting/training from
 explicit `train` observations while reserving `test` observations for
 `testMse`. Legacy Worlds with only `unspecified` membership retain the previous
-all-data training behavior. KNN and MLP do not yet advertise `canEditWorld`.
+all-data training behavior. Later slices added KNN classification and bounded
+two-dimensional binary-classification MLP synchronization through the same
+adapter boundary. MLP rejects incompatible Worlds atomically and resets stale
+training playback when a valid World is applied.
 
 Workspace view state is separate from the Experiment. `SET_WORKSPACE_VIEW`
 updates validated bounds and Train/Test visibility without changing the World,
-Experiment semantic fingerprint, or World action history. The future drawing
-surface must use this boundary rather than encoding pan/zoom as data changes.
+Experiment semantic fingerprint, or World action history. `boundsMode`
+(`auto`/`manual`) and `equalScale` are session-only view fields: zoom uses a
+manual centered frame, Fit and feature changes restore auto bounds, and equal
+scale expands the shorter axis to preserve one-unit geometry. Axis ticks and
+pointer mapping consume the same effective bounds. Experiment branches and
+Experiment Undo retain projection/layer choices but omit camera bounds, Fit
+revision, and 1:1 state, so restoring semantic work cannot move the learner's
+current camera.
 
 Phase 1.1 deliberately does not include an Experiment Bar, generators,
 Scenario execution, or persistence. The accepted Phase 1.2 Data Lab slice adds
 the learner-facing Point/Brush/Spray and selection controls over this same
-transaction boundary; it still does not add editable KNN/MLP model adapters.
+transaction boundary; later compatibility work added editable KNN and bounded
+binary 2D MLP adapters without changing the operation registry.
 
 ## Canonical World operations and split semantics
 
@@ -201,9 +214,10 @@ outside both the Experiment and comparison fingerprint.
 `src/components/playground/DataWorkspace.jsx` is a generic learner-facing Data
 Lab surface over the canonical World snapshot. The internal `data-lab` session
 opens without a model, so editing and projection are available before model
-selection. An attached adapter may opt into World synchronization through
-`applyWorld()`; Linear Regression is the first supported adapter, while KNN
-and MLP remain inspectable model choices without editable World synchronization.
+selection. An attached adapter opts into World synchronization through
+`applyWorld()`. Linear Regression accepts regression Worlds, KNN accepts
+classification Worlds, and MLP accepts exactly two numeric features with two
+labels represented in the explicit training split.
 
 The human interaction boundary is:
 
@@ -407,3 +421,24 @@ infer causes, rank learners, invoke AI, execute experiments, or create UI
 cards. Runtime snapshots and detached Host inspection expose the same
 JSON-safe candidate contract so a later presentation layer can remain a
 consumer rather than a second source of truth.
+
+## LUMI semantic learning presentation
+
+LUMI is a presentation guide layered over the existing semantic event,
+observation, inquiry, and suggestion projections. It does not create a second
+source of truth. `deriveConceptState()` maps an explicitly identified concept
+to `unexplored`, `active`, or `illuminated`: inquiry relevance and grounded
+signals are sufficient for `active`, while `illuminated` requires an explicit
+session action. A model result alone is never treated as learner mastery.
+
+The visual contract is intentionally asymmetric. Cyan marks observable facts
+and attention; Orange marks an intentional intervention; Purple marks an
+unresolved possibility or frontier; Green marks learner-confirmed
+understanding; Navy provides structure. Guidance may combine these layers but
+must label observation, hypothesis, and suggestion separately.
+
+The LUMI UI is localized, keyboard reachable, responsive, and reduced-motion
+safe. Its ambient/contextual mascot is an entry point around existing controls
+and cannot obscure the World, Experiment, Evidence, or model surface. The
+session-only illumination projection is cleared with the exploration session
+and is excluded from project persistence and experiment identity.

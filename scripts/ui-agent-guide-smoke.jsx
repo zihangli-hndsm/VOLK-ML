@@ -206,7 +206,7 @@ export async function runUiAgentGuideSmoke() {
     const openDepthCalls = [];
     const surfaceMarkup = renderDetails(host.getState(), agent, true, null);
     assert.ok(surfaceMarkup.includes('Agent exploration guide'), 'Agent surface has an accessible bounded presentation');
-    assert.ok(surfaceMarkup.includes('Advanced Agent tools'), 'advanced Agent capabilities remain reachable');
+    assert.ok(surfaceMarkup.includes('Generate World'), 'World generation is a primary Agent mode');
     assert.equal(surfaceMarkup.includes('document.querySelector'), false, 'Agent surface contains no DOM navigation');
     assert.equal(openDepthCalls.length, 0);
 

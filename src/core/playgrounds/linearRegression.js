@@ -37,6 +37,7 @@ export const linearRegressionPlayground = {
     'SET_PARAMETERS',
     'SET_BEST_FIT',
     'START_TRAINING',
+    'TRAINING_STEP',
     'STEP',
     'SEEK',
     'RESET',

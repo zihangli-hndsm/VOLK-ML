@@ -114,6 +114,7 @@ registered presets; unsupported designs remain clarification outcomes.
 V1 bounds groups, points per polygon/polyline, samples, local-noise rules, and
 patch changes. Local noise supports bounding boxes and circles; boundary-aware
 noise is deferred. KNN supports the current classification World mutation
-contract; MLP can inspect generated Worlds but its World mutation remains
-deferred. A full
-visual recipe editor and safe function-curve AST are deferred.
+contract. MLP supports atomic World mutation for exactly two numeric features
+and two classification labels, with both labels represented in Train; wider
+feature spaces and multiclass MLP Worlds remain deferred. A full visual recipe
+editor and safe function-curve AST are deferred.

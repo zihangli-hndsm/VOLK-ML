@@ -91,6 +91,11 @@ Since the PR B follow-up, **Visualization Scripts own visualization composition*
 - `playgroundHost` routes `play`/`pause`/`step`/`seek`/`reset` to `SCRIPT_*` actions whenever an active Visualization Script exists, and to the model actions otherwise — the UI and the Canvas Agent control exactly the same timeline.
 - The UI uses one scheduler decision for both modes: a playing Visualization Script dispatches `SCRIPT_STEP`; when no script is actively playing, model `PLAY` dispatches finite `STEP` actions until the model timeline completes. Operation metadata (`playback.revealCountControl`) maps sparse teaching reveals onto sampled model progress, so a three-step linear-regression explanation can expose the full declared training trajectory without conflating the script and model timelines.
 - Timeline patches use a defined-value merge: `undefined` means the adapter did not supply that field and the previous value is preserved; an explicit value replaces it. This keeps playback speed valid when `START_TRAINING` returns only `step` and `totalSteps`.
+- The Training Microscope owns a separate `TRAINING_STEP` action and
+  `trainingMicroscope.canStep` capability. Its first action initializes the
+  model trajectory and advances exactly once; later actions advance exactly
+  once even when a Visualization Script is loaded. The main timeline remains
+  responsible for `SCRIPT_STEP`.
 - The browser scheduler cancels its timer generation before rescheduling, catches rejected dispatches, pauses automatic playback, and renders a localized failure with the action, script step, operation and reason. It does not retry a failed action; the last valid semantic snapshot remains authoritative.
 
 ### Phase 2 Experiment Bar and controlled comparison
@@ -520,6 +525,11 @@ model branches.
   with payload schemas, and declarative teaching capabilities
   (`show_training` + `explain_prediction`). `show_failure_case` is honestly
   unsupported on MLP and rejected with `TEACHING_GOAL_UNSUPPORTED`.
+- The adapter validates and applies canonical two-dimensional binary
+  classification Worlds. Applying a World rebuilds explicit train/test
+  samples, train-fitted normalization, label mapping and seeded initial
+  parameters, then clears old training and prediction playback. Invalid
+  Worlds fail before live Experiment or model state changes.
 - `mlp-classification` playground: deterministic XOR source, controls
   (`hiddenUnits`, `learningRate`, `trainingSteps`, `queryX`, `queryY`,
   `showDecisionRegions`) and the `mlp.intro` preset. The preset trains,
@@ -863,6 +873,33 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
 - Editing training points is a what-if operation: the raw train set is refitted with `refitKnnFromSplit()`, normalization and normalized train samples are rebuilt, and the unchanged test set is re-evaluated. Test points are not editable.
 - Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
 - The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.
+
+## LUMI semantic presentation layer
+
+`src/core/ui/lumiSemantics.js` and `src/components/playground/Lumi.jsx` provide
+the controlled presentation vocabulary for the learner-facing guide. LUMI has
+bounded presence levels (`hidden`, `ambient`, `contextual`, `event`) and modes
+(`idle`, `observe`, `guide`, `intervene`, `illuminate`). It consumes the normal
+Playground snapshot and never owns World, Experiment, evidence, or Agent state.
+
+Semantic colors are centralized in `src/index.css`: Navy is structure, Cyan is
+observation and focus, Orange is intervention, Purple is an unexplored concept,
+and Green is an illuminated concept. The tokens are applied only at touched
+surfaces; the existing canvas stage palette remains authoritative for canvas
+glyphs.
+
+Concept state is a session presentation projection with three explicit states:
+`unexplored`, `active`, and `illuminated`. Inquiry candidates and grounded
+concept signals can make a concept active, but neither model accuracy nor an
+animation can infer illumination. The current UI offers an explicit learner
+confirmation for the transition to `illuminated`; it is not persisted in the
+World, Experiment fingerprint, project JSON, or a second runtime store.
+
+The LUMI guidance surface reuses Observation Detector notices, Learner Inquiry
+candidates, and existing guided exploration recipes. It separates “What I
+noticed”, “Why it may matter”, and “Try next”; it does not fabricate evidence,
+turn hypotheses into facts, or authorize actions. Large Concept Map rendering
+and automatic mastery detection remain future work.
 
 ## Phase 4 guided exploration contracts
 

@@ -8,6 +8,11 @@ const componentSource = readFileSync(new URL('../src/components/playground/Explo
 const detailsSource = readFileSync(new URL('../src/components/playground/ExploreDetailsRegion.jsx', import.meta.url), 'utf8');
 const dialogSource = readFileSync(new URL('../src/components/playground/UnifiedPlaygroundDialog.jsx', import.meta.url), 'utf8');
 
+for (const required of ["mode === 'ask'", "mode === 'experiment'", "mode === 'world'", 'WORLD_RECIPE_PRESET_IDS', 'submitRequest']) {
+  if (!componentSource.includes(required)) throw new Error(`Unified Agent input contract is missing ${required}`);
+}
+if (componentSource.includes('ExplorationAgentPanel')) throw new Error('Agent guide must not embed a second request panel');
+
 for (const forbidden of ['document.querySelector', 'document.getElementById', '.click(']) {
   if (componentSource.includes(forbidden)) throw new Error(`Agent guide must not navigate through DOM APIs: ${forbidden}`);
 }

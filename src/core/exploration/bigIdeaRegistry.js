@@ -6,6 +6,7 @@ import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 import { OBSERVABLE_IDS } from './observables.js';
 import { validateCanonicalControlValue } from '../playground/controlValidation.js';
 import { AFFORDANCE_IDS } from './guidedExploration.js';
+import { getWorldRecipePreset } from './worldRecipePresets.js';
 
 export const BIG_IDEA_VERSION = 1;
 
@@ -28,13 +29,22 @@ const linearGenerator = ({ slope, bias, noise, train, test, outliers = 0 }) => (
   outliers: { count: outliers },
 });
 
-const dataLabSetup = ({ id, seed, generator }) => ({
+const dataLabSetup = ({
+  id,
+  seed,
+  generator = null,
+  recipe = null,
+  modelAdapterId = 'linear-regression',
+  modelPlaygroundId = 'linear-regression',
+  modelControls = {},
+}) => ({
   playgroundId: 'data-lab',
-  modelAdapterId: 'linear-regression',
+  modelAdapterId,
   seed,
   controls: {},
   setup: [
-    { type: 'ATTACH_MODEL', modelPlaygroundId: 'linear-regression', actor: 'system' },
+    { type: 'ATTACH_MODEL', modelPlaygroundId, actor: 'system' },
+    ...Object.entries(modelControls).map(([key, value]) => ({ type: 'SET_CONTROL', key, value, actor: 'system' })),
     {
       type: 'APPLY_WORLD_TRANSACTION',
       actor: 'system',
@@ -43,13 +53,33 @@ const dataLabSetup = ({ id, seed, generator }) => ({
         actor: 'system',
         intent: 'big-idea-start',
         operations: [
-          { type: 'SET_WORLD_GENERATOR', spec: generator },
+          ...(recipe
+            ? [{ type: 'SET_WORLD_RECIPE', recipe, seed }]
+            : [{ type: 'SET_WORLD_GENERATOR', spec: generator }]),
           { type: 'REGENERATE_WORLD', seed, seedSource: 'entrance' },
         ],
       },
     },
   ],
 });
+
+const distributionShiftRecipe = () => {
+  const recipe = getWorldRecipePreset('rings');
+  return {
+    ...recipe,
+    groups: recipe.groups.map((group) => ({
+      ...group,
+      splitTransforms: {
+        ...group.splitTransforms,
+        test: { translate: [1.6, 0.8], rotate: 0, scale: [1, 1] },
+      },
+      sampling: {
+        train: { ...group.sampling.train, count: 40 },
+        test: { ...group.sampling.test, count: 20 },
+      },
+    })),
+  };
+};
 
 const entries = [
   {
@@ -147,21 +177,17 @@ const entries = [
     startingPoint: dataLabSetup({
       id: 'distribution-shift',
       seed: 7104,
-      generator: linearGenerator({
-        slope: 1.6,
-        bias: 0.4,
-        noise: 0.2,
-        train: { min: -2, max: -0.5, samples: 28 },
-        test: { min: 0.5, max: 2.5, samples: 20 },
-      }),
+      modelAdapterId: 'knn',
+      modelPlaygroundId: 'knn-classification',
+      modelControls: { k: 5, normalize: true },
+      recipe: distributionShiftRecipe(),
     }),
     focus: {
-      observables: ['world.trainXRange', 'world.testXRange', 'coverageMismatch', 'outcome.trainMse', 'outcome.testMse'],
-      affordances: ['world.trainTestLayer', 'world.generator.testInput', 'experiment.duplicate', 'experiment.compare', 'model.run'],
+      observables: ['world.trainXRange', 'world.testXRange', 'coverageMismatch', 'outcome.trainAccuracy', 'outcome.testAccuracy'],
+      affordances: ['world.trainTestLayer', 'world.point', 'experiment.duplicate', 'experiment.compare', 'model.run'],
     },
     suggestedActions: [
-      { type: 'SET_GENERATOR_PARAMETER', path: 'test.input.params.min' },
-      { type: 'SET_GENERATOR_PARAMETER', path: 'test.input.params.max' },
+      { type: 'PATCH_WORLD_RECIPE' },
       { type: 'REGENERATE_WORLD' },
       { type: 'RUN' },
       { type: 'DUPLICATE_EXPERIMENT' },

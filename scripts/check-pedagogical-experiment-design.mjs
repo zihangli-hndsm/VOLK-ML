@@ -197,7 +197,10 @@ assert.equal(derivePedagogicalEvidence({ snapshot: { experimentWorkspace: { comp
 const mlpHost = await recipeHost(baseRecipe);
 await mlpHost.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: 'mlp-classification' });
 const mlpProposal = mlpHost.proposeExploration({ design: createPedagogicalExperimentDesign(PEDAGOGICAL_EXPERIMENT_GOALS.CLASS_SEPARATION) });
-assert.equal(mlpProposal.kind, 'clarification', 'unsupported World mutation is a bounded clarification');
+assert.equal(mlpProposal.kind, 'proposal', 'bounded binary 2D MLP World mutation is proposal-capable');
+const mlpResult = await mlpHost.executeExploration({ scenario: mlpProposal.scenario });
+assert.equal(mlpResult.snapshot.model.adapterId, 'mlp', 'pedagogical World execution keeps the MLP attached');
+assert.deepEqual(mlpResult.snapshot.world.featureNames, ['x', 'y'], 'pedagogical MLP World keeps canonical recipe features');
 await mlpHost.close();
 
 const pedagogicallyWrongHost = await recipeHost(offsetGeometry);

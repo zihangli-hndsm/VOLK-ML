@@ -144,8 +144,10 @@ for obvious overlap, support-shift, noise, and outlier questions.
 
 ## Limitations
 
-V1 does not add World Composer primitives, MLP `applyWorld`, parameter sweeps,
-automatic execution, causal explanation, or a full Composer editor. World
-Composer remains the deterministic infrastructure; this slice only chooses a
-small set of pedagogical questions that current operations can execute
-truthfully.
+V1 does not add World Composer primitives, parameter sweeps, automatic
+execution, causal explanation, or a full Composer editor. The later bounded
+MLP World integration accepts only two-dimensional binary classification and
+preserves this design's detached proposal and explicit-execution boundary.
+World Composer remains the deterministic infrastructure; this slice only
+chooses a small set of pedagogical questions that current operations can
+execute truthfully.

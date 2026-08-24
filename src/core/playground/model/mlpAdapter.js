@@ -328,7 +328,128 @@ export const mlpAdapter = {
     };
   },
 
-  applyModelAction(modelState, action, { controls, recorder }) {
+  validateWorld(world) {
+    if (world?.task !== 'classification') {
+      throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+        reason: 'MLP requires a classification World',
+        reasonCode: 'world-task-incompatible',
+      });
+    }
+    const featureColumns = Array.isArray(world.featureNames) ? world.featureNames : [];
+    const observations = Array.isArray(world.observations) ? world.observations : [];
+    if (featureColumns.length !== 2 || observations.length < 2) {
+      throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+        reason: 'MLP World needs exactly two features and at least two observations',
+        reasonCode: 'mlp-world-invalid',
+      });
+    }
+    for (const point of observations) {
+      if (!['train', 'test'].includes(point.membership)
+        || typeof point.label !== 'string'
+        || !point.label.trim()
+        || featureColumns.some((feature) => !Number.isFinite(Number(point.features?.[feature])))) {
+        throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+          reason: 'MLP World observations need finite features, labels, and explicit train/test membership',
+          reasonCode: 'mlp-world-invalid',
+        });
+      }
+    }
+    const labels = [...new Set(observations.map((point) => point.label))];
+    const train = observations.filter((point) => point.membership === 'train');
+    const trainLabels = [...new Set(train.map((point) => point.label))];
+    if (labels.length !== 2 || train.length < 2 || trainLabels.length !== 2) {
+      throw playgroundError('INVALID_PLAYGROUND_ACTION', {
+        reason: 'MLP World requires two labels represented in the training split',
+        reasonCode: 'mlp-world-invalid',
+      });
+    }
+    return world;
+  },
+
+  applyWorld(modelState, world, { controls, recorder }) {
+    this.validateWorld(world);
+    const featureColumns = [...world.featureNames];
+    const points = world.observations.map((point) => ({
+      id: point.id,
+      features: Object.fromEntries(featureColumns.map((feature) => [feature, Number(point.features[feature])])),
+      label: point.label,
+      membership: point.membership,
+      provenance: point.provenance,
+    }));
+    const samples = points.map((point) => ({
+      id: point.id,
+      x: featureColumns.map((feature) => point.features[feature]),
+      label: point.label,
+      y: point.label,
+    }));
+    const trainIds = new Set(points.filter((point) => point.membership === 'train').map((point) => point.id));
+    const testIds = new Set(points.filter((point) => point.membership === 'test').map((point) => point.id));
+    const trainSamples = samples.filter((sample) => trainIds.has(sample.id));
+    const testSamples = samples.filter((sample) => testIds.has(sample.id));
+    const labelMapping = buildLabelMapping(samples);
+    const normalization = featureStats(trainSamples, featureColumns);
+    const xFeature = featureColumns.includes(controls.xFeature) ? controls.xFeature : featureColumns[0];
+    const yFeature = featureColumns.includes(controls.yFeature) && controls.yFeature !== xFeature
+      ? controls.yFeature
+      : featureColumns.find((feature) => feature !== xFeature) ?? featureColumns[0];
+    const hiddenSize = Math.max(1, Math.round(controls.hiddenUnits ?? modelState?.hiddenSize ?? 3));
+    const seed = modelState?.seed ?? DEFAULT_MLP_SEED;
+    const params = initMlpParameters({ hiddenSize, inputSize: featureColumns.length, seed });
+    const next = {
+      ...modelState,
+      points,
+      samples,
+      trainSamples,
+      testSamples,
+      featureColumns,
+      labelMapping,
+      normalization,
+      xFeature,
+      yFeature,
+      seed,
+      params,
+      hiddenSize,
+      mode: null,
+      revealed: 0,
+      training: {
+        initialParams: structuredClone(params),
+        currentStep: 0,
+        history: [],
+        totalSteps: 0,
+        stopReason: null,
+      },
+      decisionRegions: null,
+    };
+    const ranges = viewRange(next);
+    const query = {
+      x: (ranges.xMin + ranges.xMax) / 2,
+      y: (ranges.yMin + ranges.yMax) / 2,
+    };
+    recorder.emit('data.loaded', { points: points.length, features: featureColumns });
+    recorder.emit('split.created', {
+      kind: 'explicit-membership',
+      trainRows: trainSamples.length,
+      testRows: testSamples.length,
+      trainIds: [...trainIds],
+      testIds: [...testIds],
+    });
+    recorder.emit('normalization.fitted', {
+      means: normalization.means,
+      stds: normalization.stds,
+    });
+    recorder.emit('mlp.initialized', {
+      hiddenSize,
+      inputSize: featureColumns.length,
+      outputSize: 1,
+    });
+    return {
+      controls: { xFeature, yFeature, hiddenUnits: hiddenSize, queryX: query.x, queryY: query.y },
+      modelState: refreshProjection({ ...next, query }, controls),
+      timeline: { step: 0, totalSteps: 0 },
+    };
+  },
+
+  applyModelAction(modelState, action, { controls, recorder, runId, conditionFingerprint }) {
     if (action.type === 'SET_CONTROL') {
       if (action.key === 'xFeature' || action.key === 'yFeature') {
         const nextFeature = action.value;
@@ -417,10 +538,27 @@ export const mlpAdapter = {
         steps,
         seed: modelState.seed ?? DEFAULT_MLP_SEED,
       });
+      let previousLoss = mlpLossForSamples(modelState.params, samples);
       for (const entry of result.history) {
         recorder.emit('loss.measured', { step: entry.step, loss: entry.loss });
         recorder.emit('gradient.computed', { step: entry.step, magnitude: entry.gradientMagnitude });
         recorder.emit('parameters.updated', { step: entry.step, weight: entry.weight, bias: entry.bias });
+        recorder.emit('training.step', {
+          step: entry.step,
+          runId: String(runId),
+          conditionFingerprint: String(conditionFingerprint),
+          parameters: {},
+          objective: {
+            before: { lossNormalized: previousLoss },
+            after: { loss: entry.loss, lossNormalized: entry.loss },
+          },
+          gradients: { magnitude: entry.gradientMagnitude },
+          update: { learningRate },
+          outcome: result.stopReason && entry.step === result.history.length
+            ? { status: 'stopped', stopReason: result.stopReason }
+            : { status: 'applied' },
+        });
+        previousLoss = entry.loss;
       }
       if (result.stopReason) {
         recorder.emit('training.completed', {
@@ -442,6 +580,8 @@ export const mlpAdapter = {
             history: result.history,
             totalSteps: result.history.length,
             stopReason: result.stopReason,
+            runId: String(runId),
+            conditionFingerprint: String(conditionFingerprint),
           },
         },
         timeline: { step: 0, totalSteps: result.history.length },

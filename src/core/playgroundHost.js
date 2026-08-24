@@ -1,4 +1,4 @@
-import { getPlayground, listPlaygrounds } from './playgrounds/registry.js';
+import { getPlayground, listPlaygroundDescriptors, listPlaygrounds } from './playgrounds/registry.js';
 import {
   createPlaygroundSession,
   derivePlaygroundSnapshot,
@@ -431,8 +431,18 @@ function initializeBigIdeaSession(entrance, { getDataset: readDataset, seed } = 
   const playground = getPlayground(entrance.startingPoint.playgroundId);
   if (!playground) throw playgroundError('PLAYGROUND_NOT_FOUND', { playgroundId: entrance.startingPoint.playgroundId });
   const dataset = typeof readDataset === 'function' ? readDataset() : undefined;
+  const sourcePlayground = playground.kind === 'session' && entrance.startingPoint.modelAdapterId !== 'linear-regression'
+    ? listPlaygroundDescriptors().find((candidate) => candidate.kind !== 'session' && candidate.adapterId === entrance.startingPoint.modelAdapterId)
+    : playground;
+  if (!sourcePlayground) {
+    throw playgroundError('PLAYGROUND_NOT_FOUND', { modelAdapterId: entrance.startingPoint.modelAdapterId });
+  }
+  const resolvedSource = resolveSource(sourcePlayground, dataset);
+  const source = playground.kind === 'session' && entrance.startingPoint.modelAdapterId !== 'linear-regression'
+    ? { ...resolvedSource, task: 'classification' }
+    : resolvedSource;
   let candidate = createPlaygroundSession(playground, {
-    source: resolveSource(playground, dataset),
+    source,
     controls: initialization.controls,
     seed: initialization.effectiveSeed,
     dataset,

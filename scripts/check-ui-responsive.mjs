@@ -6,10 +6,18 @@ import {
   deriveUiPresentation,
 } from '../src/core/ui/uiArchitecture.js';
 import {
+  axisTicks,
   clientToLocalPoint,
   clientToSvgPoint,
+  equalizeScatterBounds,
+  formatAxisTick,
   nearestPointInLocal,
+  selectScatterBounds,
+  zoomScatterBounds,
 } from '../src/components/playground/dataWorkspaceGeometry.js';
+import { createWorld } from '../src/core/exploration/world.js';
+import { createExperiment } from '../src/core/exploration/experiment.js';
+import { captureExperimentRuntime, restoreExperimentRuntime } from '../src/core/exploration/experimentRuntime.js';
 
 const unknown = classifyPresentationCapabilities();
 assert.equal(unknown.band, PRESENTATION_BANDS.UNKNOWN, 'presentation stays unknown before measurement');
@@ -51,6 +59,35 @@ assert.equal(nearestAnisotropic.point.id, 'near', 'anisotropic World selection u
 assert.ok(nearestAnisotropic.distancePx < 22, 'coarse touch radius remains a bounded screen-space target');
 const farAnisotropic = nearestPointInLocal({ points: anisotropicPoints, position: { x: 194.5, y: 40 }, xFeature: 'x', yFeature: 'y', bounds: anisotropicBounds, rect: { left: 0, top: 0, width: 320, height: 180 } });
 assert.ok(farAnisotropic.distancePx > 10, 'fine pointer keeps a tighter target than the coarse affordance');
+
+const readableTicks = axisTicks(-2.3, 3.1);
+assert.ok(readableTicks.length >= 4 && readableTicks.length <= 6, 'axes expose four to six readable ticks');
+assert.ok(axisTicks(0, 6).length >= 4 && axisTicks(0, 6).length <= 6, 'nice-step selection stays within the visible tick budget');
+assert.ok(readableTicks.some((tick) => tick.value === 0), 'ticks normalize negative zero and include zero when visible');
+assert.match(formatAxisTick(0.0000123, 0.00001), /e-/, 'very small values use compact scientific notation');
+assert.match(formatAxisTick(12300000, 1000000), /e\+/, 'very large values use compact scientific notation');
+const sourceBounds = { xMin: -2, xMax: 2, yMin: -1, yMax: 1 };
+const zoomed = zoomScatterBounds(sourceBounds, 0.5);
+assert.deepEqual(zoomed, { xMin: -1, xMax: 1, yMin: -0.5, yMax: 0.5 }, 'zoom preserves the view center');
+const equalized = equalizeScatterBounds(sourceBounds, { left: 0, right: 600, top: 0, bottom: 300 });
+assert.equal((equalized.xMax - equalized.xMin) / (equalized.yMax - equalized.yMin), 2, 'equal units respect plot aspect ratio');
+const manualBounds = { xMin: -1, xMax: 1, yMin: -2, yMax: 2 };
+assert.deepEqual(selectScatterBounds({ manualBounds, boundsMode: 'manual', comparisonBounds: { ...sourceBounds, xFeature: 'x', yFeature: 'y' }, autoBounds: sourceBounds, xFeature: 'x', yFeature: 'y' }), manualBounds, 'manual bounds override comparison and auto frames');
+
+const cameraWorld = createWorld({
+  task: 'regression',
+  observations: [
+    { id: 'a', x: 0, y: 0, target: 0, features: { x: 0, y: 0 } },
+    { id: 'b', x: 1, y: 1, target: 1, features: { x: 1, y: 1 } },
+  ],
+});
+const cameraExperiment = createExperiment({ world: cameraWorld, adapterId: 'linear-regression' });
+const cameraView = { bounds: manualBounds, boundsMode: 'manual', equalScale: true, autoFitRevision: 3, visibility: 'both', mode: 'scatter', xFeature: 'x', yFeature: 'y' };
+const capturedCameraRuntime = captureExperimentRuntime({ experiment: cameraExperiment, viewState: cameraView, worldActionCounter: 0, status: 'paused' });
+assert.deepEqual(capturedCameraRuntime.viewState, { visibility: 'both', mode: 'scatter', xFeature: 'x', yFeature: 'y' }, 'Experiment and Undo captures exclude session scale state');
+const currentCameraView = { ...cameraView, bounds: sourceBounds, equalScale: false, autoFitRevision: 4 };
+const restoredCameraRuntime = restoreExperimentRuntime({ experiment: cameraExperiment, viewState: currentCameraView, experimentWorkspace: {} }, capturedCameraRuntime);
+assert.deepEqual(restoredCameraRuntime.viewState, currentCameraView, 'Experiment restore preserves the current session camera');
 
 const hookSource = readFileSync(new URL('../src/components/playground/usePresentationCapabilities.jsx', import.meta.url), 'utf8');
 const boundarySource = readFileSync(new URL('../src/components/playground/PlaygroundPresentationBoundary.jsx', import.meta.url), 'utf8');

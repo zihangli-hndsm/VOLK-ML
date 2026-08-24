@@ -732,3 +732,20 @@
 - Added Host-owned stable learning-message identities, reusable bounded annotations for Concept/Evidence/Agent-answer surfaces, semantic “What VOLK knows” context disclosure, and evidence-preserving Ask/interpretation presentation.
 - Added reusable redacted diagnostics and bounded request tracing. Exact configured API keys, prompts, raw provider responses, and hidden reasoning never enter diagnostics or copied text.
 - Added focused regressions for Gemini request shape, stable answer identity, exact-key redaction, provider lifecycle traces, and bounded learning-assistant context.
+
+## 2026-08-24 — Exploration workspace usability fixes
+
+- Added atomic two-dimensional binary-classification World synchronization for MLP, including canonical `x`/`y` recipe features, train-fitted normalization, stable controls/seeds, and reset training evidence.
+- Added the model-owned `TRAINING_STEP` path and independent Training Microscope stepping capability; LR and MLP now initialize and advance exactly one model step while Visualization Scripts retain their own timeline.
+- Rebuilt Distribution Shift as a deterministic KNN Rings World with test-only translation, two-dimensional geometry, and an accepted Train/Test accuracy gap.
+- Unified Agent exploration around one shared input with Ask VOLK, Design experiment, and Generate World modes; Rings, Moons, XOR, and Checkerboard presets remain provider-free proposals requiring explicit execution.
+- Added readable 1/2/5 axis ticks, centered zoom, Fit, and equal-unit controls over one shared coordinate frame; camera scale remains session-only and is excluded from Experiment/Undo capture.
+- Acceptance: focused exploration, World Composer, Training Microscope, Big Idea, Agent UI, responsive geometry and render checks; full `npm run check`; production build; desktop/narrow-screen English/Chinese browser walkthrough; and `git diff --check` passed.
+
+## 2026-08-24 — LUMI semantic learning UI
+
+- Added centralized semantic UI tokens and a controlled LUMI companion with ambient, contextual, observation, guidance, intervention, and illumination states.
+- Added grounded Concept Card states (`unexplored`, `active`, `illuminated`) with an explicit session-only learner confirmation for illumination; no model accuracy heuristic or persistence was introduced.
+- Applied Cyan to factual Evidence, Orange to Experiment interventions, and Purple/Green to concept exploration states while preserving existing World, Experiment, Agent, and evidence authority boundaries.
+- Added LUMI guidance presentation over existing observations, inquiry candidates, and guided recipes, with localized English/Chinese copy, keyboard-safe entry points, reduced-motion behavior, responsive narrow-screen handling, and architecture documentation updates.
+- Acceptance: focused LUMI semantic checks, full `npm run check`, production `npm run build`, desktop and 390px narrow-screen browser walkthrough, and `git diff --check` passed.

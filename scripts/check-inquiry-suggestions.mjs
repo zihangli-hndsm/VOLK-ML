@@ -76,7 +76,7 @@ reachable = await reachableHost.dispatch({
     actor: 'human',
     intent: 'test-support',
     operations: [
-      { type: 'SET_GENERATOR_PARAMETER', path: 'test.input.params.min', value: 1.2 },
+      { type: 'PATCH_WORLD_RECIPE', patch: { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'outer-ring', split: 'test', delta: [0.2, 0] }] } },
       { type: 'REGENERATE_WORLD', seed: 7104 },
     ],
   },

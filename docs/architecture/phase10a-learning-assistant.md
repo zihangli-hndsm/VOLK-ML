@@ -20,6 +20,14 @@ World or Experiment, create a ScenarioSpec, or claim that an experiment was
 run. The existing Agent proposal and explicit execution boundary remains the
 only route to semantic experimentation.
 
+The learner-facing Agent sheet uses one shared prompt with three explicit
+modes: Ask VOLK, Design experiment, and Generate World. Ask remains the
+answer-only path above. Experiment and free-form World requests use their
+existing bounded interpreters and produce reviewable proposals. The Rings,
+Moons, XOR, and Checkerboard presets work without a provider, but they also
+produce a proposal and never execute directly. The primary surface does not
+embed a second advanced request box.
+
 The provider receives a projection of the current task/model, conceptual
 depth, comparison summary, inquiry concepts, active annotations, and a short
 conversation window. It does not receive API secrets, raw observations,
@@ -82,3 +90,19 @@ This slice does not implement adaptive curriculum, learner ability or mastery
 inference, video retrieval, long-term memory, new model/domain capabilities,
 automatic experiment execution, or unrestricted generation. Those require a
 separate accepted design.
+
+## LUMI guidance integration
+
+The LUMI layer is a visual companion to Phase 10A, not a replacement for Ask
+VOLK. Ask VOLK remains answer-only, while the LUMI guidance surface presents
+existing factual observations, grounded conceptual relevance, and learner-
+reviewed next steps. It does not receive authority to execute an experiment or
+invent a result.
+
+LUMI keeps its Navy/Cyan identity with limited Orange intervention accents.
+Purple and Green belong to Concept Cards and their explicit session-local
+learning state. The signature Purple → Orange contact → Green → Cyan
+confirmation sequence is driven by a real `active` → `illuminated` state
+transition, with a static reduced-motion equivalent. No concept mastery,
+adaptive curriculum, persistence, or new provider context is introduced by
+this presentation integration.

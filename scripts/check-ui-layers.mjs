@@ -33,7 +33,8 @@ assert.ok(dialog.includes('setFullWorldToolsOpen') && dialog.includes('onFullWor
 assert.ok(dialog.includes('openFullWorldWorkspaceFromTune') && dialog.includes('setActiveDepth(next.activeDepth)'));
 assert.ok(navigation.includes("activeTab: 'data'") && navigation.includes('activeDepth: null'));
 for (const key of ['pedagogical.observationTitle', 'pedagogical.evidenceTitle', 'pedagogical.interpretationTitle', 'pedagogical.nextQuestions']) assert.ok(agent.includes(key));
-assert.ok(agent.includes('advanced') && agent.includes('ExplorationAgentPanel'));
+assert.ok(agent.includes("mode === 'world'") && agent.includes('WORLD_RECIPE_PRESET_IDS'));
+assert.ok(!agent.includes('ExplorationAgentPanel'), 'the primary Agent surface has no duplicate advanced input panel');
 assert.ok(motion.includes('prefers-reduced-motion') && motion.includes('MOTION_TOKENS'));
 for (const width of [1366, 1024, 834]) assert.notEqual(classifyPresentationCapabilities({ containerWidth: width }).inspectorPresentation, 'bottom-sheet');
 assert.equal(classifyPresentationCapabilities({ containerWidth: 390 }).inspectorPresentation, 'bottom-sheet');

@@ -1,15 +1,72 @@
-@import "tailwindcss";
-@import "@xyflow/react/dist/style.css";
-
 :root {
   color: #172033;
   background: #eef4ff;
   font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --volk-structure: #0b1330;
+  --volk-observation: #00b9d9;
+  --volk-intervention: #f28b16;
+  --volk-concept-unexplored: #7c4dce;
+  --volk-concept-illuminated: #18a96b;
+  --volk-surface: #ffffff;
+  --volk-text-primary: #172033;
+  --volk-text-muted: #64748b;
+  --lumi-body: #0b1330;
+  --lumi-glow: #00e6ff;
+  --lumi-pulse: #f28b16;
   --motion-fast: 120ms;
   --motion-normal: 220ms;
   --motion-emphasis: 320ms;
   --motion-ease-standard: cubic-bezier(0.22, 1, 0.36, 1);
   --motion-ease-emphasis: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+.lumi-button {
+  display: inline-grid;
+  place-items: center;
+  width: 4.5rem;
+  height: 4.1rem;
+  padding: 0;
+  border-radius: 999px;
+  color: var(--lumi-body);
+  outline: none;
+}
+
+.lumi-button:focus-visible {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--lumi-glow) 35%, transparent);
+}
+
+.lumi {
+  position: relative;
+  display: inline-block;
+  width: 4rem;
+  height: 3.7rem;
+  color: var(--lumi-body);
+  filter: drop-shadow(0 0 0.45rem color-mix(in srgb, var(--lumi-glow) 30%, transparent));
+}
+
+.lumi svg { display: block; width: 100%; height: 100%; overflow: visible; }
+.lumi-wing { fill: color-mix(in srgb, #cff6ff 78%, transparent); stroke: color-mix(in srgb, var(--lumi-glow) 60%, white); stroke-width: 1.2; }
+.lumi-antenna, .lumi-smile, .lumi-branch { fill: none; stroke: var(--lumi-body); stroke-linecap: round; stroke-width: 2; }
+.lumi-antenna-tip, .lumi-eye { fill: var(--lumi-glow); stroke: white; stroke-width: 1; }
+.lumi-body { fill: var(--lumi-body); stroke: color-mix(in srgb, var(--lumi-glow) 28%, var(--lumi-body)); stroke-width: 1.5; }
+.lumi-core { fill: #ffe9b3; opacity: .95; }
+.lumi-pulse { fill: var(--lumi-pulse); opacity: 0; }
+.lumi-ambient { width: 3.5rem; height: 3.3rem; }
+.lumi-contextual { width: 4.5rem; height: 4.1rem; }
+.lumi-event { width: 6.5rem; height: 6rem; }
+.lumi-idle { animation: lumi-hover 4.8s ease-in-out infinite; }
+.lumi-observe { filter: drop-shadow(0 0 0.7rem color-mix(in srgb, var(--lumi-glow) 58%, transparent)); }
+.lumi-guide .lumi-pulse, .lumi-intervene .lumi-pulse { opacity: .95; animation: lumi-pulse 1.25s ease-out infinite; }
+.lumi-illuminate { filter: drop-shadow(0 0 0.9rem color-mix(in srgb, var(--lumi-glow) 70%, transparent)); }
+[data-ui-concept-card] { transition: background-color var(--motion-emphasis) var(--motion-ease-standard), border-color var(--motion-emphasis) var(--motion-ease-standard), box-shadow var(--motion-emphasis) var(--motion-ease-standard), color var(--motion-emphasis) var(--motion-ease-standard); }
+[data-ui-concept-card][data-concept-state="illuminated"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--volk-observation) 22%, transparent); }
+
+@keyframes lumi-hover { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.22rem); } }
+@keyframes lumi-pulse { 0% { transform: scale(.65); opacity: .95; } 70%, 100% { transform: scale(1.8); opacity: 0; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .lumi-idle, .lumi-guide .lumi-pulse, .lumi-intervene .lumi-pulse { animation: none; }
+  .lumi-guide .lumi-pulse, .lumi-intervene .lumi-pulse { opacity: .95; }
 }
 
 body { margin: 0; min-width: 320px; min-height: 100vh; }

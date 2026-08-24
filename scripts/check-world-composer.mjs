@@ -510,5 +510,33 @@ assert.deepEqual(
 );
 await classificationHost.close();
 
+const mlpHost = createPlaygroundHost({ getDataset: () => null });
+await mlpHost.open({ playgroundId: 'mlp-classification', seed: 44 });
+const mlpBefore = structuredClone(mlpHost.getState().experiment);
+assert.equal(mlpHost.getState().capabilities.canEditWorld, true, 'MLP advertises canonical World synchronization');
+const mlpProposal = mlpHost.proposeExploration({ request: 'Create an XOR World for the MLP', worldDesign: { mode: 'create', recipe: getWorldRecipePreset('xor'), patch: null, requestedHolds: [] } });
+assert.equal(mlpProposal.kind, 'proposal');
+assert.deepEqual(mlpHost.getState().experiment, mlpBefore, 'MLP Agent proposal remains detached until explicit execution');
+const mlpResult = await mlpHost.executeExploration({ scenario: mlpProposal.scenario });
+assert.equal(mlpResult.snapshot.model.adapterId, 'mlp');
+assert.deepEqual(mlpResult.snapshot.world.featureNames, ['x', 'y'], 'WorldRecipe realization synchronizes canonical coordinate features');
+assert.equal(mlpResult.snapshot.world.observations.every((point) => ['train', 'test'].includes(point.membership)), true);
+assert.equal(new Set(mlpResult.snapshot.world.observations.map((point) => point.label)).size, 2);
+const mlpWorldReset = await mlpHost.dispatch({
+  type: 'APPLY_WORLD_TRANSACTION',
+  transaction: { id: 'mlp-world-reset', intent: 'world-design', operations: [{ type: 'PATCH_WORLD_RECIPE', patch: { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'bottom-left', split: 'all', delta: [0.1, 0] }] } }, { type: 'REGENERATE_WORLD', seed: 44 }] },
+});
+assert.equal(mlpWorldReset.timeline.step, 0, 'applying a new World clears stale MLP playback');
+assert.equal(mlpWorldReset.trainingMicroscope.currentRuntimeStep, 0);
+const beforeInvalidMlpSplit = mlpHost.getState();
+const labelOneTrainIds = beforeInvalidMlpSplit.world.observations.filter((point) => point.membership === 'train' && point.label === '1').map((point) => point.id);
+await assert.rejects(() => mlpHost.dispatch({
+  type: 'APPLY_WORLD_TRANSACTION',
+  transaction: { id: 'mlp-invalid-single-label-train', intent: 'invalid-mlp-split', operations: [{ type: 'SET_TRAIN_TEST_MEMBERSHIP', pointIds: labelOneTrainIds, membership: 'test' }] },
+}), /INVALID_PLAYGROUND_ACTION/);
+assert.deepEqual(mlpHost.getState().world, beforeInvalidMlpSplit.world, 'invalid MLP World leaves the live World unchanged');
+assert.deepEqual(mlpHost.getState().scene, beforeInvalidMlpSplit.scene, 'invalid MLP World leaves model parameters unchanged');
+await mlpHost.close();
+
 assert.deepEqual(listWorldRecipePresets().map((entry) => entry.id), ['rings', 'moons', 'xor', 'checkerboard']);
 console.log('World Composer checks passed: canonical recipe validation, primitive/preset materialization, deterministic substreams, noise/provenance, atomic lifecycle, comparison, fidelity, Agent proposal, and legacy compatibility.');
