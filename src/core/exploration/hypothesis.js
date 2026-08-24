@@ -1,0 +1,108 @@
+// Session-local learner hypotheses. This module is deliberately data-only:
+// it never dispatches runtime actions, persists data, or mutates World/Experiment.
+
+export const HYPOTHESIS_VERSION = 1;
+export const MAX_HYPOTHESES = 8;
+export const MAX_HYPOTHESIS_STATEMENT_LENGTH = 240;
+export const MAX_HYPOTHESIS_CONCEPTS = 4;
+export const MAX_HYPOTHESIS_EVIDENCE = 8;
+
+export const HYPOTHESIS_STATUSES = Object.freeze({
+  PROPOSED: 'proposed',
+  TESTING: 'testing',
+  SUPPORTED: 'supported',
+  REJECTED: 'rejected',
+});
+
+const VALID_STATUSES = new Set(Object.values(HYPOTHESIS_STATUSES));
+const MAX_ID_LENGTH = 160;
+
+function boundedId(value) {
+  const normalized = typeof value === 'string' ? value.trim().slice(0, MAX_ID_LENGTH) : '';
+  return normalized || null;
+}
+
+function safeIds(values, limit) {
+  return [...new Set((Array.isArray(values) ? values : []).map(boundedId).filter(Boolean))].slice(0, limit);
+}
+
+function normalizeStatement(value) {
+  return typeof value === 'string' ? value.trim() : '';
+}
+
+export function clearHypotheses() {
+  return Object.freeze({ version: HYPOTHESIS_VERSION, hypotheses: Object.freeze([]) });
+}
+
+export function createHypothesis({ id, statement, linkedConceptIds = [], createdFrom = 'learner' } = {}) {
+  const normalizedId = boundedId(id);
+  const normalizedStatement = normalizeStatement(statement);
+  if (!normalizedId || !normalizedStatement || createdFrom !== 'learner') return null;
+  if (normalizedStatement.length > MAX_HYPOTHESIS_STATEMENT_LENGTH) return null;
+  return Object.freeze({
+    id: normalizedId,
+    statement: normalizedStatement,
+    linkedConceptIds: Object.freeze(safeIds(linkedConceptIds, MAX_HYPOTHESIS_CONCEPTS)),
+    status: HYPOTHESIS_STATUSES.PROPOSED,
+    evidenceIds: Object.freeze([]),
+    createdFrom: 'learner',
+  });
+}
+
+function normalizeHypothesis(value) {
+  const hypothesis = createHypothesis({
+    id: value?.id,
+    statement: value?.statement,
+    linkedConceptIds: value?.linkedConceptIds,
+    createdFrom: value?.createdFrom,
+  });
+  if (!hypothesis) return null;
+  const status = VALID_STATUSES.has(value?.status) ? value.status : HYPOTHESIS_STATUSES.PROPOSED;
+  return Object.freeze({
+    ...hypothesis,
+    status,
+    evidenceIds: Object.freeze(safeIds(value?.evidenceIds, MAX_HYPOTHESIS_EVIDENCE)),
+  });
+}
+
+export function normalizeHypothesisState(value) {
+  const hypotheses = (Array.isArray(value?.hypotheses) ? value.hypotheses : [])
+    .map(normalizeHypothesis)
+    .filter(Boolean)
+    .slice(0, MAX_HYPOTHESES);
+  return Object.freeze({ version: HYPOTHESIS_VERSION, hypotheses: Object.freeze(hypotheses) });
+}
+
+export function appendHypothesis(state, hypothesis) {
+  const current = normalizeHypothesisState(state);
+  const normalized = normalizeHypothesis(hypothesis);
+  if (!normalized || current.hypotheses.some((item) => item.id === normalized.id) || current.hypotheses.length >= MAX_HYPOTHESES) return current;
+  return Object.freeze({ version: HYPOTHESIS_VERSION, hypotheses: Object.freeze([...current.hypotheses, normalized]) });
+}
+
+export function setHypothesisStatus(state, { hypothesisId, status } = {}) {
+  const current = normalizeHypothesisState(state);
+  if (!boundedId(hypothesisId) || !VALID_STATUSES.has(status)) return current;
+  return Object.freeze({
+    version: HYPOTHESIS_VERSION,
+    hypotheses: Object.freeze(current.hypotheses.map((hypothesis) => hypothesis.id === hypothesisId
+      ? Object.freeze({ ...hypothesis, status })
+      : hypothesis)),
+  });
+}
+
+export function bindHypothesisEvidence(state, { hypothesisId, evidenceIds = [], validEvidenceIds = [] } = {}) {
+  const current = normalizeHypothesisState(state);
+  const allowed = new Set(safeIds(validEvidenceIds, Number.MAX_SAFE_INTEGER));
+  const attached = safeIds(evidenceIds, MAX_HYPOTHESIS_EVIDENCE).filter((id) => allowed.has(id));
+  return Object.freeze({
+    version: HYPOTHESIS_VERSION,
+    hypotheses: Object.freeze(current.hypotheses.map((hypothesis) => hypothesis.id === hypothesisId
+      ? Object.freeze({ ...hypothesis, evidenceIds: Object.freeze([...new Set([...hypothesis.evidenceIds, ...attached])].slice(0, MAX_HYPOTHESIS_EVIDENCE)) })
+      : hypothesis)),
+  });
+}
+
+export function getHypothesis(state, hypothesisId) {
+  return normalizeHypothesisState(state).hypotheses.find((hypothesis) => hypothesis.id === hypothesisId) ?? null;
+}

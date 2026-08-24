@@ -490,3 +490,27 @@ while connected Evidence is shown from existing Journey `connect` events.
 Clicking a node changes only local presentation focus. Concept Map and LUMI
 cannot dispatch runtime actions, alter World/Experiment/Evidence, invoke Agent
 planning, or persist a graph.
+
+### Phase 11 — Learner Hypothesis projection
+
+`src/core/exploration/hypothesis.js` defines a bounded, session-local learner
+object: an authored statement, linked existing Concept IDs, one of `proposed`,
+`testing`, `supported`, or `rejected`, and explicitly attached existing
+Evidence IDs. `createdFrom` is always `learner`; the object has no AI author,
+confidence value, truth score, causal assertion, or persistence path. Creation,
+status changes, and Evidence binding are explicit UI actions. Binding Evidence
+never changes status automatically.
+
+The Concept Map projects Hypothesis nodes and neutral links between existing
+Concepts, Hypotheses, and Evidence. It never creates `caused_by` edges or
+derives a causal graph. Purple continues to mean possibility, cyan means
+observed Evidence, orange marks active testing, and green is reserved for
+explicit learner illumination of a Concept. A supported Hypothesis therefore
+is not rendered as truth or mastery.
+
+LUMI may point to an existing Evidence–Concept relationship and offer the
+learner a hypothesis composer. Only the learner's submit action creates the
+object. The local state is cleared with the exploration session and is not
+included in World, Experiment, Evidence, Undo/Redo, project JSON, Agent
+authority, or Journey source events; Journey and Concept Map merely project it
+alongside the existing path.

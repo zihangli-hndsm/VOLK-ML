@@ -27,6 +27,14 @@ import { nextInquiryConceptExposure, selectInquiryConceptCard } from '../../core
 import { transitionConceptState, CONCEPT_STATES } from '../../core/ui/lumiSemantics.js';
 import { createLumiTarget } from '../../core/ui/lumiInteraction.js';
 import { appendJourneyIllumination, clearJourney } from '../../core/ui/lumiJourney.js';
+import {
+  appendHypothesis,
+  bindHypothesisEvidence,
+  clearHypotheses,
+  createHypothesis,
+  setHypothesisStatus,
+  HYPOTHESIS_STATUSES,
+} from '../../core/exploration/hypothesis.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -41,6 +49,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [activeInquiryCard, setActiveInquiryCard] = useState(null);
   const [illuminatedConceptIds, setIlluminatedConceptIds] = useState([]);
   const [journeySession, setJourneySession] = useState(() => clearJourney());
+  const [hypothesisSession, setHypothesisSession] = useState(() => clearHypotheses());
   const [lumiIntervention, setLumiIntervention] = useState(null);
   const [interventionPulseKey, setInterventionPulseKey] = useState(null);
   const sessionSequenceRef = useRef(0);
@@ -79,6 +88,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setActiveInquiryCard(null);
     setIlluminatedConceptIds([]);
     setJourneySession(clearJourney());
+    setHypothesisSession(clearHypotheses());
     setLumiIntervention(null);
     setInterventionPulseKey(null);
     setPresentationMode(false);
@@ -178,6 +188,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     if (['RESET_LEARNING', 'RESTORE_ORIGINAL_DATA', 'RESET', 'SCRIPT_RESET'].includes(action?.type)) {
       setIlluminatedConceptIds([]);
       setJourneySession(clearJourney());
+      setHypothesisSession(clearHypotheses());
     }
     const humanAction = action?.type === 'APPLY_WORLD_TRANSACTION'
       ? { ...action, transaction: { ...(action.transaction ?? {}), actor: 'human' } }
@@ -216,6 +227,27 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       conceptId,
       timestamp: Date.now(),
       afterSequence: snapshot?.semanticEvents?.events?.at(-1)?.sequence ?? 0,
+    }));
+  };
+
+  const createLearnerHypothesis = ({ statement, linkedConceptIds = [] } = {}) => {
+    const id = `hypothesis-${sessionSequenceRef.current}-${hypothesisSession.hypotheses.length + 1}`;
+    const hypothesis = createHypothesis({ id, statement, linkedConceptIds, createdFrom: 'learner' });
+    if (hypothesis) setHypothesisSession((current) => appendHypothesis(current, hypothesis));
+    return hypothesis;
+  };
+
+  const updateHypothesisStatus = (hypothesisId, status) => {
+    if (!Object.values(HYPOTHESIS_STATUSES).includes(status)) return;
+    setHypothesisSession((current) => setHypothesisStatus(current, { hypothesisId, status }));
+  };
+
+  const attachCurrentEvidence = (hypothesisId) => {
+    const evidenceIds = (snapshot?.observations ?? []).map((observation) => observation?.id).filter(Boolean);
+    setHypothesisSession((current) => bindHypothesisEvidence(current, {
+      hypothesisId,
+      evidenceIds,
+      validEvidenceIds: evidenceIds,
     }));
   };
 
@@ -269,7 +301,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} fullWorldToolsOpen={fullWorldToolsOpen} onFullWorldToolsChange={setFullWorldToolsOpen} onOpenFullWorldTools={openFullWorldWorkspaceFromTune} />;
   const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} t={t} intervention={lumiIntervention}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} interventionPulseKey={lumiIntervention?.sequence ?? null} interventionTarget={lumiIntervention?.target ?? null} /></ExploreExperimentRegion>;
-  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} journeyIlluminationEvents={journeySession.illuminationEvents} onIlluminateConcept={illuminateConcept} t={t} intervention={lumiIntervention} />;
+  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} journeyIlluminationEvents={journeySession.illuminationEvents} onIlluminateConcept={illuminateConcept} hypotheses={hypothesisSession.hypotheses} onCreateHypothesis={createLearnerHypothesis} onSetHypothesisStatus={updateHypothesisStatus} onAttachHypothesisEvidence={attachCurrentEvidence} onOpenHypothesisEvidence={() => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} t={t} intervention={lumiIntervention} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}

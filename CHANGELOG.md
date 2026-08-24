@@ -786,3 +786,10 @@
 - Corrected LUMI SVG references to use literal Vite asset URLs with a non-browser fallback, so GitHub Pages' relative `base: './'` build rewrites and inlines all four visuals instead of traversing from the generated JavaScript path at runtime.
 - Added a focused regression asserting the four literal asset references and the GitHub Pages deployment base; no LUMI state or presentation semantics changed.
 - Acceptance: focused LUMI semantic checks, full `npm run check`, production `npm run build` with four inlined SVG resources, and `git diff --check` passed.
+## 2026-08-25 — Phase 11 learner hypothesis layer
+
+- Added a bounded, session-local learner Hypothesis model with explicit creation, testing, Evidence binding, and learner-marked status actions; it does not mutate World, Experiment, Evidence lifecycle, Undo/Redo, persistence, or Agent authority.
+- Extended Concept Map with neutral Concept → Hypothesis → Evidence projection and a responsive Hypothesis Card surface; purple remains possibility, cyan Evidence, orange active testing, and green remains reserved for explicit Concept illumination.
+- Added a LUMI Evidence–Concept prompt that opens a learner-authored composer; LUMI never creates hypotheses, generates causal arrows, assigns confidence, or claims truth.
+- Added bilingual copy, responsive styling, architecture documentation, and focused hypothesis boundary checks.
+- Acceptance: focused Hypothesis checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.

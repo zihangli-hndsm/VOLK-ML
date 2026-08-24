@@ -3,6 +3,7 @@
 // Journey evidence; this module never discovers, ranks, or persists concepts.
 
 import { INQUIRY_CONCEPT_REGISTRY } from '../exploration/learnerInquiry.js';
+import { MAX_HYPOTHESES, normalizeHypothesisState } from '../exploration/hypothesis.js';
 
 export const CONCEPT_GRAPH_VERSION = 1;
 export const MAX_CONCEPT_GRAPH_NODES = 24;
@@ -19,6 +20,11 @@ export const CONCEPT_GRAPH_RELATIONS = Object.freeze({
   RELATED: 'related',
   CAUSED_BY: 'caused_by',
   OBSERVED_WITH: 'observed_with',
+});
+
+export const HYPOTHESIS_GRAPH_RELATIONS = Object.freeze({
+  CONCEPT_LINK: 'hypothesis_link',
+  EVIDENCE_LINK: 'hypothesis_evidence',
 });
 
 const VALID_STATES = new Set(Object.values(CONCEPT_GRAPH_STATES));
@@ -67,13 +73,14 @@ function normalizedJourneyEvents(journey) {
   return Array.isArray(journey?.events) ? journey.events.filter((event) => event && typeof event === 'object') : [];
 }
 
-function deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, selectedConceptId }) {
+function deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, selectedConceptId, hypotheses }) {
   const ids = new Set();
   addConceptId(ids, activeConceptId);
   addConceptId(ids, selectedConceptId);
   safeIds(illuminatedConceptIds).forEach((id) => addConceptId(ids, id));
   (inquiry?.candidates ?? []).forEach((candidate) => addConceptId(ids, candidate?.conceptId));
   normalizedJourneyEvents(journey).forEach((event) => addConceptId(ids, event?.conceptId));
+  hypotheses.forEach((hypothesis) => hypothesis.linkedConceptIds.forEach((id) => addConceptId(ids, id)));
 
   [...ids].forEach((id) => {
     const concept = registryConcept(id);
@@ -81,6 +88,39 @@ function deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConcep
     safeIds(concept?.relatedConceptIds).forEach((relatedId) => addConceptId(ids, relatedId));
   });
   return [...ids].slice(0, MAX_CONCEPT_GRAPH_NODES);
+}
+
+function deriveHypothesisProjection({ hypotheses, conceptIds, selectedHypothesisId }) {
+  const allowedConcepts = new Set(conceptIds);
+  const hypothesisNodes = hypotheses.slice(0, MAX_HYPOTHESES).map((hypothesis) => {
+    const linkedConceptIds = hypothesis.linkedConceptIds.map(conceptId).filter((id) => allowedConcepts.has(id));
+    return Object.freeze({
+    id: hypothesis.id,
+    kind: 'hypothesis',
+    statement: hypothesis.statement,
+    status: hypothesis.status,
+    linkedConceptIds: Object.freeze(linkedConceptIds),
+    evidenceIds: Object.freeze(hypothesis.evidenceIds),
+    });
+  });
+  const hypothesisEdges = [];
+  hypothesisNodes.forEach((hypothesis) => {
+    hypothesis.linkedConceptIds.forEach((conceptId) => hypothesisEdges.push(Object.freeze({
+      from: conceptId,
+      to: hypothesis.id,
+      relation: HYPOTHESIS_GRAPH_RELATIONS.CONCEPT_LINK,
+    })));
+    hypothesis.evidenceIds.forEach((evidenceId) => hypothesisEdges.push(Object.freeze({
+      from: hypothesis.id,
+      to: evidenceId,
+      relation: HYPOTHESIS_GRAPH_RELATIONS.EVIDENCE_LINK,
+    })));
+  });
+  return {
+    hypothesisNodes: Object.freeze(hypothesisNodes),
+    hypothesisEdges: Object.freeze(hypothesisEdges),
+    selectedHypothesisId: hypothesisNodes.some((node) => node.id === selectedHypothesisId) ? selectedHypothesisId : null,
+  };
 }
 
 function deriveEvidenceByConcept(journey) {
@@ -123,8 +163,11 @@ export function deriveConceptGraph({
   activeConceptId = null,
   illuminatedConceptIds = [],
   selectedConceptId = null,
+  hypotheses = [],
+  selectedHypothesisId = null,
 } = {}) {
-  const conceptIds = deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, selectedConceptId });
+  const hypothesisState = normalizeHypothesisState({ version: 1, hypotheses });
+  const conceptIds = deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, selectedConceptId, hypotheses: hypothesisState.hypotheses });
   const illuminated = new Set(safeIds(illuminatedConceptIds));
   const currentConceptId = deriveCurrentConceptId(journey, activeConceptId);
   const pathConceptIds = derivePathConceptIds(journey);
@@ -165,6 +208,8 @@ export function deriveConceptGraph({
   ].filter(Boolean))];
   const evidenceByConcept = deriveEvidenceByConcept(journey);
   const evidenceIds = selected ? (evidenceByConcept[selected] ?? []) : [];
+  const hypothesisProjection = deriveHypothesisProjection({ hypotheses: hypothesisState.hypotheses, conceptIds, selectedHypothesisId });
+  const selectedHypothesis = hypothesisProjection.hypothesisNodes.find((node) => node.id === hypothesisProjection.selectedHypothesisId);
 
   return Object.freeze({
     version: CONCEPT_GRAPH_VERSION,
@@ -179,6 +224,10 @@ export function deriveConceptGraph({
     connectedEvidenceIds: Object.freeze(evidenceIds),
     evidenceByConcept: Object.freeze(Object.fromEntries(Object.entries(evidenceByConcept).map(([id, values]) => [id, Object.freeze(values)]))),
     experimentRelation: deriveExperimentRelation(journey),
+    hypothesisNodes: hypothesisProjection.hypothesisNodes,
+    hypothesisEdges: hypothesisProjection.hypothesisEdges,
+    selectedHypothesisId: hypothesisProjection.selectedHypothesisId,
+    selectedHypothesisEvidenceIds: Object.freeze(selectedHypothesis?.evidenceIds ?? []),
     // Causal edges are accepted as a vocabulary value for future explicit
     // semantic sources, but this projection never creates one.
     causalEdgeCount: edges.filter((edge) => edge.relation === CONCEPT_GRAPH_RELATIONS.CAUSED_BY).length,

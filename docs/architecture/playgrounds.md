@@ -893,6 +893,25 @@ next step. Concept state remains `unexplored`, `active`, or explicitly
 `illuminated`; no mastery, knowledge database, Agent plan, runtime action,
 project field, or persistence contract is added.
 
+### Phase 11 learner hypothesis surface
+
+The Explore details region also contains a session-only `HypothesisPanel`.
+When the existing LUMI attention projection has both an Evidence target and a
+Concept target, the panel offers a composer; the learner must write and submit
+the statement before a Hypothesis exists. The panel then shows its status,
+linked Concepts, and only explicitly attached existing Evidence. Start testing,
+attach Evidence, and mark supported/rejected are local learner actions and do
+not execute an Experiment. The existing Experiment controls remain the only
+runtime execution path.
+
+`ConceptMap` receives the same bounded Hypothesis projection and renders
+Hypothesis nodes plus neutral Concept/Evidence links. Selecting one changes
+presentation focus only. Hypothesis colors do not override the LUMI contract:
+purple is possibility, cyan is observed Evidence, orange is active testing,
+and green remains exclusive to an explicitly illuminated Concept. No numerical
+confidence or causal arrow is shown, and the state is reset when the unified
+Playground session resets or closes.
+
 ## LUMI semantic presentation layer
 
 `src/core/ui/lumiSemantics.js` and `src/components/playground/Lumi.jsx` provide

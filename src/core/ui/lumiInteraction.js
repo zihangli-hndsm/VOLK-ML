@@ -70,6 +70,9 @@ export function deriveLumiInteraction({ snapshot, intervention = null, activeCon
     interventionTarget,
     interventionControlKey: typeof intervention?.controlKey === 'string' ? intervention.controlKey : null,
     connection,
+    hypothesisPrompt: evidenceTarget && conceptTarget
+      ? Object.freeze({ conceptId: conceptTarget.id, evidenceId: evidenceTarget.id })
+      : null,
   });
 }
 
