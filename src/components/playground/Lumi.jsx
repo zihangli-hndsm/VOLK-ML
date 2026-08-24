@@ -1,10 +1,12 @@
 import { normalizeLumiMode, normalizeLumiPresence } from '../../core/ui/lumiSemantics.js';
 
-const resolveAsset = (path) => typeof document === 'undefined' ? path : new URL(path, import.meta.url).href;
-const idleAsset = resolveAsset('../../assets/lumi/lumi-idle.svg');
-const observeAsset = resolveAsset('../../assets/lumi/lumi-observe.svg');
-const guideAsset = resolveAsset('../../assets/lumi/lumi-guide.svg');
-const illuminateAsset = resolveAsset('../../assets/lumi/lumi-illuminate.svg');
+// Literal URL references let Vite fingerprint and rewrite these assets for
+// both the root app and GitHub Pages' relative `base: './'` deployment. Keep
+// the paths literal so Vite does not leave an incorrect runtime traversal.
+const idleAsset = typeof document === 'undefined' ? '../../assets/lumi/lumi-idle.svg' : new URL('../../assets/lumi/lumi-idle.svg', import.meta.url).href;
+const observeAsset = typeof document === 'undefined' ? '../../assets/lumi/lumi-observe.svg' : new URL('../../assets/lumi/lumi-observe.svg', import.meta.url).href;
+const guideAsset = typeof document === 'undefined' ? '../../assets/lumi/lumi-guide.svg' : new URL('../../assets/lumi/lumi-guide.svg', import.meta.url).href;
+const illuminateAsset = typeof document === 'undefined' ? '../../assets/lumi/lumi-illuminate.svg' : new URL('../../assets/lumi/lumi-illuminate.svg', import.meta.url).href;
 
 const MODE_LABELS = Object.freeze({
   idle: 'idle',
