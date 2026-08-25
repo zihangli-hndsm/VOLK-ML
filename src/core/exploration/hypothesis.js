@@ -1,6 +1,8 @@
 // Session-local learner hypotheses. This module is deliberately data-only:
 // it never dispatches runtime actions, persists data, or mutates World/Experiment.
 
+import { isEvidenceInstanceId } from './evidenceProvenance.js';
+
 export const HYPOTHESIS_VERSION = 1;
 export const MAX_HYPOTHESES = 8;
 export const MAX_HYPOTHESIS_STATEMENT_LENGTH = 240;
@@ -24,6 +26,10 @@ function boundedId(value) {
 
 function safeIds(values, limit) {
   return [...new Set((Array.isArray(values) ? values : []).map(boundedId).filter(Boolean))].slice(0, limit);
+}
+
+function safeEvidenceIds(values, limit) {
+  return safeIds(values, limit).filter((id) => isEvidenceInstanceId(id));
 }
 
 function normalizeStatement(value) {
@@ -61,7 +67,7 @@ function normalizeHypothesis(value) {
   return Object.freeze({
     ...hypothesis,
     status,
-    evidenceIds: Object.freeze(safeIds(value?.evidenceIds, MAX_HYPOTHESIS_EVIDENCE)),
+    evidenceIds: Object.freeze(safeEvidenceIds(value?.evidenceIds, MAX_HYPOTHESIS_EVIDENCE)),
   });
 }
 
@@ -94,7 +100,7 @@ export function setHypothesisStatus(state, { hypothesisId, status } = {}) {
 export function bindHypothesisEvidence(state, { hypothesisId, evidenceIds = [], validEvidenceIds = [] } = {}) {
   const current = normalizeHypothesisState(state);
   const allowed = new Set(safeIds(validEvidenceIds, Number.MAX_SAFE_INTEGER));
-  const attached = safeIds(evidenceIds, MAX_HYPOTHESIS_EVIDENCE).filter((id) => allowed.has(id));
+  const attached = safeEvidenceIds(evidenceIds, MAX_HYPOTHESIS_EVIDENCE).filter((id) => allowed.has(id));
   return Object.freeze({
     version: HYPOTHESIS_VERSION,
     hypotheses: Object.freeze(current.hypotheses.map((hypothesis) => hypothesis.id === hypothesisId

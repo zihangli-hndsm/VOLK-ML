@@ -44,10 +44,10 @@ assert.equal(graph.causalEdgeCount, 0);
 
 state = bindHypothesisEvidence(state, {
   hypothesisId: 'h1',
-  evidenceIds: ['observation-1', 'not-existing'],
-  validEvidenceIds: ['observation-1'],
+  evidenceIds: ['evidence-instance-1', 'COVERAGE_MISMATCH'],
+  validEvidenceIds: ['evidence-instance-1'],
 });
-assert.deepEqual(getHypothesis(state, 'h1').evidenceIds, ['observation-1']);
+assert.deepEqual(getHypothesis(state, 'h1').evidenceIds, ['evidence-instance-1']);
 assert.equal(getHypothesis(state, 'h1').status, HYPOTHESIS_STATUSES.PROPOSED);
 state = setHypothesisStatus(state, { hypothesisId: 'h1', status: HYPOTHESIS_STATUSES.TESTING });
 assert.equal(getHypothesis(state, 'h1').status, HYPOTHESIS_STATUSES.TESTING);
@@ -55,11 +55,12 @@ assert.equal(getHypothesis(state, 'h1').status, HYPOTHESIS_STATUSES.TESTING);
 const attention = deriveLumiInteraction({
   snapshot: {
     observations: [{ id: 'observation-1' }],
+    semanticEvents: { evidenceInstances: [{ id: 'evidence-instance-1', reasonCode: 'COVERAGE_MISMATCH', conditionFingerprint: 'condition-1', evidence: { value: 1 }, available: true }] },
     learnerInquiry: { candidates: [{ conceptId: 'train-test-distribution-shift' }] },
   },
   activeConceptId: 'train-test-distribution-shift',
 });
-assert.deepEqual(attention.hypothesisPrompt, { conceptId: 'train-test-distribution-shift', evidenceId: 'observation-1' });
+assert.deepEqual(attention.hypothesisPrompt, { conceptId: 'train-test-distribution-shift', evidenceId: 'evidence-instance-1' });
 assert.equal(Object.prototype.hasOwnProperty.call(attention, 'createHypothesis'), false);
 assert.deepEqual(world, { id: 'world-before', points: [{ x: 1, y: 2 }] });
 

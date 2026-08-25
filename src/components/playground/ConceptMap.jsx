@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getInquiryConcept } from '../../core/exploration/learnerInquiry.js';
+import { getEvidenceInstance, isEvidenceInstanceId } from '../../core/exploration/evidenceProvenance.js';
 import { conceptGraphRelationSemantics, CONCEPT_GRAPH_RELATIONS, CONCEPT_GRAPH_STATES } from '../../core/ui/conceptGraph.js';
 import { HYPOTHESIS_STATUSES } from '../../core/exploration/hypothesis.js';
 import Lumi from './Lumi.jsx';
@@ -26,9 +27,12 @@ function stateLabel(state, t) {
   return t(`playground.conceptMap.state.${state}`);
 }
 
-function evidenceLabel(id, snapshot, t) {
-  const observation = (snapshot?.observations ?? []).find((item) => String(item?.id ?? '') === String(id) || String(item?.reasonCode ?? '') === String(id));
-  return observation?.messageKey ? t(observation.messageKey) : id;
+function evidenceLabel(id, evidenceInstances, t) {
+  const instance = getEvidenceInstance(evidenceInstances, id);
+  if (instance) return instance.available
+    ? (instance.messageKey ? t(instance.messageKey) : instance.reasonCode)
+    : t('playground.hypothesis.unavailableEvidence');
+  return isEvidenceInstanceId(id) ? t('playground.hypothesis.unavailableEvidence') : id;
 }
 
 function nodeMode(node, graph) {
@@ -60,7 +64,7 @@ function ConceptNode({ id, graph, t, onSelectConcept, role = 'listitem' }) {
   </div>;
 }
 
-function MapBody({ graph, snapshot, t, onSelectConcept, onSelectHypothesis }) {
+function MapBody({ graph, evidenceInstances, t, onSelectConcept, onSelectHypothesis }) {
   const nodes = graph?.nodes ?? [];
   const path = [...(graph?.pathConceptIds ?? [])];
   if (graph?.currentConceptId && !path.includes(graph.currentConceptId)) path.push(graph.currentConceptId);
@@ -132,7 +136,7 @@ function MapBody({ graph, snapshot, t, onSelectConcept, onSelectHypothesis }) {
         </div>
         {hypothesisEdges.length > 0 && <div className="concept-map-hypothesis-links" role="list" aria-label={t('playground.conceptMap.hypothesisLinksLabel')}>
           {hypothesisEdges.map((edge) => <div key={`${edge.from}:${edge.to}:${edge.relation}`} role="listitem" className="concept-map-hypothesis-link">
-            <span>{edge.relation === 'hypothesis_evidence' ? evidenceLabel(edge.to, snapshot, t) : conceptTitle(edge.from, t)}</span>
+            <span>{edge.relation === 'hypothesis_evidence' ? evidenceLabel(edge.to, evidenceInstances, t) : conceptTitle(edge.from, t)}</span>
             <span aria-hidden="true">→</span>
             <span>{edge.relation === 'hypothesis_evidence' ? t('playground.conceptMap.evidenceLabel') : t('playground.conceptMap.hypothesisLabel')}</span>
           </div>)}
@@ -142,7 +146,7 @@ function MapBody({ graph, snapshot, t, onSelectConcept, onSelectHypothesis }) {
   </div>;
 }
 
-export default function ConceptMap({ graph, snapshot, compact = false, t, onSelectConcept, onSelectHypothesis }) {
+export default function ConceptMap({ graph, evidenceInstances = [], compact = false, t, onSelectConcept, onSelectHypothesis }) {
   const detailsRef = useRef(null);
   const [open, setOpen] = useState(Boolean(graph?.selectedConceptId));
   useEffect(() => {
@@ -151,7 +155,7 @@ export default function ConceptMap({ graph, snapshot, compact = false, t, onSele
       if (detailsRef.current) detailsRef.current.open = true;
     }
   }, [graph?.selectedConceptId]);
-  const body = <MapBody graph={graph} snapshot={snapshot} t={t} onSelectConcept={onSelectConcept} onSelectHypothesis={onSelectHypothesis} />;
+  const body = <MapBody graph={graph} evidenceInstances={evidenceInstances} t={t} onSelectConcept={onSelectConcept} onSelectHypothesis={onSelectHypothesis} />;
   if (compact) return <details ref={detailsRef} open={open} onToggle={(event) => setOpen(event.currentTarget.open)} data-concept-map="true" className="concept-map rounded-2xl border border-slate-200 bg-white p-3">
     <summary className="cursor-pointer list-none rounded-xl px-1 py-1 text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-cyan-500">{t('playground.conceptMap.title')}</summary>
     <div className="mt-3">{body}</div>

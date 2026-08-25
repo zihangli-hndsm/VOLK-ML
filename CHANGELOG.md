@@ -799,3 +799,10 @@
 - Removed local `selectedConceptId` from graph membership derivation; stale or absent selections now normalize to `null` after semantic membership is known and cannot create ghost nodes or expand the graph.
 - Added centralized relation-direction metadata, focused regressions for undirected/directed presentation and stale selection, plus updated Concept Graph architecture notes.
 - Acceptance: focused Concept Graph checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.
+
+## 2026-08-25 — Phase 11B Evidence provenance and Hypothesis binding hardening
+
+- Added bounded session-local Evidence instance provenance with stable IDs, Experiment references, condition fingerprints, semantic sequence, timestamps, and bounded snapshots; detector reason codes remain repeatable categories rather than historical identities.
+- Replaced implicit current-observation attachment with an explicit Evidence Picker; Hypotheses accept only stable instance IDs, preserve learner-authored status, and show missing historical references as unavailable.
+- Updated Concept Map and LUMI to resolve historical Evidence instances without rewriting references or adding runtime/Agent authority; added bilingual picker copy, narrow-screen styling, architecture notes, and focused provenance regressions.
+- Acceptance: focused semantic, Hypothesis, LUMI, and provenance checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.

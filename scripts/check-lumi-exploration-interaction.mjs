@@ -21,20 +21,21 @@ const quickControlSource = read('src/components/playground/PlayQuickControl.jsx'
 const runtimeSource = read('src/components/playground/UnifiedPlaygroundDialog.jsx');
 const css = read('src/index.css');
 
-const evidence = createLumiTarget(LUMI_TARGET_TYPES.EVIDENCE, 'observation-1');
+const evidence = createLumiTarget(LUMI_TARGET_TYPES.EVIDENCE, 'evidence-instance-1');
 const concept = createLumiTarget(LUMI_TARGET_TYPES.CONCEPT, 'distribution-shift');
 const experiment = createLumiTarget(LUMI_TARGET_TYPES.EXPERIMENT, 'experiment-1');
 
-assert.deepEqual(evidence, { type: 'evidence', id: 'observation-1' });
+assert.deepEqual(evidence, { type: 'evidence', id: 'evidence-instance-1' });
 assert.equal(createLumiTarget('unsupported', 'x'), null);
 assert.equal(createLumiTarget('evidence', '   '), null);
 assert.equal(createLumiTarget('evidence', 1), null);
 assert.equal(createLumiTarget('evidence', ` ${'x'.repeat(200)} `).id.length, 160);
-assert.equal(lumiTargetEquals(evidence, { type: 'evidence', id: 'observation-1' }), true);
+assert.equal(lumiTargetEquals(evidence, { type: 'evidence', id: 'evidence-instance-1' }), true);
 assert.equal(lumiTargetEquals(evidence, concept), false);
 
 const snapshot = {
   observations: [{ id: 'observation-1', reasonCode: 'coverage-mismatch' }],
+  semanticEvents: { evidenceInstances: [{ id: 'evidence-instance-1', reasonCode: 'coverage-mismatch', experimentIds: ['experiment-1'], conditionFingerprint: 'condition-1', semanticSequence: 1, evidence: { value: 1 }, available: true }] },
   learnerInquiry: { candidates: [{ conceptId: 'distribution-shift', supportingObservationIds: ['coverage-mismatch'] }] },
   experimentWorkspace: { activeExperimentId: 'experiment-1' },
 };
