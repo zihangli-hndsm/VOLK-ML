@@ -205,7 +205,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       const target = createLumiTarget('experiment', snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id);
       if (target) setLumiIntervention((current) => ({ target, controlKey: action.key, sequence: (current?.sequence ?? 0) + 1 }));
     }
-    if (['APPLY_WORLD_TRANSACTION', 'SET_WORLD_GENERATOR', 'SET_GENERATOR_PARAMETER', 'SET_GENERATOR_SEED', 'REGENERATE_WORLD', 'FREEZE_AS_SAMPLES', 'SET_CONTROL', 'ATTACH_MODEL'].includes(action.type)) {
+    if (['APPLY_WORLD_TRANSACTION', 'SET_WORLD_GENERATOR', 'SET_GENERATOR_PARAMETER', 'SET_GENERATOR_SEED', 'REGENERATE_WORLD', 'RESAMPLE_WORLD', 'FREEZE_AS_SAMPLES', 'SET_CONTROL', 'ATTACH_MODEL'].includes(action.type)) {
       setInterventionPulseKey((value) => (value ?? 0) + 1);
     }
     return dispatchWithFirstMeaningfulManipulation({

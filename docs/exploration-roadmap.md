@@ -99,6 +99,29 @@ The guiding principle is:
 
 > **The Agent should accelerate exploration, not make exploration possible.**
 
+## World–Data inquiry loop
+
+The learner-facing semantic contract is explicit:
+
+```text
+World
+  -> observation process / sampling
+  -> finite Dataset
+  -> model evidence and learner prediction
+  -> intervention or resampling
+  -> comparison
+  -> revision / next question
+```
+
+World identity and Dataset provenance are distinct projections. A `Sample
+again` action keeps the generated World's mechanism and identity fixed while
+changing the finite observation sample; changing the generator's latent
+relation is a World change. A duplicated Experiment can therefore compare the
+same World with different data, or the same Dataset with different supported
+model adapters. These semantics remain session-local and derived; they do not
+introduce a probability engine, causal engine, World DSL, or automatic learner
+understanding.
+
 ---
 
 # Exploration modes

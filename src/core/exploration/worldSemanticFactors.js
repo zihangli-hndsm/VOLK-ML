@@ -15,6 +15,7 @@ const FACTORS = Object.freeze({
   seedPolicy: 'world.seedPolicy',
   generator: 'world.generator',
   realization: 'world.realization',
+  observationSample: 'observation.sample',
   mode: 'world.mode',
 });
 
@@ -79,6 +80,7 @@ function factorsForOperation(operation, beforeWorld) {
     case 'SET_WORLD_RECIPE': return [FACTORS.generator];
     case 'PATCH_WORLD_RECIPE': return (operation.patch?.changes ?? []).flatMap(recipePatchFactors);
     case 'REGENERATE_WORLD': return [FACTORS.realization];
+    case 'RESAMPLE_WORLD': return [FACTORS.observationSample];
     case 'FREEZE_AS_SAMPLES': return [FACTORS.mode];
     default: return [FACTORS.observations];
   }

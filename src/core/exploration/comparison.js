@@ -3,8 +3,9 @@
 
 import { validateExperiment } from './experiment.js';
 import { worldRecipeDiff } from './worldRecipe.js';
+import { deriveObservationProcess, deriveWorldIdentity } from './observationProcess.js';
 
-const FACTORS = ['world', 'trainTest', 'model', 'learning', 'evaluation', 'randomness'];
+const FACTORS = ['world', 'observationProcess', 'trainTest', 'model', 'learning', 'evaluation', 'randomness'];
 const DERIVED_MODEL_CONTROLS = new Set(['weight', 'bias']);
 
 // A control can be a valid runtime/inspection field without being part of an
@@ -41,8 +42,14 @@ const worldSemantic = (world) => ({
   task: world.task,
   featureNames: world.featureNames,
   mode: world.mode ?? 'sample',
-  generator: world.generator,
-  observations: world.observations.map(({ membership, ...observation }) => observation),
+  identity: deriveWorldIdentity(world)?.semantic ?? null,
+  // A generated World is the mechanism, not this particular finite draw.
+  // Finite/manual Worlds have no latent mechanism claim, so their observations
+  // remain part of the World factor.
+  generator: world.mode === 'generated' && world.generator?.status !== 'modified' ? null : world.generator,
+  observations: world.mode === 'generated' && world.generator?.status !== 'modified'
+    ? null
+    : world.observations.map(({ membership, ...observation }) => observation),
   source: world.source,
   metadata: world.metadata,
 });
@@ -157,9 +164,17 @@ function semanticFactorPath(path) {
 }
 
 function semanticChangedPaths(a, b, details) {
-  const worldPaths = a.world?.generator?.kind === 'world-recipe' || b.world?.generator?.kind === 'world-recipe'
+  const generatorPaths = a.world?.generator?.kind === 'world-recipe' || b.world?.generator?.kind === 'world-recipe'
     ? (details.worldRecipe?.changedPaths ?? []).map((path) => `world.recipe${path}`)
     : (details.worldGenerator?.changedPaths ?? []);
+  const worldPaths = generatorPaths.filter((path) => path === 'world.relation' || path.startsWith('world.recipe'));
+  const observationPaths = generatorPaths
+    .filter((path) => !worldPaths.includes(path))
+    .map((path) => path.replace(/^world\./, 'observationProcess.'));
+  const worldKindChanged = a.world?.identity?.kind !== b.world?.identity?.kind;
+  if (!worldKindChanged && stable(a.observationProcess) !== stable(b.observationProcess) && observationPaths.length === 0) {
+    observationPaths.push('observationProcess.sample');
+  }
   const trainTestChanged = stable(a.trainTest) !== stable(b.trainTest) ? ['world.train-test.membership'] : [];
   const worldObservationChanged = stable(a.world) !== stable(b.world)
     && worldPaths.length === 0
@@ -172,7 +187,7 @@ function semanticChangedPaths(a, b, details) {
   const learningPaths = changedObjectPaths(a.learning?.controls, b.learning?.controls, 'learning.controls');
   const evaluationPaths = changedObjectPaths(a.evaluation?.controls, b.evaluation?.controls, 'evaluation.controls');
   const randomnessPaths = changedObjectPaths(a.randomness, b.randomness, 'randomness');
-  return [...new Set([...worldPaths, ...worldObservationChanged, ...trainTestChanged, ...modelPaths, ...learningPaths, ...evaluationPaths, ...randomnessPaths])];
+  return [...new Set([...worldPaths, ...observationPaths, ...worldObservationChanged, ...trainTestChanged, ...modelPaths, ...learningPaths, ...evaluationPaths, ...randomnessPaths])];
 }
 
 function semanticUnchangedPaths(a, b, details) {
@@ -210,11 +225,12 @@ export function semanticFactors(experiment, { sharedObservationIds = null } = {}
   );
   return {
     world: worldSemantic(value.world),
+    observationProcess: deriveObservationProcess(value.world),
     trainTest: trainTestSemantic(value.world, sharedObservationIds),
     model: { adapterId: value.model.adapterId, controls: modelControls },
     learning: value.learning,
     evaluation: value.evaluation,
-    randomness: value.randomness,
+    randomness: { policy: value.randomness?.policy ?? 'unspecified' },
   };
 }
 
@@ -226,22 +242,40 @@ export function compareExperiments(left, right) {
   const sharedObservationIds = new Set([...leftIds].filter((id) => rightIds.has(id)));
   const a = semanticFactors(leftValue, { sharedObservationIds });
   const b = semanticFactors(rightValue, { sharedObservationIds });
+  const worldKindChanged = a.world?.identity?.kind !== b.world?.identity?.kind;
   const factors = Object.fromEntries(FACTORS.map((factor) => [factor, {
-    changed: stable(a[factor]) !== stable(b[factor]),
+    changed: factor === 'observationProcess'
+      ? !worldKindChanged && stable(a[factor]) !== stable(b[factor])
+      : stable(a[factor]) !== stable(b[factor]),
     left: a[factor],
     right: b[factor],
   }]));
-  const changed = FACTORS.filter((factor) => factors[factor].changed);
   const details = {
     worldGenerator: worldGeneratorDetails(leftValue.world, rightValue.world),
     worldRecipe: worldRecipeDetails(leftValue.world, rightValue.world),
+    observationProcess: {
+      left: a.observationProcess,
+      right: b.observationProcess,
+      changed: stable(a.observationProcess) !== stable(b.observationProcess),
+    },
   };
   const semanticPaths = semanticChangedPaths(a, b, details);
   const semanticFactorPaths = [...new Set(semanticPaths.map(semanticFactorPath))];
   const semanticHeldPaths = semanticUnchangedPaths(a, b, details);
+  const factorChanged = FACTORS.filter((factor) => factors[factor].changed);
+  // Keep the legacy changed[] vocabulary stable for existing callers that
+  // treated generator configuration as a World edit. New consumers should use
+  // factors/semantic paths, where sampling is explicitly distinct.
+  const legacyChanged = factorChanged.length === 1
+    && factorChanged[0] === 'observationProcess'
+    && ((details.worldGenerator?.changed ?? []).some((field) => field !== 'seedPolicy')
+      || (details.worldRecipe?.changedPaths ?? []).length > 0)
+    ? ['world']
+    : factorChanged;
   return {
-    identical: changed.length === 0,
-    changed,
+    identical: factorChanged.length === 0,
+    changed: legacyChanged,
+    changedFactors: factorChanged,
     unchanged: FACTORS.filter((factor) => !factors[factor].changed),
     factors,
     semanticChangedPaths: semanticPaths,

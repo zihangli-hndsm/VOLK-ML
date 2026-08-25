@@ -6,9 +6,11 @@ export const MAX_LUMI_JOURNEY_EVENTS = 120;
 
 export const LUMI_JOURNEY_EVENT_TYPES = Object.freeze({
   OBSERVE: 'observe',
+  PREDICT: 'predict',
   INTERVENE: 'intervene',
   CONNECT: 'connect',
   ILLUMINATE: 'illuminate',
+  REVISE: 'revise',
 });
 
 const JOURNEY_TYPES = new Set(Object.values(LUMI_JOURNEY_EVENT_TYPES));
@@ -47,6 +49,7 @@ function createJourneyEvent(type, payload, { timestamp = 0, sourceSequence = 0, 
     normalized.experimentId = boundedId(payload?.experimentId);
     normalized.controlKey = boundedControlKey(payload?.controlKey);
   }
+  if (type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || type === LUMI_JOURNEY_EVENT_TYPES.REVISE) normalized.hypothesisId = boundedId(payload?.hypothesisId);
   if (type === LUMI_JOURNEY_EVENT_TYPES.CONNECT) {
     normalized.evidenceId = boundedId(payload?.evidenceId);
     normalized.conceptId = boundedId(payload?.conceptId);
@@ -54,13 +57,15 @@ function createJourneyEvent(type, payload, { timestamp = 0, sourceSequence = 0, 
   if (type === LUMI_JOURNEY_EVENT_TYPES.ILLUMINATE) normalized.conceptId = boundedId(payload?.conceptId);
   const required = type === LUMI_JOURNEY_EVENT_TYPES.OBSERVE
     ? normalized.evidenceId
-    : type === LUMI_JOURNEY_EVENT_TYPES.INTERVENE
+      : type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || type === LUMI_JOURNEY_EVENT_TYPES.REVISE
+        ? normalized.hypothesisId
+        : type === LUMI_JOURNEY_EVENT_TYPES.INTERVENE
       ? normalized.experimentId
       : type === LUMI_JOURNEY_EVENT_TYPES.CONNECT
         ? normalized.evidenceId && normalized.conceptId
         : normalized.conceptId;
   if (!required) return null;
-  normalized.id = `lumi-journey-${type}-${sourceSequence || normalized.timestamp}-${normalized.evidenceId ?? normalized.conceptId ?? normalized.experimentId}`;
+  normalized.id = `lumi-journey-${type}-${sourceSequence || normalized.timestamp}-${normalized.evidenceId ?? normalized.conceptId ?? normalized.experimentId ?? normalized.hypothesisId}`;
   return Object.freeze(normalized);
 }
 
@@ -104,6 +109,7 @@ export function deriveLumiJourneyProjection({
   activeConceptId = null,
   illuminatedConceptIds = [],
   illuminationEvents = [],
+  hypotheses = [],
 } = {}) {
   const events = semanticEvents(semanticEventInput);
   const notices = Array.isArray(observations) ? observations : [];
@@ -141,6 +147,18 @@ export function deriveLumiJourneyProjection({
     }
   });
 
+  (Array.isArray(hypotheses) ? hypotheses : []).slice(0, 8).forEach((hypothesis, index) => {
+    const hypothesisId = boundedId(hypothesis?.id);
+    if (!hypothesisId) return;
+    const order = (events.length + index + 1) * 10 + 3;
+    const predict = createJourneyEvent(LUMI_JOURNEY_EVENT_TYPES.PREDICT, { hypothesisId }, { timestamp: 0, sourceSequence: index + 1, order });
+    if (predict) journeyEvents.push(predict);
+    if (hypothesis.status === 'supported' || hypothesis.status === 'rejected') {
+      const revise = createJourneyEvent(LUMI_JOURNEY_EVENT_TYPES.REVISE, { hypothesisId }, { timestamp: 0, sourceSequence: index + 1, order: order + 1 });
+      if (revise) journeyEvents.push(revise);
+    }
+  });
+
   (Array.isArray(illuminationEvents) ? illuminationEvents : []).forEach((event) => {
     const illuminate = createJourneyEvent(LUMI_JOURNEY_EVENT_TYPES.ILLUMINATE, { conceptId: event?.conceptId }, {
       timestamp: event?.timestamp,
@@ -169,6 +187,8 @@ export function deriveLumiJourneyProjection({
       ? { type: currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.OBSERVE ? 'evidence' : 'concept', id: currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.OBSERVE ? currentEvent.evidenceId : currentEvent.conceptId }
       : currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.INTERVENE
         ? { type: 'experiment', id: currentEvent.experimentId }
+        : currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.REVISE
+          ? { type: 'hypothesis', id: currentEvent.hypothesisId }
         : { type: 'concept', id: currentEvent.conceptId }
     : frontierConceptIds[0] ? { type: 'concept', id: frontierConceptIds[0] } : null;
   return Object.freeze({

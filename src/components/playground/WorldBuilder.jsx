@@ -63,6 +63,18 @@ export default function WorldBuilder({ snapshot, onDispatch, t, highlightedAffor
       ? 'playground.worldBuilder.configured'
       : 'playground.worldBuilder.sample';
   const status = t(statusKey);
+  const semanticStrip = <div className="mt-3 grid gap-2 sm:grid-cols-3" aria-label={t('playground.worldBuilder.semanticLoopLabel')}>
+    <div className="rounded-xl bg-white/80 p-2 ring-1 ring-indigo-100"><p className="text-[10px] font-black uppercase tracking-wide text-slate-500">{t('playground.worldBuilder.worldLabel')}</p><p className="mt-1 truncate text-xs font-black text-slate-800">{snapshot.worldIdentity?.fingerprint ?? world?.id ?? '—'}</p></div>
+    <div className="rounded-xl bg-white/80 p-2 ring-1 ring-cyan-100"><p className="text-[10px] font-black uppercase tracking-wide text-cyan-700">{t('playground.worldBuilder.processLabel')}</p><p className="mt-1 truncate text-xs font-black text-slate-800">{snapshot.observationProcess?.kind ?? '—'} · {snapshot.observationProcess?.realizationSeed ?? '—'}</p></div>
+    <div className="rounded-xl bg-white/80 p-2 ring-1 ring-emerald-100"><p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">{t('playground.worldBuilder.datasetLabel')}</p><p className="mt-1 truncate text-xs font-black text-slate-800">{snapshot.datasetProvenance?.datasetId ?? '—'} · {snapshot.datasetProvenance?.observationCount ?? 0}</p></div>
+  </div>;
+  const possibleWorlds = snapshot.possibleWorlds?.candidates ?? [];
+  const possibleWorldPrompt = possibleWorlds.length > 0 && <div className="mt-3 rounded-xl border border-purple-200 bg-purple-50/70 p-3" aria-label={t('playground.worldBuilder.possibleWorldsLabel')}>
+    <p className="text-xs font-black text-purple-950">{t('playground.worldBuilder.possibleWorldsTitle')}</p>
+    <div className="mt-2 flex flex-wrap gap-2">{possibleWorlds.map((candidate) => <span key={candidate.id} className="rounded-full bg-white px-2 py-1 text-[11px] font-black text-purple-900 ring-1 ring-purple-200">{t(`playground.worldBuilder.possibleWorld.${candidate.kind}`)}</span>)}</div>
+    <p className="mt-2 text-[11px] text-purple-900">{t(snapshot.possibleWorlds.promptKey)}</p>
+    <p className="mt-1 text-[10px] text-purple-800">{t(snapshot.possibleWorlds.boundaryKey)}</p>
+  </div>;
   if (world?.generator?.kind === 'world-recipe') {
     const recipe = worldRecipeSummary(world.generator.recipe);
     const recipeGenerate = () => dispatchTransaction([{ type: 'REGENERATE_WORLD', seed: Number(seed) }], 'regenerate-world-recipe');
@@ -78,11 +90,14 @@ export default function WorldBuilder({ snapshot, onDispatch, t, highlightedAffor
           <span className="rounded-full bg-white px-2 py-1 text-slate-600 ring-1 ring-slate-200">{t('playground.worldBuilder.samplesBadge', { count: world.observations?.length ?? 0 })}</span>
         </div>
       </div>
+      {semanticStrip}
+      {possibleWorldPrompt}
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         {recipe.groups.map((group) => <div key={group.id} className="rounded-xl bg-white/80 p-3 ring-1 ring-indigo-100"><p className="text-xs font-black text-slate-800">{group.id}</p><p className="mt-1 text-[11px] text-slate-600">{t('playground.worldBuilder.recipeGroup', { shape: group.shapeType, train: group.trainSamples, test: group.testSamples })}</p></div>)}
       </div>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={recipeGenerate} className="rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white">{t('playground.worldBuilder.regenerate')}</button>
+        {world.mode === 'generated' && <button type="button" onClick={() => onDispatch({ type: 'RESAMPLE_WORLD' })} className="rounded-xl bg-cyan-700 px-4 py-2 text-xs font-black text-white">{t('playground.worldBuilder.sampleAgain')}</button>}
         {world.mode === 'generated' && <button type="button" onClick={() => onDispatch({ type: 'FREEZE_AS_SAMPLES' })} className="rounded-xl bg-white px-4 py-2 text-xs font-black text-slate-700 ring-1 ring-indigo-200">{t('playground.worldBuilder.freeze')}</button>}
         {generatorFacts.needsRegeneration && <span className="self-center text-xs font-bold text-amber-700">{t('playground.worldBuilder.dirtyHint')}</span>}
       </div>
@@ -100,6 +115,8 @@ export default function WorldBuilder({ snapshot, onDispatch, t, highlightedAffor
         <span className="rounded-full bg-white px-2 py-1 text-slate-600 ring-1 ring-slate-200">{t('playground.worldBuilder.samplesBadge', { count: world?.observations?.length ?? 0 })}</span>
       </div>
     </div>
+    {semanticStrip}
+    {possibleWorldPrompt}
     <div className="mt-3 grid gap-3 md:grid-cols-2 lg:grid-cols-3">
       <label data-affordance-id="world.generator.trainInput" className={`text-xs font-bold text-slate-700${highlight('world.generator.trainInput')}`}>{t('playground.worldBuilder.input')}<select value={input.type} onChange={(event) => setInputType(event.target.value)} className="mt-1 w-full rounded-lg border border-indigo-200 bg-white p-2"><option value="uniform">{t('playground.worldBuilder.uniform')}</option><option value="gaussian">{t('playground.worldBuilder.gaussian')}</option><option value="two-cluster">{t('playground.worldBuilder.twoCluster')}</option></select></label>
       <div className="rounded-xl bg-white/80 p-2 ring-1 ring-indigo-100">
@@ -133,6 +150,7 @@ export default function WorldBuilder({ snapshot, onDispatch, t, highlightedAffor
     </div>
     <div className="mt-3 flex flex-wrap gap-2">
       <button type="button" onClick={generate} className="rounded-xl bg-indigo-700 px-4 py-2 text-xs font-black text-white">{t('playground.worldBuilder.regenerate')}</button>
+      {world?.mode === 'generated' && <button type="button" onClick={() => onDispatch({ type: 'RESAMPLE_WORLD' })} className="rounded-xl bg-cyan-700 px-4 py-2 text-xs font-black text-white">{t('playground.worldBuilder.sampleAgain')}</button>}
       {world?.mode === 'generated' && <button type="button" onClick={() => onDispatch({ type: 'FREEZE_AS_SAMPLES' })} className="rounded-xl bg-white px-4 py-2 text-xs font-black text-slate-700 ring-1 ring-indigo-200">{t('playground.worldBuilder.freeze')}</button>}
       {world?.mode === 'generated' && generatorFacts.needsRegeneration && <span className="self-center text-xs font-bold text-amber-700">{t('playground.worldBuilder.dirtyHint')}</span>}
       {world?.mode === 'sample' && world.generator && !world.generator.realization && <span className="self-center text-xs font-bold text-slate-600">{t('playground.worldBuilder.configuredHint')}</span>}

@@ -31,6 +31,21 @@ Understanding answers: What has the learner connected?
 
 Evidence != Understanding.
 
+## World, Observation, and Data
+
+World is not Data. A World describes a possible mechanism or finite setting;
+an observation process produces one finite Dataset from it. Resampling changes
+the observed Dataset while preserving the generated World's identity. A model
+is an evidence-limited approximation, and a learner hypothesis is a separate
+working idea rather than a second machine model.
+
+The explicit learning loop is:
+
+World → Observe/Sample → Data → Predict → Intervene → Compare → Revise
+
+These transitions are projections of existing World, Experiment, Evidence,
+Concept, and Journey state. They do not infer causality, mastery, or truth.
+
 ## LUMI
 
 LUMI is a fictional firefly-inspired guide creature.
@@ -65,7 +80,7 @@ Purple becomes Green through exploration, not automatic prediction.
 
 ## Learning Loop
 
-Observe (Cyan) ↓ Intervene (Orange) ↓ Compare evidence ↓ Explore
+Observe (Cyan) ↓ Predict (Purple) ↓ Intervene (Orange) ↓ Compare evidence ↓ Explore
 concepts (Purple) ↓ Illuminate understanding (Green)
 
 ## Exploration Journey

@@ -38,6 +38,8 @@ import {
 } from '../exploration/experimentRuntime.js';
 import { isPublicWorldOperation, listWorldOperations } from '../exploration/operationRegistry.js';
 import { deriveWorldSemanticFactors } from '../exploration/worldSemanticFactors.js';
+import { deriveWorldDataSemantics } from '../exploration/observationProcess.js';
+import { derivePossibleWorldQuestion } from '../exploration/possibleWorlds.js';
 import {
   playgroundError,
   validateActionShape,
@@ -81,6 +83,7 @@ const GENERIC_ACTIONS = [
   'SET_COMPARE',
   'COMPARE_EXPERIMENTS',
   'REPEAT_EXPERIMENT',
+  'RESAMPLE_WORLD',
   'UNDO_EXPERIMENT_ACTION',
   'RUN_SCENARIO',
   'SCENARIO_NEXT',
@@ -611,6 +614,8 @@ function canonicalWorldTransaction(action) {
       ? 'world-generator'
       : action.type === 'REGENERATE_WORLD'
         ? 'regenerate-world'
+        : action.type === 'RESAMPLE_WORLD'
+          ? 'sample-again'
         : action.type === 'FREEZE_AS_SAMPLES'
           ? 'freeze-as-samples'
           : action.type === 'ADD_POINTS'
@@ -1417,6 +1422,8 @@ export function deriveRuntimeSnapshot(session) {
   });
   const experimentWorkspace = deriveExperimentWorkspace(session);
   const explorationEvidence = explorationEvidenceFor(session, experimentWorkspace);
+  const worldDataSemantics = deriveWorldDataSemantics(session.experiment?.world);
+  worldDataSemantics.possibleWorlds = derivePossibleWorldQuestion(session.experiment?.world);
   return {
     apiVersion: 1,
     sessionId: session.sessionId,
@@ -1468,6 +1475,7 @@ export function deriveRuntimeSnapshot(session) {
     visualState: jsonSafe(session.visualState),
     dataState: jsonSafe(session.dataState),
     experiment: jsonSafe(session.experiment),
+    ...Object.fromEntries(Object.entries(worldDataSemantics).map(([key, value]) => [key, jsonSafe(value)])),
     experimentWorkspace: jsonSafe(experimentWorkspace),
     observables: jsonSafe(explorationEvidence.observables),
     derivedObservables: jsonSafe(explorationEvidence.derivedObservables),

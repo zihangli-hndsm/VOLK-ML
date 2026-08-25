@@ -8,6 +8,7 @@ export const MAX_HYPOTHESES = 8;
 export const MAX_HYPOTHESIS_STATEMENT_LENGTH = 240;
 export const MAX_HYPOTHESIS_CONCEPTS = 4;
 export const MAX_HYPOTHESIS_EVIDENCE = 8;
+export const HYPOTHESIS_PREDICTION_CHOICES = Object.freeze(['increase', 'decrease', 'similar', 'uncertain']);
 
 export const HYPOTHESIS_STATUSES = Object.freeze({
   PROPOSED: 'proposed',
@@ -36,11 +37,16 @@ function normalizeStatement(value) {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function normalizePrediction(value) {
+  if (!value || typeof value !== 'object' || !HYPOTHESIS_PREDICTION_CHOICES.includes(value.choice)) return null;
+  return Object.freeze({ choice: value.choice });
+}
+
 export function clearHypotheses() {
   return Object.freeze({ version: HYPOTHESIS_VERSION, hypotheses: Object.freeze([]) });
 }
 
-export function createHypothesis({ id, statement, linkedConceptIds = [], createdFrom = 'learner' } = {}) {
+export function createHypothesis({ id, statement, linkedConceptIds = [], createdFrom = 'learner', experimentId = null, threadId = null, prediction = null } = {}) {
   const normalizedId = boundedId(id);
   const normalizedStatement = normalizeStatement(statement);
   if (!normalizedId || !normalizedStatement || createdFrom !== 'learner') return null;
@@ -49,6 +55,9 @@ export function createHypothesis({ id, statement, linkedConceptIds = [], created
     id: normalizedId,
     statement: normalizedStatement,
     linkedConceptIds: Object.freeze(safeIds(linkedConceptIds, MAX_HYPOTHESIS_CONCEPTS)),
+    ...(boundedId(experimentId) ? { experimentId: boundedId(experimentId) } : {}),
+    ...(boundedId(threadId) ? { threadId: boundedId(threadId) } : {}),
+    ...(normalizePrediction(prediction) ? { prediction: normalizePrediction(prediction) } : {}),
     status: HYPOTHESIS_STATUSES.PROPOSED,
     evidenceIds: Object.freeze([]),
     createdFrom: 'learner',
@@ -61,6 +70,9 @@ function normalizeHypothesis(value) {
     statement: value?.statement,
     linkedConceptIds: value?.linkedConceptIds,
     createdFrom: value?.createdFrom,
+    experimentId: value?.experimentId,
+    threadId: value?.threadId,
+    prediction: value?.prediction,
   });
   if (!hypothesis) return null;
   const status = VALID_STATUSES.has(value?.status) ? value.status : HYPOTHESIS_STATUSES.PROPOSED;

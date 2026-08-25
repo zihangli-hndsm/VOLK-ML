@@ -154,7 +154,7 @@ function setGeneratorSeed(world, seed) {
   return setWorldGenerator(world, world.generator?.spec ?? {}, Math.trunc(number));
 }
 
-function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
+function regenerateWorld(world, seed = world.randomness?.seed ?? null, { mutationType = 'world.regenerate' } = {}) {
   if (world.generator?.kind === 'world-recipe') {
     const effectiveSeed = seed ?? world.generator.seed ?? world.randomness?.seed ?? null;
     const generated = materializeWorldRecipe(world.generator.recipe, effectiveSeed, { worldId: world.id });
@@ -176,7 +176,7 @@ function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
           realization: { kind: 'world-recipe', recipe: generated.recipe, seed: generated.seed },
         },
       }),
-      mutation: mutation('world.regenerate', { type: 'world.regenerate', seed: generated.seed, count: generated.observations.length, recipeVersion: generated.recipe.version }),
+      mutation: mutation(mutationType, { type: mutationType, seed: generated.seed, count: generated.observations.length, recipeVersion: generated.recipe.version }),
     };
   }
   if (!world.generator?.spec) throw explorationError('EXPLORATION_INVALID_GENERATOR', { reason: 'World has no generator specification' });
@@ -198,8 +198,14 @@ function regenerateWorld(world, seed = world.randomness?.seed ?? null) {
         realization: { spec: generated.spec, seed: generated.seed },
       },
     }),
-    mutation: mutation('world.regenerate', { type: 'world.regenerate', seed: generated.seed, count: generated.observations.length }),
+    mutation: mutation(mutationType, { type: mutationType, seed: generated.seed, count: generated.observations.length }),
   };
+}
+
+function resampleWorld(world, seed = world.randomness?.seed ?? null) {
+  const currentSeed = world.generator?.realization?.seed ?? world.randomness?.seed ?? 0;
+  const nextSeed = seed === null || seed === undefined ? Number(currentSeed) + 1 : seed;
+  return regenerateWorld(world, nextSeed, { mutationType: 'observation.sample' });
 }
 
 function freezeAsSamples(world) {
@@ -484,6 +490,7 @@ export function applyWorldOperation(world, operation) {
     case 'SET_GENERATOR_PARAMETER': return setGeneratorParameter(current, String(operation.path ?? ''), operation.value);
     case 'SET_GENERATOR_SEED': return setGeneratorSeed(current, operation.seed);
     case 'REGENERATE_WORLD': return regenerateWorld(current, operation.seed);
+    case 'RESAMPLE_WORLD': return resampleWorld(current, operation.seed);
     case 'FREEZE_AS_SAMPLES': return freezeAsSamples(current);
     case 'RESTORE_WORLD': return { world: cloneWorld(operation.world), mutation: mutation('world.restore', { type: 'world.restore' }) };
     default: throw explorationError('EXPLORATION_INVALID_OPERATION', { type: operation?.type });
@@ -571,7 +578,7 @@ function inverseFor(world, operation) {
       })),
     };
   }
-  if (['SET_WORLD_GENERATOR', 'SET_WORLD_RECIPE', 'PATCH_WORLD_RECIPE', 'SET_GENERATOR_PARAMETER', 'SET_GENERATOR_SEED', 'REGENERATE_WORLD', 'FREEZE_AS_SAMPLES'].includes(operation.type)) {
+  if (['SET_WORLD_GENERATOR', 'SET_WORLD_RECIPE', 'PATCH_WORLD_RECIPE', 'SET_GENERATOR_PARAMETER', 'SET_GENERATOR_SEED', 'REGENERATE_WORLD', 'RESAMPLE_WORLD', 'FREEZE_AS_SAMPLES'].includes(operation.type)) {
     return { type: 'RESTORE_WORLD', world: cloneWorld(world) };
   }
   if (operation.type === 'RESTORE_WORLD') return { type: 'RESTORE_WORLD', world: cloneWorld(world) };
