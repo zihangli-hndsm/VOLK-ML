@@ -15,6 +15,7 @@ export const HYPOTHESIS_STATUSES = Object.freeze({
   TESTING: 'testing',
   SUPPORTED: 'supported',
   REJECTED: 'rejected',
+  REVISED: 'revised',
 });
 
 const VALID_STATUSES = new Set(Object.values(HYPOTHESIS_STATUSES));
@@ -42,11 +43,16 @@ function normalizePrediction(value) {
   return Object.freeze({ choice: value.choice });
 }
 
+function normalizeCreatedAt(value) {
+  if (typeof value !== 'string' || !value.trim() || value.trim().length > 64) return null;
+  return value.trim();
+}
+
 export function clearHypotheses() {
   return Object.freeze({ version: HYPOTHESIS_VERSION, hypotheses: Object.freeze([]) });
 }
 
-export function createHypothesis({ id, statement, linkedConceptIds = [], createdFrom = 'learner', experimentId = null, threadId = null, prediction = null } = {}) {
+export function createHypothesis({ id, statement, linkedConceptIds = [], createdFrom = 'learner', createdAt = null, experimentId = null, threadId = null, prediction = null } = {}) {
   const normalizedId = boundedId(id);
   const normalizedStatement = normalizeStatement(statement);
   if (!normalizedId || !normalizedStatement || createdFrom !== 'learner') return null;
@@ -55,6 +61,7 @@ export function createHypothesis({ id, statement, linkedConceptIds = [], created
     id: normalizedId,
     statement: normalizedStatement,
     linkedConceptIds: Object.freeze(safeIds(linkedConceptIds, MAX_HYPOTHESIS_CONCEPTS)),
+    ...(normalizeCreatedAt(createdAt) ? { createdAt: normalizeCreatedAt(createdAt) } : {}),
     ...(boundedId(experimentId) ? { experimentId: boundedId(experimentId) } : {}),
     ...(boundedId(threadId) ? { threadId: boundedId(threadId) } : {}),
     ...(normalizePrediction(prediction) ? { prediction: normalizePrediction(prediction) } : {}),
@@ -70,6 +77,7 @@ function normalizeHypothesis(value) {
     statement: value?.statement,
     linkedConceptIds: value?.linkedConceptIds,
     createdFrom: value?.createdFrom,
+    createdAt: value?.createdAt,
     experimentId: value?.experimentId,
     threadId: value?.threadId,
     prediction: value?.prediction,

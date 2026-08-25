@@ -6,7 +6,7 @@ import { createExperiment } from '../src/core/exploration/experiment.js';
 import { createWorld } from '../src/core/exploration/world.js';
 import { normalizeGeneratorSpec } from '../src/core/exploration/generator.js';
 import { deriveWorldDataSemantics } from '../src/core/exploration/observationProcess.js';
-import { createHypothesis, normalizeHypothesisState } from '../src/core/exploration/hypothesis.js';
+import { createHypothesis, normalizeHypothesisState, setHypothesisStatus, HYPOTHESIS_STATUSES } from '../src/core/exploration/hypothesis.js';
 import { deriveLumiJourneyProjection, LUMI_JOURNEY_EVENT_TYPES } from '../src/core/ui/lumiJourney.js';
 
 const spec = normalizeGeneratorSpec({
@@ -72,15 +72,53 @@ assert.equal(modelDiff.factors.observationProcess.changed, false, 'same Dataset 
 assert.deepEqual(modelDiff.changedFactors, ['model'], 'same Dataset, different Models is a one-factor comparison');
 await modelHost.close();
 
+const sameDatasetRows = [
+  [-2, -2, 'A'], [-1, -1, 'A'], [-2, -1, 'A'],
+  [2, 2, 'B'], [1, 1, 'B'], [2, 1, 'B'],
+].map(([x, y, label], index) => ({ x, y, label, membership: index < 4 ? 'train' : 'test' }));
+const sameDataset = {
+  name: 'same-data-model-check',
+  task: 'classification',
+  featureColumns: ['x', 'y'],
+  targetColumn: 'label',
+  columns: [{ name: 'x', type: 'number' }, { name: 'y', type: 'number' }, { name: 'label', type: 'string' }],
+  rows: sameDatasetRows,
+};
+const dataLabHost = createPlaygroundHost({ getDataset: () => sameDataset });
+await dataLabHost.open({ playgroundId: 'data-lab', seed: 7 });
+let dataLabSnapshot = dataLabHost.getState();
+assert.deepEqual(dataLabSnapshot.availableModels.map((model) => model.id), ['knn-classification', 'mlp-classification'], 'Data Lab exposes both supported classification models');
+dataLabSnapshot = await dataLabHost.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: 'knn-classification' });
+const knnExperimentId = dataLabSnapshot.experimentWorkspace.activeExperimentId;
+const sameDatasetId = dataLabSnapshot.datasetProvenance.datasetId;
+dataLabSnapshot = await dataLabHost.dispatch({ type: 'DUPLICATE_EXPERIMENT' });
+dataLabSnapshot = await dataLabHost.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: 'mlp-classification' });
+const mlpExperimentId = dataLabSnapshot.experimentWorkspace.activeExperimentId;
+dataLabSnapshot = await dataLabHost.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: knnExperimentId });
+assert.equal(dataLabSnapshot.datasetProvenance.datasetId, sameDatasetId, 'same-model comparison keeps Dataset provenance held');
+assert.equal(dataLabSnapshot.experimentWorkspace.comparison.diff.factors.world.changed, false, 'same-model comparison keeps World held');
+assert.equal(dataLabSnapshot.experimentWorkspace.comparison.diff.factors.observationProcess.changed, false, 'same-model comparison keeps observation process held');
+assert.equal(dataLabSnapshot.experimentWorkspace.comparison.diff.factors.trainTest.changed, false, 'same-model comparison keeps split held');
+assert.equal(dataLabSnapshot.experimentWorkspace.comparison.diff.factors.evaluation.changed, false, 'same-model comparison keeps evaluation held');
+assert.equal(dataLabSnapshot.experimentWorkspace.comparison.diff.factors.model.changed, true, 'Data Lab comparison isolates the model change');
+assert.notEqual(mlpExperimentId, knnExperimentId, 'same Dataset models retain distinct experiment lineage');
+await dataLabHost.close();
+
 const learnerHypothesis = createHypothesis({
   id: 'hypothesis-1', statement: 'A new sample may change the fitted line.',
-  experimentId: 'generated-a', prediction: { choice: 'increase' },
+  createdAt: '2026-08-26T00:00:00.000Z', experimentId: 'generated-a', threadId: 'thread-1', prediction: { choice: 'increase' },
 });
 const hypothesisState = normalizeHypothesisState({ hypotheses: [learnerHypothesis] });
 assert.equal(hypothesisState.hypotheses[0].status, 'proposed', 'hypothesis remains learner-proposed');
 assert.equal(hypothesisState.hypotheses[0].prediction.choice, 'increase', 'prediction stays separate from the machine model');
+assert.equal(hypothesisState.hypotheses[0].createdAt, '2026-08-26T00:00:00.000Z');
+assert.equal(hypothesisState.hypotheses[0].experimentId, 'generated-a');
+assert.equal(hypothesisState.hypotheses[0].threadId, 'thread-1');
 const hypothesisJourney = deriveLumiJourneyProjection({ hypotheses: hypothesisState.hypotheses });
 assert.equal(hypothesisJourney.events[0].type, LUMI_JOURNEY_EVENT_TYPES.PREDICT, 'learner hypothesis enters the Journey as prediction');
+const revisedHypothesisState = setHypothesisStatus(hypothesisState, { hypothesisId: 'hypothesis-1', status: HYPOTHESIS_STATUSES.REVISED });
+assert.equal(revisedHypothesisState.hypotheses[0].status, HYPOTHESIS_STATUSES.REVISED, 'revision is an explicit learner action');
+assert.ok(deriveLumiJourneyProjection({ hypotheses: revisedHypothesisState.hypotheses }).events.some((event) => event.type === LUMI_JOURNEY_EVENT_TYPES.REVISE), 'revised hypothesis enters the Journey as revision');
 
 const host = createPlaygroundHost({ getDataset: () => null });
 await host.open({ playgroundId: 'linear-regression', seed: 11 });

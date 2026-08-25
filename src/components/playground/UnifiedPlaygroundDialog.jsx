@@ -235,9 +235,18 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     }));
   };
 
-  const createLearnerHypothesis = ({ statement, linkedConceptIds = [] } = {}) => {
+  const createLearnerHypothesis = ({ statement, linkedConceptIds = [], prediction = null } = {}) => {
     const id = `hypothesis-${sessionSequenceRef.current}-${hypothesisSession.hypotheses.length + 1}`;
-    const hypothesis = createHypothesis({ id, statement, linkedConceptIds, createdFrom: 'learner' });
+    const hypothesis = createHypothesis({
+      id,
+      statement,
+      linkedConceptIds,
+      prediction,
+      createdAt: new Date().toISOString(),
+      experimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,
+      threadId: snapshot?.activeExplorationThread?.id,
+      createdFrom: 'learner',
+    });
     if (hypothesis) setHypothesisSession((current) => appendHypothesis(current, hypothesis));
     return hypothesis;
   };

@@ -153,7 +153,7 @@ export function deriveLumiJourneyProjection({
     const order = (events.length + index + 1) * 10 + 3;
     const predict = createJourneyEvent(LUMI_JOURNEY_EVENT_TYPES.PREDICT, { hypothesisId }, { timestamp: 0, sourceSequence: index + 1, order });
     if (predict) journeyEvents.push(predict);
-    if (hypothesis.status === 'supported' || hypothesis.status === 'rejected') {
+    if (hypothesis.status === 'supported' || hypothesis.status === 'rejected' || hypothesis.status === 'revised') {
       const revise = createJourneyEvent(LUMI_JOURNEY_EVENT_TYPES.REVISE, { hypothesisId }, { timestamp: 0, sourceSequence: index + 1, order: order + 1 });
       if (revise) journeyEvents.push(revise);
     }

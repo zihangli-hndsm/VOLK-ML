@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { getInquiryConcept } from '../../core/exploration/learnerInquiry.js';
 import { getEvidenceInstance } from '../../core/exploration/evidenceProvenance.js';
-import { HYPOTHESIS_STATUSES } from '../../core/exploration/hypothesis.js';
+import { HYPOTHESIS_PREDICTION_CHOICES, HYPOTHESIS_STATUSES } from '../../core/exploration/hypothesis.js';
 import Lumi from './Lumi.jsx';
 
 function conceptTitle(id, t) {
@@ -24,6 +24,7 @@ function statusClass(status) {
   if (status === HYPOTHESIS_STATUSES.TESTING) return 'hypothesis-status-testing';
   if (status === HYPOTHESIS_STATUSES.SUPPORTED) return 'hypothesis-status-supported';
   if (status === HYPOTHESIS_STATUSES.REJECTED) return 'hypothesis-status-rejected';
+  if (status === HYPOTHESIS_STATUSES.REVISED) return 'hypothesis-status-revised';
   return 'hypothesis-status-proposed';
 }
 
@@ -43,6 +44,17 @@ function HypothesisCard({ hypothesis, evidenceInstances, selected, t, onSelect, 
         <div className="flex flex-wrap gap-1">{hypothesis.linkedConceptIds.map((id) => <span key={id} className="rounded-full border border-purple-200 bg-purple-50 px-2 py-1 text-[11px] font-bold text-purple-900">{conceptTitle(id, t)}</span>)}</div>
       </div>}
       <div>
+        {hypothesis.prediction?.choice && <div className="rounded-lg border border-orange-100 bg-orange-50 px-2 py-2 text-xs text-orange-950">
+          <span className="font-black">{t('playground.hypothesis.predictionLabel')}: </span>
+          {t(`playground.hypothesis.predictionChoice.${hypothesis.prediction.choice}`)}
+        </div>}
+        {(hypothesis.experimentId || hypothesis.threadId) && <p className="mt-2 text-[10px] text-slate-500">
+          {hypothesis.experimentId && t('playground.hypothesis.lineageExperiment', { experiment: hypothesis.experimentId })}
+          {hypothesis.experimentId && hypothesis.threadId ? ' · ' : ''}
+          {hypothesis.threadId && t('playground.hypothesis.lineageThread', { thread: hypothesis.threadId })}
+        </p>}
+      </div>
+      <div>
         <p className="hypothesis-section-label">{t('playground.hypothesis.evidence')}</p>
         {hypothesis.evidenceIds.length > 0
           ? <ul className="space-y-1 text-xs text-slate-700">{hypothesis.evidenceIds.map((id) => {
@@ -59,6 +71,7 @@ function HypothesisCard({ hypothesis, evidenceInstances, selected, t, onSelect, 
           <button type="button" onClick={() => onSetStatus?.(hypothesis.id, HYPOTHESIS_STATUSES.SUPPORTED)} className="hypothesis-action hypothesis-action-cyan">{t('playground.hypothesis.markSupported')}</button>
           <button type="button" onClick={() => onSetStatus?.(hypothesis.id, HYPOTHESIS_STATUSES.REJECTED)} className="hypothesis-action hypothesis-action-neutral">{t('playground.hypothesis.markRejected')}</button>
         </>}
+        {(hypothesis.status === HYPOTHESIS_STATUSES.TESTING || hypothesis.status === HYPOTHESIS_STATUSES.SUPPORTED || hypothesis.status === HYPOTHESIS_STATUSES.REJECTED) && <button type="button" onClick={() => onSetStatus?.(hypothesis.id, HYPOTHESIS_STATUSES.REVISED)} className="hypothesis-action hypothesis-action-primary">{t('playground.hypothesis.markRevised')}</button>}
       </div>
     </div>
   </article>;
@@ -66,14 +79,18 @@ function HypothesisCard({ hypothesis, evidenceInstances, selected, t, onSelect, 
 
 export default function HypothesisPanel({ attention, graph, evidenceInstances = [], hypotheses = [], compact = false, t, onCreate, onSetStatus, onAttachEvidence, onOpenEvidence, onOpenExperiment, onSelectHypothesis }) {
   const [statement, setStatement] = useState('');
+  const [predictionChoice, setPredictionChoice] = useState(null);
   const [pickerHypothesisId, setPickerHypothesisId] = useState(null);
   const [selectedEvidenceIds, setSelectedEvidenceIds] = useState([]);
   const prompt = attention?.hypothesisPrompt;
   const availableEvidence = evidenceInstances.filter((instance) => instance.available);
   if (!prompt && hypotheses.length === 0) return null;
   const create = () => {
-    const created = onCreate?.({ statement, linkedConceptIds: [prompt?.conceptId].filter(Boolean) });
-    if (created) setStatement('');
+    const created = onCreate?.({ statement, prediction: predictionChoice ? { choice: predictionChoice } : null, linkedConceptIds: [prompt?.conceptId].filter(Boolean) });
+    if (created) {
+      setStatement('');
+      setPredictionChoice(null);
+    }
   };
   const openPicker = (hypothesisId) => {
     setPickerHypothesisId(hypothesisId);
@@ -100,6 +117,12 @@ export default function HypothesisPanel({ attention, graph, evidenceInstances = 
       <p className="text-xs font-bold text-purple-950">{t('playground.hypothesis.prompt')}</p>
       <label className="mt-2 block text-[11px] font-black text-slate-700" htmlFor="hypothesis-statement">{t('playground.hypothesis.statementLabel')}</label>
       <textarea id="hypothesis-statement" value={statement} maxLength={240} onChange={(event) => setStatement(event.target.value)} placeholder={t('playground.hypothesis.statementPlaceholder')} className="mt-1 min-h-20 w-full resize-y rounded-xl border border-purple-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none focus:border-purple-500 focus:ring-2 focus:ring-purple-200" />
+      <fieldset className="mt-3">
+        <legend className="text-[11px] font-black text-slate-700">{t('playground.hypothesis.predictionPrompt')}</legend>
+        <div className="mt-1 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          {HYPOTHESIS_PREDICTION_CHOICES.map((choice) => <button key={choice} type="button" aria-pressed={predictionChoice === choice} onClick={() => setPredictionChoice((current) => current === choice ? null : choice)} className={`rounded-lg border px-2 py-2 text-[11px] font-black transition ${predictionChoice === choice ? 'border-orange-500 bg-orange-100 text-orange-950' : 'border-orange-200 bg-white text-slate-700 hover:border-orange-400'}`}>{t(`playground.hypothesis.predictionChoice.${choice}`)}</button>)}
+        </div>
+      </fieldset>
       <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
         <span className="text-[11px] text-purple-800">{t('playground.hypothesis.linkedConceptHint', { concept: conceptTitle(prompt.conceptId, t) })}</span>
         <button type="button" disabled={!statement.trim()} onClick={create} className="rounded-xl bg-purple-700 px-3 py-2 text-xs font-black text-white hover:bg-purple-800 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:cursor-not-allowed disabled:opacity-50">{t('playground.hypothesis.create')}</button>
