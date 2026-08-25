@@ -2,6 +2,8 @@
 // objects. This module never creates events, mutates runtime state, or infers
 // mastery; it only projects bounded targets from the current snapshot.
 
+import { deriveEvidenceInstances } from '../exploration/evidenceProvenance.js';
+
 export const LUMI_TARGET_TYPES = Object.freeze({
   EVIDENCE: 'evidence',
   CONCEPT: 'concept',
@@ -38,18 +40,19 @@ export function lumiTargetEquals(left, right) {
   return lumiTargetKey(left) === lumiTargetKey(right);
 }
 
-function firstLinkedObservation(snapshot, candidate) {
-  const observations = snapshot?.observations ?? [];
+function firstLinkedEvidenceInstance(snapshot, candidate) {
+  const instances = deriveEvidenceInstances({ semanticEvents: snapshot?.semanticEvents })
+    .filter((instance) => instance.available);
   const linked = (candidate?.supportingObservationIds ?? [])
     .map((value) => String(value))
-    .map((value) => observations.find((observation) => String(observation?.id ?? '') === value || String(observation?.reasonCode ?? '') === value))
+    .map((value) => instances.find((instance) => instance.reasonCode === value))
     .find(Boolean);
-  return linked?.id ?? observations[0]?.id ?? null;
+  return linked?.id ?? instances.at(-1)?.id ?? null;
 }
 
 export function deriveLumiInteraction({ snapshot, intervention = null, activeConceptId = null } = {}) {
   const candidate = snapshot?.learnerInquiry?.candidates?.[0] ?? null;
-  const evidenceTarget = createLumiTarget(LUMI_TARGET_TYPES.EVIDENCE, firstLinkedObservation(snapshot, candidate));
+  const evidenceTarget = createLumiTarget(LUMI_TARGET_TYPES.EVIDENCE, firstLinkedEvidenceInstance(snapshot, candidate));
   const conceptTarget = createLumiTarget(LUMI_TARGET_TYPES.CONCEPT, activeConceptId ?? candidate?.conceptId);
   const experimentTarget = createLumiTarget(
     LUMI_TARGET_TYPES.EXPERIMENT,

@@ -401,11 +401,13 @@ resets when that session closes. It is visible in normal snapshots and the
 Agent inspection context for future deterministic inquiry derivation, while
 the detailed existing `recentWorldActions` contract remains unchanged.
 Observation events use a lifecycle identity of detector ID, relevant Experiment
-IDs, and relevant observable references. The store records appearance once,
-suppresses persistent detector output (including insignificant evidence-value
-changes), clears active identity when the notice disappears, and records a new
-event if the same observation later reappears. It does not expose a separate
-cleared-event type in Goal 1.
+IDs, relevant observable references, and the canonical session condition
+fingerprint. The store records appearance once, suppresses persistent detector
+output (including insignificant evidence-value changes), clears active identity
+when the notice disappears, and records a new event when the same detector is
+observed under a different experimental condition or later reappears. It does
+not expose a separate cleared-event type in Goal 1. Raw Evidence values are
+never part of the dedupe key.
 
 An injected store-shaped seam (`reset`, `append`, `snapshot`) supports a later
 layered persistence provider without adding cloud, account, project-format, or
@@ -529,3 +531,23 @@ illumination, and session Hypothesis links. `selectedConceptId` is normalized
 after membership is derived. A stale or otherwise absent selection becomes
 `null` and cannot reintroduce a registry Concept, create neighbors, or change
 semantic state.
+
+### Phase 11B — Evidence provenance and Hypothesis binding
+
+`src/core/exploration/evidenceProvenance.js` adds a bounded, session-local
+Evidence instance projection beside the canonical Semantic Event stream.
+Detector `reasonCode` values remain repeatable categories, never historical
+Evidence identities. Each instance receives a stable session ID and retains
+only bounded `experimentIds`, a condition fingerprint, semantic sequence,
+observation time, detector metadata, and a bounded evidence snapshot. The
+projection is reset with the event store and is not persisted, included in
+World/Experiment fingerprints, or exposed as Agent authority.
+
+Hypotheses accept only these stable instance IDs. Evidence binding is an
+explicit learner selection through the Evidence Picker; attaching evidence
+does not change Hypothesis status. Concept Map and LUMI resolve historical
+instances directly: missing or stale IDs render as unavailable and are never
+replaced by a current notice with the same reason code. LUMI may focus an
+available instance and invite attention, but cannot select, attach, or infer
+status. The canonical Semantic Event payload remains free of raw evidence
+values.

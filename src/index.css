@@ -147,6 +147,10 @@
 .hypothesis-action-primary { background: var(--volk-concept-unexplored); color: white; }
 .hypothesis-action-cyan { border: 1px solid color-mix(in srgb, var(--volk-observation) 35%, white); background: color-mix(in srgb, var(--volk-observation) 8%, white); color: color-mix(in srgb, var(--volk-observation) 75%, black); }
 .hypothesis-action-neutral { border: 1px solid color-mix(in srgb, var(--volk-structure) 22%, white); background: white; color: var(--volk-text-secondary); }
+.hypothesis-evidence-picker { min-width: 0; overflow: hidden; }
+.hypothesis-evidence-picker legend { max-width: 100%; overflow-wrap: anywhere; }
+.hypothesis-evidence-picker label { min-width: 0; }
+.hypothesis-evidence-provenance { min-width: 0; overflow-wrap: anywhere; }
 
 @media (max-width: 640px) {
   .lumi-journey-timeline { padding: .7rem; }

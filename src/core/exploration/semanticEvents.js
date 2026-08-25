@@ -3,6 +3,8 @@
 // deterministic inquiry work. Runtime actions remain authoritative.
 import { canonicalExperimentalControl } from './comparison.js';
 import { deriveWorldSemanticFactors } from './worldSemanticFactors.js';
+import { conditionFingerprintForSession } from './observables.js';
+import { createEvidenceInstance, MAX_EVIDENCE_INSTANCES } from './evidenceProvenance.js';
 export const SEMANTIC_EVENT_VERSION = 1;
 export const SEMANTIC_EVENT_LOG_VERSION = 1;
 export const MAX_SEMANTIC_EVENTS = 100;
@@ -32,6 +34,15 @@ function boundedStrings(values, max = MAX_EVENT_STRINGS) {
     .map((value) => boundedString(value))
     .filter(Boolean))]
     .slice(0, max);
+}
+
+function hashFingerprint(value) {
+  let hash = 2166136261;
+  for (const character of String(value ?? '')) {
+    hash ^= character.charCodeAt(0);
+    hash = Math.imul(hash, 16777619);
+  }
+  return `condition-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 }
 
 function actorFor(action) {
@@ -200,29 +211,57 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
-export function observationDedupeKey(notice) {
+export function observationDedupeKey(notice, conditionFingerprint = null) {
   return stableJson({
     id: boundedString(notice?.id),
     // Detector output order is incidental. The pedagogical identity is the
     // same set of related experiments/observables, independent of ordering.
     relatedExperimentIds: boundedStrings(notice?.relatedExperimentIds).sort(),
     relatedObservableIds: boundedStrings(notice?.relatedObservableIds).sort(),
+    // Detector values may fluctuate during rendering. A new occurrence is
+    // created only when the semantic experimental condition changes.
+    conditionFingerprint: boundedString(conditionFingerprint, MAX_EVENT_STRING_LENGTH),
   });
+}
+
+function observationConditionFingerprint(after, notice) {
+  const comparison = after?.experimentWorkspace?.comparison;
+  return hashFingerprint(JSON.stringify({
+    sessionCondition: conditionFingerprintForSession({
+      world: after?.world,
+      adapterId: after?.model?.adapterId ?? after?.experiment?.model?.adapterId,
+      experiment: after?.experiment,
+    }),
+    activeExperimentId: activeExperimentId(after),
+    relatedExperimentIds: boundedStrings(notice?.relatedExperimentIds, 4).sort(),
+    comparison: comparison?.enabled ? {
+      againstExperimentId: boundedString(comparison.againstExperimentId),
+      clarity: boundedString(comparison.diff?.clarity),
+      semanticChangedPaths: boundedStrings(comparison.diff?.semanticChangedPaths ?? comparison.diff?.changed),
+    } : null,
+  }));
 }
 
 function observationEvents(after, action) {
   return (after?.observations ?? [])
     .filter((notice) => boundedString(notice?.id))
-    .map((notice) => ({
-      type: 'observation.detected',
-      actor: actorFor(action),
-      experimentIds: boundedStrings(notice.relatedExperimentIds),
-      semanticFactors: [],
-      operationTypes: [],
-      reasonCode: boundedString(notice.id),
-      evidenceRefs: boundedStrings(notice.relatedObservableIds),
-      observationDedupeKey: observationDedupeKey(notice),
-    }));
+    .map((notice) => {
+      const conditionFingerprint = observationConditionFingerprint(after, notice);
+      return {
+        type: 'observation.detected',
+        actor: actorFor(action),
+        experimentIds: boundedStrings([...(notice.relatedExperimentIds ?? []), activeExperimentId(after)], 4),
+        semanticFactors: [],
+        operationTypes: [],
+        reasonCode: boundedString(notice.id),
+        evidenceRefs: boundedStrings(notice.relatedObservableIds),
+        observationDedupeKey: observationDedupeKey(notice, conditionFingerprint),
+        conditionFingerprint,
+        messageKey: boundedString(notice.messageKey),
+        severity: boundedString(notice.severity),
+        evidence: notice.evidence,
+      };
+    });
 }
 
 function executionEvents(before, after, action, controlDescriptors, beforeWorldHistory) {
@@ -321,6 +360,7 @@ export function createSemanticEventStore({ limit = MAX_SEMANTIC_EVENTS, now = ()
   const normalizedLimit = Number.isInteger(limit) && limit > 0 ? Math.min(limit, MAX_SEMANTIC_EVENTS) : MAX_SEMANTIC_EVENTS;
   let sequence = 0;
   let events = [];
+  let evidenceInstances = [];
   let activeObservationKeys = [];
   let aggregates = {
     version: SEMANTIC_EVENT_AGGREGATE_VERSION,
@@ -336,6 +376,7 @@ export function createSemanticEventStore({ limit = MAX_SEMANTIC_EVENTS, now = ()
     reset() {
       sequence = 0;
       events = [];
+      evidenceInstances = [];
       activeObservationKeys = [];
       aggregates = {
         version: SEMANTIC_EVENT_AGGREGATE_VERSION,
@@ -360,6 +401,10 @@ export function createSemanticEventStore({ limit = MAX_SEMANTIC_EVENTS, now = ()
         const event = canonicalEvent(draft, { sequence: sequence + 1, occurredAt: now() });
         sequence += 1;
         events = [...events, event].slice(-normalizedLimit);
+        if (event.type === 'observation.detected') {
+          const evidenceInstance = createEvidenceInstance({ event, draft });
+          if (evidenceInstance) evidenceInstances = [...evidenceInstances, evidenceInstance].slice(-Math.min(normalizedLimit, MAX_EVIDENCE_INSTANCES));
+        }
         if (event.actor === 'human') {
           if (!aggregates.firstMeaningfulAt && ['world.intervened', 'experiment.factor-changed'].includes(event.type)) {
             aggregates.firstMeaningfulAt = event.occurredAt;
@@ -383,6 +428,7 @@ export function createSemanticEventStore({ limit = MAX_SEMANTIC_EVENTS, now = ()
       return {
         version: SEMANTIC_EVENT_LOG_VERSION,
         events: structuredClone(events),
+        evidenceInstances: structuredClone(evidenceInstances),
         aggregates: structuredClone(aggregates),
       };
     },

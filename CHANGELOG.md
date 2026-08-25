@@ -799,3 +799,17 @@
 - Removed local `selectedConceptId` from graph membership derivation; stale or absent selections now normalize to `null` after semantic membership is known and cannot create ghost nodes or expand the graph.
 - Added centralized relation-direction metadata, focused regressions for undirected/directed presentation and stale selection, plus updated Concept Graph architecture notes.
 - Acceptance: focused Concept Graph checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.
+
+## 2026-08-25 — Phase 11B Evidence provenance and Hypothesis binding hardening
+
+- Added bounded session-local Evidence instance provenance with stable IDs, Experiment references, condition fingerprints, semantic sequence, timestamps, and bounded snapshots; detector reason codes remain repeatable categories rather than historical identities.
+- Replaced implicit current-observation attachment with an explicit Evidence Picker; Hypotheses accept only stable instance IDs, preserve learner-authored status, and show missing historical references as unavailable.
+- Updated Concept Map and LUMI to resolve historical Evidence instances without rewriting references or adding runtime/Agent authority; added bilingual picker copy, narrow-screen styling, architecture notes, and focused provenance regressions.
+- Acceptance: focused semantic, Hypothesis, LUMI, and provenance checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.
+
+## 2026-08-25 — PR #127 acceptance correction: condition-aware Evidence deduplication
+
+- Updated production Observation occurrence identity to include the existing canonical session condition fingerprint, preserving same-condition deduplication while creating a new historical Evidence instance for the same detector under a changed condition.
+- Extended the provenance regression through `deriveSemanticEventDrafts()` to cover same-condition repeats, condition changes, detector disappearance/reappearance, and historical Hypothesis binding; raw Evidence values remain excluded from dedupe identity.
+- Updated the Exploration Semantics architecture note; World, Experiment, Hypothesis status, Evidence Picker, LUMI, Agent, persistence, and causal-graph boundaries remain unchanged.
+- Acceptance: focused semantic/provenance/Hypothesis/Concept Graph checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.
