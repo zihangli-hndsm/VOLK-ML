@@ -121,6 +121,7 @@
 .concept-map-edge-highlighted { border-color: color-mix(in srgb, var(--volk-observation) 42%, white); background: color-mix(in srgb, var(--volk-observation) 6%, white); }
 .concept-map-edge-node { min-width: 0; overflow: hidden; color: var(--volk-text-primary); font-size: .7rem; font-weight: 900; text-align: left; text-overflow: ellipsis; white-space: nowrap; }
 .concept-map-edge-arrow { color: var(--volk-structure); font-weight: 900; }
+.concept-map-edge-symmetric { color: var(--volk-structure); font-weight: 900; }
 .concept-map-edge-relation { position: absolute; right: .55rem; bottom: .25rem; color: var(--volk-text-secondary); font-size: .58rem; font-weight: 800; }
 .concept-map-experiment { display: flex; align-items: center; gap: .45rem; margin-top: .85rem; border-radius: .75rem; padding: .5rem .65rem; background: color-mix(in srgb, var(--volk-intervention) 9%, white); color: color-mix(in srgb, var(--volk-intervention) 70%, black); font-size: .7rem; font-weight: 900; }
 .concept-map-experiment-dot { width: .55rem; height: .55rem; flex: 0 0 auto; border-radius: 999px; background: var(--volk-intervention); }

@@ -793,3 +793,9 @@
 - Added a LUMI Evidence–Concept prompt that opens a learner-authored composer; LUMI never creates hypotheses, generates causal arrows, assigns confidence, or claims truth.
 - Added bilingual copy, responsive styling, architecture documentation, and focused hypothesis boundary checks.
 - Acceptance: focused Hypothesis checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.
+## 2026-08-25 — Concept Graph truth-boundary hardening
+
+- Corrected Concept Map relation presentation: `related` and `observed_with` now use symmetric connectors, while `prerequisite` and future explicit `caused_by` relations remain directional.
+- Removed local `selectedConceptId` from graph membership derivation; stale or absent selections now normalize to `null` after semantic membership is known and cannot create ghost nodes or expand the graph.
+- Added centralized relation-direction metadata, focused regressions for undirected/directed presentation and stale selection, plus updated Concept Graph architecture notes.
+- Acceptance: focused Concept Graph checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.

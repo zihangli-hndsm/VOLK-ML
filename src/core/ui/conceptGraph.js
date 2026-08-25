@@ -27,6 +27,21 @@ export const HYPOTHESIS_GRAPH_RELATIONS = Object.freeze({
   EVIDENCE_LINK: 'hypothesis_evidence',
 });
 
+export function conceptGraphRelationSemantics(relation) {
+  switch (relation) {
+    case CONCEPT_GRAPH_RELATIONS.PREREQUISITE:
+      return Object.freeze({ directed: true, sourceMeaning: 'prerequisite' });
+    case CONCEPT_GRAPH_RELATIONS.CAUSED_BY:
+      return Object.freeze({ directed: true, sourceMeaning: 'caused_by' });
+    case CONCEPT_GRAPH_RELATIONS.RELATED:
+      return Object.freeze({ directed: false, sourceMeaning: 'related' });
+    case CONCEPT_GRAPH_RELATIONS.OBSERVED_WITH:
+      return Object.freeze({ directed: false, sourceMeaning: 'observed_with' });
+    default:
+      return Object.freeze({ directed: false, sourceMeaning: null });
+  }
+}
+
 const VALID_STATES = new Set(Object.values(CONCEPT_GRAPH_STATES));
 const VALID_RELATIONS = new Set(Object.values(CONCEPT_GRAPH_RELATIONS));
 const MAX_ID_LENGTH = 160;
@@ -73,10 +88,9 @@ function normalizedJourneyEvents(journey) {
   return Array.isArray(journey?.events) ? journey.events.filter((event) => event && typeof event === 'object') : [];
 }
 
-function deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, selectedConceptId, hypotheses }) {
+function deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, hypotheses }) {
   const ids = new Set();
   addConceptId(ids, activeConceptId);
-  addConceptId(ids, selectedConceptId);
   safeIds(illuminatedConceptIds).forEach((id) => addConceptId(ids, id));
   (inquiry?.candidates ?? []).forEach((candidate) => addConceptId(ids, candidate?.conceptId));
   normalizedJourneyEvents(journey).forEach((event) => addConceptId(ids, event?.conceptId));
@@ -167,13 +181,14 @@ export function deriveConceptGraph({
   selectedHypothesisId = null,
 } = {}) {
   const hypothesisState = normalizeHypothesisState({ version: 1, hypotheses });
-  const conceptIds = deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, selectedConceptId, hypotheses: hypothesisState.hypotheses });
+  const conceptIds = deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, hypotheses: hypothesisState.hypotheses });
   const illuminated = new Set(safeIds(illuminatedConceptIds));
   const currentConceptId = deriveCurrentConceptId(journey, activeConceptId);
   const pathConceptIds = derivePathConceptIds(journey);
   const connectedConceptIds = new Set(safeIds(journey?.connectedConceptIds));
   const candidateIds = new Set((inquiry?.candidates ?? []).map((candidate) => conceptId(candidate?.conceptId)).filter(Boolean));
-  const selected = conceptId(selectedConceptId);
+  const requestedSelection = conceptId(selectedConceptId);
+  const selected = requestedSelection && conceptIds.includes(requestedSelection) ? requestedSelection : null;
   const nodes = conceptIds.map((id) => {
     const state = illuminated.has(id)
       ? CONCEPT_GRAPH_STATES.ILLUMINATED

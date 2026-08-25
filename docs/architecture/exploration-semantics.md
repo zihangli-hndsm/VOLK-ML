@@ -514,3 +514,18 @@ object. The local state is cleared with the exploration session and is not
 included in World, Experiment, Evidence, Undo/Redo, project JSON, Agent
 authority, or Journey source events; Journey and Concept Map merely project it
 alongside the existing path.
+
+### Concept Graph truth-boundary hardening
+
+`conceptGraphRelationSemantics()` is the single presentation contract for
+relationship direction. `prerequisite` and any future explicit `caused_by`
+source remain directed; `related` and `observed_with` are rendered with a
+symmetric connector. Deterministic `from`/`to` ordering may still be used for
+deduplication, but it has no semantic direction for undirected relations.
+
+Concept Graph membership is derived only from semantic seeds and registered
+relationship expansion: Inquiry, Journey, active Concept, explicit
+illumination, and session Hypothesis links. `selectedConceptId` is normalized
+after membership is derived. A stale or otherwise absent selection becomes
+`null` and cannot reintroduce a registry Concept, create neighbors, or change
+semantic state.

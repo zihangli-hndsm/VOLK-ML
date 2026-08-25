@@ -912,6 +912,18 @@ and green remains exclusive to an explicitly illuminated Concept. No numerical
 confidence or causal arrow is shown, and the state is reset when the unified
 Playground session resets or closes.
 
+### Concept Graph truth-boundary hardening
+
+Concept Map edge presentation follows the relation metadata exported by
+`src/core/ui/conceptGraph.js`: prerequisite edges retain an arrow, while
+related and observed-with edges use a symmetric connector. Internal ordering
+is retained only for deterministic identity and deduplication.
+
+The local Concept Map selection is focus only. `deriveConceptGraph()` first
+derives membership from semantic inputs and only then accepts a requested
+selection if its ID is already present. Stale selections therefore clear
+without creating ghost nodes, neighbors, or Evidence focus.
+
 ## LUMI semantic presentation layer
 
 `src/core/ui/lumiSemantics.js` and `src/components/playground/Lumi.jsx` provide

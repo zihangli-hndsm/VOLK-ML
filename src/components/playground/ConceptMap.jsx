@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { getInquiryConcept } from '../../core/exploration/learnerInquiry.js';
-import { CONCEPT_GRAPH_RELATIONS, CONCEPT_GRAPH_STATES } from '../../core/ui/conceptGraph.js';
+import { conceptGraphRelationSemantics, CONCEPT_GRAPH_RELATIONS, CONCEPT_GRAPH_STATES } from '../../core/ui/conceptGraph.js';
 import { HYPOTHESIS_STATUSES } from '../../core/exploration/hypothesis.js';
 import Lumi from './Lumi.jsx';
 
@@ -96,9 +96,10 @@ function MapBody({ graph, snapshot, t, onSelectConcept, onSelectHypothesis }) {
         <div role="list" className="concept-map-edge-list">
           {edges.map((edge) => {
             const highlighted = graph.highlightedConceptIds?.includes(edge.from) && graph.highlightedConceptIds?.includes(edge.to);
+            const relationSemantics = conceptGraphRelationSemantics(edge.relation);
             return <div key={`${edge.from}:${edge.to}:${edge.relation}`} role="listitem" data-concept-map-edge={edge.relation} className={`concept-map-edge ${highlighted ? 'concept-map-edge-highlighted' : ''}`}>
               <button type="button" onClick={() => onSelectConcept?.(edge.from)} className="concept-map-edge-node focus:outline-none focus:ring-2 focus:ring-cyan-500">{conceptTitle(edge.from, t)}</button>
-              <span className="concept-map-edge-arrow" aria-hidden="true">→</span>
+              <span data-concept-map-edge-direction={relationSemantics.directed ? 'directed' : 'undirected'} className={relationSemantics.directed ? 'concept-map-edge-arrow' : 'concept-map-edge-symmetric'} aria-hidden="true">{relationSemantics.directed ? '→' : '—'}</span>
               <button type="button" onClick={() => onSelectConcept?.(edge.to)} className="concept-map-edge-node focus:outline-none focus:ring-2 focus:ring-cyan-500">{conceptTitle(edge.to, t)}</button>
               <span className="concept-map-edge-relation">{relationKey[edge.relation] ? t(relationKey[edge.relation]) : edge.relation}</span>
             </div>;
