@@ -401,11 +401,13 @@ resets when that session closes. It is visible in normal snapshots and the
 Agent inspection context for future deterministic inquiry derivation, while
 the detailed existing `recentWorldActions` contract remains unchanged.
 Observation events use a lifecycle identity of detector ID, relevant Experiment
-IDs, and relevant observable references. The store records appearance once,
-suppresses persistent detector output (including insignificant evidence-value
-changes), clears active identity when the notice disappears, and records a new
-event if the same observation later reappears. It does not expose a separate
-cleared-event type in Goal 1.
+IDs, relevant observable references, and the canonical session condition
+fingerprint. The store records appearance once, suppresses persistent detector
+output (including insignificant evidence-value changes), clears active identity
+when the notice disappears, and records a new event when the same detector is
+observed under a different experimental condition or later reappears. It does
+not expose a separate cleared-event type in Goal 1. Raw Evidence values are
+never part of the dedupe key.
 
 An injected store-shaped seam (`reset`, `append`, `snapshot`) supports a later
 layered persistence provider without adding cloud, account, project-format, or

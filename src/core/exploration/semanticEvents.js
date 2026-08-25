@@ -211,13 +211,16 @@ function stableJson(value) {
   return JSON.stringify(value);
 }
 
-export function observationDedupeKey(notice) {
+export function observationDedupeKey(notice, conditionFingerprint = null) {
   return stableJson({
     id: boundedString(notice?.id),
     // Detector output order is incidental. The pedagogical identity is the
     // same set of related experiments/observables, independent of ordering.
     relatedExperimentIds: boundedStrings(notice?.relatedExperimentIds).sort(),
     relatedObservableIds: boundedStrings(notice?.relatedObservableIds).sort(),
+    // Detector values may fluctuate during rendering. A new occurrence is
+    // created only when the semantic experimental condition changes.
+    conditionFingerprint: boundedString(conditionFingerprint, MAX_EVENT_STRING_LENGTH),
   });
 }
 
@@ -242,20 +245,23 @@ function observationConditionFingerprint(after, notice) {
 function observationEvents(after, action) {
   return (after?.observations ?? [])
     .filter((notice) => boundedString(notice?.id))
-    .map((notice) => ({
-      type: 'observation.detected',
-      actor: actorFor(action),
-      experimentIds: boundedStrings([...(notice.relatedExperimentIds ?? []), activeExperimentId(after)], 4),
-      semanticFactors: [],
-      operationTypes: [],
-      reasonCode: boundedString(notice.id),
-      evidenceRefs: boundedStrings(notice.relatedObservableIds),
-      observationDedupeKey: observationDedupeKey(notice),
-      conditionFingerprint: observationConditionFingerprint(after, notice),
-      messageKey: boundedString(notice.messageKey),
-      severity: boundedString(notice.severity),
-      evidence: notice.evidence,
-    }));
+    .map((notice) => {
+      const conditionFingerprint = observationConditionFingerprint(after, notice);
+      return {
+        type: 'observation.detected',
+        actor: actorFor(action),
+        experimentIds: boundedStrings([...(notice.relatedExperimentIds ?? []), activeExperimentId(after)], 4),
+        semanticFactors: [],
+        operationTypes: [],
+        reasonCode: boundedString(notice.id),
+        evidenceRefs: boundedStrings(notice.relatedObservableIds),
+        observationDedupeKey: observationDedupeKey(notice, conditionFingerprint),
+        conditionFingerprint,
+        messageKey: boundedString(notice.messageKey),
+        severity: boundedString(notice.severity),
+        evidence: notice.evidence,
+      };
+    });
 }
 
 function executionEvents(before, after, action, controlDescriptors, beforeWorldHistory) {
