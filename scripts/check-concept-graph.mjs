@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { deriveConceptGraph, CONCEPT_GRAPH_RELATIONS, CONCEPT_GRAPH_STATES, normalizeConceptGraph } from '../src/core/ui/conceptGraph.js';
+import { conceptGraphRelationSemantics, deriveConceptGraph, CONCEPT_GRAPH_RELATIONS, CONCEPT_GRAPH_STATES, normalizeConceptGraph } from '../src/core/ui/conceptGraph.js';
 
 const graphSource = fs.readFileSync('src/core/ui/conceptGraph.js', 'utf8');
 const mapSource = fs.readFileSync('src/components/playground/ConceptMap.jsx', 'utf8');
@@ -37,6 +37,14 @@ assert.deepEqual(active.edges[0], {
   to: 'train-test-distribution-shift',
   relation: CONCEPT_GRAPH_RELATIONS.RELATED,
 });
+assert.equal(conceptGraphRelationSemantics(CONCEPT_GRAPH_RELATIONS.RELATED).directed, false);
+assert.equal(conceptGraphRelationSemantics(CONCEPT_GRAPH_RELATIONS.RELATED).sourceMeaning, 'related');
+assert.equal(conceptGraphRelationSemantics(CONCEPT_GRAPH_RELATIONS.PREREQUISITE).directed, true);
+assert.equal(conceptGraphRelationSemantics(CONCEPT_GRAPH_RELATIONS.PREREQUISITE).sourceMeaning, 'prerequisite');
+assert.match(mapSource, /conceptGraphRelationSemantics/);
+assert.match(mapSource, /data-concept-map-edge-direction/);
+assert.match(mapSource, /relationSemantics\.directed \? '→' : '—'/);
+assert.doesNotMatch(mapSource, /RELATED[^\n]*→/);
 assert.equal(active.causalEdgeCount, 0);
 
 const connected = deriveConceptGraph({
@@ -61,6 +69,25 @@ assert.deepEqual(illuminated.frontierConceptIds, ['generalization']);
 const selectedNeighbor = deriveConceptGraph({ inquiry, journey, activeConceptId: 'distribution-shift', selectedConceptId: 'generalization' });
 assert.equal(selectedNeighbor.selectedConceptId, 'generalization');
 assert.deepEqual(selectedNeighbor.neighborConceptIds, ['train-test-distribution-shift']);
+
+const graphStateA = deriveConceptGraph({ activeConceptId: 'counterfactual-reasoning' });
+assert.deepEqual(graphStateA.nodes.map((node) => node.id), ['counterfactual-reasoning', 'controlled-comparison']);
+const staleSelection = deriveConceptGraph({ activeConceptId: 'stability', selectedConceptId: 'counterfactual-reasoning' });
+assert.deepEqual(staleSelection.nodes.map((node) => node.id), ['stability']);
+assert.equal(staleSelection.selectedConceptId, null);
+const absentSelection = deriveConceptGraph({ activeConceptId: 'generalization', selectedConceptId: 'counterfactual-reasoning' });
+assert.deepEqual(absentSelection.nodes.map((node) => node.id), ['generalization', 'train-test-distribution-shift']);
+assert.equal(absentSelection.selectedConceptId, null);
+assert.deepEqual(absentSelection.neighborConceptIds, []);
+assert.deepEqual(absentSelection.highlightedConceptIds, []);
+
+const prerequisiteGraph = deriveConceptGraph({ activeConceptId: 'counterfactual-reasoning' });
+assert.ok(prerequisiteGraph.edges.some((edge) => edge.from === 'controlled-comparison' && edge.to === 'counterfactual-reasoning' && edge.relation === CONCEPT_GRAPH_RELATIONS.PREREQUISITE));
+assert.deepEqual(prerequisiteGraph.edges.find((edge) => edge.relation === CONCEPT_GRAPH_RELATIONS.PREREQUISITE), {
+  from: 'controlled-comparison',
+  to: 'counterfactual-reasoning',
+  relation: CONCEPT_GRAPH_RELATIONS.PREREQUISITE,
+});
 
 const deterministic = deriveConceptGraph({ inquiry, journey, activeConceptId: 'distribution-shift' });
 assert.deepEqual(active, deterministic);

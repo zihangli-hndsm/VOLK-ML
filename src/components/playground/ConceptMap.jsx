@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { getInquiryConcept } from '../../core/exploration/learnerInquiry.js';
-import { CONCEPT_GRAPH_RELATIONS, CONCEPT_GRAPH_STATES } from '../../core/ui/conceptGraph.js';
+import { conceptGraphRelationSemantics, CONCEPT_GRAPH_RELATIONS, CONCEPT_GRAPH_STATES } from '../../core/ui/conceptGraph.js';
+import { HYPOTHESIS_STATUSES } from '../../core/exploration/hypothesis.js';
 import Lumi from './Lumi.jsx';
 
 const nodeStateClass = {
@@ -37,6 +38,13 @@ function nodeMode(node, graph) {
   return 'explore';
 }
 
+function hypothesisStatusClass(status) {
+  if (status === HYPOTHESIS_STATUSES.TESTING) return 'hypothesis-map-node-testing';
+  if (status === HYPOTHESIS_STATUSES.SUPPORTED) return 'hypothesis-map-node-supported';
+  if (status === HYPOTHESIS_STATUSES.REJECTED) return 'hypothesis-map-node-rejected';
+  return 'hypothesis-map-node-proposed';
+}
+
 function ConceptNode({ id, graph, t, onSelectConcept, role = 'listitem' }) {
   const node = graph?.nodes?.find((item) => item.id === id) ?? { id, state: CONCEPT_GRAPH_STATES.UNEXPLORED };
   const selected = graph?.selectedConceptId === id;
@@ -52,7 +60,7 @@ function ConceptNode({ id, graph, t, onSelectConcept, role = 'listitem' }) {
   </div>;
 }
 
-function MapBody({ graph, snapshot, t, onSelectConcept }) {
+function MapBody({ graph, snapshot, t, onSelectConcept, onSelectHypothesis }) {
   const nodes = graph?.nodes ?? [];
   const path = [...(graph?.pathConceptIds ?? [])];
   if (graph?.currentConceptId && !path.includes(graph.currentConceptId)) path.push(graph.currentConceptId);
@@ -60,9 +68,11 @@ function MapBody({ graph, snapshot, t, onSelectConcept }) {
   const evidenceIds = graph?.connectedEvidenceIds ?? [];
   const neighborIds = graph?.neighborConceptIds ?? [];
   const edges = graph?.edges ?? [];
+  const hypothesisNodes = graph?.hypothesisNodes ?? [];
+  const hypothesisEdges = graph?.hypothesisEdges ?? [];
   return <div className="concept-map-body">
-    {nodes.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500">{t('playground.conceptMap.empty')}</p>}
-    {nodes.length > 0 && <>
+    {nodes.length === 0 && hypothesisNodes.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500">{t('playground.conceptMap.empty')}</p>}
+    {(nodes.length > 0 || hypothesisNodes.length > 0) && <>
       <div className="concept-map-legend" aria-label={t('playground.conceptMap.legendLabel')}>
         {Object.values(CONCEPT_GRAPH_STATES).map((state) => <span key={state} className={`concept-map-legend-item ${nodeStateClass[state]}`}><span className="concept-map-legend-dot" aria-hidden="true" />{stateLabel(state, t)}</span>)}
       </div>
@@ -86,9 +96,10 @@ function MapBody({ graph, snapshot, t, onSelectConcept }) {
         <div role="list" className="concept-map-edge-list">
           {edges.map((edge) => {
             const highlighted = graph.highlightedConceptIds?.includes(edge.from) && graph.highlightedConceptIds?.includes(edge.to);
+            const relationSemantics = conceptGraphRelationSemantics(edge.relation);
             return <div key={`${edge.from}:${edge.to}:${edge.relation}`} role="listitem" data-concept-map-edge={edge.relation} className={`concept-map-edge ${highlighted ? 'concept-map-edge-highlighted' : ''}`}>
               <button type="button" onClick={() => onSelectConcept?.(edge.from)} className="concept-map-edge-node focus:outline-none focus:ring-2 focus:ring-cyan-500">{conceptTitle(edge.from, t)}</button>
-              <span className="concept-map-edge-arrow" aria-hidden="true">→</span>
+              <span data-concept-map-edge-direction={relationSemantics.directed ? 'directed' : 'undirected'} className={relationSemantics.directed ? 'concept-map-edge-arrow' : 'concept-map-edge-symmetric'} aria-hidden="true">{relationSemantics.directed ? '→' : '—'}</span>
               <button type="button" onClick={() => onSelectConcept?.(edge.to)} className="concept-map-edge-node focus:outline-none focus:ring-2 focus:ring-cyan-500">{conceptTitle(edge.to, t)}</button>
               <span className="concept-map-edge-relation">{relationKey[edge.relation] ? t(relationKey[edge.relation]) : edge.relation}</span>
             </div>;
@@ -111,11 +122,27 @@ function MapBody({ graph, snapshot, t, onSelectConcept }) {
         <span className="concept-map-experiment-dot" aria-hidden="true" />
         <span>{t('playground.conceptMap.experimentRelation', { control: graph.experimentRelation.controlKey || t('playground.lumi.target.experiment') })}</span>
       </div>}
+      {hypothesisNodes.length > 0 && <section className="concept-map-hypotheses" aria-label={t('playground.conceptMap.hypothesesLabel')}>
+        <p className="concept-map-section-label">{t('playground.conceptMap.hypothesesLabel')}</p>
+        <div className="concept-map-hypothesis-list" role="list">
+          {hypothesisNodes.map((hypothesis) => <button key={hypothesis.id} type="button" role="listitem" data-concept-map-hypothesis={hypothesis.id} aria-pressed={graph.selectedHypothesisId === hypothesis.id} onClick={() => onSelectHypothesis?.(hypothesis.id)} className={`concept-map-hypothesis ${hypothesisStatusClass(hypothesis.status)} ${graph.selectedHypothesisId === hypothesis.id ? 'concept-map-hypothesis-selected' : ''} focus:outline-none focus:ring-2 focus:ring-purple-500`}>
+            <span className="concept-map-hypothesis-title">{hypothesis.statement}</span>
+            <span className="concept-map-hypothesis-meta">{t(`playground.hypothesis.status.${hypothesis.status}`)}</span>
+          </button>)}
+        </div>
+        {hypothesisEdges.length > 0 && <div className="concept-map-hypothesis-links" role="list" aria-label={t('playground.conceptMap.hypothesisLinksLabel')}>
+          {hypothesisEdges.map((edge) => <div key={`${edge.from}:${edge.to}:${edge.relation}`} role="listitem" className="concept-map-hypothesis-link">
+            <span>{edge.relation === 'hypothesis_evidence' ? evidenceLabel(edge.to, snapshot, t) : conceptTitle(edge.from, t)}</span>
+            <span aria-hidden="true">→</span>
+            <span>{edge.relation === 'hypothesis_evidence' ? t('playground.conceptMap.evidenceLabel') : t('playground.conceptMap.hypothesisLabel')}</span>
+          </div>)}
+        </div>}
+      </section>}
     </>}
   </div>;
 }
 
-export default function ConceptMap({ graph, snapshot, compact = false, t, onSelectConcept }) {
+export default function ConceptMap({ graph, snapshot, compact = false, t, onSelectConcept, onSelectHypothesis }) {
   const detailsRef = useRef(null);
   const [open, setOpen] = useState(Boolean(graph?.selectedConceptId));
   useEffect(() => {
@@ -124,7 +151,7 @@ export default function ConceptMap({ graph, snapshot, compact = false, t, onSele
       if (detailsRef.current) detailsRef.current.open = true;
     }
   }, [graph?.selectedConceptId]);
-  const body = <MapBody graph={graph} snapshot={snapshot} t={t} onSelectConcept={onSelectConcept} />;
+  const body = <MapBody graph={graph} snapshot={snapshot} t={t} onSelectConcept={onSelectConcept} onSelectHypothesis={onSelectHypothesis} />;
   if (compact) return <details ref={detailsRef} open={open} onToggle={(event) => setOpen(event.currentTarget.open)} data-concept-map="true" className="concept-map rounded-2xl border border-slate-200 bg-white p-3">
     <summary className="cursor-pointer list-none rounded-xl px-1 py-1 text-sm font-black text-slate-800 focus:outline-none focus:ring-2 focus:ring-cyan-500">{t('playground.conceptMap.title')}</summary>
     <div className="mt-3">{body}</div>
