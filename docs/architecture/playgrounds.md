@@ -1055,6 +1055,29 @@ The Playground Agent keeps its deterministic path authoritative: user language i
 
 Agent examples are declarative metadata keyed by the playground descriptor, so KNN, Linear Regression, and MLP expose task-appropriate prompts without model-specific branches in the generic Agent panel.
 
+### Explore learning surface
+
+The ordinary Linear Regression Explore entry starts from a deterministic
+generated World using the registered linear generator. The compact Data Lab
+surface exposes `Sample again` without opening Full World Tools. It duplicates
+the current Experiment, resamples the same generator-backed World, and keeps
+the new Dataset in the active branch. The optional comparison therefore
+reports `observationProcess` as changed while World, model, learning, and
+evaluation conditions remain held; the sample status and question are
+presentation state derived from the existing semantic events and comparison.
+
+The default MLP teaching source is a small, deterministic, two-dimensional
+XOR World with separated binary labels and no default label corruption. Noise
+remains available through the underlying data-generation capability rather
+than being silently introduced into the first teaching view. The
+Representation depth uses the existing `network-graph` primitive, so its
+hidden layer changes with the live `hiddenUnits` control. The Mechanism depth
+uses the existing `loss-curve` primitive and real adapter history: before
+training it shows an honest empty state, after a training step it shows the
+recorded history, and changing a learning condition clears stale history.
+Mechanism and Representation are intentionally separate projections; neither
+adds a second model state or reasoning authority.
+
 ### Human deletion confirmation
 
 Canvas deletion from node/edge buttons and Delete/Backspace requests a centralized pending deletion model before graph state changes. React Flow's default delete key is disabled, editable fields are ignored, and the confirmation modal reports connected-edge consequences with i18n text. Programmatic Canvas Agent `removeNode()` / `disconnect()` operations remain immediate API calls and do not open the human confirmation modal.

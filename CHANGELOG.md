@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-26 — Explore learning surface repair
+
+- Restored a learner-facing Linear Regression `Sample again` path that keeps the World fixed, creates a new Dataset, and exposes an optional A/B comparison grounded in the existing observation-process semantics.
+- Restored a compact deterministic XOR teaching World for MLP and connected Representation and Mechanism depths to the live network graph and real loss history, including honest empty and stale-state behavior.
+- Added bilingual surface copy, responsive regression coverage, and architecture documentation for the repaired Explore learning surface.
+- Acceptance: `npm run check`, `npm run build`, browser walkthrough at desktop, 390px, and 1024px widths, and `git diff --check` passed.
+- Known limitation: the existing MLP Training Microscope remains a reduced view; this batch exposes real loss history without introducing a second parameter/gradient evidence contract.
+
 ## 2026-08-26 — World–Data inquiry loop
 
 - Made the World → observation process → finite Dataset distinction explicit through bounded session/Agent projections for World identity, sampling provenance, deterministic sample IDs, and dataset fingerprints.

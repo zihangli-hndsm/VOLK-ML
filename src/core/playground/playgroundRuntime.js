@@ -173,6 +173,28 @@ function validateViewPatch(current, patch = {}, featureNames = []) {
 export function createRuntimeSession(playground, { source, controls = {}, seed, sessionId, dataset }) {
   const adapter = playground.adapterId ? requireModelAdapter(playground.adapterId) : null;
   const normalizedSource = playground.validateSource(source);
+  const resolvedSessionId = sessionId ?? `playground-${crypto.randomUUID()}`;
+  const defaultGenerator = normalizedSource.kind === 'example'
+    && playground.defaultWorldGenerator
+    && (!Array.isArray(playground.defaultWorldGeneratorSourceFingerprints)
+      || playground.defaultWorldGeneratorSourceFingerprints.includes(normalizedSource.fingerprint))
+    ? playground.defaultWorldGenerator
+    : null;
+  const baseWorld = worldFromPlaygroundSource(normalizedSource, { id: `world-${resolvedSessionId}`, seed });
+  const initialWorld = defaultGenerator
+    ? applyWorldTransaction(baseWorld, {
+      id: `${resolvedSessionId}-default-world`,
+      actor: 'system',
+      intent: 'default-world-sample',
+      operations: [
+        { type: 'SET_WORLD_GENERATOR', spec: defaultGenerator },
+        { type: 'REGENERATE_WORLD', seed: Number.isFinite(Number(seed)) ? Number(seed) : 2026 },
+      ],
+    }).world
+    : baseWorld;
+  const runtimeSource = defaultGenerator
+    ? playground.validateSource(sourceFromWorld(normalizedSource, initialWorld))
+    : normalizedSource;
   const validatedControls = {};
   for (const [key, value] of Object.entries(controls)) {
     const control = playground.controls.find((item) => item.key === key);
@@ -182,7 +204,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
   const recorder = createTraceRecorder();
   const initialized = adapter
     ? adapter.initialize({
-      source: normalizedSource,
+      source: runtimeSource,
       controls: validatedControls,
       seed,
       recorder,
@@ -191,18 +213,23 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
   const preset = adapter?.defaultVisualizationPreset
     ? getPreset(adapter.defaultVisualizationPreset)
     : null;
-  const dataState = buildDataState({ source: normalizedSource, workspaceDataset: dataset });
-  const resolvedSessionId = sessionId ?? `playground-${crypto.randomUUID()}`;
-  const semanticId = `${adapter?.id ?? playground.id}-${normalizedSource.fingerprint ?? normalizedSource.name ?? 'source'}`
+  const dataState = buildDataState({ source: runtimeSource, workspaceDataset: dataset });
+  const semanticId = `${adapter?.id ?? playground.id}-${runtimeSource.fingerprint ?? runtimeSource.name ?? 'source'}`
     .replace(/[^A-Za-z0-9_-]+/g, '-')
     .slice(0, 120);
+  const experimentWorld = createWorld({
+    ...initialWorld,
+    id: `world-${semanticId}`,
+    seed: initialWorld.randomness?.seed ?? null,
+  });
   const experiment = synchronizeExperiment(createExperiment({
     id: `experiment-${semanticId}`,
-    world: worldFromPlaygroundSource(normalizedSource, { id: `world-${semanticId}`, seed }),
+    world: experimentWorld,
     adapterId: adapter?.id ?? null,
     seed,
   }), {
-    source: normalizedSource,
+    world: experimentWorld,
+    source: runtimeSource,
     points: initialized.modelState?.points,
     controls: initialized.controls,
     controlDescriptors: playground.controls,
@@ -213,7 +240,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
       adapterId: adapter?.id ?? null,
       modelState: initialized.modelState ?? null,
       controls: initialized.controls,
-      sourceData: normalizedSource,
+      sourceData: runtimeSource,
     }),
   });
   const session = {
@@ -228,7 +255,7 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
     baseline: {
       controls: structuredClone(initialized.controls),
       modelState: structuredClone(initialized.modelState),
-      source: structuredClone(normalizedSource),
+      source: structuredClone(runtimeSource),
       dataState: structuredClone(dataState),
       experiment: structuredClone(experiment),
       traces: structuredClone(recorder.list()),
@@ -236,11 +263,11 @@ export function createRuntimeSession(playground, { source, controls = {}, seed, 
       seed,
     },
     scriptBaseline: null,
-    sourceData: normalizedSource,
+    sourceData: runtimeSource,
     source: {
-      kind: normalizedSource.kind,
-      name: normalizedSource.name,
-      fingerprint: normalizedSource.fingerprint,
+      kind: runtimeSource.kind,
+      name: runtimeSource.name,
+      fingerprint: runtimeSource.fingerprint,
       stale: false,
     },
     controls: initialized.controls,

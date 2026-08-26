@@ -275,7 +275,9 @@ const phase11Initial = phase11Host.getState();
 const ids = phase11Initial.world.observations.map((point) => point.id);
 assert.ok(ids.length > 2, 'default LR World has enough observations for a split');
 assert.equal(ids.length, teachingDatasetById('linear-trend').dataset.rows.length, 'default LR uses the registered linear-trend teaching dataset');
-assert.ok(phase11Initial.world.observations.every((point) => point.membership === 'unspecified'));
+assert.equal(phase11Initial.world.mode, 'generated', 'default LR Explore starts from a generated World');
+assert.equal(phase11Initial.world.generator?.kind, 'legacy-generator', 'default LR keeps the existing generator contract');
+assert.ok(phase11Initial.world.observations.every((point) => point.membership === 'train'));
 const editedBeforeRun = await phase11Host.dispatch({ type: 'ADD_POINT', x: 50, y: 50 });
 const editedPointCount = editedBeforeRun.world.observations.length;
 const runOnCurrentWorld = await phase11Host.dispatch({ type: 'RUN' });
@@ -292,7 +294,7 @@ assert.equal(splitSnapshot.actionHistory.past.length, 1, 'one compatibility spli
 assert.equal(splitSnapshot.world.observations.filter((point) => point.membership === 'train').length, ids.length - 2);
 assert.equal(splitSnapshot.world.observations.filter((point) => point.membership === 'test').length, 2);
 assert.equal(splitSnapshot.world.observations.filter((point) => point.membership === 'unspecified').length, 0);
-assert.equal(splitSnapshot.actionHistory.past[0].mutationSummary.normalizedUnspecifiedToTrain, ids.length - 2, 'first split normalization is inspectable');
+assert.equal(splitSnapshot.actionHistory.past[0].mutationSummary.normalizedUnspecifiedToTrain, 0, 'explicit train membership needs no implicit normalization');
 assert.deepEqual(splitSnapshot.world, splitSnapshot.experiment.world, 'runtime World and Experiment World share one semantic result');
 assert.equal(splitSnapshot.metrics.testMse === null, false, 'explicit test membership produces a test metric');
 const fitBeforeTestMove = {

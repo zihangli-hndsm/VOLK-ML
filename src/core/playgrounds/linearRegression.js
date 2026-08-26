@@ -52,6 +52,20 @@ export const linearRegressionPlayground = {
     },
   ],
 
+  // Keep the ordinary Explore entry sampleable while leaving detailed
+  // generator controls behind the existing World tools.
+  defaultWorldGenerator: {
+    relation: { slope: 2, bias: 1 },
+    noise: { amount: 0.25 },
+    train: { input: { type: 'uniform', params: { min: -4, max: 4 } }, samples: 120 },
+    test: { input: { type: 'uniform', params: { min: -4, max: 4 } }, samples: 0 },
+    outliers: { count: 0 },
+  },
+  defaultWorldGeneratorSourceFingerprints: [
+    'teaching-linear-trend-v1',
+    'example-linear-trend-fallback-v1',
+  ],
+
   validateSource(source) {
     if (!source || typeof source !== 'object') throw playgroundError('INVALID_PLAYGROUND_SOURCE');
     if (!['example', 'workspace-dataset'].includes(source.kind)) throw playgroundError('INVALID_PLAYGROUND_SOURCE', { kind: source.kind });

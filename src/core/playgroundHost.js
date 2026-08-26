@@ -408,7 +408,7 @@ function resolveSource(playground, dataset) {
         }
       }
     }
-    const points = generateXorDataset({ seed: 2026 });
+    const points = generateXorDataset({ seed: 2026, pointsPerCluster: 8, noise: 0.14 });
     return {
       kind: 'example',
       name: 'XOR example',
