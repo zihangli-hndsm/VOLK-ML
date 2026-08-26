@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-27 — Phase 15 counterfactual exploration
+
+- Added bounded learner-owned “What if…?” questions with baseline Experiment and condition-fingerprint provenance, explicit stale guards, and neutral map relations.
+- Added explicit conversion into the existing detached Test Design flow without execution, result fabrication, causal claims, or new runtime authority.
+- Added bilingual responsive counterfactual UI, Concept Map projection, and focused boundary checks.
+
 ## 2026-08-27 — Phase 14 learner interpretation
 
 - Added bounded learner-owned interpretations over stable Evidence instances, optional existing Test Designs, and explicit judgment choices without changing runtime truth.

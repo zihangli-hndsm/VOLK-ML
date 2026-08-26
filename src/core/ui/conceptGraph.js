@@ -15,6 +15,7 @@ import {
   normalizeHypothesisRevisionState,
   normalizeLearnerInterpretationState,
 } from '../exploration/learnerInterpretation.js';
+import { deriveCounterfactualMap } from '../exploration/counterfactual.js';
 
 export const CONCEPT_GRAPH_VERSION = 1;
 export const MAX_CONCEPT_GRAPH_NODES = 24;
@@ -252,6 +253,7 @@ export function deriveConceptGraph({
   testDesigns = [],
   interpretations = [],
   revisions = [],
+  counterfactualQuestions = [],
 } = {}) {
   const hypothesisState = normalizeHypothesisState({ version: 1, hypotheses });
   const conceptIds = deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, hypotheses: hypothesisState.hypotheses });
@@ -310,6 +312,7 @@ export function deriveConceptGraph({
     revisions,
     testDesigns,
   });
+  const counterfactualProjection = deriveCounterfactualMap(counterfactualQuestions);
 
   return Object.freeze({
     version: CONCEPT_GRAPH_VERSION,
@@ -332,6 +335,8 @@ export function deriveConceptGraph({
     discriminationEdges: discriminationProjection.discriminationEdges,
     interpretationNodes: interpretationProjection.interpretationNodes,
     interpretationEdges: interpretationProjection.interpretationEdges,
+    counterfactualNodes: counterfactualProjection.nodes,
+    counterfactualEdges: counterfactualProjection.edges,
     // Causal edges are accepted as a vocabulary value for future explicit
     // semantic sources, but this projection never creates one.
     causalEdgeCount: edges.filter((edge) => edge.relation === CONCEPT_GRAPH_RELATIONS.CAUSED_BY).length,

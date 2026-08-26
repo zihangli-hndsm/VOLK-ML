@@ -20,6 +20,13 @@ identity while preserving the old statement and records the learner's
 interpretation as lineage. The surface does not execute a Test Design, change
 Hypothesis status, edit Evidence, or ask LUMI to explain a result.
 
+The Counterfactual Exploration surface is a small purple “What if…?” notebook
+beside the existing learner records. It requires the current baseline
+Experiment fingerprint, lets the learner select one registered factor and
+observable outcomes, and saves a detached question. A stale fingerprint is
+shown as unavailable. Choosing an existing Hypothesis and “Turn into Test
+Design” creates a normal saved Test Design for review; it does not run it.
+
 VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve three consumers with one code path: the human UI, teaching-video demo scripts, and the in-page Canvas Agent.
 
 ## Unified visualization runtime

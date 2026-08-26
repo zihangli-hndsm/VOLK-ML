@@ -9,6 +9,7 @@
     "check:test-design": "node scripts/check-hypothesis-test-design.mjs",
     "check:competing-hypotheses": "node scripts/check-competing-hypotheses.mjs",
     "check:learner-interpretation": "node scripts/check-learner-interpretation.mjs",
+    "check:counterfactual-exploration": "node scripts/check-counterfactual-exploration.mjs",
     "check:compiler": "node scripts/check-compiler-syntax.mjs",
     "generate:examples": "node scripts/generate-examples.mjs",
     "check:examples": "node scripts/generate-examples.mjs --check",

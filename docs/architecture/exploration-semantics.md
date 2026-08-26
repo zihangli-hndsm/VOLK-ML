@@ -33,6 +33,22 @@ relations describe learner provenance and lineage only; they do not mean
 interpretation and revision states are session-local and detached from project
 persistence and Agent authority.
 
+## Phase 15 — counterfactual exploration
+
+`src/core/exploration/counterfactual.js` stores a bounded learner-owned
+“What if…?” question against the current Experiment identity and condition
+fingerprint. The question reuses registered intervention, held-constant, and
+observable semantics; it does not own a World, produce a result, or execute an
+operation. A changed baseline makes the question stale and blocks conversion
+until the learner creates a fresh question.
+
+The explicit “Turn into Test Design” action delegates to the existing detached
+Test Design contract. The existing Test Design Run action remains the only
+route to duplicate, intervene, run, and compare. The counterfactual map uses
+neutral `compared_with`, `changed`, `held_fixed`, `observed_under`, and
+`predicted` relations. It never creates `causes`, `caused_by`, confidence, or
+causal conclusions; LUMI can invite attention but cannot run the question.
+
 ## Phase 10A — embedded learning assistance
 
 The embedded Ask VOLK surface is an answer-only presentation layer over the
