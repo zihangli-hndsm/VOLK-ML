@@ -1,5 +1,15 @@
 # Playgrounds
 
+## Learner Test Design (Phase 12)
+
+The Explore surface may hold a bounded, session-local `TestDesign` beside learner hypotheses. A design records one supported intervention, optional held-constant factors, selected observable outcomes, and the learner's prediction. Saving a design is detached and does not change the World, Dataset, Experiment, Evidence, project JSON, or hypothesis status.
+
+Only an explicit Run action executes the existing runtime sequence `DUPLICATE_EXPERIMENT → intervention → RUN → SET_COMPARE`. The host preflights that sequence on a detached session, rejects stale baselines and unsupported factors, then commits the same existing JSON actions to the live session. Comparison labels are descriptive (`single-factor`, `confounded`, `observational`, or `insufficient`) and are derived from registered semantic paths; they are not causal conclusions.
+
+Outcome references use existing stable `evidence-instance-*` identifiers. Test Design state is presentation/session state and is intentionally excluded from project persistence, Experiment fingerprints, Agent authority, mastery, confidence, and automatic hypothesis status changes.
+
+Execution-window Evidence is retained as temporal provenance only. It becomes an outcome reference only when its existing `evidenceRefs` directly names one of the learner-selected observable IDs; detector reason codes, timing, or matching conditions never establish that relationship. Comparison classification consumes the canonical `semanticFactorPaths` and `semanticFactorCount` emitted by `compareExperiments`, so multiple raw leaf paths may still represent one learner-facing factor.
+
 VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve three consumers with one code path: the human UI, teaching-video demo scripts, and the in-page Canvas Agent.
 
 ## Unified visualization runtime

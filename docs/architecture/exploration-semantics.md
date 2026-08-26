@@ -1,5 +1,15 @@
 # Exploration semantic foundation
 
+## Test Design and controlled comparison
+
+Learners can make a small test design from the controls and observables already exposed by the active playground. The projection may offer model, learning, evaluation, generator, or observation-process options only when the current adapter/runtime advertises them. It does not invent new factors or write a second experiment model.
+
+The design lifecycle is `draft → ready → executed` and lives only in the open Explore session. A valid execution duplicates the current baseline, applies exactly one selected intervention (or a registered resample action), runs the model, and enables comparison against the baseline. The comparison projection reports changed semantic paths and held-constant violations factually. `single-factor`, `confounded`, `observational`, and `insufficient` are classification labels for inspection, never claims of causality or mastery.
+
+Test Design edges, when projected into a concept view, are neutral `test_design`, `baseline`, `intervention`, and `observed_with` relations. No `caused_by` edge is generated. Evidence lifecycle and stable Evidence instance identity remain owned by the existing semantic event and provenance systems.
+
+The execution projection separates `executionEvidenceIds` from `outcomeEvidenceIds`. The former means only that an Evidence occurrence happened after the execution window began. The latter is populated only from direct Evidence provenance (`evidenceRefs` → selected observable ID). A baseline condition fingerprint is checked in addition to the Experiment ID; changing a control on the baseline invalidates the detached design without running or duplicating it.
+
 ## Phase 10A — embedded learning assistance
 
 The embedded Ask VOLK surface is an answer-only presentation layer over the

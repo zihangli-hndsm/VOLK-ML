@@ -3,6 +3,7 @@ import { getInquiryConcept } from '../../core/exploration/learnerInquiry.js';
 import { getEvidenceInstance } from '../../core/exploration/evidenceProvenance.js';
 import { HYPOTHESIS_PREDICTION_CHOICES, HYPOTHESIS_STATUSES } from '../../core/exploration/hypothesis.js';
 import Lumi from './Lumi.jsx';
+import TestDesigner from './TestDesigner.jsx';
 
 function conceptTitle(id, t) {
   const concept = getInquiryConcept(id);
@@ -28,7 +29,7 @@ function statusClass(status) {
   return 'hypothesis-status-proposed';
 }
 
-function HypothesisCard({ hypothesis, evidenceInstances, selected, t, onSelect, onSetStatus, onOpenPicker, onOpenEvidence, onOpenExperiment }) {
+function HypothesisCard({ hypothesis, evidenceInstances, selected, t, onSelect, onSetStatus, onOpenPicker, onOpenEvidence, onOpenExperiment, onDesignTest, testDesigns = [], testDesignResults = {}, onRunTestDesign }) {
   const canAttach = evidenceInstances.some((instance) => instance.available);
   return <article data-hypothesis-card={hypothesis.id} className={`hypothesis-card ${selected ? 'hypothesis-card-selected' : ''}`}>
     <button type="button" className="hypothesis-card-heading focus:outline-none focus:ring-2 focus:ring-purple-500" onClick={() => onSelect?.(hypothesis.id)} aria-pressed={selected}>
@@ -65,6 +66,7 @@ function HypothesisCard({ hypothesis, evidenceInstances, selected, t, onSelect, 
       </div>
       <div className="flex flex-wrap gap-2 pt-1">
         {hypothesis.status === HYPOTHESIS_STATUSES.PROPOSED && <button type="button" onClick={() => { onSetStatus?.(hypothesis.id, HYPOTHESIS_STATUSES.TESTING); onOpenExperiment?.(); }} className="hypothesis-action hypothesis-action-primary">{t('playground.hypothesis.startTesting')}</button>}
+        <button type="button" onClick={() => onDesignTest?.(hypothesis.id)} className="hypothesis-action hypothesis-action-primary">{t('playground.testDesign.designTest')}</button>
         <button type="button" disabled={!canAttach} onClick={() => onOpenPicker?.(hypothesis.id)} className="hypothesis-action hypothesis-action-cyan disabled:cursor-not-allowed disabled:opacity-50">{t('playground.hypothesis.attachEvidence')}</button>
         <button type="button" onClick={onOpenEvidence} className="hypothesis-action hypothesis-action-neutral">{t('playground.hypothesis.reviewEvidence')}</button>
         {hypothesis.status === HYPOTHESIS_STATUSES.TESTING && <>
@@ -73,15 +75,25 @@ function HypothesisCard({ hypothesis, evidenceInstances, selected, t, onSelect, 
         </>}
         {(hypothesis.status === HYPOTHESIS_STATUSES.TESTING || hypothesis.status === HYPOTHESIS_STATUSES.SUPPORTED || hypothesis.status === HYPOTHESIS_STATUSES.REJECTED) && <button type="button" onClick={() => onSetStatus?.(hypothesis.id, HYPOTHESIS_STATUSES.REVISED)} className="hypothesis-action hypothesis-action-primary">{t('playground.hypothesis.markRevised')}</button>}
       </div>
+      {testDesigns.filter((design) => design.hypothesisId === hypothesis.id).map((design) => <div key={design.id} className="mt-2 rounded-lg border border-orange-200 bg-orange-50 px-2 py-2 text-[11px] text-orange-950">
+        <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-black">{t('playground.testDesign.saved')} · {t(`playground.testDesign.status.${design.status}`)}</span><button type="button" disabled={design.status === 'executed'} onClick={() => onRunTestDesign?.(design)} className="hypothesis-action hypothesis-action-cyan disabled:cursor-not-allowed disabled:opacity-50">{t('playground.testDesign.run')}</button></div>
+        <p className="mt-1 break-words">{t('playground.testDesign.changeSummary', { change: design.intervention.semanticPath ?? design.intervention.controlKey ?? design.intervention.path })}</p>
+        {testDesignResults[design.id]?.comparisonClass && <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50 px-2 py-2 text-cyan-950">
+          <p className="font-bold">{t('playground.testDesign.result', { result: t(`playground.testDesign.class.${testDesignResults[design.id].comparisonClass}`), changed: testDesignResults[design.id].changedPaths?.join(', ') || '—' })}</p>
+          {testDesignResults[design.id].outcomes?.map((outcome) => <p key={outcome.id} className="mt-1 text-[10px]">{t('playground.testDesign.outcome', { outcome: t(`playground.evidence.${outcome.id.split('.').pop()}`), before: outcome.before ?? '—', after: outcome.after ?? '—', direction: outcome.before !== null && outcome.after !== null && outcome.after > outcome.before ? t('playground.testDesign.direction.increase') : outcome.before !== null && outcome.after !== null && outcome.after < outcome.before ? t('playground.testDesign.direction.decrease') : t('playground.testDesign.direction.similar') })}</p>)}
+          <div className="mt-2 flex flex-wrap items-center gap-2"><span className="text-[10px] font-black">{t('playground.testDesign.whatDoYouThink')}</span><button type="button" onClick={() => onSelect?.(hypothesis.id)} className="hypothesis-action hypothesis-action-neutral">{t('playground.testDesign.keepTesting')}</button><button type="button" onClick={() => onSetStatus?.(hypothesis.id, HYPOTHESIS_STATUSES.REVISED)} className="hypothesis-action hypothesis-action-primary">{t('playground.testDesign.revise')}</button></div>
+        </div>}
+      </div>)}
     </div>
   </article>;
 }
 
-export default function HypothesisPanel({ attention, graph, evidenceInstances = [], hypotheses = [], compact = false, t, onCreate, onSetStatus, onAttachEvidence, onOpenEvidence, onOpenExperiment, onSelectHypothesis }) {
+export default function HypothesisPanel({ attention, graph, evidenceInstances = [], hypotheses = [], compact = false, t, onCreate, onSetStatus, onAttachEvidence, onOpenEvidence, onOpenExperiment, onSelectHypothesis, snapshot, capabilities, testDesigns = [], testDesignResults = {}, onSaveTestDesign, onRunTestDesign }) {
   const [statement, setStatement] = useState('');
   const [predictionChoice, setPredictionChoice] = useState(null);
   const [pickerHypothesisId, setPickerHypothesisId] = useState(null);
   const [selectedEvidenceIds, setSelectedEvidenceIds] = useState([]);
+  const [designHypothesisId, setDesignHypothesisId] = useState(null);
   const prompt = attention?.hypothesisPrompt;
   const availableEvidence = evidenceInstances.filter((instance) => instance.available);
   if (!prompt && hypotheses.length === 0) return null;
@@ -104,6 +116,10 @@ export default function HypothesisPanel({ attention, graph, evidenceInstances = 
     if (!pickerHypothesisId || selectedEvidenceIds.length === 0) return;
     onAttachEvidence?.(pickerHypothesisId, selectedEvidenceIds);
     closePicker();
+  };
+  const saveTestDesign = (design) => {
+    onSaveTestDesign?.(design);
+    setDesignHypothesisId(null);
   };
   return <section data-hypothesis-panel="true" className={`hypothesis-panel rounded-2xl border border-purple-200 bg-white p-3 ${compact ? 'hypothesis-panel-compact' : ''}`} aria-label={t('playground.hypothesis.ariaLabel')}>
     <div className="flex items-center gap-2">
@@ -129,8 +145,9 @@ export default function HypothesisPanel({ attention, graph, evidenceInstances = 
       </div>
     </div>}
     {hypotheses.length > 0 && <div className="mt-3 space-y-2" role="list" aria-label={t('playground.hypothesis.listLabel')}>
-      {hypotheses.map((hypothesis) => <HypothesisCard key={hypothesis.id} hypothesis={hypothesis} evidenceInstances={evidenceInstances} selected={graph?.selectedHypothesisId === hypothesis.id} t={t} onSelect={onSelectHypothesis} onSetStatus={onSetStatus} onOpenPicker={openPicker} onOpenEvidence={onOpenEvidence} onOpenExperiment={onOpenExperiment} />)}
+      {hypotheses.map((hypothesis) => <HypothesisCard key={hypothesis.id} hypothesis={hypothesis} evidenceInstances={evidenceInstances} selected={graph?.selectedHypothesisId === hypothesis.id} t={t} onSelect={onSelectHypothesis} onSetStatus={onSetStatus} onOpenPicker={openPicker} onOpenEvidence={onOpenEvidence} onOpenExperiment={onOpenExperiment} onDesignTest={setDesignHypothesisId} testDesigns={testDesigns} testDesignResults={testDesignResults} onRunTestDesign={onRunTestDesign} />)}
     </div>}
+    {designHypothesisId && (() => { const hypothesis = hypotheses.find((item) => item.id === designHypothesisId); return hypothesis ? <TestDesigner hypothesis={hypothesis} snapshot={snapshot} capabilities={capabilities} t={t} onSave={saveTestDesign} onCancel={() => setDesignHypothesisId(null)} existingDesign={testDesigns.find((design) => design.hypothesisId === hypothesis.id)} /> : null; })()}
     {pickerHypothesisId && <fieldset data-hypothesis-evidence-picker="true" className="hypothesis-evidence-picker mt-3 rounded-xl border border-cyan-200 bg-cyan-50/60 p-3">
       <legend className="px-1 text-xs font-black text-cyan-950">{t('playground.hypothesis.evidencePickerTitle')}</legend>
       {availableEvidence.length > 0

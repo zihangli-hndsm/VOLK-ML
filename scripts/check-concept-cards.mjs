@@ -12,7 +12,7 @@ import { createPedagogicalExperimentDesign } from '../src/core/exploration/pedag
 
 const exact = (changed = ['world'], unchanged = ['model', 'learning']) => ({
   enabled: true,
-  diff: { changed, semanticChangedPaths: changed.map((factor) => `${factor}.value`), semanticUnchangedPaths: unchanged.map((factor) => `${factor}.value`), unchanged, clarity: 'high' },
+  diff: { changed, semanticChangedPaths: changed.map((factor) => `${factor}.value`), semanticFactorPaths: changed.map((factor) => `${factor}.value`), semanticFactorCount: changed.length, semanticUnchangedPaths: unchanged.map((factor) => `${factor}.value`), unchanged, clarity: 'high' },
 });
 const fidelity = { status: 'exact' };
 const observation = (goal, facts) => ({ version: 1, goal, available: true, summaryKey: 'playground.pedagogical.observation.classSeparation', facts, changed: ['world'], held: ['model'] });

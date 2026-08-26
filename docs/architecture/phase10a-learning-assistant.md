@@ -1,5 +1,9 @@
 # Phase 10A — Embedded Learning Assistant
 
+## Test Design boundary
+
+Phase 12 adds a learner-owned Test Design surface to Explore, but it is not a Learning Assistant capability. The assistant may explain an existing comparison or evidence item through its existing answer-only contract; it cannot create, mutate, execute, or silently revise a learner test. Test Design uses the same runtime actions and stable Evidence projections as the rest of the playground, and its saved session state is not included in provider context or project persistence.
+
 Phase 10A adds a small answer-only learning surface to the existing
 Exploration Agent. It does not add a second runtime, a new World operation, or
 an AI execution path.

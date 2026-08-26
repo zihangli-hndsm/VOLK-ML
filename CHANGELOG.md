@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-08-26 — PR #130 acceptance hardening
+
+- Separated execution-window Evidence occurrences from selected outcome Evidence; only direct `evidenceRefs` provenance can create an outcome reference.
+- Reused canonical comparison factor grouping so multiple raw paths do not falsely become a confounded test, and added stale condition-fingerprint rejection coverage.
+- Cleaned Test Designer held-constant options and semantic labels without changing the Phase 12 authority boundaries.
+
+## 2026-08-26 — Phase 12 learner Test Design
+
+- Added a bounded, session-local learner Test Design surface for selecting one supported intervention, held-constant factors, observable outcomes, and a prediction without changing runtime state on save.
+- Added explicit detached preflight and execution through duplicate → intervene → run → compare, with factual single-factor, confounded, observational, and insufficient comparison labels and stable Evidence instance references.
+- Gated sample comparison until a valid baseline exists, added bilingual UI copy, focused 22-assertion coverage, and documented the Test Design/runtime/assistant boundaries.
+
 ## 2026-08-26 — Explore learning surface repair
 
 - Restored a learner-facing Linear Regression `Sample again` path that keeps the World fixed, creates a new Dataset, and exposes an optional A/B comparison grounded in the existing observation-process semantics.
