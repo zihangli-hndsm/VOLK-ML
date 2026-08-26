@@ -105,6 +105,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const world = snapshot.world;
   const baseBounds = initialBounds(snapshot);
   const operations = new Set((snapshot.capabilities?.worldOperations ?? []).map((item) => item.type));
+  const canSampleAgain = world?.mode === 'generated' && operations.has('RESAMPLE_WORLD');
+  const sampleEventCount = (snapshot.semanticEvents?.events ?? []).filter((event) => event?.type === 'observation.sampled').length;
   const canEdit = Boolean(snapshot.capabilities?.canEditWorld)
     && operations.has('ADD_POINTS')
     && operations.has('MOVE_POINT')
@@ -429,6 +431,15 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
       operations: [{ type: 'TRANSFORM_FEATURE_VALUES', feature: interventionFeature, kind: interventionKind, amount: Number(interventionAmount), seed: Number(interventionSeed), scope: interventionScope, pointIds: scopeIds }],
     });
   };
+  const compareSamples = () => {
+    const againstExperimentId = snapshot.experimentWorkspace?.comparison?.againstExperimentId;
+    if (againstExperimentId) Promise.resolve(onDispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId })).catch((nextError) => setError(nextError));
+  };
+  const sampleAgain = () => {
+    Promise.resolve(onDispatch({ type: 'DUPLICATE_EXPERIMENT' }))
+      .then(() => onDispatch({ type: 'RESAMPLE_WORLD' }))
+      .catch((nextError) => setError(nextError));
+  };
   const visibility = snapshot.viewState?.visibility ?? 'both';
   const pathPreview = previewPath;
 
@@ -439,6 +450,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         <p className="mt-1 text-xs font-bold text-slate-500">{t('playground.phenomenon.hint')}</p>
       </div>
       <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label={t('playground.phenomenon.toolsLabel')}>
+        {canSampleAgain && <button data-affordance-id="world.sampleAgain" type="button" onClick={sampleAgain} className="min-h-10 rounded-xl bg-cyan-700 px-3 py-2 text-sm font-black text-white hover:bg-cyan-800 focus:outline-none focus:ring-2 focus:ring-cyan-500">{t('playground.phenomenon.sampleAgain')}</button>}
         {PHENOMENON_TOOLS.map((item) => <button data-phenomenon-tool={item === 'select' ? 'move' : item === 'point' ? 'draw' : item} key={item} type="button" aria-pressed={tool === item}
           aria-label={t(`playground.workspace.tool.${item === 'select' ? 'move' : item === 'point' ? 'draw' : item}`)} onClick={() => setTool(item)}
           className={`min-h-10 rounded-xl px-3 py-2 text-sm font-black ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
@@ -476,6 +488,11 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         {t(`playground.workspace.layer.${item}`)}
       </button>)}
     </div>}
+    {phenomenonMode && sampleEventCount > 0 && <section data-sample-status="true" className="rounded-xl border border-cyan-200 bg-cyan-50/70 px-3 py-2">
+      <p className="text-xs font-black text-cyan-950">{t('playground.phenomenon.sampleStatus')}</p>
+      <p className="mt-1 text-xs text-cyan-900">{t('playground.phenomenon.sampleQuestion')}</p>
+      <button type="button" onClick={compareSamples} className="mt-2 rounded-lg border border-cyan-300 bg-white px-3 py-2 text-xs font-black text-cyan-900 hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">{t('playground.phenomenon.compareSamples')}</button>
+    </section>}
     <div className={`mt-3 min-w-0 ${phenomenonMode ? 'space-y-3' : 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]'}`}>
       <div className="ui-motion-surface overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
         {effectiveViewMode === 'scatter' && <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 bg-white px-2 py-2 text-[10px] text-slate-600">

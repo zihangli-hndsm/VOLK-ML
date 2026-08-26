@@ -25,6 +25,7 @@ import LumiAttentionRail from './LumiAttentionRail.jsx';
 import LumiJourneyTimeline from './LumiJourneyTimeline.jsx';
 import ConceptMap from './ConceptMap.jsx';
 import HypothesisPanel from './HypothesisPanel.jsx';
+import { rendererByPrimitiveType } from './rendererRegistry.jsx';
 
 export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], journeyIlluminationEvents = [], onIlluminateConcept, hypotheses = [], evidenceInstances = [], onCreateHypothesis, onSetHypothesisStatus, onAttachHypothesisEvidence, onOpenHypothesisEvidence, t, intervention = null }) {
   const { responsive } = usePresentationCapabilities();
@@ -175,9 +176,17 @@ function depthTitle(depth, mechanismTitle, t) {
 }
 
 function MechanismContent({ snapshot, capabilities, formulaPrimitive, onDispatch, t }) {
+  const lossPrimitive = snapshot.primitives?.find((primitive) => primitive.type === 'loss-curve');
+  const LossCurve = rendererByPrimitiveType['loss-curve'];
+  const lossHistory = lossPrimitive?.props?.lossHistory ?? [];
   return <div className="space-y-3">
     <p className="text-sm text-slate-600">{t(capabilities.hasTrainingMechanism ? 'playground.depth.mechanismDescription' : 'playground.depth.decisionDescription')}</p>
     {snapshot.timeline?.totalSteps > 0 && <PlaygroundTimeline snapshot={snapshot} onDispatch={onDispatch} t={t} />}
+    {LossCurve && <section data-mechanism-loss="true" className="rounded-2xl border border-orange-100 bg-orange-50/40 p-3">
+      {lossHistory.length > 0
+        ? <LossCurve props={lossPrimitive.props} t={t} />
+        : <p className="rounded-xl bg-white px-3 py-3 text-sm text-slate-600">{t('playground.lossCurveEmpty')}</p>}
+    </section>}
     {capabilities.hasTrainingMechanism && snapshot.trainingMicroscope && <TrainingMicroscopePanel snapshot={snapshot} onDispatch={onDispatch} t={t} openByDefault />}
     {formulaPrimitive && <section className="rounded-2xl bg-slate-950 p-4 text-center" aria-label={t('playground.formulaTitle')}><p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">{t('playground.formulaTitle')}</p><div className="mt-2"><FormulaRenderer props={formulaPrimitive.props} t={t} /></div></section>}
   </div>;

@@ -202,7 +202,7 @@ function regenerateWorld(world, seed = world.randomness?.seed ?? null, { mutatio
   };
 }
 
-function resampleWorld(world, seed = world.randomness?.seed ?? null) {
+function resampleWorld(world, seed) {
   const currentSeed = world.generator?.realization?.seed ?? world.randomness?.seed ?? 0;
   const nextSeed = seed === null || seed === undefined ? Number(currentSeed) + 1 : seed;
   return regenerateWorld(world, nextSeed, { mutationType: 'observation.sample' });

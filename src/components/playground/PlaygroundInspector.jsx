@@ -11,6 +11,8 @@ export default function PlaygroundInspector({ playground, snapshot, onDispatch, 
     layout.includes(primitive.id) && primitive.type !== 'formula' && visualState[primitive.id] !== false
   ));
   const scatter = primitives.find((primitive) => primitive.type === 'scatter');
+  const network = primitives.find((primitive) => primitive.type === 'network-graph' && visualState[primitive.id] !== false);
+  const NetworkGraph = rendererByPrimitiveType['network-graph'];
   const colorByLabel = buildLabelColorMap(scatter?.props?.points);
   return <div className="space-y-4">
     <div className="rounded-2xl border border-slate-200 p-3">
@@ -19,6 +21,11 @@ export default function PlaygroundInspector({ playground, snapshot, onDispatch, 
         {playground.controls.map((control) => <PlaygroundControlField key={control.key} control={control} snapshot={snapshot} onDispatch={onDispatch} t={t} />)}
       </div>
     </div>
+    {network && NetworkGraph && <section data-representation-network="true" className="rounded-2xl border border-blue-100 bg-blue-50/40 p-2">
+      <svg viewBox="0 0 360 340" className="block h-auto w-full" role="img" aria-label={t('playground.networkGraphTitle')}>
+        <NetworkGraph props={network.props} t={t} />
+      </svg>
+    </section>}
     {side.map((primitive) => {
       const Renderer = rendererByPrimitiveType[primitive.type];
       if (!Renderer) return null;

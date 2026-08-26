@@ -22,8 +22,8 @@ export function createSeededRandom(seed = DEFAULT_MLP_SEED) {
 // Gaussian noise. Labels mirror the KNN convention (string labels).
 export function generateXorDataset({
   seed = DEFAULT_MLP_SEED,
-  pointsPerCluster = 10,
-  noise = 0.25,
+  pointsPerCluster = 8,
+  noise = 0.14,
 } = {}) {
   const random = createSeededRandom(seed);
   const normal = () => {

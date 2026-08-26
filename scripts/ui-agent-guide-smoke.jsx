@@ -13,6 +13,19 @@ import { resolveMessage } from '../src/i18n.js';
 
 const t = (key, params) => resolveMessage(key, 'en', params);
 const noop = () => {};
+const alternateRegressionDataset = {
+  name: 'UI Agent regression source',
+  task: 'regression',
+  featureColumns: ['x'],
+  targetColumn: 'y',
+  columns: [{ name: 'x', type: 'number' }, { name: 'y', type: 'number' }],
+  rows: [
+    { x: -2, y: -3 },
+    { x: -1, y: -1 },
+    { x: 1, y: 3 },
+    { x: 2, y: 5 },
+  ],
+};
 
 function renderDetails(snapshot, agent, agentOpen = false, activeDepth = null) {
   return renderToStaticMarkup(
@@ -168,7 +181,10 @@ export async function runUiAgentGuideSmoke() {
     assert.deepEqual(cleaned.mutationDiff.changed, ['world'], 'cleaner execution leaves exactly one changed runtime factor');
     assert.equal(cleaned.mutationDiff.clarity, 'high');
 
-    const alternateHost = createPlaygroundHost({ getDataset: () => null });
+    // The ordinary LR entry is intentionally generator-backed now. Keep this
+    // cleaner-comparison branch on an explicit Sample World so the fixture
+    // continues to exercise point restoration independently of that entry UX.
+    const alternateHost = createPlaygroundHost({ getDataset: () => alternateRegressionDataset });
     try {
       await alternateHost.open({ playgroundId: 'linear-regression', seed: 603 });
       const alternateAgent = createPlaygroundAgentApi(alternateHost);
