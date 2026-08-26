@@ -77,9 +77,11 @@ function MapBody({ graph, evidenceInstances, t, onSelectConcept, onSelectHypothe
   const hypothesisEdges = graph?.hypothesisEdges ?? [];
   const discriminationNodes = graph?.discriminationNodes ?? [];
   const discriminationEdges = graph?.discriminationEdges ?? [];
+  const interpretationNodes = graph?.interpretationNodes ?? [];
+  const interpretationEdges = graph?.interpretationEdges ?? [];
   return <div className="concept-map-body">
-    {nodes.length === 0 && hypothesisNodes.length === 0 && discriminationNodes.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500">{t('playground.conceptMap.empty')}</p>}
-    {(nodes.length > 0 || hypothesisNodes.length > 0 || discriminationNodes.length > 0) && <>
+    {nodes.length === 0 && hypothesisNodes.length === 0 && discriminationNodes.length === 0 && interpretationNodes.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500">{t('playground.conceptMap.empty')}</p>}
+    {(nodes.length > 0 || hypothesisNodes.length > 0 || discriminationNodes.length > 0 || interpretationNodes.length > 0) && <>
       <div className="concept-map-legend" aria-label={t('playground.conceptMap.legendLabel')}>
         {Object.values(CONCEPT_GRAPH_STATES).map((state) => <span key={state} className={`concept-map-legend-item ${nodeStateClass[state]}`}><span className="concept-map-legend-dot" aria-hidden="true" />{stateLabel(state, t)}</span>)}
       </div>
@@ -156,6 +158,15 @@ function MapBody({ graph, evidenceInstances, t, onSelectConcept, onSelectHypothe
         </div>
         {discriminationEdges.length > 0 && <div className="mt-2 space-y-1" role="list" aria-label={t('playground.conceptMap.discriminationLinksLabel')}>
           {discriminationEdges.map((edge) => <div key={[edge.from, edge.to, edge.relation].join(':')} role="listitem" className="concept-map-hypothesis-link"><span>{edge.from}</span><span aria-hidden="true">→</span><span>{edge.to}</span><span>{t('playground.conceptMap.relation.' + edge.relation)}</span></div>)}
+        </div>}
+      </section>}
+      {interpretationNodes.length > 0 && <section className="concept-map-interpretations" aria-label={t('playground.conceptMap.interpretationLabel')}>
+        <p className="concept-map-section-label">{t('playground.conceptMap.interpretationLabel')}</p>
+        <div className="space-y-2" role="list">
+          {interpretationNodes.map((node) => <div key={node.id} role="listitem" data-concept-map-interpretation={node.id} className="rounded-xl border border-cyan-200 bg-cyan-50/70 px-3 py-2"><p className="text-xs font-black text-cyan-950">{t('playground.conceptMap.interpretationNode')}</p><p className="mt-1 text-[10px] text-slate-700">{t('playground.interpretation.judgment.' + node.judgment)}</p></div>)}
+        </div>
+        {interpretationEdges.length > 0 && <div className="mt-2 space-y-1" role="list" aria-label={t('playground.conceptMap.interpretationLinksLabel')}>
+          {interpretationEdges.map((edge) => <div key={[edge.from, edge.to, edge.relation].join(':')} role="listitem" className="concept-map-hypothesis-link"><span>{edge.from}</span><span aria-hidden="true">→</span><span>{edge.to}</span><span>{t('playground.conceptMap.relation.' + edge.relation)}</span></div>)}
         </div>}
       </section>}
     </>}

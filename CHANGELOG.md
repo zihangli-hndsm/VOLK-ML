@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-27 — Phase 14 learner interpretation
+
+- Added bounded learner-owned interpretations over stable Evidence instances, optional existing Test Designs, and explicit judgment choices without changing runtime truth.
+- Added separate Hypothesis revision lineage that preserves the parent identity and projects neutral `interpreted_in`, `informs_revision`, and `revised_from` relations into Journey and Concept Map.
+- Added bilingual responsive interpretation/revision UI and focused boundary checks for historical Evidence references, no automatic status mutation, and no causal/proof semantics.
+
 ## 2026-08-26 — Phase 13 competing hypotheses
 
 - Added learner-created competing Hypothesis groups and Discrimination Plans that reuse existing Test Designs.

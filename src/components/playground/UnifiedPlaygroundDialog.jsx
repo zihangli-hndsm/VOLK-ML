@@ -51,6 +51,14 @@ import {
   createDiscriminationPlan,
   createHypothesisGroup,
 } from '../../core/exploration/competingHypotheses.js';
+import {
+  appendHypothesisRevision,
+  appendLearnerInterpretation,
+  clearHypothesisRevisions,
+  clearLearnerInterpretations,
+  createHypothesisRevision,
+  createLearnerInterpretation as createInterpretationRecord,
+} from '../../core/exploration/learnerInterpretation.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -70,6 +78,8 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [testDesignResults, setTestDesignResults] = useState({});
   const [hypothesisGroupSession, setHypothesisGroupSession] = useState(() => clearHypothesisGroups());
   const [discriminationPlanSession, setDiscriminationPlanSession] = useState(() => clearDiscriminationPlans());
+  const [interpretationSession, setInterpretationSession] = useState(() => clearLearnerInterpretations());
+  const [revisionSession, setRevisionSession] = useState(() => clearHypothesisRevisions());
   const [lumiIntervention, setLumiIntervention] = useState(null);
   const [interventionPulseKey, setInterventionPulseKey] = useState(null);
   const sessionSequenceRef = useRef(0);
@@ -117,6 +127,8 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setTestDesignResults({});
     setHypothesisGroupSession(clearHypothesisGroups());
     setDiscriminationPlanSession(clearDiscriminationPlans());
+    setInterpretationSession(clearLearnerInterpretations());
+    setRevisionSession(clearHypothesisRevisions());
     setLumiIntervention(null);
     setInterventionPulseKey(null);
     setPresentationMode(false);
@@ -221,6 +233,8 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       setTestDesignResults({});
       setHypothesisGroupSession(clearHypothesisGroups());
       setDiscriminationPlanSession(clearDiscriminationPlans());
+      setInterpretationSession(clearLearnerInterpretations());
+      setRevisionSession(clearHypothesisRevisions());
     }
     const humanAction = action?.type === 'APPLY_WORLD_TRANSACTION'
       ? { ...action, transaction: { ...(action.transaction ?? {}), actor: 'human' } }
@@ -347,6 +361,51 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     return plan;
   };
 
+  const createLearnerInterpretation = ({ hypothesisIds = [], evidenceInstanceIds = [], testDesignId = null, judgment, note = '' } = {}) => {
+    const id = 'interpretation-' + sessionSequenceRef.current + '-' + (interpretationSession.interpretations.length + 1);
+    const interpretation = createInterpretationRecord({
+      id,
+      hypothesisIds,
+      evidenceInstanceIds,
+      testDesignId,
+      judgment,
+      note,
+      hypotheses: hypothesisSession.hypotheses,
+      testDesigns: testDesignSession.designs,
+      createdFrom: 'learner',
+    });
+    if (interpretation) setInterpretationSession((current) => appendLearnerInterpretation(current, interpretation, { hypotheses: hypothesisSession.hypotheses, testDesigns: testDesignSession.designs }));
+    return interpretation;
+  };
+
+  const createLearnerRevision = ({ parentHypothesisId, interpretationIds = [], statement = '' } = {}) => {
+    const parent = hypothesisSession.hypotheses.find((hypothesis) => hypothesis.id === parentHypothesisId);
+    if (!parent) return null;
+    const child = createHypothesis({
+      id: 'hypothesis-' + sessionSequenceRef.current + '-' + (hypothesisSession.hypotheses.length + 1),
+      statement,
+      linkedConceptIds: parent.linkedConceptIds,
+      createdAt: new Date().toISOString(),
+      experimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,
+      threadId: snapshot?.activeExplorationThread?.id,
+      createdFrom: 'learner',
+    });
+    if (!child) return null;
+    const nextHypotheses = [...hypothesisSession.hypotheses, child];
+    const revision = createHypothesisRevision({
+      parentHypothesisId,
+      childHypothesisId: child.id,
+      interpretationIds,
+      hypotheses: nextHypotheses,
+      interpretations: interpretationSession.interpretations,
+      createdFrom: 'learner',
+    });
+    if (!revision) return null;
+    setHypothesisSession((current) => appendHypothesis(current, child));
+    setRevisionSession((current) => appendHypothesisRevision(current, revision, { hypotheses: nextHypotheses, interpretations: interpretationSession.interpretations }));
+    return { child, revision };
+  };
+
   const changeDepth = (nextDepth) => {
     setAgentOpen(false);
     const telemetryType = depthTelemetryType(nextDepth);
@@ -397,7 +456,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} fullWorldToolsOpen={fullWorldToolsOpen} onFullWorldToolsChange={setFullWorldToolsOpen} onOpenFullWorldTools={openFullWorldWorkspaceFromTune} />;
   const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} t={t} intervention={lumiIntervention}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} interventionPulseKey={lumiIntervention?.sequence ?? null} interventionTarget={lumiIntervention?.target ?? null} /></ExploreExperimentRegion>;
-  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} journeyIlluminationEvents={journeySession.illuminationEvents} onIlluminateConcept={illuminateConcept} hypotheses={hypothesisSession.hypotheses} evidenceInstances={evidenceInstances} onCreateHypothesis={createLearnerHypothesis} onSetHypothesisStatus={updateHypothesisStatus} onAttachHypothesisEvidence={attachHypothesisEvidence} onOpenHypothesisEvidence={() => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} testDesigns={testDesignSession.designs} testDesignResults={testDesignResults} testDesignCapabilities={testDesignCapabilities} onSaveTestDesign={saveLearnerTestDesign} onRunTestDesign={runLearnerTestDesign} hypothesisGroups={hypothesisGroupSession.groups} discriminationPlans={discriminationPlanSession.plans} onCreateHypothesisGroup={createLearnerHypothesisGroup} onCreateDiscriminationPlan={createLearnerDiscriminationPlan} t={t} intervention={lumiIntervention} />;
+  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} journeyIlluminationEvents={journeySession.illuminationEvents} onIlluminateConcept={illuminateConcept} hypotheses={hypothesisSession.hypotheses} evidenceInstances={evidenceInstances} onCreateHypothesis={createLearnerHypothesis} onSetHypothesisStatus={updateHypothesisStatus} onAttachHypothesisEvidence={attachHypothesisEvidence} onOpenHypothesisEvidence={() => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} testDesigns={testDesignSession.designs} testDesignResults={testDesignResults} testDesignCapabilities={testDesignCapabilities} onSaveTestDesign={saveLearnerTestDesign} onRunTestDesign={runLearnerTestDesign} hypothesisGroups={hypothesisGroupSession.groups} discriminationPlans={discriminationPlanSession.plans} onCreateHypothesisGroup={createLearnerHypothesisGroup} onCreateDiscriminationPlan={createLearnerDiscriminationPlan} interpretations={interpretationSession.interpretations} revisions={revisionSession.revisions} onCreateInterpretation={createLearnerInterpretation} onCreateRevision={createLearnerRevision} t={t} intervention={lumiIntervention} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}

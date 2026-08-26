@@ -10,6 +10,11 @@ import {
   normalizeHypothesisGroupState,
 } from '../exploration/competingHypotheses.js';
 import { normalizeTestDesignState } from '../exploration/testDesign.js';
+import {
+  interpretationSemanticEdges,
+  normalizeHypothesisRevisionState,
+  normalizeLearnerInterpretationState,
+} from '../exploration/learnerInterpretation.js';
 
 export const CONCEPT_GRAPH_VERSION = 1;
 export const MAX_CONCEPT_GRAPH_NODES = 24;
@@ -176,6 +181,30 @@ function deriveDiscriminationProjection({ hypotheses, groups, plans, testDesigns
   };
 }
 
+function deriveInterpretationProjection({ hypotheses, interpretations, revisions, testDesigns }) {
+  const interpretationState = normalizeLearnerInterpretationState({ version: 1, interpretations }, { hypotheses, testDesigns });
+  const revisionState = normalizeHypothesisRevisionState({ version: 1, revisions }, {
+    hypotheses,
+    interpretations: interpretationState.interpretations,
+    testDesigns,
+  });
+  const interpretationNodes = interpretationState.interpretations.map((interpretation) => Object.freeze({
+    id: interpretation.id,
+    kind: 'learner-interpretation',
+    judgment: interpretation.judgment,
+    hypothesisIds: interpretation.hypothesisIds,
+    evidenceInstanceIds: interpretation.evidenceInstanceIds,
+  }));
+  const interpretationEdges = [
+    ...interpretationState.interpretations.flatMap((interpretation) => interpretationSemanticEdges({ interpretation })),
+    ...revisionState.revisions.flatMap((revision) => interpretationSemanticEdges({ revision })),
+  ].slice(0, MAX_CONCEPT_GRAPH_EDGES).map((edge) => Object.freeze(edge));
+  return {
+    interpretationNodes: Object.freeze(interpretationNodes),
+    interpretationEdges: Object.freeze(interpretationEdges),
+  };
+}
+
 function deriveEvidenceByConcept(journey) {
   const evidenceByConcept = {};
   normalizedJourneyEvents(journey)
@@ -221,6 +250,8 @@ export function deriveConceptGraph({
   hypothesisGroups = [],
   discriminationPlans = [],
   testDesigns = [],
+  interpretations = [],
+  revisions = [],
 } = {}) {
   const hypothesisState = normalizeHypothesisState({ version: 1, hypotheses });
   const conceptIds = deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, hypotheses: hypothesisState.hypotheses });
@@ -273,6 +304,12 @@ export function deriveConceptGraph({
     plans: discriminationPlans,
     testDesigns,
   });
+  const interpretationProjection = deriveInterpretationProjection({
+    hypotheses: hypothesisState.hypotheses,
+    interpretations,
+    revisions,
+    testDesigns,
+  });
 
   return Object.freeze({
     version: CONCEPT_GRAPH_VERSION,
@@ -293,6 +330,8 @@ export function deriveConceptGraph({
     selectedHypothesisEvidenceIds: Object.freeze(selectedHypothesis?.evidenceIds ?? []),
     discriminationNodes: discriminationProjection.discriminationNodes,
     discriminationEdges: discriminationProjection.discriminationEdges,
+    interpretationNodes: interpretationProjection.interpretationNodes,
+    interpretationEdges: interpretationProjection.interpretationEdges,
     // Causal edges are accepted as a vocabulary value for future explicit
     // semantic sources, but this projection never creates one.
     causalEdgeCount: edges.filter((edge) => edge.relation === CONCEPT_GRAPH_RELATIONS.CAUSED_BY).length,

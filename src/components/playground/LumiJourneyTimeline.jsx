@@ -8,6 +8,7 @@ const eventMode = {
   [LUMI_JOURNEY_EVENT_TYPES.INTERVENE]: 'intervene',
   [LUMI_JOURNEY_EVENT_TYPES.CONNECT]: 'explore',
   [LUMI_JOURNEY_EVENT_TYPES.ILLUMINATE]: 'illuminate',
+  [LUMI_JOURNEY_EVENT_TYPES.INTERPRET]: 'guide',
   [LUMI_JOURNEY_EVENT_TYPES.REVISE]: 'guide',
 };
 
@@ -17,6 +18,7 @@ const eventColor = {
   [LUMI_JOURNEY_EVENT_TYPES.INTERVENE]: 'lumi-journey-intervene',
   [LUMI_JOURNEY_EVENT_TYPES.CONNECT]: 'lumi-journey-connect',
   [LUMI_JOURNEY_EVENT_TYPES.ILLUMINATE]: 'lumi-journey-illuminate',
+  [LUMI_JOURNEY_EVENT_TYPES.INTERPRET]: 'lumi-journey-observe',
   [LUMI_JOURNEY_EVENT_TYPES.REVISE]: 'lumi-journey-observe',
 };
 
@@ -26,6 +28,7 @@ const eventLabelKey = {
   [LUMI_JOURNEY_EVENT_TYPES.INTERVENE]: 'playground.lumi.journey.event.intervene',
   [LUMI_JOURNEY_EVENT_TYPES.CONNECT]: 'playground.lumi.journey.event.connect',
   [LUMI_JOURNEY_EVENT_TYPES.ILLUMINATE]: 'playground.lumi.journey.event.illuminate',
+  [LUMI_JOURNEY_EVENT_TYPES.INTERPRET]: 'playground.lumi.journey.event.interpret',
   [LUMI_JOURNEY_EVENT_TYPES.REVISE]: 'playground.lumi.journey.event.revise',
 };
 
@@ -40,7 +43,7 @@ function targetLabel(event, snapshot, t) {
     const concept = getInquiryConcept(event.conceptId);
     return concept?.titleKey ? t(concept.titleKey) : t('playground.lumi.target.concept');
   }
-  if (event.type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || event.type === LUMI_JOURNEY_EVENT_TYPES.REVISE) return t('playground.lumi.target.hypothesis');
+  if (event.type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || event.type === LUMI_JOURNEY_EVENT_TYPES.REVISE || event.type === LUMI_JOURNEY_EVENT_TYPES.INTERPRET) return t('playground.lumi.target.hypothesis');
   return t('playground.lumi.target.experiment');
 }
 

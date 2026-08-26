@@ -10,6 +10,7 @@ export const LUMI_JOURNEY_EVENT_TYPES = Object.freeze({
   INTERVENE: 'intervene',
   CONNECT: 'connect',
   ILLUMINATE: 'illuminate',
+  INTERPRET: 'interpret',
   REVISE: 'revise',
 });
 
@@ -49,7 +50,10 @@ function createJourneyEvent(type, payload, { timestamp = 0, sourceSequence = 0, 
     normalized.experimentId = boundedId(payload?.experimentId);
     normalized.controlKey = boundedControlKey(payload?.controlKey);
   }
-  if (type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || type === LUMI_JOURNEY_EVENT_TYPES.REVISE) normalized.hypothesisId = boundedId(payload?.hypothesisId);
+  if (type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || type === LUMI_JOURNEY_EVENT_TYPES.REVISE || type === LUMI_JOURNEY_EVENT_TYPES.INTERPRET) {
+    normalized.hypothesisId = boundedId(payload?.hypothesisId);
+    normalized.interpretationId = type === LUMI_JOURNEY_EVENT_TYPES.INTERPRET ? boundedId(payload?.interpretationId) : undefined;
+  }
   if (type === LUMI_JOURNEY_EVENT_TYPES.CONNECT) {
     normalized.evidenceId = boundedId(payload?.evidenceId);
     normalized.conceptId = boundedId(payload?.conceptId);
@@ -59,6 +63,8 @@ function createJourneyEvent(type, payload, { timestamp = 0, sourceSequence = 0, 
     ? normalized.evidenceId
       : type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || type === LUMI_JOURNEY_EVENT_TYPES.REVISE
         ? normalized.hypothesisId
+        : type === LUMI_JOURNEY_EVENT_TYPES.INTERPRET
+          ? normalized.hypothesisId && normalized.interpretationId
         : type === LUMI_JOURNEY_EVENT_TYPES.INTERVENE
       ? normalized.experimentId
       : type === LUMI_JOURNEY_EVENT_TYPES.CONNECT
@@ -110,6 +116,8 @@ export function deriveLumiJourneyProjection({
   illuminatedConceptIds = [],
   illuminationEvents = [],
   hypotheses = [],
+  interpretations = [],
+  revisions = [],
 } = {}) {
   const events = semanticEvents(semanticEventInput);
   const notices = Array.isArray(observations) ? observations : [];
@@ -159,6 +167,29 @@ export function deriveLumiJourneyProjection({
     }
   });
 
+  (Array.isArray(interpretations) ? interpretations : []).slice(0, 12).forEach((interpretation, index) => {
+    const hypothesisId = boundedId(interpretation?.hypothesisIds?.[0]);
+    const interpretationId = boundedId(interpretation?.id);
+    if (!hypothesisId || !interpretationId) return;
+    const interpret = createJourneyEvent(LUMI_JOURNEY_EVENT_TYPES.INTERPRET, { hypothesisId, interpretationId }, {
+      timestamp: 0,
+      sourceSequence: index + 1,
+      order: (events.length + index + 1) * 10 + 4,
+    });
+    if (interpret) journeyEvents.push(interpret);
+  });
+
+  (Array.isArray(revisions) ? revisions : []).slice(0, 12).forEach((revision, index) => {
+    const hypothesisId = boundedId(revision?.childHypothesisId);
+    if (!hypothesisId) return;
+    const revise = createJourneyEvent(LUMI_JOURNEY_EVENT_TYPES.REVISE, { hypothesisId }, {
+      timestamp: 0,
+      sourceSequence: index + 1,
+      order: (events.length + index + 1) * 10 + 5,
+    });
+    if (revise) journeyEvents.push(revise);
+  });
+
   (Array.isArray(illuminationEvents) ? illuminationEvents : []).forEach((event) => {
     const illuminate = createJourneyEvent(LUMI_JOURNEY_EVENT_TYPES.ILLUMINATE, { conceptId: event?.conceptId }, {
       timestamp: event?.timestamp,
@@ -187,7 +218,7 @@ export function deriveLumiJourneyProjection({
       ? { type: currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.OBSERVE ? 'evidence' : 'concept', id: currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.OBSERVE ? currentEvent.evidenceId : currentEvent.conceptId }
       : currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.INTERVENE
         ? { type: 'experiment', id: currentEvent.experimentId }
-        : currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.REVISE
+        : currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.PREDICT || currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.REVISE || currentEvent.type === LUMI_JOURNEY_EVENT_TYPES.INTERPRET
           ? { type: 'hypothesis', id: currentEvent.hypothesisId }
         : { type: 'concept', id: currentEvent.conceptId }
     : frontierConceptIds[0] ? { type: 'concept', id: frontierConceptIds[0] } : null;

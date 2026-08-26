@@ -14,6 +14,25 @@ The execution projection separates `executionEvidenceIds` from `outcomeEvidenceI
 
 Learners may explicitly place two to four existing learner hypotheses into a bounded session-local competing group. A Discrimination Plan references that group and one existing Test Design, then records one learner-authored prediction for each hypothesis. Its only derived status is `predictions-diverge`, `predictions-overlap`, or `insufficient-predictions`; it never selects a winner, changes hypothesis status, executes a test, or creates causal semantics. Execution remains owned by the referenced Test Design and existing Experiment runtime.
 
+## Phase 14 — learner interpretation and hypothesis revision
+
+`src/core/exploration/learnerInterpretation.js` records a bounded, explicit
+learner reading of selected stable Evidence instance IDs in relation to one or
+more existing Hypotheses and, optionally, an existing Test Design. Judgment
+(`supports`, `challenges`, `uncertain`, or `needs-more-testing`) and notes are
+learner-authored; they never mutate Evidence, Test Design, Hypothesis status,
+World, Experiment, or the canonical event stream. Historical Evidence IDs are
+kept as references even when the occurrence is no longer available in the
+current session.
+
+Hypothesis revisions create a new learner Hypothesis identity and retain the
+parent unchanged. Journey and Concept Map project the neutral
+`interpreted_in`, `informs_revision`, and `revised_from` relations. These
+relations describe learner provenance and lineage only; they do not mean
+`proves`, `caused_by`, mastery, or an automatically selected winner. The
+interpretation and revision states are session-local and detached from project
+persistence and Agent authority.
+
 ## Phase 10A — embedded learning assistance
 
 The embedded Ask VOLK surface is an answer-only presentation layer over the

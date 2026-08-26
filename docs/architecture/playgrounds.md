@@ -12,6 +12,14 @@ Execution-window Evidence is retained as temporal provenance only. It becomes an
 
 Competing Hypotheses and Discrimination Plans are detached learning records. They reference real learner Hypotheses and an existing Test Design, preserve the learner's predictions, and present factual prediction divergence or overlap. They do not add an executor, truth score, winner, automatic status mutation, or `caused_by` edge.
 
+The learner interpretation surface appears when existing Hypotheses and
+Evidence instances are available. The learner explicitly selects stable
+Evidence IDs, chooses a judgment, and may attach an existing Test Design.
+Saving is a detached session record. Revising a Hypothesis creates a new child
+identity while preserving the old statement and records the learner's
+interpretation as lineage. The surface does not execute a Test Design, change
+Hypothesis status, edit Evidence, or ask LUMI to explain a result.
+
 VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve three consumers with one code path: the human UI, teaching-video demo scripts, and the in-page Canvas Agent.
 
 ## Unified visualization runtime
