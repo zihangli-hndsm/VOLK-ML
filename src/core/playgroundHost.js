@@ -71,6 +71,7 @@ import {
   deriveTestComparison,
   deriveTestDesignCapabilities,
   deriveTestOutcomeView,
+  scopeTestDesignEvidence,
   TEST_DESIGN_STATUSES,
 } from './exploration/testDesign.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
@@ -726,13 +727,15 @@ export function createPlaygroundHost({
       const baselineConditionFingerprint = sessionConditionFingerprint(session);
       for (const action of assessment.plan.actions) dispatchAndCommit(action);
       const result = present(derivePlaygroundSnapshot(session));
-      const evidenceIds = (result.semanticEvents?.evidenceInstances ?? [])
-        .filter((instance) => instance.semanticSequence > beforeSequence)
-        .map((instance) => instance.id);
+      const evidenceScope = scopeTestDesignEvidence({
+        evidenceInstances: result.semanticEvents?.evidenceInstances,
+        beforeSequence,
+        outcomeObservableIds: assessment.plan.design.outcomeObservableIds,
+      });
       const comparison = deriveTestComparison({
         testDesign: assessment.plan.design,
         comparison: result.experimentWorkspace?.comparison,
-        outcomeEvidenceIds: evidenceIds,
+        outcomeEvidenceIds: evidenceScope.outcomeEvidenceIds,
       });
       const outcomes = deriveTestOutcomeView({
         testDesign: assessment.plan.design,
@@ -746,13 +749,15 @@ export function createPlaygroundHost({
         interventionExperimentId: activeExperimentId,
         baselineConditionFingerprint,
         interventionConditionFingerprint: sessionConditionFingerprint(session),
-        outcomeEvidenceIds: evidenceIds,
+        outcomeEvidenceIds: evidenceScope.outcomeEvidenceIds,
+        executionEvidenceIds: evidenceScope.executionEvidenceIds,
       });
       return {
         valid: true,
         design: executedDesign,
         comparison,
         outcomes,
+        executionEvidenceIds: evidenceScope.executionEvidenceIds,
         snapshot: result,
         baselineExperimentId,
         interventionExperimentId: activeExperimentId,

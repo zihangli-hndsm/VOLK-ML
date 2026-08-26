@@ -214,8 +214,9 @@ export function hasCanonicalComparisonPaths(diff) {
 }
 
 export function comparisonFactorCount(diff) {
+  if (Number.isInteger(diff?.semanticFactorCount)) return Math.max(0, diff.semanticFactorCount);
   if (Array.isArray(diff?.semanticFactorPaths)) return [...new Set(diff.semanticFactorPaths)].length;
-  return comparisonChangedPaths(diff).length;
+  return Array.isArray(diff?.changedFactors) ? [...new Set(diff.changedFactors)].length : 0;
 }
 
 export function semanticFactors(experiment, { sharedObservationIds = null } = {}) {

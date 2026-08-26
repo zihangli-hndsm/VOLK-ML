@@ -3,13 +3,14 @@
 // World, Dataset, Experiment, Evidence, or Hypothesis runtime.
 
 import { isEvidenceInstanceId } from './evidenceProvenance.js';
-import { canonicalExperimentalControl } from './comparison.js';
+import { canonicalExperimentalControl, comparisonFactorCount } from './comparison.js';
 import { listGeneratorParameterCapabilities } from './operationRegistry.js';
 
 export const TEST_DESIGN_VERSION = 1;
 export const MAX_TEST_DESIGNS = 8;
 export const MAX_TEST_DESIGN_ID_LENGTH = 160;
 export const MAX_TEST_DESIGN_OUTCOMES = 6;
+export const MAX_TEST_DESIGN_EXECUTION_EVIDENCE = 16;
 export const MAX_TEST_DESIGN_HOLDS = 12;
 export const MAX_TEST_DESIGN_TEXT_LENGTH = 240;
 
@@ -124,6 +125,7 @@ export function createTestDesign({
   baselineConditionFingerprint = null,
   interventionConditionFingerprint = null,
   outcomeEvidenceIds = [],
+  executionEvidenceIds = [],
 } = {}) {
   const normalizedId = boundedString(id);
   const normalizedHypothesisId = boundedString(hypothesisId);
@@ -144,6 +146,7 @@ export function createTestDesign({
     ...(boundedString(baselineConditionFingerprint) ? { baselineConditionFingerprint: boundedString(baselineConditionFingerprint) } : {}),
     ...(boundedString(interventionConditionFingerprint) ? { interventionConditionFingerprint: boundedString(interventionConditionFingerprint) } : {}),
     outcomeEvidenceIds: Object.freeze(boundedIds(outcomeEvidenceIds, MAX_TEST_DESIGN_OUTCOMES).filter(isEvidenceInstanceId)),
+    executionEvidenceIds: Object.freeze(boundedIds(executionEvidenceIds, MAX_TEST_DESIGN_EXECUTION_EVIDENCE).filter(isEvidenceInstanceId)),
   });
 }
 
@@ -348,18 +351,20 @@ export function deriveTestComparison({ testDesign, comparison, outcomeEvidenceId
   const diff = comparison?.diff ?? comparison ?? null;
   const changedFactors = [...new Set(Array.isArray(diff?.changedFactors) ? diff.changedFactors : diff?.changed ?? [])];
   const changedPaths = [...new Set(Array.isArray(diff?.semanticChangedPaths) ? diff.semanticChangedPaths : changedFactors)];
+  const canonicalFactorPaths = [...new Set(Array.isArray(diff?.semanticFactorPaths) ? diff.semanticFactorPaths : [])];
+  const canonicalFactorCount = diff ? comparisonFactorCount(diff) : 0;
   const intendedPath = interventionSemanticPath(design?.intervention);
   const held = design?.heldConstantFactors ?? [];
-  const heldConstantViolated = held.filter((hold) => changedPaths.some((path) => pathMatches(path, hold)));
+  const heldConstantViolated = held.filter((hold) => canonicalFactorPaths.some((path) => pathMatches(path, hold)));
   const intendedChanged = intendedPath
-    ? changedPaths.some((path) => path === intendedPath || path.startsWith(`${intendedPath}.`))
+    ? canonicalFactorPaths.some((path) => path === intendedPath || path.startsWith(`${intendedPath}.`))
     : false;
-  const samplingOnly = changedPaths.length === 1 && changedPaths[0] === 'observationProcess.sample';
+  const samplingOnly = canonicalFactorCount === 1 && canonicalFactorPaths[0] === 'observationProcess.sample';
   let comparisonClass = 'insufficient';
-  if (diff && changedPaths.length > 0) {
+  if (diff && canonicalFactorCount > 0) {
     if (samplingOnly) comparisonClass = 'observational';
-    else if (intendedChanged && changedPaths.length === 1 && heldConstantViolated.length === 0) comparisonClass = 'single-factor';
-    else if (changedPaths.length > 1 || heldConstantViolated.length > 0) comparisonClass = 'confounded';
+    else if (intendedChanged && canonicalFactorCount === 1 && heldConstantViolated.length === 0) comparisonClass = 'single-factor';
+    else if (canonicalFactorCount > 1 || heldConstantViolated.length > 0) comparisonClass = 'confounded';
   }
   return {
     version: TEST_DESIGN_VERSION,
@@ -369,10 +374,24 @@ export function deriveTestComparison({ testDesign, comparison, outcomeEvidenceId
     intendedPath,
     changedFactors,
     changedPaths,
+    canonicalFactorPaths,
+    canonicalFactorCount,
     heldConstantSatisfied: Boolean(diff && heldConstantViolated.length === 0),
     heldConstantViolated,
     outcomeEvidenceIds: [...new Set((Array.isArray(outcomeEvidenceIds) ? outcomeEvidenceIds : []).filter(isEvidenceInstanceId))].slice(0, MAX_TEST_DESIGN_OUTCOMES),
   };
+}
+
+export function scopeTestDesignEvidence({ evidenceInstances = [], beforeSequence = 0, outcomeObservableIds = [] } = {}) {
+  const outcomeIds = new Set((Array.isArray(outcomeObservableIds) ? outcomeObservableIds : []).filter((id) => typeof id === 'string'));
+  const executionEvidenceIds = [...new Set((Array.isArray(evidenceInstances) ? evidenceInstances : [])
+    .filter((instance) => isEvidenceInstanceId(instance?.id) && Number(instance?.semanticSequence) > Number(beforeSequence))
+    .map((instance) => instance.id))].slice(0, MAX_TEST_DESIGN_EXECUTION_EVIDENCE);
+  const outcomeEvidenceIds = [...new Set((Array.isArray(evidenceInstances) ? evidenceInstances : [])
+    .filter((instance) => executionEvidenceIds.includes(instance?.id))
+    .filter((instance) => Array.isArray(instance?.evidenceRefs) && instance.evidenceRefs.some((ref) => outcomeIds.has(ref)))
+    .map((instance) => instance.id))].slice(0, MAX_TEST_DESIGN_OUTCOMES);
+  return { executionEvidenceIds, outcomeEvidenceIds };
 }
 
 function resultObservableValue(result, id) {

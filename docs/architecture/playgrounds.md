@@ -8,6 +8,8 @@ Only an explicit Run action executes the existing runtime sequence `DUPLICATE_EX
 
 Outcome references use existing stable `evidence-instance-*` identifiers. Test Design state is presentation/session state and is intentionally excluded from project persistence, Experiment fingerprints, Agent authority, mastery, confidence, and automatic hypothesis status changes.
 
+Execution-window Evidence is retained as temporal provenance only. It becomes an outcome reference only when its existing `evidenceRefs` directly names one of the learner-selected observable IDs; detector reason codes, timing, or matching conditions never establish that relationship. Comparison classification consumes the canonical `semanticFactorPaths` and `semanticFactorCount` emitted by `compareExperiments`, so multiple raw leaf paths may still represent one learner-facing factor.
+
 VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve three consumers with one code path: the human UI, teaching-video demo scripts, and the in-page Canvas Agent.
 
 ## Unified visualization runtime

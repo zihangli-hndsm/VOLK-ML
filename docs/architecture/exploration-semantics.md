@@ -8,6 +8,8 @@ The design lifecycle is `draft → ready → executed` and lives only in the ope
 
 Test Design edges, when projected into a concept view, are neutral `test_design`, `baseline`, `intervention`, and `observed_with` relations. No `caused_by` edge is generated. Evidence lifecycle and stable Evidence instance identity remain owned by the existing semantic event and provenance systems.
 
+The execution projection separates `executionEvidenceIds` from `outcomeEvidenceIds`. The former means only that an Evidence occurrence happened after the execution window began. The latter is populated only from direct Evidence provenance (`evidenceRefs` → selected observable ID). A baseline condition fingerprint is checked in addition to the Experiment ID; changing a control on the baseline invalidates the detached design without running or duplicating it.
+
 ## Phase 10A — embedded learning assistance
 
 The embedded Ask VOLK surface is an answer-only presentation layer over the

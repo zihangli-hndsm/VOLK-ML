@@ -1439,4 +1439,6 @@ export const messages = {
   'playground.testDesign.error.missing-outcome': { en: 'Choose at least one observable outcome.', zh: '至少选择一个可观察结果。' },
   'playground.testDesign.error.unsupported-intervention': { en: 'This factor is not available in the current playground.', zh: '当前实验台不支持这个因素。' },
   'playground.testDesign.error.missing-target': { en: 'Choose a target value.', zh: '请选择目标值。' },
+  'playground.testDesign.error.invalid': { en: 'This test design is not ready to run.', zh: '这个测试设计还不能运行。' },
+  'playground.testDesign.unknownFactor': { en: 'Registered factor', zh: '已登记因素' },
 };
