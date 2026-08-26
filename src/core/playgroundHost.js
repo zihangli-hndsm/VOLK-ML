@@ -65,6 +65,14 @@ import { deriveExploreDepthCapabilities } from './ui/exploreDepth.js';
 import { CONCEPTUAL_DEPTHS } from './ui/uiArchitecture.js';
 import { createLearnerAnnotationStore, projectLearnerAnnotations } from './exploration/learnerAnnotations.js';
 import { createLearningConversationStore, projectLearningAssistantContext } from './exploration/learningAssistant.js';
+import {
+  compileTestDesignActionPlan,
+  createTestDesign,
+  deriveTestComparison,
+  deriveTestDesignCapabilities,
+  deriveTestOutcomeView,
+  TEST_DESIGN_STATUSES,
+} from './exploration/testDesign.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -173,6 +181,20 @@ function executeExplorationOnDetachedSession(baseSession, validated) {
     throw scenarioError('EXPLORATION_PEDAGOGICAL_INTERVENTION_INVALID', { reason: pedagogicalVerification.reason });
   }
   return { session: candidate, snapshot, mutationDiff, fidelity, pedagogicalVerification };
+}
+
+function executeTestDesignOnDetachedSession(baseSession, design, capabilities) {
+  const snapshot = derivePlaygroundSnapshot(baseSession);
+  const plan = compileTestDesignActionPlan(design, { snapshot, capabilities });
+  if (!plan.valid) return { plan, snapshot, comparison: deriveTestComparison({ testDesign: design, comparison: null }) };
+  let candidate = structuredClone(baseSession);
+  for (const action of plan.actions) candidate = dispatchPlaygroundAction(candidate, action);
+  const resultSnapshot = derivePlaygroundSnapshot(candidate);
+  const comparison = deriveTestComparison({
+    testDesign: plan.design,
+    comparison: resultSnapshot.experimentWorkspace?.comparison,
+  });
+  return { plan, session: candidate, snapshot: resultSnapshot, comparison };
 }
 
 function resolveSource(playground, dataset) {
@@ -663,6 +685,78 @@ export function createPlaygroundHost({
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       dispatchAndCommit(action);
       return present(derivePlaygroundSnapshot(session));
+    },
+
+    deriveTestDesignCapabilities() {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const snapshot = derivePlaygroundSnapshot(session);
+      const playground = getPlayground(snapshot.modelPlaygroundId ?? snapshot.playgroundId);
+      return deriveTestDesignCapabilities({ snapshot, playground });
+    },
+
+    preflightTestDesign({ design } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const snapshot = derivePlaygroundSnapshot(session);
+      const capabilities = this.deriveTestDesignCapabilities();
+      const baselineFingerprint = design?.baselineConditionFingerprint;
+      const currentFingerprint = sessionConditionFingerprint(session);
+      if (baselineFingerprint && baselineFingerprint !== currentFingerprint) {
+        return {
+          valid: false,
+          code: 'TEST_DESIGN_STALE_BASELINE',
+          errors: ['stale-baseline'],
+          current: { experimentId: snapshot.experimentWorkspace?.activeExperimentId, conditionFingerprint: currentFingerprint },
+        };
+      }
+      const result = executeTestDesignOnDetachedSession(session, design, capabilities);
+      return {
+        valid: Boolean(result.plan.valid),
+        plan: result.plan,
+        comparison: result.comparison,
+        snapshot: result.snapshot,
+        capabilities,
+      };
+    },
+
+    async executeTestDesign({ design } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const assessment = this.preflightTestDesign({ design });
+      if (!assessment.valid) return assessment;
+      const beforeSequence = semanticEventStore.snapshot().events.at(-1)?.sequence ?? 0;
+      const baselineConditionFingerprint = sessionConditionFingerprint(session);
+      for (const action of assessment.plan.actions) dispatchAndCommit(action);
+      const result = present(derivePlaygroundSnapshot(session));
+      const evidenceIds = (result.semanticEvents?.evidenceInstances ?? [])
+        .filter((instance) => instance.semanticSequence > beforeSequence)
+        .map((instance) => instance.id);
+      const comparison = deriveTestComparison({
+        testDesign: assessment.plan.design,
+        comparison: result.experimentWorkspace?.comparison,
+        outcomeEvidenceIds: evidenceIds,
+      });
+      const outcomes = deriveTestOutcomeView({
+        testDesign: assessment.plan.design,
+        results: result.experimentWorkspace?.comparison?.results,
+      });
+      const activeExperimentId = result.experimentWorkspace?.activeExperimentId ?? result.experiment?.id;
+      const baselineExperimentId = assessment.plan.design.baselineExperimentId;
+      const executedDesign = createTestDesign({
+        ...assessment.plan.design,
+        status: TEST_DESIGN_STATUSES.EXECUTED,
+        interventionExperimentId: activeExperimentId,
+        baselineConditionFingerprint,
+        interventionConditionFingerprint: sessionConditionFingerprint(session),
+        outcomeEvidenceIds: evidenceIds,
+      });
+      return {
+        valid: true,
+        design: executedDesign,
+        comparison,
+        outcomes,
+        snapshot: result,
+        baselineExperimentId,
+        interventionExperimentId: activeExperimentId,
+      };
     },
 
     async play() {

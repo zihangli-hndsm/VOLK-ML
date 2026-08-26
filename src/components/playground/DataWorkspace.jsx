@@ -107,6 +107,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const operations = new Set((snapshot.capabilities?.worldOperations ?? []).map((item) => item.type));
   const canSampleAgain = world?.mode === 'generated' && operations.has('RESAMPLE_WORLD');
   const sampleEventCount = (snapshot.semanticEvents?.events ?? []).filter((event) => event?.type === 'observation.sampled').length;
+  const againstExperimentId = snapshot.experimentWorkspace?.comparison?.againstExperimentId ?? null;
+  const canCompareSamples = Boolean(againstExperimentId);
   const canEdit = Boolean(snapshot.capabilities?.canEditWorld)
     && operations.has('ADD_POINTS')
     && operations.has('MOVE_POINT')
@@ -432,8 +434,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     });
   };
   const compareSamples = () => {
-    const againstExperimentId = snapshot.experimentWorkspace?.comparison?.againstExperimentId;
-    if (againstExperimentId) Promise.resolve(onDispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId })).catch((nextError) => setError(nextError));
+    if (!canCompareSamples) return;
+    Promise.resolve(onDispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId })).catch((nextError) => setError(nextError));
   };
   const sampleAgain = () => {
     Promise.resolve(onDispatch({ type: 'DUPLICATE_EXPERIMENT' }))
@@ -491,7 +493,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     {phenomenonMode && sampleEventCount > 0 && <section data-sample-status="true" className="rounded-xl border border-cyan-200 bg-cyan-50/70 px-3 py-2">
       <p className="text-xs font-black text-cyan-950">{t('playground.phenomenon.sampleStatus')}</p>
       <p className="mt-1 text-xs text-cyan-900">{t('playground.phenomenon.sampleQuestion')}</p>
-      <button type="button" onClick={compareSamples} className="mt-2 rounded-lg border border-cyan-300 bg-white px-3 py-2 text-xs font-black text-cyan-900 hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-500">{t('playground.phenomenon.compareSamples')}</button>
+      <button type="button" disabled={!canCompareSamples} onClick={compareSamples} className="mt-2 rounded-lg border border-cyan-300 bg-white px-3 py-2 text-xs font-black text-cyan-900 hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-50">{canCompareSamples ? t('playground.phenomenon.compareSamples') : t('playground.phenomenon.compareSamplesUnavailable')}</button>
     </section>}
     <div className={`mt-3 min-w-0 ${phenomenonMode ? 'space-y-3' : 'grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px]'}`}>
       <div className="ui-motion-surface overflow-hidden rounded-2xl border border-slate-200 bg-slate-50">
