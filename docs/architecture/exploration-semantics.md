@@ -49,6 +49,22 @@ neutral `compared_with`, `changed`, `held_fixed`, `observed_under`, and
 `predicted` relations. It never creates `causes`, `caused_by`, confidence, or
 causal conclusions; LUMI can invite attention but cannot run the question.
 
+## Phase 16 — Inquiry Episodes and Learning Path
+
+`src/core/exploration/inquiryEpisodes.js` projects a bounded notebook trail
+from existing Semantic Events, Journey entries, Test Designs, Hypotheses,
+interpretations, revisions, and explicit illumination records. An episode
+keeps source IDs and a localized presentation label; it is not a replacement
+event stream, score, hidden progress state, or reasoning result.
+
+`src/core/exploration/learningPath.js` exposes exactly eight possible topics:
+World vs Data, Sampling Variation, Linear Relationship, Loss and Fitting,
+Train vs Test, Generalization, Nonlinearity, and MLP Representation. Each node
+is `available`, `explored`, or explicitly `illuminated`. Explored is derived
+from existing runtime signals and concept connections; illuminated is only a
+session-local learner action. The registry does not impose an order, infer
+mastery, persist a curriculum, or choose the learner's next topic.
+
 ## Phase 10A — embedded learning assistance
 
 The embedded Ask VOLK surface is an answer-only presentation layer over the

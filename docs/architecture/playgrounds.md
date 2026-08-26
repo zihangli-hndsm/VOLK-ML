@@ -27,6 +27,13 @@ observable outcomes, and saves a detached question. A stale fingerprint is
 shown as unavailable. Choosing an existing Hypothesis and “Turn into Test
 Design” creates a normal saved Test Design for review; it does not run it.
 
+Inquiry Trail and Learning Path are notebook-style presentation surfaces. The
+trail lists only existing semantic and learner-authored records. The path is
+an eight-topic registry whose available/explored state is derived from the
+current session; the learner may explicitly mark an explored topic illuminated
+in session memory. Neither surface changes World, Experiment, Evidence,
+Hypothesis status, project persistence, or Agent authority.
+
 VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve three consumers with one code path: the human UI, teaching-video demo scripts, and the in-page Canvas Agent.
 
 ## Unified visualization runtime

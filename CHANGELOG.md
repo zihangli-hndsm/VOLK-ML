@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-27 — Phase 16 inquiry trail and learning path
+
+- Added bounded Inquiry Episodes as a notebook projection over existing semantic events and learner records.
+- Added the exact eight-topic Learning Path with available/explored/explicitly illuminated session states and no required order or mastery semantics.
+- Added bilingual responsive Inquiry Trail and Learning Path surfaces with focused projection and boundary checks.
+
 ## 2026-08-27 — Phase 15 counterfactual exploration
 
 - Added bounded learner-owned “What if…?” questions with baseline Experiment and condition-fingerprint provenance, explicit stale guards, and neutral map relations.
