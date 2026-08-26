@@ -10,6 +10,10 @@ Test Design edges, when projected into a concept view, are neutral `test_design`
 
 The execution projection separates `executionEvidenceIds` from `outcomeEvidenceIds`. The former means only that an Evidence occurrence happened after the execution window began. The latter is populated only from direct Evidence provenance (`evidenceRefs` → selected observable ID). A baseline condition fingerprint is checked in addition to the Experiment ID; changing a control on the baseline invalidates the detached design without running or duplicating it.
 
+## Phase 13 — competing hypotheses
+
+Learners may explicitly place two to four existing learner hypotheses into a bounded session-local competing group. A Discrimination Plan references that group and one existing Test Design, then records one learner-authored prediction for each hypothesis. Its only derived status is `predictions-diverge`, `predictions-overlap`, or `insufficient-predictions`; it never selects a winner, changes hypothesis status, executes a test, or creates causal semantics. Execution remains owned by the referenced Test Design and existing Experiment runtime.
+
 ## Phase 10A — embedded learning assistance
 
 The embedded Ask VOLK surface is an answer-only presentation layer over the

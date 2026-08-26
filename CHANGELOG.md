@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-26 — Phase 13 competing hypotheses
+
+- Added learner-created competing Hypothesis groups and Discrimination Plans that reuse existing Test Designs.
+- Added factual prediction divergence, overlap, and insufficient-prediction states without selecting a winner or changing Hypothesis status.
+- Connected the plans to the Concept Map with neutral `predicted_by` and `tested_by` relations, plus bilingual responsive UI and focused boundary checks.
+
 ## 2026-08-26 — PR #130 acceptance hardening
 
 - Separated execution-window Evidence occurrences from selected outcome Evidence; only direct `evidenceRefs` provenance can create an outcome reference.

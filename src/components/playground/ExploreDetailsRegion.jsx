@@ -25,9 +25,10 @@ import LumiAttentionRail from './LumiAttentionRail.jsx';
 import LumiJourneyTimeline from './LumiJourneyTimeline.jsx';
 import ConceptMap from './ConceptMap.jsx';
 import HypothesisPanel from './HypothesisPanel.jsx';
+import CompetingHypothesesPanel from './CompetingHypothesesPanel.jsx';
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
 
-export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], journeyIlluminationEvents = [], onIlluminateConcept, hypotheses = [], evidenceInstances = [], onCreateHypothesis, onSetHypothesisStatus, onAttachHypothesisEvidence, onOpenHypothesisEvidence, testDesigns = [], testDesignResults = {}, testDesignCapabilities = null, onSaveTestDesign, onRunTestDesign, t, intervention = null }) {
+export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], journeyIlluminationEvents = [], onIlluminateConcept, hypotheses = [], evidenceInstances = [], onCreateHypothesis, onSetHypothesisStatus, onAttachHypothesisEvidence, onOpenHypothesisEvidence, testDesigns = [], testDesignResults = {}, testDesignCapabilities = null, onSaveTestDesign, onRunTestDesign, hypothesisGroups = [], discriminationPlans = [], onCreateHypothesisGroup, onCreateDiscriminationPlan, t, intervention = null }) {
   const { responsive } = usePresentationCapabilities();
   const { isConfigured, openSettings } = useAiProvider();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
@@ -55,7 +56,10 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     selectedConceptId,
     hypotheses,
     selectedHypothesisId,
-  }), [snapshot?.learnerInquiry, journey, bigIdea?.id, illuminatedConceptIds, selectedConceptId, hypotheses, selectedHypothesisId]);
+    hypothesisGroups,
+    discriminationPlans,
+    testDesigns,
+  }), [snapshot?.learnerInquiry, journey, bigIdea?.id, illuminatedConceptIds, selectedConceptId, hypotheses, selectedHypothesisId, hypothesisGroups, discriminationPlans, testDesigns]);
   const compact = responsive.band === 'compact';
   const panelCloseRef = useRef(null);
   const triggerRefs = useRef({});
@@ -117,6 +121,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     <LumiJourneyTimeline journey={journey} snapshot={snapshot} compact={compact} t={t} onSelectConcept={setSelectedConceptId} />
     <ConceptMap graph={conceptGraph} snapshot={snapshot} evidenceInstances={evidenceInstances} compact={compact} t={t} onSelectConcept={setSelectedConceptId} onSelectHypothesis={setSelectedHypothesisId} />
     <HypothesisPanel attention={attention} graph={conceptGraph} evidenceInstances={evidenceInstances} hypotheses={hypotheses} compact={compact} t={t} onCreate={onCreateHypothesis} onSetStatus={onSetHypothesisStatus} onAttachEvidence={onAttachHypothesisEvidence} onOpenEvidence={onOpenHypothesisEvidence} onOpenExperiment={() => onDepthChange?.(CONCEPTUAL_DEPTHS.TUNE)} onSelectHypothesis={setSelectedHypothesisId} snapshot={snapshot} capabilities={testDesignCapabilities} testDesigns={testDesigns} testDesignResults={testDesignResults} onSaveTestDesign={onSaveTestDesign} onRunTestDesign={onRunTestDesign} />
+    <CompetingHypothesesPanel hypotheses={hypotheses} groups={hypothesisGroups} plans={discriminationPlans} testDesigns={testDesigns} testDesignResults={testDesignResults} compact={compact} t={t} onCreateGroup={onCreateHypothesisGroup} onCreatePlan={onCreateDiscriminationPlan} />
 
     {agent && <>
       <div className="flex min-w-0 items-center gap-2">

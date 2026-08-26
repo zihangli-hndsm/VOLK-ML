@@ -10,6 +10,8 @@ Outcome references use existing stable `evidence-instance-*` identifiers. Test D
 
 Execution-window Evidence is retained as temporal provenance only. It becomes an outcome reference only when its existing `evidenceRefs` directly names one of the learner-selected observable IDs; detector reason codes, timing, or matching conditions never establish that relationship. Comparison classification consumes the canonical `semanticFactorPaths` and `semanticFactorCount` emitted by `compareExperiments`, so multiple raw leaf paths may still represent one learner-facing factor.
 
+Competing Hypotheses and Discrimination Plans are detached learning records. They reference real learner Hypotheses and an existing Test Design, preserve the learner's predictions, and present factual prediction divergence or overlap. They do not add an executor, truth score, winner, automatic status mutation, or `caused_by` edge.
+
 VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve three consumers with one code path: the human UI, teaching-video demo scripts, and the in-page Canvas Agent.
 
 ## Unified visualization runtime
