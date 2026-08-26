@@ -93,6 +93,17 @@ const PUBLIC_WORLD_OPERATIONS = [
     humanAccessible: true,
   },
   {
+    type: 'RESAMPLE_WORLD',
+    capability: 'world.observation.sample',
+    domain: 'observation-process',
+    category: 'sample-again',
+    changes: ['observation-sample', 'dataset-provenance', 'generator-realization'],
+    preserves: ['world-identity', 'generator-specification', 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
+    undoable: true,
+    agentDiscoverable: true,
+    humanAccessible: true,
+  },
+  {
     type: 'FREEZE_AS_SAMPLES',
     capability: 'world.generator.freeze',
     domain: 'world-generator',

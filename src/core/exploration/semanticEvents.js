@@ -14,6 +14,7 @@ export const SEMANTIC_EVENT_TYPES = Object.freeze([
   'experiment.duplicated',
   'experiment.factor-changed',
   'world.intervened',
+  'observation.sampled',
   'comparison.completed',
   'repeat.completed',
   'observation.detected',
@@ -104,14 +105,15 @@ function controlEvent(before, after, action, controlDescriptors) {
 }
 
 function worldEvent(before, after, action, operations = action?.transaction?.operations) {
-  const operationTypes = boundedStrings((operations ?? []).map((operation) => operation?.type));
+  const worldOperations = (operations ?? []).filter((operation) => !['RESAMPLE_WORLD', 'observation.sample'].includes(operation?.type));
+  const operationTypes = boundedStrings(worldOperations.map((operation) => operation?.type));
   if (!operationTypes.length) return null;
   return {
     type: 'world.intervened',
     actor: actorFor(action?.transaction?.actor ? { actor: action.transaction.actor } : action),
     experimentIds: boundedStrings([activeExperimentId(after)], 1),
-    semanticFactors: boundedStrings(deriveWorldSemanticFactors({ operations, beforeWorld: before?.world })),
-    semanticFactorPaths: boundedStrings(deriveWorldSemanticFactors({ operations, beforeWorld: before?.world })),
+    semanticFactors: boundedStrings(deriveWorldSemanticFactors({ operations: worldOperations, beforeWorld: before?.world })),
+    semanticFactorPaths: boundedStrings(deriveWorldSemanticFactors({ operations: worldOperations, beforeWorld: before?.world })),
     operationTypes,
     reasonCode: boundedString(action?.transaction?.intent, 'world-transaction'),
   };
@@ -224,6 +226,33 @@ export function observationDedupeKey(notice, conditionFingerprint = null) {
   });
 }
 
+function observationSampledEventFromHistory(before, after, action) {
+  const previous = before?.actionHistory?.past?.at(-1)?.id ?? null;
+  const current = after?.actionHistory?.past?.at(-1) ?? null;
+  if (!current || current.id === previous || !(current.mutationSummary?.types ?? []).some((type) => ['RESAMPLE_WORLD', 'observation.sample'].includes(type))) return null;
+  return observationSampledEvent(after, {
+    ...action,
+    transaction: {
+      actor: action?.actor ?? current.actor,
+      intent: current.intent,
+      operations: [{ type: 'RESAMPLE_WORLD' }],
+    },
+  });
+}
+
+function observationSampledEvent(after, action, operations = action?.transaction?.operations) {
+  if (!(operations ?? []).some((operation) => operation?.type === 'RESAMPLE_WORLD')) return null;
+  return {
+    type: 'observation.sampled',
+    actor: actorFor(action?.transaction?.actor ? { actor: action.transaction.actor } : action),
+    experimentIds: boundedStrings([activeExperimentId(after)], 1),
+    semanticFactors: ['observation.sample'],
+    semanticFactorPaths: ['observation.sample'],
+    operationTypes: ['RESAMPLE_WORLD'],
+    reasonCode: boundedString(action?.transaction?.intent, 'sample-again'),
+  };
+}
+
 function observationConditionFingerprint(after, notice) {
   const comparison = after?.experimentWorkspace?.comparison;
   return hashFingerprint(JSON.stringify({
@@ -282,6 +311,8 @@ function executionEvents(before, after, action, controlDescriptors, beforeWorldH
     .map((change) => ({ type: change.operation, ...(change.parameters ?? {}) }));
   const world = worldEvent(before, after, { ...action, transaction: { actor: action.actor, intent: 'exploration-scenario', operations: worldOperations } });
   if (world) events.push(world);
+  const sampled = observationSampledEvent(after, { ...action, transaction: { actor: action.actor, intent: 'sample-again', operations: worldOperations } }, worldOperations);
+  if (sampled) events.push(sampled);
   events.push(...reversalEventsFromExecution(before, after, action, beforeWorldHistory));
   if (action?.execution?.compare || changes.some((change) => ['SET_COMPARE', 'COMPARE_EXPERIMENTS'].includes(change.operation))) {
     const event = comparisonEvent(after, action);
@@ -313,6 +344,8 @@ export function deriveSemanticEventDrafts({
     const event = controlEvent(before, after, action, controlDescriptors);
     if (event) events.push(event);
   } else if (action.type === 'APPLY_WORLD_TRANSACTION') {
+    const sampled = observationSampledEvent(after, action);
+    if (sampled) events.push(sampled);
     const event = worldEvent(before, after, action);
     if (event) events.push(event);
   } else if (action.type === 'SET_COMPARE' || action.type === 'COMPARE_EXPERIMENTS') {
@@ -329,6 +362,10 @@ export function deriveSemanticEventDrafts({
   }
   if (!events.some((event) => event.type === 'world.intervened')) {
     const event = worldEventFromHistory(before, after, action);
+    if (event) events.push(event);
+  }
+  if (!events.some((event) => event.type === 'observation.sampled')) {
+    const event = observationSampledEventFromHistory(before, after, action);
     if (event) events.push(event);
   }
   events.push(...observationEvents(after, action));

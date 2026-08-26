@@ -5,6 +5,7 @@ import Lumi from './Lumi.jsx';
 
 const factorKeys = {
   world: 'playground.experiment.factor.world',
+  observationProcess: 'playground.experiment.factor.observationProcess',
   trainTest: 'playground.experiment.factor.trainTest',
   model: 'playground.experiment.factor.model',
   learning: 'playground.experiment.factor.learning',

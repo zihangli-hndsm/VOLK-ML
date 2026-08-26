@@ -205,7 +205,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       const target = createLumiTarget('experiment', snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id);
       if (target) setLumiIntervention((current) => ({ target, controlKey: action.key, sequence: (current?.sequence ?? 0) + 1 }));
     }
-    if (['APPLY_WORLD_TRANSACTION', 'SET_WORLD_GENERATOR', 'SET_GENERATOR_PARAMETER', 'SET_GENERATOR_SEED', 'REGENERATE_WORLD', 'FREEZE_AS_SAMPLES', 'SET_CONTROL', 'ATTACH_MODEL'].includes(action.type)) {
+    if (['APPLY_WORLD_TRANSACTION', 'SET_WORLD_GENERATOR', 'SET_GENERATOR_PARAMETER', 'SET_GENERATOR_SEED', 'REGENERATE_WORLD', 'RESAMPLE_WORLD', 'FREEZE_AS_SAMPLES', 'SET_CONTROL', 'ATTACH_MODEL'].includes(action.type)) {
       setInterventionPulseKey((value) => (value ?? 0) + 1);
     }
     return dispatchWithFirstMeaningfulManipulation({
@@ -235,9 +235,18 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     }));
   };
 
-  const createLearnerHypothesis = ({ statement, linkedConceptIds = [] } = {}) => {
+  const createLearnerHypothesis = ({ statement, linkedConceptIds = [], prediction = null } = {}) => {
     const id = `hypothesis-${sessionSequenceRef.current}-${hypothesisSession.hypotheses.length + 1}`;
-    const hypothesis = createHypothesis({ id, statement, linkedConceptIds, createdFrom: 'learner' });
+    const hypothesis = createHypothesis({
+      id,
+      statement,
+      linkedConceptIds,
+      prediction,
+      createdAt: new Date().toISOString(),
+      experimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,
+      threadId: snapshot?.activeExplorationThread?.id,
+      createdFrom: 'learner',
+    });
     if (hypothesis) setHypothesisSession((current) => appendHypothesis(current, hypothesis));
     return hypothesis;
   };

@@ -8,6 +8,7 @@ const source = readFileSync(new URL('../src/components/playground/UnifiedPlaygro
 const shellSource = readFileSync(new URL('../src/components/playground/ExploreShell.jsx', import.meta.url), 'utf8');
 const worldSource = readFileSync(new URL('../src/components/playground/ExploreWorldRegion.jsx', import.meta.url), 'utf8');
 const depthSource = readFileSync(new URL('../src/components/playground/ExploreDetailsRegion.jsx', import.meta.url), 'utf8');
+const hypothesisSource = readFileSync(new URL('../src/components/playground/HypothesisPanel.jsx', import.meta.url), 'utf8');
 const dir = mkdtempSync(path.join(tmpdir(), 'volk-ui1-shell-'));
 const outfile = path.join(dir, 'smoke.cjs');
 const entry = fileURLToPath(new URL('./ui-explore-shell-smoke.jsx', import.meta.url));
@@ -31,6 +32,12 @@ try {
 
 if (!source.includes('<ExploreShell ')) {
   throw new Error('UnifiedPlaygroundDialog does not route through the Explore shell.');
+}
+if (!hypothesisSource.includes('HYPOTHESIS_PREDICTION_CHOICES') || !hypothesisSource.includes('predictionPrompt') || !hypothesisSource.includes('aria-pressed={predictionChoice === choice}')) {
+  throw new Error('Learner hypothesis UI does not expose explicit prediction choices before intervention.');
+}
+if (!source.includes('createdAt: new Date().toISOString()') || !source.includes('threadId: snapshot?.activeExplorationThread?.id')) {
+  throw new Error('Learner hypothesis creation does not preserve session lineage.');
 }
 if (source.includes('<PlaygroundInspector') || source.includes('<PlaygroundStage')) {
   throw new Error('World/detail ownership was not moved behind Explore regions.');

@@ -44,7 +44,8 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     activeConceptId: bigIdea?.id,
     illuminatedConceptIds,
     illuminationEvents: journeyIlluminationEvents,
-  }), [snapshot?.semanticEvents, snapshot?.observations, snapshot?.learnerInquiry, bigIdea?.id, illuminatedConceptIds, journeyIlluminationEvents]);
+    hypotheses,
+  }), [snapshot?.semanticEvents, snapshot?.observations, snapshot?.learnerInquiry, bigIdea?.id, illuminatedConceptIds, journeyIlluminationEvents, hypotheses]);
   const conceptGraph = useMemo(() => deriveConceptGraph({
     inquiry: snapshot?.learnerInquiry,
     journey,

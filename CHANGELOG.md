@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-26 — World–Data inquiry loop
+
+- Made the World → observation process → finite Dataset distinction explicit through bounded session/Agent projections for World identity, sampling provenance, deterministic sample IDs, and dataset fingerprints.
+- Added the public `RESAMPLE_WORLD` operation and localized “Sample again” World Builder action; resampling preserves generated World identity, emits `observation.sampled`, and never masquerades as a causal World intervention.
+- Extended comparison semantics for observation-process changes, same-Dataset/different-model checks, learner prediction metadata, and LUMI Journey Predict/Revise projection without adding reasoning or mastery authority.
+- Added a bounded “same finite Data, different possible Worlds” exploration prompt, progressive World/Data semantic badges, bilingual UI copy, and focused World–Data inquiry regression coverage.
+- Updated the Design Bible and exploration roadmap. Acceptance: focused World–Data, Composer, Agent, hypothesis, Journey, and UI checks; full `npm run check`; `npm run build`; `git diff --check`.
+
 ## 2026-08-24 — LUMI visual identity integration
 
 - Replaced the abstract inline LUMI rendering with four dedicated firefly-inspired Navy/Cyan vector assets for idle, observe, guide, and illuminate presentation states; the semantic mode/presence API and learning logic remain unchanged.

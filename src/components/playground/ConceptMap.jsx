@@ -46,6 +46,7 @@ function hypothesisStatusClass(status) {
   if (status === HYPOTHESIS_STATUSES.TESTING) return 'hypothesis-map-node-testing';
   if (status === HYPOTHESIS_STATUSES.SUPPORTED) return 'hypothesis-map-node-supported';
   if (status === HYPOTHESIS_STATUSES.REJECTED) return 'hypothesis-map-node-rejected';
+  if (status === HYPOTHESIS_STATUSES.REVISED) return 'hypothesis-map-node-revised';
   return 'hypothesis-map-node-proposed';
 }
 
