@@ -1,5 +1,11 @@
 # Changelog
 
+## 2026-08-27 — Phase 17 bounded LUMI exploration planner
+
+- Added deterministic, bounded LUMI suggestions across observe, predict, design-test, compare-hypotheses, hold-constant, inspect-evidence, interpret, revise, counterfactual, and explore-concept surfaces.
+- Kept suggestions projection-only and routed acceptance to existing presentation surfaces without creating records, dispatching runtime actions, executing tests, or inferring conclusions.
+- Added bilingual responsive planner UI and focused authority/determinism checks.
+
 ## 2026-08-27 — Phase 16 inquiry trail and learning path
 
 - Added bounded Inquiry Episodes as a notebook projection over existing semantic events and learner records.

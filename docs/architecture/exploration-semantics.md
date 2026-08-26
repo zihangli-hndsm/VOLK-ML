@@ -65,6 +65,22 @@ from existing runtime signals and concept connections; illuminated is only a
 session-local learner action. The registry does not impose an order, infer
 mastery, persist a curriculum, or choose the learner's next topic.
 
+## Phase 17 — bounded LUMI exploration planner
+
+`src/core/ui/lumiExplorationPlanner.js` deterministically projects up to four
+small suggestions from the current Journey, Evidence, Hypotheses, Test
+Designs, competing groups, interpretations, revisions, Counterfactuals, and
+Concept frontier. Suggestion kinds include observe, predict, design-test,
+compare-hypotheses, hold-constant, inspect-evidence, interpret, revise,
+counterfactual, and explore-concept. Priority is a stable presentation order,
+not a recommendation of truth or a learner path.
+
+LUMI suggestions carry `authority: suggestion-only`. Accepting one changes
+only presentation focus to an existing Evidence, Hypothesis, Test Design,
+Counterfactual, or Concept surface. The planner cannot create records, alter
+status, dispatch runtime actions, execute a Test Design, infer mastery, or
+claim causality.
+
 ## Phase 10A — embedded learning assistance
 
 The embedded Ask VOLK surface is an answer-only presentation layer over the

@@ -12,6 +12,7 @@
     "check:counterfactual-exploration": "node scripts/check-counterfactual-exploration.mjs",
     "check:inquiry-episodes": "node scripts/check-inquiry-episodes.mjs",
     "check:learning-path": "node scripts/check-learning-path.mjs",
+    "check:lumi-exploration-planner": "node scripts/check-lumi-exploration-planner.mjs",
     "check:compiler": "node scripts/check-compiler-syntax.mjs",
     "generate:examples": "node scripts/generate-examples.mjs",
     "check:examples": "node scripts/generate-examples.mjs --check",

@@ -30,11 +30,13 @@ import LearnerInterpretationPanel from './LearnerInterpretationPanel.jsx';
 import CounterfactualExplorationPanel from './CounterfactualExplorationPanel.jsx';
 import InquiryTrail from './InquiryTrail.jsx';
 import LearningPathPanel from './LearningPathPanel.jsx';
+import LumiExplorationPlannerPanel from './LumiExplorationPlannerPanel.jsx';
 import { deriveInquiryEpisodes } from '../../core/exploration/inquiryEpisodes.js';
 import { deriveLearningPath } from '../../core/exploration/learningPath.js';
+import { deriveLumiExplorationPlan } from '../../core/ui/lumiExplorationPlanner.js';
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
 
-export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], journeyIlluminationEvents = [], onIlluminateConcept, learningPathIlluminatedIds = [], onIlluminateLearningPath, hypotheses = [], evidenceInstances = [], onCreateHypothesis, onSetHypothesisStatus, onAttachHypothesisEvidence, onOpenHypothesisEvidence, testDesigns = [], testDesignResults = {}, testDesignCapabilities = null, onSaveTestDesign, onRunTestDesign, hypothesisGroups = [], discriminationPlans = [], onCreateHypothesisGroup, onCreateDiscriminationPlan, interpretations = [], revisions = [], onCreateInterpretation, onCreateRevision, counterfactualQuestions = [], onCreateCounterfactual, onConvertCounterfactual, counterfactualConditionFingerprint = null, t, intervention = null }) {
+export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], journeyIlluminationEvents = [], onIlluminateConcept, learningPathIlluminatedIds = [], onIlluminateLearningPath, hypotheses = [], evidenceInstances = [], onCreateHypothesis, onSetHypothesisStatus, onAttachHypothesisEvidence, onOpenHypothesisEvidence, testDesigns = [], testDesignResults = {}, testDesignCapabilities = null, onSaveTestDesign, onRunTestDesign, hypothesisGroups = [], discriminationPlans = [], onCreateHypothesisGroup, onCreateDiscriminationPlan, interpretations = [], revisions = [], onCreateInterpretation, onCreateRevision, counterfactualQuestions = [], onCreateCounterfactual, onConvertCounterfactual, counterfactualConditionFingerprint = null, onAcceptLumiSuggestion, t, intervention = null }) {
   const { responsive } = usePresentationCapabilities();
   const { isConfigured, openSettings } = useAiProvider();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
@@ -73,6 +75,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     testDesigns,
     counterfactualQuestions,
   }), [snapshot?.learnerInquiry, journey, bigIdea?.id, illuminatedConceptIds, selectedConceptId, hypotheses, selectedHypothesisId, hypothesisGroups, discriminationPlans, testDesigns, interpretations, revisions, counterfactualQuestions]);
+  const lumiPlan = useMemo(() => deriveLumiExplorationPlan({ snapshot, journey, hypotheses, evidenceInstances, testDesigns, hypothesisGroups, interpretations, revisions, counterfactualQuestions, conceptGraph }), [snapshot, journey, hypotheses, evidenceInstances, testDesigns, hypothesisGroups, interpretations, revisions, counterfactualQuestions, conceptGraph]);
   const compact = responsive.band === 'compact';
   const panelCloseRef = useRef(null);
   const triggerRefs = useRef({});
@@ -135,6 +138,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     <ConceptMap graph={conceptGraph} snapshot={snapshot} evidenceInstances={evidenceInstances} compact={compact} t={t} onSelectConcept={setSelectedConceptId} onSelectHypothesis={setSelectedHypothesisId} />
     <InquiryTrail episodes={episodes} compact={compact} t={t} />
     <LearningPathPanel path={learningPath} compact={compact} t={t} onIlluminate={onIlluminateLearningPath} />
+    <LumiExplorationPlannerPanel plan={lumiPlan} compact={compact} t={t} onAccept={onAcceptLumiSuggestion} />
     <HypothesisPanel attention={attention} graph={conceptGraph} evidenceInstances={evidenceInstances} hypotheses={hypotheses} compact={compact} t={t} onCreate={onCreateHypothesis} onSetStatus={onSetHypothesisStatus} onAttachEvidence={onAttachHypothesisEvidence} onOpenEvidence={onOpenHypothesisEvidence} onOpenExperiment={() => onDepthChange?.(CONCEPTUAL_DEPTHS.TUNE)} onSelectHypothesis={setSelectedHypothesisId} snapshot={snapshot} capabilities={testDesignCapabilities} testDesigns={testDesigns} testDesignResults={testDesignResults} onSaveTestDesign={onSaveTestDesign} onRunTestDesign={onRunTestDesign} />
     <CompetingHypothesesPanel hypotheses={hypotheses} groups={hypothesisGroups} plans={discriminationPlans} testDesigns={testDesigns} testDesignResults={testDesignResults} compact={compact} t={t} onCreateGroup={onCreateHypothesisGroup} onCreatePlan={onCreateDiscriminationPlan} />
     <LearnerInterpretationPanel hypotheses={hypotheses} evidenceInstances={evidenceInstances} testDesigns={testDesigns} interpretations={interpretations} revisions={revisions} compact={compact} t={t} onCreateInterpretation={onCreateInterpretation} onCreateRevision={onCreateRevision} />

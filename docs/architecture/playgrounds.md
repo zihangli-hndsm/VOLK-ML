@@ -34,6 +34,12 @@ current session; the learner may explicitly mark an explored topic illuminated
 in session memory. Neither surface changes World, Experiment, Evidence,
 Hypothesis status, project persistence, or Agent authority.
 
+LUMI’s compact exploration prompt is derived from those same surfaces. It
+shows at most four deterministic, suggestion-only nudges and each “Look here”
+action opens or focuses an existing surface. It never creates a Hypothesis,
+Evidence, Test Design, interpretation, or Counterfactual, and it never runs an
+experiment.
+
 VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve three consumers with one code path: the human UI, teaching-video demo scripts, and the in-page Canvas Agent.
 
 ## Unified visualization runtime
