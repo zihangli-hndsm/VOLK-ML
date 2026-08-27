@@ -885,3 +885,11 @@
 - Extended the provenance regression through `deriveSemanticEventDrafts()` to cover same-condition repeats, condition changes, detector disappearance/reappearance, and historical Hypothesis binding; raw Evidence values remain excluded from dedupe identity.
 - Updated the Exploration Semantics architecture note; World, Experiment, Hypothesis status, Evidence Picker, LUMI, Agent, persistence, and causal-graph boundaries remain unchanged.
 - Acceptance: focused semantic/provenance/Hypothesis/Concept Graph checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.
+
+## 2026-08-27 — Workspace isolation and Explore environment integrity
+
+- Separated active Build and Explore ownership: built-in Explore recipes now use independent session hosts and no longer read or rebase from the active Build dataset/model; closing the Explore dialog preserves the session and its inquiry history.
+- Added bounded Explore environment identity and compatibility recovery, plus an explicit capability-gated “Explore this setup” fork for supported tabular Build configurations; unsupported configurations remain clearly rejected.
+- Fixed relationship-aware LUMI revision suggestions and added stable revision IDs to Inquiry Trail references.
+- Updated bilingual UI copy, Build/Explore architecture documentation, and focused workspace-isolation regressions.
+- Acceptance: workspace-isolation and relevant inquiry regressions, full `npm run check`, production `npm run build`, and `git diff --check` passed.

@@ -71,7 +71,7 @@ import {
   setCounterfactualStatus,
 } from '../../core/exploration/counterfactual.js';
 
-export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
+export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY, preserveSession = false }) {
   const [snapshot, setSnapshot] = useState(null);
   const [presentationMode, setPresentationMode] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -97,6 +97,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [interventionPulseKey, setInterventionPulseKey] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
+  const activeWorkspaceRef = useRef(null);
   const meaningfulManipulationTrackerRef = useRef(null);
   if (!meaningfulManipulationTrackerRef.current) meaningfulManipulationTrackerRef.current = createFirstMeaningfulManipulationTracker();
   const openTrackerRef = useRef(null);
@@ -120,33 +121,38 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       readySessionRef.current = null;
       return undefined;
     }
+    const workspaceChanged = activeWorkspaceRef.current?.host !== host
+      || activeWorkspaceRef.current?.playgroundId !== playgroundId;
+    activeWorkspaceRef.current = { host, playgroundId };
     const sessionKey = `${++sessionSequenceRef.current}:${playgroundId}`;
     readySessionRef.current = null;
     meaningfulManipulationTrackerRef.current.reset();
     let active = true;
     let unsubscribe = () => {};
-    setSnapshot(null);
     setPlaybackError(null);
-    setGuidance(null);
-    setActiveDepth(null);
-    setFullWorldToolsOpen(false);
-    setAgentOpen(false);
-    setPendingLearningSelection(null);
-    setActiveInquiryCard(null);
-    setIlluminatedConceptIds([]);
-    setJourneySession(clearJourney());
-    setHypothesisSession(clearHypotheses());
-    setTestDesignSession(clearTestDesigns());
-    setTestDesignResults({});
-    setHypothesisGroupSession(clearHypothesisGroups());
-    setDiscriminationPlanSession(clearDiscriminationPlans());
-    setInterpretationSession(clearLearnerInterpretations());
-    setRevisionSession(clearHypothesisRevisions());
-    setCounterfactualSession(clearCounterfactualQuestions());
-    setLearningPathIlluminatedIds([]);
-    setLumiIntervention(null);
-    setInterventionPulseKey(null);
-    setPresentationMode(false);
+    if (workspaceChanged) {
+      setSnapshot(null);
+      setGuidance(null);
+      setActiveDepth(null);
+      setFullWorldToolsOpen(false);
+      setAgentOpen(false);
+      setPendingLearningSelection(null);
+      setActiveInquiryCard(null);
+      setIlluminatedConceptIds([]);
+      setJourneySession(clearJourney());
+      setHypothesisSession(clearHypotheses());
+      setTestDesignSession(clearTestDesigns());
+      setTestDesignResults({});
+      setHypothesisGroupSession(clearHypothesisGroups());
+      setDiscriminationPlanSession(clearDiscriminationPlans());
+      setInterpretationSession(clearLearnerInterpretations());
+      setRevisionSession(clearHypothesisRevisions());
+      setCounterfactualSession(clearCounterfactualQuestions());
+      setLearningPathIlluminatedIds([]);
+      setLumiIntervention(null);
+      setInterventionPulseKey(null);
+      setPresentationMode(false);
+    }
     setActiveTab(initialTab);
     host.ensureOpen(playgroundId).then(() => {
       if (!active) return;
@@ -164,9 +170,9 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     return () => {
       active = false;
       unsubscribe();
-      host.close().catch(() => {});
+      if (!preserveSession) host.close().catch(() => {});
     };
-  }, [open, playgroundId, host]);
+  }, [open, playgroundId, host, preserveSession]);
 
   useEffect(() => {
     if (!lumiIntervention) return undefined;

@@ -22,9 +22,8 @@ export default function BuildToolbar({
   exportProject,
   importRef,
   importProject,
-  setPlaygroundInitialTab,
-  setPlaygroundId,
-  setPlaygroundOpen,
+  onOpenExplorePlayground,
+  onExploreCurrentSetup,
   setRunnerOpen,
   t,
 }) {
@@ -52,9 +51,8 @@ export default function BuildToolbar({
         exportProject={exportProject}
         importRef={importRef}
         importProject={importProject}
-        setPlaygroundInitialTab={setPlaygroundInitialTab}
-        setPlaygroundId={setPlaygroundId}
-        setPlaygroundOpen={setPlaygroundOpen}
+        onOpenExplorePlayground={onOpenExplorePlayground}
+        onExploreCurrentSetup={onExploreCurrentSetup}
         t={t}
       />
     </div>
@@ -75,9 +73,8 @@ function BuildMoreDisclosure({
   exportProject,
   importRef,
   importProject,
-  setPlaygroundInitialTab,
-  setPlaygroundId,
-  setPlaygroundOpen,
+  onOpenExplorePlayground,
+  onExploreCurrentSetup,
   t,
 }) {
   const [open, setOpen] = React.useState(false);
@@ -121,13 +118,14 @@ function BuildMoreDisclosure({
     <button type="button" aria-pressed={multiSelectMode} className={actionClass} onClick={() => { setMultiSelectMode((value) => !value); close(); }}>☑ {t('nav.multiSelect')}</button>
     <button type="button" className={actionClass} onClick={() => { setExamplesOpen(true); close(); }}>◇ {t('nav.examples')}</button>
     <button type="button" className={`${actionClass} ${dataset ? 'text-blue-700' : ''}`} onClick={() => { setDataOpen(true); close(); }}>▦ {t('nav.data')}</button>
-    <button type="button" className={actionClass} onClick={() => { setPlaygroundInitialTab('data'); setPlaygroundId('data-lab'); setPlaygroundOpen(true); close(); }}>▤ {t('nav.exploreData')}</button>
+    <button type="button" className={actionClass} onClick={() => { onOpenExplorePlayground?.('data-lab', { initialTab: 'data' }); close(); }}>▤ {t('nav.exploreData')}</button>
+    <button type="button" className={actionClass} onClick={() => { onExploreCurrentSetup?.('data-lab'); close(); }}>✦ {t('nav.exploreCurrentSetup')}</button>
     <button type="button" className={actionClass} onClick={() => { exportProject(); close(); }}>↓ JSON</button>
     <button type="button" className={actionClass} onClick={() => { close(); importRef.current?.click(); }}>↑ {t('nav.import')}</button>
     <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { importProject(event); close(); }} />
     <label className="mt-1 border-t border-slate-100 px-3 pt-2">
       <span className="sr-only">{t('nav.playground')}</span>
-      <select defaultValue="" aria-label={t('nav.playground')} onChange={(event) => { const id = event.target.value; if (id) { setPlaygroundInitialTab('model'); setPlaygroundId(id); setPlaygroundOpen(true); } event.target.value = ''; close(); }} className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm font-bold">
+      <select defaultValue="" aria-label={t('nav.playground')} onChange={(event) => { const id = event.target.value; if (id) onOpenExplorePlayground?.(id, { initialTab: 'model' }); event.target.value = ''; close(); }} className="w-full min-w-0 rounded-xl border border-slate-200 bg-white px-2 py-2 text-sm font-bold">
         <option value="">{t('nav.playground')}</option>
         {listPlaygrounds().map((playground) => <option key={playground.id} value={playground.id}>{t(playground.titleKey)}</option>)}
       </select>

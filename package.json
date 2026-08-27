@@ -14,6 +14,7 @@
     "check:learning-path": "node scripts/check-learning-path.mjs",
     "check:lumi-exploration-planner": "node scripts/check-lumi-exploration-planner.mjs",
     "check:compiler": "node scripts/check-compiler-syntax.mjs",
+    "check:workspace-isolation": "node scripts/check-workspace-isolation.mjs",
     "generate:examples": "node scripts/generate-examples.mjs",
     "check:examples": "node scripts/generate-examples.mjs --check",
     "build": "vite build",

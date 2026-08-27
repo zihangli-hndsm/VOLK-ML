@@ -76,8 +76,12 @@ export function deriveLumiExplorationPlan({ snapshot = null, journey = null, hyp
       if (structure.status === DISCRIMINATION_STATUSES.OVERLAP) suggestions.push(suggestion('compare-hypotheses', 'playground.lumiPlanner.reason.discriminatingTest', group.id));
     });
   }
-  const challenged = interpretations.find((item) => item.judgment === 'challenges' || item.judgment === 'needs-more-testing');
-  if (challenged && revisions.length === 0) suggestions.push(suggestion('revise', 'playground.lumiPlanner.reason.revise', challenged.id));
+  const revisedInterpretationIds = new Set(revisions.flatMap((revision) => revision?.interpretationIds ?? []));
+  const challenged = interpretations.find((item) => (
+    (item.judgment === 'challenges' || item.judgment === 'needs-more-testing')
+    && !revisedInterpretationIds.has(item.id)
+  ));
+  if (challenged) suggestions.push(suggestion('revise', 'playground.lumiPlanner.reason.revise', challenged.id));
   if (counterfactualQuestions.length === 0 && hypotheses.length > 0 && (executedDesigns.length > 0 || interpretations.length > 0)) suggestions.push(suggestion('counterfactual', 'playground.lumiPlanner.reason.counterfactual'));
   if (frontier) suggestions.push(suggestion('explore-concept', 'playground.lumiPlanner.reason.exploreConcept', frontier));
   const deduped = [...new Map(suggestions.filter(Boolean).map((item) => [item.kind, item])).values()]
