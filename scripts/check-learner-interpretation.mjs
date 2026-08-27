@@ -57,6 +57,7 @@ assert.equal(normalizeHypothesisState({ hypotheses }).hypotheses[0].status, 'pro
 const child = createHypothesis({ id: 'hypothesis-one-revised', statement: 'The change may increase Test error only after repeated sampling.' });
 const nextHypotheses = [...hypotheses, child];
 const revision = createHypothesisRevision({
+  id: 'revision-one',
   parentHypothesisId: first.id,
   childHypothesisId: child.id,
   interpretationIds: [interpretation.id],
@@ -64,11 +65,13 @@ const revision = createHypothesisRevision({
   interpretations: interpretationState.interpretations,
 });
 assert.ok(revision, 'revision creates a separate child identity');
+assert.equal(revision.id, 'revision-one', 'revision has a stable learner-owned identity');
 assert.equal(revision.parentHypothesisId, first.id);
 assert.equal(revision.childHypothesisId, child.id);
 assert.equal(nextHypotheses.find((item) => item.id === first.id).statement, first.statement, 'old hypothesis remains historical');
 const revisionState = appendHypothesisRevision(clearHypothesisRevisions(), revision, { hypotheses: nextHypotheses, interpretations: interpretationState.interpretations });
 assert.equal(revisionState.revisions.length, 1, 'revision lineage remains bounded');
+assert.equal(appendHypothesisRevision(revisionState, { ...revision, id: 'revision-one' }, { hypotheses: nextHypotheses, interpretations: interpretationState.interpretations }).revisions.length, 1, 'duplicate revision IDs are rejected');
 
 const edges = [
   ...interpretationSemanticEdges({ interpretation }),

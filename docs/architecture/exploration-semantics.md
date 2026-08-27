@@ -662,3 +662,10 @@ outcomes, treats `confounded` as authoritative only from actual Test Design
 results, and suggests revision only for challenged or needs-more-testing
 interpretations. Accepting a suggestion may focus an existing surface but
 never mutates semantic state or executes a test.
+
+Execution Evidence records that occurred during a run are distinct from
+outcome Evidence instances selected by a Test Design. Planner interpretation
+grounding uses only the latter; an execution-only occurrence is never a
+substitute. Learner revisions carry their own bounded stable IDs, so Inquiry
+Episodes reference actual revision records rather than reconstructing identity
+from parent and child names.

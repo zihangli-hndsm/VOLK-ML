@@ -12,7 +12,7 @@ const trail = deriveInquiryTrailEntries({
   hypotheses: [{ id: 'hypothesis-1', experimentId: 'experiment-1', evidenceIds: ['evidence-instance-1'] }],
   testDesigns: [{ id: 'design-1', baselineExperimentId: 'experiment-1', outcomeEvidenceIds: ['evidence-instance-1'] }],
   interpretations: [{ id: 'interpretation-1', hypothesisIds: ['hypothesis-1'], evidenceInstanceIds: ['evidence-instance-1'] }],
-  revisions: [{ parentHypothesisId: 'hypothesis-1', childHypothesisId: 'hypothesis-2', interpretationIds: ['interpretation-1'] }],
+  revisions: [{ id: 'revision-1', parentHypothesisId: 'hypothesis-1', childHypothesisId: 'hypothesis-2', interpretationIds: ['interpretation-1'] }],
   illuminationEvents: [{ conceptId: 'generalization' }],
 });
 const episodes = deriveInquiryEpisodes({
@@ -25,7 +25,7 @@ const episodes = deriveInquiryEpisodes({
   hypotheses: [{ id: 'hypothesis-1', statement: 'A learner idea', experimentId: 'experiment-1', evidenceIds: ['evidence-instance-1'], linkedConceptIds: ['generalization'] }],
   testDesigns: [{ id: 'design-1', baselineExperimentId: 'experiment-1', outcomeEvidenceIds: ['evidence-instance-1'] }],
   interpretations: [{ id: 'interpretation-1', hypothesisIds: ['hypothesis-1'], evidenceInstanceIds: ['evidence-instance-1'] }],
-  revisions: [{ parentHypothesisId: 'hypothesis-1', childHypothesisId: 'hypothesis-2', interpretationIds: ['interpretation-1'] }],
+  revisions: [{ id: 'revision-1', parentHypothesisId: 'hypothesis-1', childHypothesisId: 'hypothesis-2', interpretationIds: ['interpretation-1'] }],
   illuminationEvents: [{ conceptId: 'generalization' }],
 });
 assert.ok(trail.length >= 8, 'trail keeps chronological entries for existing events and learner records');
@@ -34,6 +34,7 @@ assert.ok(trail.some((entry) => entry.type === 'compare'));
 assert.ok(trail.some((entry) => entry.type === 'interpret'));
 assert.ok(trail.some((entry) => entry.type === 'illuminate'));
 assert.ok(episodes.length >= 3, 'episodes group explicit learner records into coherent inquiry units');
+assert.ok(episodes.some((episode) => episode.revisionIds.includes('revision-1')), 'episodes reference the real revision identity');
 assert.ok(episodes.every((episode) => Array.isArray(episode.hypothesisIds) && !('type' in episode) && !('evidenceIds' in episode)));
 assert.ok(trail.find((entry) => entry.type === 'observe').reasonCodes.includes('TEST_ERROR_CHANGED_MORE'));
 assert.ok(!trail.find((entry) => entry.type === 'observe').evidenceInstanceIds.includes('TEST_ERROR_CHANGED_MORE'), 'reason codes never become evidence identities');

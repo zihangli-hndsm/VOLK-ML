@@ -37,9 +37,10 @@ export default function CompetingHypothesesPanel({ hypotheses = [], groups = [],
   const updateDraft = (groupId, patch) => setDrafts((current) => ({ ...current, [groupId]: { ...(current[groupId] ?? {}), ...patch } }));
   const createPlan = (group) => {
     const draft = drafts[group.id] ?? {};
+    if (!draft.testDesignId || group.hypothesisIds.some((hypothesisId) => !HYPOTHESIS_PREDICTION_CHOICES.includes(draft.predictions?.[hypothesisId]))) return;
     const predictedOutcomes = group.hypothesisIds.map((hypothesisId) => ({
       hypothesisId,
-      prediction: draft.predictions?.[hypothesisId] ?? 'uncertain',
+      prediction: draft.predictions[hypothesisId],
     }));
     onCreatePlan?.({ groupId: group.id, testDesignId: draft.testDesignId, predictedOutcomes });
   };
@@ -83,7 +84,7 @@ export default function CompetingHypothesesPanel({ hypotheses = [], groups = [],
             <p className="break-words text-[11px] font-bold text-slate-700">{hypotheses.find((item) => item.id === hypothesisId)?.statement ?? hypothesisId}</p>
             <div className="mt-1 grid grid-cols-2 gap-1 sm:grid-cols-4">{HYPOTHESIS_PREDICTION_CHOICES.map((choice) => <button key={choice} type="button" aria-pressed={draft.predictions?.[hypothesisId] === choice} onClick={() => updateDraft(group.id, { predictions: { ...(draft.predictions ?? {}), [hypothesisId]: choice } })} className={`rounded-lg border px-1 py-1 text-[10px] font-black ${draft.predictions?.[hypothesisId] === choice ? 'border-orange-500 bg-orange-200 text-orange-950' : 'border-orange-100 bg-white text-slate-700'}`}>{predictionLabel(choice, t)}</button>)}</div>
           </div>)}</div>
-          <button type="button" disabled={!draft.testDesignId} onClick={() => createPlan(group)} className="mt-2 rounded-xl bg-orange-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">{t('playground.discrimination.createPlan')}</button>
+          <button type="button" disabled={!draft.testDesignId || group.hypothesisIds.some((hypothesisId) => !HYPOTHESIS_PREDICTION_CHOICES.includes(draft.predictions?.[hypothesisId]))} onClick={() => createPlan(group)} className="mt-2 rounded-xl bg-orange-600 px-3 py-2 text-xs font-black text-white disabled:cursor-not-allowed disabled:opacity-50">{t('playground.discrimination.createPlan')}</button>
         </div>}
         {groupPlans.map((plan) => {
           const result = testDesignResults[plan.testDesignId];

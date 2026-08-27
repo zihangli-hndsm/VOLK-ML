@@ -926,8 +926,15 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
   projection changes playground state or persistence.
 - The LUMI planner consumes concrete learner predictions, executed Test Design
   outcomes, and existing Evidence instances. It can focus an existing panel,
-  but cannot create hypotheses, execute a Test Design, infer a winner, or
-  rewrite a learner interpretation.
+but cannot create hypotheses, execute a Test Design, infer a winner, or
+rewrite a learner interpretation.
+
+Interpretation grounding follows the Test Design evidence scope exactly:
+`outcomeEvidenceIds` support interpretation suggestions, while
+`executionEvidenceIds` only document what occurred during execution. A missing
+outcome scope produces no interpretation suggestion. Competing-hypothesis plan
+creation also preserves learner authorship by remaining unavailable until each
+member has an explicitly selected prediction, including explicit `uncertain`.
 
 ### Concept Graph & Causal Exploration Map
 

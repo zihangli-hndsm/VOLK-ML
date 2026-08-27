@@ -29,6 +29,18 @@ const predictionPlan = deriveLumiExplorationPlan({ hypotheses: [{ id: 'hypothesi
 assert.equal(predictionPlan.suggestions.find((item) => item.kind === 'predict')?.target, 'hypothesis-1');
 const comparePlan = deriveLumiExplorationPlan({ hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'increase' } }, { id: 'hypothesis-2', prediction: { choice: 'increase' } }], hypothesisGroups: [{ id: 'group-1', hypothesisIds: ['hypothesis-1', 'hypothesis-2'] }], discriminationPlans: [{ id: 'plan-1', hypothesisGroupId: 'group-1', predictedOutcomes: [{ hypothesisId: 'hypothesis-1', prediction: 'increase' }, { hypothesisId: 'hypothesis-2', prediction: 'increase' }] }] });
 assert.equal(comparePlan.suggestions.find((item) => item.kind === 'compare-hypotheses')?.reasonKey, 'playground.lumiPlanner.reason.discriminatingTest');
+const executionOnly = deriveLumiExplorationPlan({ hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'increase' } }], testDesigns: [{ id: 'design-1', hypothesisId: 'hypothesis-1', status: 'executed', outcomeEvidenceIds: [], executionEvidenceIds: ['evidence-instance-unrelated'] }], evidenceInstances: [{ id: 'evidence-instance-unrelated', available: true }], journey: { observedEvidenceIds: ['evidence-instance-unrelated'] } });
+assert.ok(!executionOnly.suggestions.some((item) => item.kind === 'interpret'), 'execution evidence alone is not outcome evidence');
+const scopedOutcome = deriveLumiExplorationPlan({ hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'increase' } }], testDesigns: [{ id: 'design-1', hypothesisId: 'hypothesis-1', status: 'executed', outcomeEvidenceIds: ['evidence-instance-outcome'], executionEvidenceIds: ['evidence-instance-unrelated'] }], evidenceInstances: [{ id: 'evidence-instance-outcome', available: true }, { id: 'evidence-instance-unrelated', available: true }] });
+assert.ok(scopedOutcome.suggestions.some((item) => item.kind === 'interpret'), 'scoped outcome evidence can ground interpretation');
+for (const judgment of ['supports', 'uncertain']) {
+  const plan = deriveLumiExplorationPlan({ hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'increase' } }], interpretations: [{ id: `interpretation-${judgment}`, judgment }] });
+  assert.ok(!plan.suggestions.some((item) => item.kind === 'revise'), `${judgment} does not suggest revision`);
+}
+for (const judgment of ['challenges', 'needs-more-testing']) {
+  const plan = deriveLumiExplorationPlan({ hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'increase' } }], interpretations: [{ id: `interpretation-${judgment}`, judgment }] });
+  assert.ok(plan.suggestions.some((item) => item.kind === 'revise'), `${judgment} may suggest revision`);
+}
 const again = deriveLumiExplorationPlan({
   snapshot: { observations: [{ id: 'TEST_ERROR_CHANGED_MORE' }], experimentWorkspace: { comparison: { enabled: true } } },
   journey: { observedEvidenceIds: ['evidence-instance-1'], frontierConceptIds: ['generalization'] },

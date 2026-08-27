@@ -55,7 +55,7 @@ export function deriveLumiExplorationPlan({ snapshot = null, journey = null, hyp
   const comparison = snapshot?.experimentWorkspace?.comparison ?? snapshot?.comparison;
   const frontier = conceptGraph?.frontierConceptIds?.[0] ?? journey?.frontierConceptIds?.[0] ?? null;
   const executedDesigns = testDesigns.filter((design) => design?.status === 'executed');
-  const executedOutcomeIds = new Set(executedDesigns.flatMap((design) => [...(design.outcomeEvidenceIds ?? []), ...(design.executionEvidenceIds ?? [])]));
+  const executedOutcomeIds = new Set(executedDesigns.flatMap((design) => design.outcomeEvidenceIds ?? []));
   const relevantEvidence = availableEvidence.filter((instance) => executedOutcomeIds.has(instance.id));
   const concrete = (hypothesis) => ['increase', 'decrease', 'similar'].includes(hypothesis?.prediction?.choice ?? hypothesis?.prediction);
   if (availableEvidence.length > 0) suggestions.push(suggestion('inspect-evidence', 'playground.lumiPlanner.reason.inspectEvidence', availableEvidence[0].id));
@@ -76,7 +76,7 @@ export function deriveLumiExplorationPlan({ snapshot = null, journey = null, hyp
       if (structure.status === DISCRIMINATION_STATUSES.OVERLAP) suggestions.push(suggestion('compare-hypotheses', 'playground.lumiPlanner.reason.discriminatingTest', group.id));
     });
   }
-  const challenged = interpretations.find((item) => item.judgment === 'challenged' || item.judgment === 'needs-more-testing');
+  const challenged = interpretations.find((item) => item.judgment === 'challenges' || item.judgment === 'needs-more-testing');
   if (challenged && revisions.length === 0) suggestions.push(suggestion('revise', 'playground.lumiPlanner.reason.revise', challenged.id));
   if (counterfactualQuestions.length === 0 && hypotheses.length > 0 && (executedDesigns.length > 0 || interpretations.length > 0)) suggestions.push(suggestion('counterfactual', 'playground.lumiPlanner.reason.counterfactual'));
   if (frontier) suggestions.push(suggestion('explore-concept', 'playground.lumiPlanner.reason.exploreConcept', frontier));

@@ -101,6 +101,7 @@ export function appendLearnerInterpretation(state, interpretation, context = {})
 }
 
 export function createHypothesisRevision({
+  id,
   parentHypothesisId,
   childHypothesisId,
   interpretationIds: referencedInterpretationIds = [],
@@ -111,13 +112,15 @@ export function createHypothesisRevision({
 } = {}) {
   const parentId = boundedString(parentHypothesisId);
   const childId = boundedString(childHypothesisId);
+  const normalizedId = boundedString(id);
   const normalizedInterpretationIds = boundedIds(referencedInterpretationIds, 6);
   const validHypotheses = hypothesisIds(hypotheses);
   const validInterpretations = interpretationIds(interpretations, { hypotheses, testDesigns });
-  if (!parentId || !childId || parentId === childId || createdFrom !== 'learner'
+  if (!normalizedId || !parentId || !childId || parentId === childId || createdFrom !== 'learner'
     || !validHypotheses.has(parentId) || !validHypotheses.has(childId)
     || normalizedInterpretationIds.length === 0 || normalizedInterpretationIds.some((idValue) => !validInterpretations.has(idValue))) return null;
   return Object.freeze({
+    id: normalizedId,
     version: LEARNER_INTERPRETATION_VERSION,
     parentHypothesisId: parentId,
     childHypothesisId: childId,
@@ -137,7 +140,7 @@ export function normalizeHypothesisRevisionState(value, context = {}) {
 export function appendHypothesisRevision(state, revision, context = {}) {
   const current = normalizeHypothesisRevisionState(state, context);
   const normalized = createHypothesisRevision({ ...revision, ...context });
-  if (!normalized || current.revisions.some((item) => item.parentHypothesisId === normalized.parentHypothesisId && item.childHypothesisId === normalized.childHypothesisId) || current.revisions.length >= MAX_HYPOTHESIS_REVISIONS) return current;
+  if (!normalized || current.revisions.some((item) => item.id === normalized.id || (item.parentHypothesisId === normalized.parentHypothesisId && item.childHypothesisId === normalized.childHypothesisId)) || current.revisions.length >= MAX_HYPOTHESIS_REVISIONS) return current;
   return Object.freeze({ version: LEARNER_INTERPRETATION_VERSION, revisions: Object.freeze([...current.revisions, normalized]) });
 }
 

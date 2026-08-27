@@ -420,6 +420,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     if (!child) return null;
     const nextHypotheses = [...hypothesisSession.hypotheses, child];
     const revision = createHypothesisRevision({
+      id: `revision-${sessionSequenceRef.current}-${revisionSession.revisions.length + 1}`,
       parentHypothesisId,
       childHypothesisId: child.id,
       interpretationIds,

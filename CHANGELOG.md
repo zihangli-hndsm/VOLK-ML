@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-27 — PR #131 final acceptance grounding fix
+
+- Corrected LUMI interpretation grounding to use only Test Design outcome Evidence, fixed the Phase 14 `challenges` vocabulary, and kept execution-only Evidence from triggering interpretation.
+- Preserved learner authorship by disabling discrimination-plan creation until every grouped Hypothesis has an explicit prediction, and added stable IDs to learner Hypothesis revisions for truthful Inquiry Episode references.
+- Added exact planner-matrix, revision-identity, Learning Path DAG, and learner-authorship regression coverage with matching architecture notes.
+- Acceptance: required focused checks, `npm run check`, `npm run build`, and `git diff --check` passed.
+
 ## 2026-08-27 — PR #131 acceptance hardening
 
 - Corrected Phase 13–17 semantics: concrete prediction completeness, child-to-parent revision edges, explicit counterfactual lifecycle and Test Design association, factual Evidence-only observation links, separate Inquiry Trail and coherent Inquiry Episodes, and an ungated eight-node Learning Path DAG.
