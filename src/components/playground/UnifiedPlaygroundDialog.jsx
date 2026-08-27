@@ -43,6 +43,33 @@ import {
   deriveTestDesignCapabilities,
   replaceTestDesign,
 } from '../../core/exploration/testDesign.js';
+import {
+  appendDiscriminationPlan,
+  appendHypothesisGroup,
+  clearDiscriminationPlans,
+  clearHypothesisGroups,
+  createDiscriminationPlan,
+  createHypothesisGroup,
+} from '../../core/exploration/competingHypotheses.js';
+import {
+  appendHypothesisRevision,
+  appendLearnerInterpretation,
+  clearHypothesisRevisions,
+  clearLearnerInterpretations,
+  createHypothesisRevision,
+  createLearnerInterpretation as createInterpretationRecord,
+} from '../../core/exploration/learnerInterpretation.js';
+import {
+  appendCounterfactualQuestion,
+  associateCounterfactualTestDesign,
+  clearCounterfactualQuestions,
+  counterfactualToTestDesign,
+  isCounterfactualStale,
+  createCounterfactualQuestion,
+  markCounterfactualTested,
+  normalizeCounterfactualIntervention,
+  setCounterfactualStatus,
+} from '../../core/exploration/counterfactual.js';
 
 export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY }) {
   const [snapshot, setSnapshot] = useState(null);
@@ -60,6 +87,12 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [hypothesisSession, setHypothesisSession] = useState(() => clearHypotheses());
   const [testDesignSession, setTestDesignSession] = useState(() => clearTestDesigns());
   const [testDesignResults, setTestDesignResults] = useState({});
+  const [hypothesisGroupSession, setHypothesisGroupSession] = useState(() => clearHypothesisGroups());
+  const [discriminationPlanSession, setDiscriminationPlanSession] = useState(() => clearDiscriminationPlans());
+  const [interpretationSession, setInterpretationSession] = useState(() => clearLearnerInterpretations());
+  const [revisionSession, setRevisionSession] = useState(() => clearHypothesisRevisions());
+  const [counterfactualSession, setCounterfactualSession] = useState(() => clearCounterfactualQuestions());
+  const [learningPathIlluminatedIds, setLearningPathIlluminatedIds] = useState([]);
   const [lumiIntervention, setLumiIntervention] = useState(null);
   const [interventionPulseKey, setInterventionPulseKey] = useState(null);
   const sessionSequenceRef = useRef(0);
@@ -105,6 +138,12 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     setHypothesisSession(clearHypotheses());
     setTestDesignSession(clearTestDesigns());
     setTestDesignResults({});
+    setHypothesisGroupSession(clearHypothesisGroups());
+    setDiscriminationPlanSession(clearDiscriminationPlans());
+    setInterpretationSession(clearLearnerInterpretations());
+    setRevisionSession(clearHypothesisRevisions());
+    setCounterfactualSession(clearCounterfactualQuestions());
+    setLearningPathIlluminatedIds([]);
     setLumiIntervention(null);
     setInterventionPulseKey(null);
     setPresentationMode(false);
@@ -207,6 +246,10 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       setHypothesisSession(clearHypotheses());
       setTestDesignSession(clearTestDesigns());
       setTestDesignResults({});
+      setHypothesisGroupSession(clearHypothesisGroups());
+      setDiscriminationPlanSession(clearDiscriminationPlans());
+      setInterpretationSession(clearLearnerInterpretations());
+      setRevisionSession(clearHypothesisRevisions());
     }
     const humanAction = action?.type === 'APPLY_WORLD_TRANSACTION'
       ? { ...action, transaction: { ...(action.transaction ?? {}), actor: 'human' } }
@@ -299,11 +342,158 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     if (!result) return null;
     if (!result.valid) {
       setTestDesignResults((current) => ({ ...current, [design.id]: { error: result.code ?? result.errors?.[0] ?? 'invalid' } }));
+      if (result.code === 'TEST_DESIGN_STALE_BASELINE') {
+        setCounterfactualSession((current) => {
+          const question = current.questions.find((item) => item.testDesignId === design.id);
+          return question ? setCounterfactualStatus(current, { questionId: question.id, status: 'stale' }) : current;
+        });
+      }
       return result;
     }
     setTestDesignSession((current) => replaceTestDesign(current, result.design));
     setTestDesignResults((current) => ({ ...current, [design.id]: { ...result.comparison, outcomes: result.outcomes ?? [] } }));
+    setCounterfactualSession((current) => markCounterfactualTested(current, {
+      questionId: current.questions.find((question) => question.testDesignId === result.design?.id)?.id,
+      testDesignId: result.design?.id ?? design.id,
+      executionSucceeded: true,
+      observedEvidenceInstanceIds: result.design?.outcomeEvidenceIds ?? result.executionEvidenceIds ?? [],
+    }));
     return result;
+  };
+
+  const createLearnerHypothesisGroup = ({ question = '', hypothesisIds = [] } = {}) => {
+    const id = `hypothesis-group-${sessionSequenceRef.current}-${hypothesisGroupSession.groups.length + 1}`;
+    const group = createHypothesisGroup({ id, question, hypothesisIds, hypotheses: hypothesisSession.hypotheses, createdFrom: 'learner' });
+    if (group) setHypothesisGroupSession((current) => appendHypothesisGroup(current, group, { hypotheses: hypothesisSession.hypotheses }));
+    return group;
+  };
+
+  const createLearnerDiscriminationPlan = ({ groupId, testDesignId, predictedOutcomes = [] } = {}) => {
+    const id = `discrimination-plan-${sessionSequenceRef.current}-${discriminationPlanSession.plans.length + 1}`;
+    const plan = createDiscriminationPlan({
+      id,
+      hypothesisGroupId: groupId,
+      testDesignId,
+      predictedOutcomes,
+      groups: hypothesisGroupSession.groups,
+      hypotheses: hypothesisSession.hypotheses,
+      testDesigns: testDesignSession.designs,
+      createdFrom: 'learner',
+    });
+    if (plan) setDiscriminationPlanSession((current) => appendDiscriminationPlan(current, plan, {
+      groups: hypothesisGroupSession.groups,
+      hypotheses: hypothesisSession.hypotheses,
+      testDesigns: testDesignSession.designs,
+    }));
+    return plan;
+  };
+
+  const createLearnerInterpretation = ({ hypothesisIds = [], evidenceInstanceIds = [], testDesignId = null, judgment, note = '' } = {}) => {
+    const id = 'interpretation-' + sessionSequenceRef.current + '-' + (interpretationSession.interpretations.length + 1);
+    const interpretation = createInterpretationRecord({
+      id,
+      hypothesisIds,
+      evidenceInstanceIds,
+      testDesignId,
+      judgment,
+      note,
+      hypotheses: hypothesisSession.hypotheses,
+      testDesigns: testDesignSession.designs,
+      createdFrom: 'learner',
+    });
+    if (interpretation) setInterpretationSession((current) => appendLearnerInterpretation(current, interpretation, { hypotheses: hypothesisSession.hypotheses, testDesigns: testDesignSession.designs }));
+    return interpretation;
+  };
+
+  const createLearnerRevision = ({ parentHypothesisId, interpretationIds = [], statement = '' } = {}) => {
+    const parent = hypothesisSession.hypotheses.find((hypothesis) => hypothesis.id === parentHypothesisId);
+    if (!parent) return null;
+    const child = createHypothesis({
+      id: 'hypothesis-' + sessionSequenceRef.current + '-' + (hypothesisSession.hypotheses.length + 1),
+      statement,
+      linkedConceptIds: parent.linkedConceptIds,
+      createdAt: new Date().toISOString(),
+      experimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,
+      threadId: snapshot?.activeExplorationThread?.id,
+      createdFrom: 'learner',
+    });
+    if (!child) return null;
+    const nextHypotheses = [...hypothesisSession.hypotheses, child];
+    const revision = createHypothesisRevision({
+      id: `revision-${sessionSequenceRef.current}-${revisionSession.revisions.length + 1}`,
+      parentHypothesisId,
+      childHypothesisId: child.id,
+      interpretationIds,
+      hypotheses: nextHypotheses,
+      interpretations: interpretationSession.interpretations,
+      createdFrom: 'learner',
+    });
+    if (!revision) return null;
+    setHypothesisSession((current) => appendHypothesis(current, child));
+    setRevisionSession((current) => appendHypothesisRevision(current, revision, { hypotheses: nextHypotheses, interpretations: interpretationSession.interpretations }));
+    return { child, revision };
+  };
+
+  const currentConditionFingerprint = useMemo(() => {
+    try { return host?.inspectContext?.().conditionFingerprint ?? null; } catch { return null; }
+  }, [host, snapshot]);
+
+  const createLearnerCounterfactual = ({ question = '', intervention = null, heldConstantFactors = [], outcomeObservableIds = [], prediction = null } = {}) => {
+    const id = `counterfactual-${sessionSequenceRef.current}-${counterfactualSession.questions.length + 1}`;
+    const created = createCounterfactualQuestion({
+      id,
+      question,
+      baselineExperimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,
+      baselineConditionFingerprint: currentConditionFingerprint,
+      intervention: normalizeCounterfactualIntervention(intervention),
+      heldConstantFactors,
+      outcomeObservableIds,
+      prediction,
+      createdFrom: 'learner',
+    });
+    if (created) setCounterfactualSession((current) => appendCounterfactualQuestion(current, created));
+    return created;
+  };
+
+  const convertLearnerCounterfactual = (question, hypothesisId) => {
+    const design = counterfactualToTestDesign(question, {
+      hypothesisId,
+      id: `test-design-${question?.id}`,
+      currentBaselineExperimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,
+      currentConditionFingerprint,
+    });
+    if (!design) {
+      if (question?.id && isCounterfactualStale(question, { baselineExperimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id, conditionFingerprint: currentConditionFingerprint })) {
+        setCounterfactualSession((current) => setCounterfactualStatus(current, { questionId: question.id, status: 'stale' }));
+      }
+      return null;
+    }
+    const saved = saveLearnerTestDesign(design);
+    if (saved) setCounterfactualSession((current) => associateCounterfactualTestDesign(current, { questionId: question.id, testDesignId: saved.id }));
+    return saved;
+  };
+
+  const illuminateLearningPath = (pathId) => {
+    if (typeof pathId !== 'string' || !pathId.trim()) return;
+    setLearningPathIlluminatedIds((current) => current.includes(pathId) ? current : [...current, pathId].slice(-8));
+  };
+
+  const acceptLumiSuggestion = (suggestion) => {
+    const kind = suggestion?.kind;
+    const depth = kind === 'observe' || kind === 'inspect-evidence' || kind === 'interpret'
+      ? CONCEPTUAL_DEPTHS.EVIDENCE
+      : kind === 'design-test' || kind === 'hold-constant'
+        ? CONCEPTUAL_DEPTHS.TUNE
+        : null;
+    if (depth) changeDepth(depth);
+    setTimeout(() => {
+      const selector = kind === 'counterfactual'
+        ? '[data-counterfactual-exploration]'
+        : kind === 'explore-concept'
+          ? '[data-concept-map]'
+          : '[data-hypothesis-panel]';
+      document.querySelector(selector)?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+    }, 0);
   };
 
   const changeDepth = (nextDepth) => {
@@ -356,7 +546,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} fullWorldToolsOpen={fullWorldToolsOpen} onFullWorldToolsChange={setFullWorldToolsOpen} onOpenFullWorldTools={openFullWorldWorkspaceFromTune} />;
   const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} t={t} intervention={lumiIntervention}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} interventionPulseKey={lumiIntervention?.sequence ?? null} interventionTarget={lumiIntervention?.target ?? null} /></ExploreExperimentRegion>;
-  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} journeyIlluminationEvents={journeySession.illuminationEvents} onIlluminateConcept={illuminateConcept} hypotheses={hypothesisSession.hypotheses} evidenceInstances={evidenceInstances} onCreateHypothesis={createLearnerHypothesis} onSetHypothesisStatus={updateHypothesisStatus} onAttachHypothesisEvidence={attachHypothesisEvidence} onOpenHypothesisEvidence={() => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} testDesigns={testDesignSession.designs} testDesignResults={testDesignResults} testDesignCapabilities={testDesignCapabilities} onSaveTestDesign={saveLearnerTestDesign} onRunTestDesign={runLearnerTestDesign} t={t} intervention={lumiIntervention} />;
+  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} journeyIlluminationEvents={journeySession.illuminationEvents} onIlluminateConcept={illuminateConcept} learningPathIlluminatedIds={learningPathIlluminatedIds} onIlluminateLearningPath={illuminateLearningPath} hypotheses={hypothesisSession.hypotheses} evidenceInstances={evidenceInstances} onCreateHypothesis={createLearnerHypothesis} onSetHypothesisStatus={updateHypothesisStatus} onAttachHypothesisEvidence={attachHypothesisEvidence} onOpenHypothesisEvidence={() => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} testDesigns={testDesignSession.designs} testDesignResults={testDesignResults} testDesignCapabilities={testDesignCapabilities} onSaveTestDesign={saveLearnerTestDesign} onRunTestDesign={runLearnerTestDesign} hypothesisGroups={hypothesisGroupSession.groups} discriminationPlans={discriminationPlanSession.plans} onCreateHypothesisGroup={createLearnerHypothesisGroup} onCreateDiscriminationPlan={createLearnerDiscriminationPlan} interpretations={interpretationSession.interpretations} revisions={revisionSession.revisions} onCreateInterpretation={createLearnerInterpretation} onCreateRevision={createLearnerRevision} counterfactualQuestions={counterfactualSession.questions} onCreateCounterfactual={createLearnerCounterfactual} onConvertCounterfactual={convertLearnerCounterfactual} counterfactualConditionFingerprint={currentConditionFingerprint} onAcceptLumiSuggestion={acceptLumiSuggestion} t={t} intervention={lumiIntervention} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}

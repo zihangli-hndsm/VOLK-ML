@@ -10,6 +10,36 @@ Outcome references use existing stable `evidence-instance-*` identifiers. Test D
 
 Execution-window Evidence is retained as temporal provenance only. It becomes an outcome reference only when its existing `evidenceRefs` directly names one of the learner-selected observable IDs; detector reason codes, timing, or matching conditions never establish that relationship. Comparison classification consumes the canonical `semanticFactorPaths` and `semanticFactorCount` emitted by `compareExperiments`, so multiple raw leaf paths may still represent one learner-facing factor.
 
+Competing Hypotheses and Discrimination Plans are detached learning records. They reference real learner Hypotheses and an existing Test Design, preserve the learner's predictions, and present factual prediction divergence or overlap. They do not add an executor, truth score, winner, automatic status mutation, or `caused_by` edge.
+
+The learner interpretation surface appears when existing Hypotheses and
+Evidence instances are available. The learner explicitly selects stable
+Evidence IDs, chooses a judgment, and may attach an existing Test Design.
+Saving is a detached session record. Revising a Hypothesis creates a new child
+identity while preserving the old statement and records the learner's
+interpretation as lineage. The surface does not execute a Test Design, change
+Hypothesis status, edit Evidence, or ask LUMI to explain a result.
+
+The Counterfactual Exploration surface is a small purple “What if…?” notebook
+beside the existing learner records. It requires the current baseline
+Experiment fingerprint, lets the learner select one registered factor and
+observable outcomes, and saves a detached question. A stale fingerprint is
+shown as unavailable. Choosing an existing Hypothesis and “Turn into Test
+Design” creates a normal saved Test Design for review; it does not run it.
+
+Inquiry Trail and Learning Path are notebook-style presentation surfaces. The
+trail lists only existing semantic and learner-authored records. The path is
+an eight-topic registry whose available/explored state is derived from the
+current session; the learner may explicitly mark an explored topic illuminated
+in session memory. Neither surface changes World, Experiment, Evidence,
+Hypothesis status, project persistence, or Agent authority.
+
+LUMI’s compact exploration prompt is derived from those same surfaces. It
+shows at most four deterministic, suggestion-only nudges and each “Look here”
+action opens or focuses an existing surface. It never creates a Hypothesis,
+Evidence, Test Design, interpretation, or Counterfactual, and it never runs an
+experiment.
+
 VOLK-ML Playgrounds are interactive, deterministic concept labs. They serve three consumers with one code path: the human UI, teaching-video demo scripts, and the in-page Canvas Agent.
 
 ## Unified visualization runtime
@@ -883,6 +913,28 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
 - Editing training points is a what-if operation: the raw train set is refitted with `refitKnnFromSplit()`, normalization and normalized train samples are rebuilt, and the unchanged test set is re-evaluated. Test points are not editable.
 - Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
 - The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.
+
+## Exploration acceptance semantics
+
+- Counterfactual controls are normalized from the playground capability
+  descriptor into explicit current and target values. Saving creates only a
+  learner question; conversion associates an existing detached Test Design;
+  successful host execution is the only transition to `tested`.
+- Inquiry Trail is chronological presentation. Inquiry Episodes are a
+  separate projection grouped by explicit hypothesis, group, Test Design,
+  interpretation, revision, counterfactual, and illumination links. Neither
+  projection changes playground state or persistence.
+- The LUMI planner consumes concrete learner predictions, executed Test Design
+  outcomes, and existing Evidence instances. It can focus an existing panel,
+but cannot create hypotheses, execute a Test Design, infer a winner, or
+rewrite a learner interpretation.
+
+Interpretation grounding follows the Test Design evidence scope exactly:
+`outcomeEvidenceIds` support interpretation suggestions, while
+`executionEvidenceIds` only document what occurred during execution. A missing
+outcome scope produces no interpretation suggestion. Competing-hypothesis plan
+creation also preserves learner authorship by remaining unavailable until each
+member has an explicitly selected prediction, including explicit `uncertain`.
 
 ### Concept Graph & Causal Exploration Map
 

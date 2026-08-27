@@ -1,0 +1,37 @@
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { deriveLearningPath, LEARNING_PATH_NODE_IDS, LEARNING_PATH_REGISTRY, LEARNING_PATH_STATES } from '../src/core/exploration/learningPath.js';
+
+assert.deepEqual(LEARNING_PATH_REGISTRY.map((node) => node.id), [...LEARNING_PATH_NODE_IDS], 'learning path contains exactly the eight planned nodes');
+const nodeIds = new Set(LEARNING_PATH_NODE_IDS);
+assert.ok(LEARNING_PATH_REGISTRY.every((node) => node.prerequisiteNodeIds.every((id) => nodeIds.has(id))), 'every prerequisite references a registered node');
+const visiting = new Set();
+const visited = new Set();
+const visit = (id) => {
+  if (visiting.has(id)) return false;
+  if (visited.has(id)) return true;
+  visiting.add(id);
+  const node = LEARNING_PATH_REGISTRY.find((entry) => entry.id === id);
+  const acyclic = node.prerequisiteNodeIds.every(visit);
+  visiting.delete(id);
+  if (acyclic) visited.add(id);
+  return acyclic;
+};
+assert.ok(LEARNING_PATH_NODE_IDS.every(visit), 'prerequisite graph is acyclic');
+const initial = deriveLearningPath({ playgroundId: 'mlp', semanticEvents: [], inquiry: null, journey: null });
+assert.equal(initial.nodes.length, 8);
+assert.equal(initial.nodes.find((node) => node.id === 'mlp-representation').state, LEARNING_PATH_STATES.EXPLORED);
+assert.equal(initial.nodes.find((node) => node.id === 'generalization').state, LEARNING_PATH_STATES.AVAILABLE);
+assert.equal(initial.nodes.find((node) => node.id === 'generalization').state, LEARNING_PATH_STATES.AVAILABLE, 'prerequisites do not gate availability');
+const illuminated = deriveLearningPath({ playgroundId: 'mlp', illuminatedPathIds: ['mlp-representation'] });
+assert.equal(illuminated.nodes.find((node) => node.id === 'mlp-representation').state, LEARNING_PATH_STATES.ILLUMINATED, 'illumination is explicit session input');
+const auto = deriveLearningPath({ playgroundId: 'linear-regression', inquiry: { candidates: [{ conceptId: 'generalization' }] }, journey: { connectedConceptIds: ['generalization'] } });
+assert.equal(auto.nodes.find((node) => node.id === 'generalization').state, LEARNING_PATH_STATES.EXPLORED, 'existing concept connection can make a topic explored');
+assert.ok(auto.nodes.every((node) => !['supported', 'mastery', 'caused_by'].includes(node.state)));
+const source = readFileSync(new URL('../src/core/exploration/learningPath.js', import.meta.url), 'utf8');
+assert.doesNotMatch(source, /confidence|probability|mastery|planner/);
+const ui = readFileSync(new URL('../src/components/playground/LearningPathPanel.jsx', import.meta.url), 'utf8');
+assert.match(ui, /data-learning-path/);
+assert.match(ui, /sm:grid-cols-2/);
+assert.match(ui, /onIlluminate/);
+console.log('Learning path checks passed: exact eight-node registry, available/explored/explicitly illuminated states, session-local projection, and no mastery or planning authority.');

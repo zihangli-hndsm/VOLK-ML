@@ -10,6 +10,77 @@ Test Design edges, when projected into a concept view, are neutral `test_design`
 
 The execution projection separates `executionEvidenceIds` from `outcomeEvidenceIds`. The former means only that an Evidence occurrence happened after the execution window began. The latter is populated only from direct Evidence provenance (`evidenceRefs` → selected observable ID). A baseline condition fingerprint is checked in addition to the Experiment ID; changing a control on the baseline invalidates the detached design without running or duplicating it.
 
+## Phase 13 — competing hypotheses
+
+Learners may explicitly place two to four existing learner hypotheses into a bounded session-local competing group. A Discrimination Plan references that group and one existing Test Design, then records one learner-authored prediction for each hypothesis. Its only derived status is `predictions-diverge`, `predictions-overlap`, or `insufficient-predictions`; it never selects a winner, changes hypothesis status, executes a test, or creates causal semantics. Execution remains owned by the referenced Test Design and existing Experiment runtime.
+
+## Phase 14 — learner interpretation and hypothesis revision
+
+`src/core/exploration/learnerInterpretation.js` records a bounded, explicit
+learner reading of selected stable Evidence instance IDs in relation to one or
+more existing Hypotheses and, optionally, an existing Test Design. Judgment
+(`supports`, `challenges`, `uncertain`, or `needs-more-testing`) and notes are
+learner-authored; they never mutate Evidence, Test Design, Hypothesis status,
+World, Experiment, or the canonical event stream. Historical Evidence IDs are
+kept as references even when the occurrence is no longer available in the
+current session.
+
+Hypothesis revisions create a new learner Hypothesis identity and retain the
+parent unchanged. Journey and Concept Map project the neutral
+`interpreted_in`, `informs_revision`, and `revised_from` relations. These
+relations describe learner provenance and lineage only; they do not mean
+`proves`, `caused_by`, mastery, or an automatically selected winner. The
+interpretation and revision states are session-local and detached from project
+persistence and Agent authority.
+
+## Phase 15 — counterfactual exploration
+
+`src/core/exploration/counterfactual.js` stores a bounded learner-owned
+“What if…?” question against the current Experiment identity and condition
+fingerprint. The question reuses registered intervention, held-constant, and
+observable semantics; it does not own a World, produce a result, or execute an
+operation. A changed baseline makes the question stale and blocks conversion
+until the learner creates a fresh question.
+
+The explicit “Turn into Test Design” action delegates to the existing detached
+Test Design contract. The existing Test Design Run action remains the only
+route to duplicate, intervene, run, and compare. The counterfactual map uses
+neutral `compared_with`, `changed`, `held_fixed`, `observed_under`, and
+`predicted` relations. It never creates `causes`, `caused_by`, confidence, or
+causal conclusions; LUMI can invite attention but cannot run the question.
+
+## Phase 16 — Inquiry Episodes and Learning Path
+
+`src/core/exploration/inquiryEpisodes.js` projects a bounded notebook trail
+from existing Semantic Events, Journey entries, Test Designs, Hypotheses,
+interpretations, revisions, and explicit illumination records. An episode
+keeps source IDs and a localized presentation label; it is not a replacement
+event stream, score, hidden progress state, or reasoning result.
+
+`src/core/exploration/learningPath.js` exposes exactly eight possible topics:
+World vs Data, Sampling Variation, Linear Relationship, Loss and Fitting,
+Train vs Test, Generalization, Nonlinearity, and MLP Representation. Each node
+is `available`, `explored`, or explicitly `illuminated`. Explored is derived
+from existing runtime signals and concept connections; illuminated is only a
+session-local learner action. The registry does not impose an order, infer
+mastery, persist a curriculum, or choose the learner's next topic.
+
+## Phase 17 — bounded LUMI exploration planner
+
+`src/core/ui/lumiExplorationPlanner.js` deterministically projects up to four
+small suggestions from the current Journey, Evidence, Hypotheses, Test
+Designs, competing groups, interpretations, revisions, Counterfactuals, and
+Concept frontier. Suggestion kinds include observe, predict, design-test,
+compare-hypotheses, hold-constant, inspect-evidence, interpret, revise,
+counterfactual, and explore-concept. Priority is a stable presentation order,
+not a recommendation of truth or a learner path.
+
+LUMI suggestions carry `authority: suggestion-only`. Accepting one changes
+only presentation focus to an existing Evidence, Hypothesis, Test Design,
+Counterfactual, or Concept surface. The planner cannot create records, alter
+status, dispatch runtime actions, execute a Test Design, infer mastery, or
+claim causality.
+
 ## Phase 10A — embedded learning assistance
 
 The embedded Ask VOLK surface is an answer-only presentation layer over the
@@ -561,3 +632,40 @@ replaced by a current notice with the same reason code. LUMI may focus an
 available instance and invite attention, but cannot select, attach, or infer
 status. The canonical Semantic Event payload remains free of raw evidence
 values.
+
+### Phases 13–17 acceptance hardening
+
+Competing-hypothesis discrimination is concrete only when every member of a
+group has an explicit `increase`, `decrease`, or `similar` prediction. Missing
+or `uncertain` predictions remain insufficient; overlap and divergence are
+descriptions, never winner selection. Revision lineage points from the child
+hypothesis to its parent with `revised_from`.
+
+Counterfactual questions are learner-owned records with an explicit
+intervention target (`fromValue` and `toValue` where applicable). Conversion
+creates and associates a detached Test Design, but does not imply execution.
+Only a successful host execution may mark the question tested and attach real
+Evidence-instance IDs. Untested questions use `outcome_of_interest`, never
+`observed_under`; stale baselines remain stale and cannot be converted.
+
+Inquiry Trail entries preserve chronological semantic actions, while Inquiry
+Episodes group only explicit links among hypotheses, groups, Test Designs,
+interpretations, revisions, counterfactuals, and illuminated concepts. Their
+Evidence fields contain only validated Evidence-instance IDs; reason codes and
+observable references remain separate fields. The eight-node Learning Path is
+a session-local DAG of available, explored, and explicitly illuminated topics;
+prerequisites describe structure and do not gate or score the learner.
+
+LUMI's exploration planner is a bounded suggestion projection. It requests
+predictions only for existing hypotheses, interprets only relevant executed
+outcomes, treats `confounded` as authoritative only from actual Test Design
+results, and suggests revision only for challenged or needs-more-testing
+interpretations. Accepting a suggestion may focus an existing surface but
+never mutates semantic state or executes a test.
+
+Execution Evidence records that occurred during a run are distinct from
+outcome Evidence instances selected by a Test Design. Planner interpretation
+grounding uses only the latter; an execution-only occurrence is never a
+substitute. Learner revisions carry their own bounded stable IDs, so Inquiry
+Episodes reference actual revision records rather than reconstructing identity
+from parent and child names.

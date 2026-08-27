@@ -4,6 +4,18 @@
 
 import { INQUIRY_CONCEPT_REGISTRY } from '../exploration/learnerInquiry.js';
 import { MAX_HYPOTHESES, normalizeHypothesisState } from '../exploration/hypothesis.js';
+import {
+  discriminationSemanticEdges,
+  normalizeDiscriminationPlanState,
+  normalizeHypothesisGroupState,
+} from '../exploration/competingHypotheses.js';
+import { normalizeTestDesignState } from '../exploration/testDesign.js';
+import {
+  interpretationSemanticEdges,
+  normalizeHypothesisRevisionState,
+  normalizeLearnerInterpretationState,
+} from '../exploration/learnerInterpretation.js';
+import { deriveCounterfactualMap } from '../exploration/counterfactual.js';
 
 export const CONCEPT_GRAPH_VERSION = 1;
 export const MAX_CONCEPT_GRAPH_NODES = 24;
@@ -25,6 +37,11 @@ export const CONCEPT_GRAPH_RELATIONS = Object.freeze({
 export const HYPOTHESIS_GRAPH_RELATIONS = Object.freeze({
   CONCEPT_LINK: 'hypothesis_link',
   EVIDENCE_LINK: 'hypothesis_evidence',
+});
+
+export const DISCRIMINATION_GRAPH_RELATIONS = Object.freeze({
+  PREDICTED_BY: 'predicted_by',
+  TESTED_BY: 'tested_by',
 });
 
 export function conceptGraphRelationSemantics(relation) {
@@ -137,6 +154,58 @@ function deriveHypothesisProjection({ hypotheses, conceptIds, selectedHypothesis
   };
 }
 
+function deriveDiscriminationProjection({ hypotheses, groups, plans, testDesigns }) {
+  const groupState = normalizeHypothesisGroupState({ version: 1, groups }, { hypotheses });
+  const planState = normalizeDiscriminationPlanState({ version: 1, plans }, {
+    groups: groupState.groups,
+    hypotheses,
+    testDesigns,
+  });
+  const validDesignIds = new Set(normalizeTestDesignState({ version: 1, designs: testDesigns }).designs.map((design) => design.id));
+  const groupById = new Map(groupState.groups.map((group) => [group.id, group]));
+  const discriminationNodes = planState.plans.map((plan) => Object.freeze({
+    id: plan.id,
+    kind: 'discrimination-plan',
+    hypothesisGroupId: plan.hypothesisGroupId,
+    testDesignId: plan.testDesignId,
+    predictedOutcomes: plan.predictedOutcomes,
+  }));
+  const discriminationEdges = planState.plans.flatMap((plan) => discriminationSemanticEdges({
+    group: groupById.get(plan.hypothesisGroupId),
+    plan,
+    testDesign: validDesignIds.has(plan.testDesignId) ? { id: plan.testDesignId } : null,
+    hypotheses,
+  })).slice(0, MAX_CONCEPT_GRAPH_EDGES).map((edge) => Object.freeze(edge));
+  return {
+    discriminationNodes: Object.freeze(discriminationNodes),
+    discriminationEdges: Object.freeze(discriminationEdges),
+  };
+}
+
+function deriveInterpretationProjection({ hypotheses, interpretations, revisions, testDesigns }) {
+  const interpretationState = normalizeLearnerInterpretationState({ version: 1, interpretations }, { hypotheses, testDesigns });
+  const revisionState = normalizeHypothesisRevisionState({ version: 1, revisions }, {
+    hypotheses,
+    interpretations: interpretationState.interpretations,
+    testDesigns,
+  });
+  const interpretationNodes = interpretationState.interpretations.map((interpretation) => Object.freeze({
+    id: interpretation.id,
+    kind: 'learner-interpretation',
+    judgment: interpretation.judgment,
+    hypothesisIds: interpretation.hypothesisIds,
+    evidenceInstanceIds: interpretation.evidenceInstanceIds,
+  }));
+  const interpretationEdges = [
+    ...interpretationState.interpretations.flatMap((interpretation) => interpretationSemanticEdges({ interpretation })),
+    ...revisionState.revisions.flatMap((revision) => interpretationSemanticEdges({ revision })),
+  ].slice(0, MAX_CONCEPT_GRAPH_EDGES).map((edge) => Object.freeze(edge));
+  return {
+    interpretationNodes: Object.freeze(interpretationNodes),
+    interpretationEdges: Object.freeze(interpretationEdges),
+  };
+}
+
 function deriveEvidenceByConcept(journey) {
   const evidenceByConcept = {};
   normalizedJourneyEvents(journey)
@@ -179,6 +248,12 @@ export function deriveConceptGraph({
   selectedConceptId = null,
   hypotheses = [],
   selectedHypothesisId = null,
+  hypothesisGroups = [],
+  discriminationPlans = [],
+  testDesigns = [],
+  interpretations = [],
+  revisions = [],
+  counterfactualQuestions = [],
 } = {}) {
   const hypothesisState = normalizeHypothesisState({ version: 1, hypotheses });
   const conceptIds = deriveConceptIds({ inquiry, journey, activeConceptId, illuminatedConceptIds, hypotheses: hypothesisState.hypotheses });
@@ -225,6 +300,19 @@ export function deriveConceptGraph({
   const evidenceIds = selected ? (evidenceByConcept[selected] ?? []) : [];
   const hypothesisProjection = deriveHypothesisProjection({ hypotheses: hypothesisState.hypotheses, conceptIds, selectedHypothesisId });
   const selectedHypothesis = hypothesisProjection.hypothesisNodes.find((node) => node.id === hypothesisProjection.selectedHypothesisId);
+  const discriminationProjection = deriveDiscriminationProjection({
+    hypotheses: hypothesisState.hypotheses,
+    groups: hypothesisGroups,
+    plans: discriminationPlans,
+    testDesigns,
+  });
+  const interpretationProjection = deriveInterpretationProjection({
+    hypotheses: hypothesisState.hypotheses,
+    interpretations,
+    revisions,
+    testDesigns,
+  });
+  const counterfactualProjection = deriveCounterfactualMap(counterfactualQuestions);
 
   return Object.freeze({
     version: CONCEPT_GRAPH_VERSION,
@@ -243,6 +331,12 @@ export function deriveConceptGraph({
     hypothesisEdges: hypothesisProjection.hypothesisEdges,
     selectedHypothesisId: hypothesisProjection.selectedHypothesisId,
     selectedHypothesisEvidenceIds: Object.freeze(selectedHypothesis?.evidenceIds ?? []),
+    discriminationNodes: discriminationProjection.discriminationNodes,
+    discriminationEdges: discriminationProjection.discriminationEdges,
+    interpretationNodes: interpretationProjection.interpretationNodes,
+    interpretationEdges: interpretationProjection.interpretationEdges,
+    counterfactualNodes: counterfactualProjection.nodes,
+    counterfactualEdges: counterfactualProjection.edges,
     // Causal edges are accepted as a vocabulary value for future explicit
     // semantic sources, but this projection never creates one.
     causalEdgeCount: edges.filter((edge) => edge.relation === CONCEPT_GRAPH_RELATIONS.CAUSED_BY).length,

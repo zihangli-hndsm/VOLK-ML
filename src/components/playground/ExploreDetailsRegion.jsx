@@ -25,9 +25,18 @@ import LumiAttentionRail from './LumiAttentionRail.jsx';
 import LumiJourneyTimeline from './LumiJourneyTimeline.jsx';
 import ConceptMap from './ConceptMap.jsx';
 import HypothesisPanel from './HypothesisPanel.jsx';
+import CompetingHypothesesPanel from './CompetingHypothesesPanel.jsx';
+import LearnerInterpretationPanel from './LearnerInterpretationPanel.jsx';
+import CounterfactualExplorationPanel from './CounterfactualExplorationPanel.jsx';
+import InquiryTrail from './InquiryTrail.jsx';
+import LearningPathPanel from './LearningPathPanel.jsx';
+import LumiExplorationPlannerPanel from './LumiExplorationPlannerPanel.jsx';
+import { deriveInquiryEpisodes, deriveInquiryTrailEntries } from '../../core/exploration/inquiryEpisodes.js';
+import { deriveLearningPath } from '../../core/exploration/learningPath.js';
+import { deriveLumiExplorationPlan } from '../../core/ui/lumiExplorationPlanner.js';
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
 
-export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], journeyIlluminationEvents = [], onIlluminateConcept, hypotheses = [], evidenceInstances = [], onCreateHypothesis, onSetHypothesisStatus, onAttachHypothesisEvidence, onOpenHypothesisEvidence, testDesigns = [], testDesignResults = {}, testDesignCapabilities = null, onSaveTestDesign, onRunTestDesign, t, intervention = null }) {
+export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIdea, agent, host, activeDepth, onDepthChange, agentOpen, onAgentOpen, onAgentClose, onDispatch, onGuidanceChange, formulaPrimitive, onOpenWorldTools, initialSelection, onAskAboutSelection, illuminatedConceptIds = [], journeyIlluminationEvents = [], onIlluminateConcept, learningPathIlluminatedIds = [], onIlluminateLearningPath, hypotheses = [], evidenceInstances = [], onCreateHypothesis, onSetHypothesisStatus, onAttachHypothesisEvidence, onOpenHypothesisEvidence, testDesigns = [], testDesignResults = {}, testDesignCapabilities = null, onSaveTestDesign, onRunTestDesign, hypothesisGroups = [], discriminationPlans = [], onCreateHypothesisGroup, onCreateDiscriminationPlan, interpretations = [], revisions = [], onCreateInterpretation, onCreateRevision, counterfactualQuestions = [], onCreateCounterfactual, onConvertCounterfactual, counterfactualConditionFingerprint = null, onAcceptLumiSuggestion, t, intervention = null }) {
   const { responsive } = usePresentationCapabilities();
   const { isConfigured, openSettings } = useAiProvider();
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
@@ -46,7 +55,25 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     illuminatedConceptIds,
     illuminationEvents: journeyIlluminationEvents,
     hypotheses,
-  }), [snapshot?.semanticEvents, snapshot?.observations, snapshot?.learnerInquiry, bigIdea?.id, illuminatedConceptIds, journeyIlluminationEvents, hypotheses]);
+    interpretations,
+    revisions,
+  }), [snapshot?.semanticEvents, snapshot?.observations, snapshot?.learnerInquiry, bigIdea?.id, illuminatedConceptIds, journeyIlluminationEvents, hypotheses, interpretations, revisions]);
+  const inquiryProjection = useMemo(() => ({
+    semanticEvents: snapshot?.semanticEvents,
+    journey,
+    inquiry: snapshot?.learnerInquiry,
+    hypotheses,
+    hypothesisGroups,
+    discriminationPlans,
+    testDesigns,
+    interpretations,
+    revisions,
+    counterfactualQuestions,
+    illuminationEvents: journeyIlluminationEvents,
+  }), [snapshot?.semanticEvents, journey, snapshot?.learnerInquiry, hypotheses, hypothesisGroups, discriminationPlans, testDesigns, interpretations, revisions, counterfactualQuestions, journeyIlluminationEvents]);
+  const trailEntries = useMemo(() => deriveInquiryTrailEntries(inquiryProjection), [inquiryProjection]);
+  const episodes = useMemo(() => deriveInquiryEpisodes(inquiryProjection), [inquiryProjection]);
+  const learningPath = useMemo(() => deriveLearningPath({ semanticEvents: snapshot?.semanticEvents, inquiry: snapshot?.learnerInquiry, journey, playgroundId: snapshot?.playgroundId ?? snapshot?.modelPlaygroundId ?? modelPlayground?.id, illuminatedPathIds: learningPathIlluminatedIds }), [snapshot?.semanticEvents, snapshot?.learnerInquiry, journey, snapshot?.playgroundId, snapshot?.modelPlaygroundId, modelPlayground?.id, learningPathIlluminatedIds]);
   const conceptGraph = useMemo(() => deriveConceptGraph({
     inquiry: snapshot?.learnerInquiry,
     journey,
@@ -54,8 +81,15 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     illuminatedConceptIds,
     selectedConceptId,
     hypotheses,
+    interpretations,
+    revisions,
     selectedHypothesisId,
-  }), [snapshot?.learnerInquiry, journey, bigIdea?.id, illuminatedConceptIds, selectedConceptId, hypotheses, selectedHypothesisId]);
+    hypothesisGroups,
+    discriminationPlans,
+    testDesigns,
+    counterfactualQuestions,
+  }), [snapshot?.learnerInquiry, journey, bigIdea?.id, illuminatedConceptIds, selectedConceptId, hypotheses, selectedHypothesisId, hypothesisGroups, discriminationPlans, testDesigns, interpretations, revisions, counterfactualQuestions]);
+  const lumiPlan = useMemo(() => deriveLumiExplorationPlan({ snapshot, journey, hypotheses, evidenceInstances, testDesigns, testDesignResults, hypothesisGroups, discriminationPlans, interpretations, revisions, counterfactualQuestions, conceptGraph }), [snapshot, journey, hypotheses, evidenceInstances, testDesigns, testDesignResults, hypothesisGroups, discriminationPlans, interpretations, revisions, counterfactualQuestions, conceptGraph]);
   const compact = responsive.band === 'compact';
   const panelCloseRef = useRef(null);
   const triggerRefs = useRef({});
@@ -116,7 +150,13 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     <LumiAttentionRail snapshot={snapshot} attention={attention} activeDepth={activeDepth} illuminatedConceptIds={illuminatedConceptIds} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} t={t} />
     <LumiJourneyTimeline journey={journey} snapshot={snapshot} compact={compact} t={t} onSelectConcept={setSelectedConceptId} />
     <ConceptMap graph={conceptGraph} snapshot={snapshot} evidenceInstances={evidenceInstances} compact={compact} t={t} onSelectConcept={setSelectedConceptId} onSelectHypothesis={setSelectedHypothesisId} />
+    <InquiryTrail entries={trailEntries} episodes={episodes} compact={compact} t={t} />
+    <LearningPathPanel path={learningPath} compact={compact} t={t} onIlluminate={onIlluminateLearningPath} />
+    <LumiExplorationPlannerPanel plan={lumiPlan} compact={compact} t={t} onAccept={onAcceptLumiSuggestion} />
     <HypothesisPanel attention={attention} graph={conceptGraph} evidenceInstances={evidenceInstances} hypotheses={hypotheses} compact={compact} t={t} onCreate={onCreateHypothesis} onSetStatus={onSetHypothesisStatus} onAttachEvidence={onAttachHypothesisEvidence} onOpenEvidence={onOpenHypothesisEvidence} onOpenExperiment={() => onDepthChange?.(CONCEPTUAL_DEPTHS.TUNE)} onSelectHypothesis={setSelectedHypothesisId} snapshot={snapshot} capabilities={testDesignCapabilities} testDesigns={testDesigns} testDesignResults={testDesignResults} onSaveTestDesign={onSaveTestDesign} onRunTestDesign={onRunTestDesign} />
+    <CompetingHypothesesPanel hypotheses={hypotheses} groups={hypothesisGroups} plans={discriminationPlans} testDesigns={testDesigns} testDesignResults={testDesignResults} compact={compact} t={t} onCreateGroup={onCreateHypothesisGroup} onCreatePlan={onCreateDiscriminationPlan} />
+    <LearnerInterpretationPanel hypotheses={hypotheses} evidenceInstances={evidenceInstances} testDesigns={testDesigns} interpretations={interpretations} revisions={revisions} compact={compact} t={t} onCreateInterpretation={onCreateInterpretation} onCreateRevision={onCreateRevision} />
+    <CounterfactualExplorationPanel snapshot={snapshot} capabilities={testDesignCapabilities} hypotheses={hypotheses} questions={counterfactualQuestions} testDesigns={testDesigns} compact={compact} t={t} onCreate={onCreateCounterfactual} onConvert={onConvertCounterfactual} conditionFingerprint={counterfactualConditionFingerprint} />
 
     {agent && <>
       <div className="flex min-w-0 items-center gap-2">

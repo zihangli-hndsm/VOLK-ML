@@ -1,5 +1,49 @@
 # Changelog
 
+## 2026-08-27 — PR #131 final acceptance grounding fix
+
+- Corrected LUMI interpretation grounding to use only Test Design outcome Evidence, fixed the Phase 14 `challenges` vocabulary, and kept execution-only Evidence from triggering interpretation.
+- Preserved learner authorship by disabling discrimination-plan creation until every grouped Hypothesis has an explicit prediction, and added stable IDs to learner Hypothesis revisions for truthful Inquiry Episode references.
+- Added exact planner-matrix, revision-identity, Learning Path DAG, and learner-authorship regression coverage with matching architecture notes.
+- Acceptance: required focused checks, `npm run check`, `npm run build`, and `git diff --check` passed.
+
+## 2026-08-27 — PR #131 acceptance hardening
+
+- Corrected Phase 13–17 semantics: concrete prediction completeness, child-to-parent revision edges, explicit counterfactual lifecycle and Test Design association, factual Evidence-only observation links, separate Inquiry Trail and coherent Inquiry Episodes, and an ungated eight-node Learning Path DAG.
+- Tightened LUMI planner suggestions to existing hypotheses, executed outcomes, authoritative comparison results, and challenged interpretations while keeping every handoff suggestion-only.
+- Updated bilingual UI projections, focused acceptance checks, and exploration architecture documentation.
+- Acceptance: all Phase 13–17 focused checks, `npm run check`, `npm run build`, and `git diff --check` passed.
+
+## 2026-08-27 — Phase 17 bounded LUMI exploration planner
+
+- Added deterministic, bounded LUMI suggestions across observe, predict, design-test, compare-hypotheses, hold-constant, inspect-evidence, interpret, revise, counterfactual, and explore-concept surfaces.
+- Kept suggestions projection-only and routed acceptance to existing presentation surfaces without creating records, dispatching runtime actions, executing tests, or inferring conclusions.
+- Added bilingual responsive planner UI and focused authority/determinism checks.
+
+## 2026-08-27 — Phase 16 inquiry trail and learning path
+
+- Added bounded Inquiry Episodes as a notebook projection over existing semantic events and learner records.
+- Added the exact eight-topic Learning Path with available/explored/explicitly illuminated session states and no required order or mastery semantics.
+- Added bilingual responsive Inquiry Trail and Learning Path surfaces with focused projection and boundary checks.
+
+## 2026-08-27 — Phase 15 counterfactual exploration
+
+- Added bounded learner-owned “What if…?” questions with baseline Experiment and condition-fingerprint provenance, explicit stale guards, and neutral map relations.
+- Added explicit conversion into the existing detached Test Design flow without execution, result fabrication, causal claims, or new runtime authority.
+- Added bilingual responsive counterfactual UI, Concept Map projection, and focused boundary checks.
+
+## 2026-08-27 — Phase 14 learner interpretation
+
+- Added bounded learner-owned interpretations over stable Evidence instances, optional existing Test Designs, and explicit judgment choices without changing runtime truth.
+- Added separate Hypothesis revision lineage that preserves the parent identity and projects neutral `interpreted_in`, `informs_revision`, and `revised_from` relations into Journey and Concept Map.
+- Added bilingual responsive interpretation/revision UI and focused boundary checks for historical Evidence references, no automatic status mutation, and no causal/proof semantics.
+
+## 2026-08-26 — Phase 13 competing hypotheses
+
+- Added learner-created competing Hypothesis groups and Discrimination Plans that reuse existing Test Designs.
+- Added factual prediction divergence, overlap, and insufficient-prediction states without selecting a winner or changing Hypothesis status.
+- Connected the plans to the Concept Map with neutral `predicted_by` and `tested_by` relations, plus bilingual responsive UI and focused boundary checks.
+
 ## 2026-08-26 — PR #130 acceptance hardening
 
 - Separated execution-window Evidence occurrences from selected outcome Evidence; only direct `evidenceRefs` provenance can create an outcome reference.
