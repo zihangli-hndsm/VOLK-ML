@@ -307,7 +307,11 @@ export function deriveExperimentWorkspace(session) {
   const target = workspace.comparison.enabled && workspace.comparison.againstExperimentId !== workspace.activeExperimentId
     ? workspace.entries[workspace.comparison.againstExperimentId]
     : null;
+  const lineageTarget = workspace.comparison.againstExperimentId !== workspace.activeExperimentId
+    ? workspace.entries[workspace.comparison.againstExperimentId]
+    : null;
   const diff = target ? compareExperiments(active.state.experiment, target.state.experiment) : null;
+  const lineageDiff = lineageTarget ? compareExperiments(active.state.experiment, lineageTarget.state.experiment) : null;
   return {
     version: EXPERIMENT_WORKSPACE_VERSION,
     activeExperimentId: workspace.activeExperimentId,
@@ -316,6 +320,14 @@ export function deriveExperimentWorkspace(session) {
       enabled: Boolean(workspace.comparison.enabled && target),
       againstExperimentId: workspace.comparison.againstExperimentId,
       diff,
+      // A duplicate establishes a baseline lineage before the learner turns
+      // on the comparison view. Presentation surfaces may inspect this
+      // read-only projection, but `enabled` remains the explicit comparison
+      // action boundary.
+      lineage: lineageTarget ? {
+        againstExperimentId: lineageTarget.id,
+        diff: lineageDiff,
+      } : null,
       results: target ? {
         active: resultForRecord(active),
         against: resultForRecord(target),

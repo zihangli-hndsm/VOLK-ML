@@ -17,7 +17,7 @@ Small, visual, browser-runnable datasets for building intuition.
 | --- | --- | --- | --- | --- | --- | --- |
 | `linear-trend-concept.volkml.json` | weight, bias, residual, MSE, gradient descent | 120 | 1 | ✅ | ✅ | Linear Regression |
 | `knn-neighborhood-concept.volkml.json` | distance, neighbor order, voting, k, local boundary | 200 | 2 | ✅ | — | KNN Classification |
-| `xor-mlp-concept.volkml.json` | linear limits, hidden layer, activation, nonlinear boundary | 240 | 2 | ✅ | ✅ | (future MLP) |
+| `xor-mlp-concept.volkml.json` | four clear XOR quadrants, hidden layer, activation, nonlinear boundary | 32 | 2 | ✅ | ✅ | MLP Classification |
 
 ## Applied Examples
 

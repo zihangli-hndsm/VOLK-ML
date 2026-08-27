@@ -4,6 +4,7 @@
 
 export const EXPLORE_WORKSPACE_VERSION = 1;
 export const WORKSPACE_KINDS = Object.freeze({ BUILD: 'build', EXPLORE: 'explore' });
+export const EXPLORE_WORKSPACE_LIFECYCLES = Object.freeze({ PERSISTENT: 'persistent', EPHEMERAL: 'ephemeral' });
 
 const bounded = (value, limit = 160) => {
   const normalized = typeof value === 'string' ? value.trim().slice(0, limit) : '';
@@ -63,8 +64,12 @@ export function createExploreWorkspaceRecord({
   playgroundId,
   environment,
   sessionId = null,
+  lifecycle = EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT,
 } = {}) {
   const workspaceId = bounded(id) ?? `explore-${bounded(recipeId) ?? bounded(playgroundId) ?? 'session'}`;
+  const workspaceLifecycle = Object.values(EXPLORE_WORKSPACE_LIFECYCLES).includes(lifecycle)
+    ? lifecycle
+    : EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT;
   return Object.freeze({
     version: EXPLORE_WORKSPACE_VERSION,
     id: workspaceId,
@@ -73,6 +78,7 @@ export function createExploreWorkspaceRecord({
     playgroundId: bounded(playgroundId),
     environment: createExploreEnvironmentIdentity(environment),
     sessionId: bounded(sessionId),
+    lifecycle: workspaceLifecycle,
   });
 }
 
@@ -103,6 +109,7 @@ export function createBuildExploreBridge({ build, target = null } = {}) {
         recipeId: `build-fork-${requestedTarget}`,
         playgroundId: requestedTarget,
         environment: { recipeId: `build-fork-${requestedTarget}`, playgroundId: requestedTarget, modelAdapterId: adapterId },
+        lifecycle: EXPLORE_WORKSPACE_LIFECYCLES.EPHEMERAL,
       })
       : null,
     modelPlaygroundId: supported

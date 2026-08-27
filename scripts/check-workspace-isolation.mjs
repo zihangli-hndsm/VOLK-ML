@@ -7,6 +7,7 @@ import {
   createBuildExploreBridge,
   createExploreEnvironmentIdentity,
   createExploreWorkspaceRecord,
+  EXPLORE_WORKSPACE_LIFECYCLES,
 } from '../src/core/exploration/exploreWorkspace.js';
 import { deriveInquiryTrailEntries } from '../src/core/exploration/inquiryEpisodes.js';
 
@@ -42,6 +43,14 @@ assert.equal(explore.getState().model.adapterId, 'mlp', 'mismatch detection does
 
 const boundedWorkspace = createExploreWorkspaceRecord({ id: 'x'.repeat(400), recipeId: 'r'.repeat(400), playgroundId: 'mlp-classification' });
 assert.ok(boundedWorkspace.id.length <= 160 && boundedWorkspace.recipeId.length <= 160, 'workspace identifiers remain bounded');
+assert.equal(boundedWorkspace.lifecycle, EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT, 'built-in workspaces are persistent by default');
+assert.equal(createExploreWorkspaceRecord({ id: 'fork', lifecycle: EXPLORE_WORKSPACE_LIFECYCLES.EPHEMERAL }).lifecycle, 'ephemeral', 'explicit Build forks are ephemeral');
+const strictHost = createPlaygroundHost({ getDataset: () => null });
+await strictHost.open({ playgroundId: 'linear-regression', seed: 19 });
+const strictBefore = strictHost.getState();
+await assert.rejects(() => strictHost.ensureOpen('data-lab', { strict: true }), /PLAYGROUND_ALREADY_OPEN/, 'strict Explore ensureOpen rejects a mismatched session');
+assert.equal(strictHost.getState().experiment.id, strictBefore.experiment.id, 'strict ensureOpen does not mutate a mismatched host');
+await strictHost.close();
 const bridgeBuild = { modelAdapterId: 'knn', dataset: { task: 'classification', featureColumns: ['x', 'y'], targetColumn: 'label', columns: [{ name: 'x', type: 'number' }, { name: 'y', type: 'number' }, { name: 'label', type: 'string' }], rows: [{ x: 1, y: 2, label: 'a' }, { x: -1, y: -2, label: 'b' }] } };
 const supportedBridge = createBuildExploreBridge({ build: bridgeBuild, target: 'data-lab' });
 assert.equal(supportedBridge.supported, true, 'explicit compatible Build bridge is supported');
@@ -62,6 +71,8 @@ const dialogSource = readFileSync(new URL('../src/components/playground/UnifiedP
 assert.doesNotMatch(mainSource, /getDataset:\s*\(\)\s*=>\s*workspaceStateRef\.current\.dataset/, 'Explore no longer closes over Build dataset state');
 assert.match(mainSource, /exploreWorkspacesRef/, 'application owns Explore sessions separately');
 assert.match(dialogSource, /preserveSession/, 'closing the Explore dialog preserves its session owner');
+assert.match(mainSource, /closeExploreWorkspace/, 'dialog close has an explicit workspace lifecycle owner');
+assert.match(mainSource, /setExploreWorkspaceKey\(null\)/, 'ephemeral disposal clears the active routing key');
 
 const revisionPlan = deriveLumiExplorationPlan({
   interpretations: [

@@ -71,7 +71,7 @@ import {
   setCounterfactualStatus,
 } from '../../core/exploration/counterfactual.js';
 
-export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY, preserveSession = false }) {
+export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agent, onClose, t, initialTab = 'model', telemetry = NOOP_EXPLORATION_TELEMETRY, preserveSession = false, strictOpen = false }) {
   const [snapshot, setSnapshot] = useState(null);
   const [presentationMode, setPresentationMode] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -154,7 +154,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       setPresentationMode(false);
     }
     setActiveTab(initialTab);
-    host.ensureOpen(playgroundId).then(() => {
+    host.ensureOpen(playgroundId, { strict: strictOpen }).then(() => {
       if (!active) return;
       try {
         const nextSnapshot = host.getState();
@@ -172,7 +172,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       unsubscribe();
       if (!preserveSession) host.close().catch(() => {});
     };
-  }, [open, playgroundId, host, preserveSession]);
+  }, [open, playgroundId, host, preserveSession, strictOpen]);
 
   useEffect(() => {
     if (!lumiIntervention) return undefined;

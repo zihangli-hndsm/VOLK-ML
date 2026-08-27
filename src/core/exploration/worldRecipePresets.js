@@ -2,6 +2,7 @@
 // have a separate generator or materialization path.
 
 import { normalizeWorldRecipe } from './worldRecipe.js';
+import { XOR_CONCEPT_DATASET_SPEC } from '../playground/model/mlpMath.js';
 
 const baseNoise = () => ({
   train: { position: { amount: 0.04 }, label: { probability: 0, policy: 'flip' }, outliers: { fraction: 0, placement: 'radial', distance: 2 }, local: [] },
@@ -19,6 +20,8 @@ const group = (id, label, shape, translate, count = 100) => ({
     test: { count: Math.round(count * 0.4), density: { type: 'uniform' } },
   },
 });
+
+const XOR_GROUP_COUNT = XOR_CONCEPT_DATASET_SPEC.pointsPerCluster;
 
 const recipes = {
   rings: () => ({
@@ -40,10 +43,10 @@ const recipes = {
   xor: () => ({
     version: 1, task: 'classification', coordinateSpace: 'cartesian-2d',
     groups: [
-      group('bottom-left', '0', { type: 'blob', params: { radius: 0.5, aspect: [1, 1] } }, [-0.8, -0.8], 70),
-      group('top-right', '0', { type: 'blob', params: { radius: 0.5, aspect: [1, 1] } }, [0.8, 0.8], 70),
-      group('top-left', '1', { type: 'blob', params: { radius: 0.5, aspect: [1, 1] } }, [-0.8, 0.8], 70),
-      group('bottom-right', '1', { type: 'blob', params: { radius: 0.5, aspect: [1, 1] } }, [0.8, -0.8], 70),
+      group('bottom-left', '0', { type: 'blob', params: { radius: 0.5, aspect: [1, 1] } }, [-0.8, -0.8], XOR_GROUP_COUNT),
+      group('top-right', '0', { type: 'blob', params: { radius: 0.5, aspect: [1, 1] } }, [0.8, 0.8], XOR_GROUP_COUNT),
+      group('top-left', '1', { type: 'blob', params: { radius: 0.5, aspect: [1, 1] } }, [-0.8, 0.8], XOR_GROUP_COUNT),
+      group('bottom-right', '1', { type: 'blob', params: { radius: 0.5, aspect: [1, 1] } }, [0.8, -0.8], XOR_GROUP_COUNT),
     ],
     noise: baseNoise(),
   }),
