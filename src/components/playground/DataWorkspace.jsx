@@ -23,6 +23,7 @@ import { getVisiblePrimitives, resolveMotionConfig } from './motion.js';
 import { usePrimitiveMotion, useReducedMotionPreference } from './usePrimitiveMotion.js';
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
 import { buildLabelColorMap } from './visualEncoding.js';
+import { deriveSampleComparisonPresentation } from '../../core/ui/sampleComparisonPresentation.js';
 
 const PLOT = { left: 42, right: 620, top: 18, bottom: 320 };
 const PHENOMENON_PLOT = { left: 58, right: 620, top: 20, bottom: 320 };
@@ -106,9 +107,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const baseBounds = initialBounds(snapshot);
   const operations = new Set((snapshot.capabilities?.worldOperations ?? []).map((item) => item.type));
   const canSampleAgain = world?.mode === 'generated' && operations.has('RESAMPLE_WORLD');
-  const sampleEventCount = (snapshot.semanticEvents?.events ?? []).filter((event) => event?.type === 'observation.sampled').length;
-  const againstExperimentId = snapshot.experimentWorkspace?.comparison?.againstExperimentId ?? null;
-  const canCompareSamples = Boolean(againstExperimentId);
+  const sampleComparison = deriveSampleComparisonPresentation(snapshot);
+  const canCompareSamples = sampleComparison.available;
   const canEdit = Boolean(snapshot.capabilities?.canEditWorld)
     && operations.has('ADD_POINTS')
     && operations.has('MOVE_POINT')
@@ -490,7 +490,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         {t(`playground.workspace.layer.${item}`)}
       </button>)}
     </div>}
-    {phenomenonMode && sampleEventCount > 0 && <section data-sample-status="true" className="rounded-xl border border-cyan-200 bg-cyan-50/70 px-3 py-2">
+    {phenomenonMode && sampleComparison.available && <section data-sample-status="true" className="rounded-xl border border-cyan-200 bg-cyan-50/70 px-3 py-2">
       <p className="text-xs font-black text-cyan-950">{t('playground.phenomenon.sampleStatus')}</p>
       <p className="mt-1 text-xs text-cyan-900">{t('playground.phenomenon.sampleQuestion')}</p>
       <button type="button" disabled={!canCompareSamples} onClick={compareSamples} className="mt-2 rounded-lg border border-cyan-300 bg-white px-3 py-2 text-xs font-black text-cyan-900 hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-50">{canCompareSamples ? t('playground.phenomenon.compareSamples') : t('playground.phenomenon.compareSamplesUnavailable')}</button>

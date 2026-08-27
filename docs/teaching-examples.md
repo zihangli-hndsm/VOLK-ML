@@ -14,7 +14,14 @@ VOLK-ML examples are more than "pipelines that run". Each one has a teaching rol
 - The same seed and code produce identical files on every run; example JSON uses a fixed `savedAt`.
 - Feature generation always completes before labels are sampled. Applied datasets with interactions declare `labelSampling: 'probability'` and `featuresGeneratedBeforeLabels: true`; the generator rejects definitions that could mutate features after labels.
 - Feature columns and the target column are always disjoint.
-- Each dataset has a unique `id` referenced by exactly one example's `datasetId`.
+- Concept datasets should encode the smallest meaningful geometry for their
+  lesson. The canonical MLP XOR concept is balanced, deterministic, has all
+  four quadrants populated, uses a rule-derived label with no flips, and
+  keeps enough rows to expose the pattern without turning the first lesson
+  into a noise-smoothing exercise. Label-noise robustness is a separate
+  explicitly named source.
+- Each example dataset has a unique `id` referenced by its example metadata;
+  source aliases are not used to create competing teaching meanings.
 
 ## Teaching contract
 

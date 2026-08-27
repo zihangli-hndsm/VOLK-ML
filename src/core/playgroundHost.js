@@ -684,8 +684,11 @@ export function createPlaygroundHost({
       return present(derivePlaygroundSnapshot(session));
     },
 
-    async ensureOpen(playgroundId) {
-      if (session && session.playgroundId !== playgroundId) session = null;
+    async ensureOpen(playgroundId, { strict = false } = {}) {
+      if (session && session.playgroundId !== playgroundId) {
+        if (strict) throw playgroundError('PLAYGROUND_ALREADY_OPEN', { playgroundId: session.playgroundId, requestedPlaygroundId: playgroundId });
+        session = null;
+      }
       if (!session) await this.open({ playgroundId });
     },
 

@@ -37,7 +37,7 @@ import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
 import { getBigIdeaEntrance } from './core/exploration/bigIdeaRegistry.js';
-import { compareExploreEnvironment, createBuildExploreBridge, createExploreEnvironmentIdentity, createExploreWorkspaceRecord } from './core/exploration/exploreWorkspace.js';
+import { compareExploreEnvironment, createBuildExploreBridge, createExploreEnvironmentIdentity, createExploreWorkspaceRecord, EXPLORE_WORKSPACE_LIFECYCLES } from './core/exploration/exploreWorkspace.js';
 import { UI_SURFACES } from './core/ui/uiArchitecture.js';
 import { createBuildPanelPresentation, toggleBuildPanel } from './core/ui/buildSurfacePresentation.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
@@ -531,6 +531,7 @@ function Workspace() {
   const workspaceStateRef = useRef(null);
   const agentAdapterRef = useRef(null);
   const exploreWorkspacesRef = useRef(new Map());
+  const exploreForkCounterRef = useRef(0);
   const activeExploreAgentRef = useRef(null);
   const agentPlaygroundHostRef = useRef(null);
   const agentPlaygroundRef = useRef(null);
@@ -543,7 +544,7 @@ function Workspace() {
       },
     });
   }
-  const getExploreWorkspace = useCallback((key, recipeId = null, datasetProvider = () => null) => {
+  const getExploreWorkspace = useCallback((key, recipeId = null, datasetProvider = () => null, lifecycle = EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT) => {
     const existing = exploreWorkspacesRef.current.get(key);
     if (existing) return existing;
     const host = createPlaygroundHost({ getDataset: datasetProvider, exploreRecipeId: recipeId });
@@ -552,11 +553,35 @@ function Workspace() {
       key,
       host,
       agent,
-      record: createExploreWorkspaceRecord({ id: key, recipeId, playgroundId: null }),
+      record: createExploreWorkspaceRecord({ id: key, recipeId, playgroundId: null, lifecycle }),
     };
     exploreWorkspacesRef.current.set(key, workspace);
     return workspace;
   }, []);
+  const disposeEphemeralExploreWorkspaces = useCallback((exceptKey = null) => {
+    let disposedActive = false;
+    for (const [key, workspace] of exploreWorkspacesRef.current.entries()) {
+      if (key === exceptKey || workspace.record.lifecycle !== EXPLORE_WORKSPACE_LIFECYCLES.EPHEMERAL) continue;
+      exploreWorkspacesRef.current.delete(key);
+      if (key === exploreWorkspaceKey) disposedActive = true;
+      workspace.host.close().catch(() => {});
+    }
+    if (disposedActive) {
+      activeExploreAgentRef.current = null;
+      setExploreWorkspaceKey(null);
+    }
+  }, [exploreWorkspaceKey]);
+  const closeExploreWorkspace = useCallback(() => {
+    const key = exploreWorkspaceKey;
+    const workspace = key ? exploreWorkspacesRef.current.get(key) : null;
+    setPlaygroundOpen(false);
+    if (!workspace || workspace.record.lifecycle !== EXPLORE_WORKSPACE_LIFECYCLES.EPHEMERAL) return;
+    exploreWorkspacesRef.current.delete(key);
+    activeExploreAgentRef.current = null;
+    workspace.host.close().catch(() => {});
+    setExploreWorkspaceKey(null);
+    setExploreRecovery((current) => current?.key === key ? null : current);
+  }, [exploreWorkspaceKey]);
   const activeExploreWorkspace = exploreWorkspaceKey ? exploreWorkspacesRef.current.get(exploreWorkspaceKey) : null;
   activeExploreAgentRef.current = activeExploreWorkspace?.agent ?? null;
   const flowWrapperRef = useRef(null);
@@ -1430,6 +1455,7 @@ function Workspace() {
 
   const openExplorePlayground = useCallback(async (id, { recipeId = null, initialTab = null } = {}) => {
     const key = `playground:${id}`;
+    disposeEphemeralExploreWorkspaces(key);
     const workspace = getExploreWorkspace(key, recipeId);
     try {
       await workspace.host.ensureOpen(id);
@@ -1441,12 +1467,13 @@ function Workspace() {
     } catch (error) {
       setNotice(translateError(error, t));
     }
-  }, [getExploreWorkspace, t]);
+  }, [disposeEphemeralExploreWorkspaces, getExploreWorkspace, t]);
 
   const openBigIdea = useCallback(async (id) => {
     const entrance = getBigIdeaEntrance(id);
     if (!entrance) return;
     const key = `big-idea:${id}`;
+    disposeEphemeralExploreWorkspaces(key);
     const workspace = getExploreWorkspace(key, id);
     try {
       let current = null;
@@ -1462,7 +1489,10 @@ function Workspace() {
           setExploreRecovery({ key, id, expected, actual: compatibility.actual, host: workspace.host });
           setExploreWorkspaceKey(key);
           setPlaygroundId(entrance.startingPoint.playgroundId);
-          setPlaygroundOpen(true);
+          // Keep the mismatched host closed. Opening the dialog would let its
+          // ensureOpen effect silently rebase the session before recovery is
+          // explicitly accepted.
+          setPlaygroundOpen(false);
           return;
         }
       } else {
@@ -1476,7 +1506,7 @@ function Workspace() {
     } catch (error) {
       setNotice(translateError(error, t));
     }
-  }, [getExploreWorkspace, t]);
+  }, [disposeEphemeralExploreWorkspaces, getExploreWorkspace, t]);
 
   const openExploreFromBuild = useCallback((target = 'data-lab') => {
     const modelNode = nodes.find((node) => ['knn_node', 'linear_regression_node', 'supervised_trainer_node'].includes(node.data?.manifest?.id));
@@ -1486,8 +1516,10 @@ function Workspace() {
       setNotice(t('explore.workspace.bridgeUnsupported'));
       return;
     }
-    const key = `${bridge.workspace.id}:${Date.now()}`;
-    const workspace = getExploreWorkspace(key, bridge.workspace.recipeId, () => structuredClone(dataset));
+    disposeEphemeralExploreWorkspaces();
+    exploreForkCounterRef.current = (exploreForkCounterRef.current % 8) + 1;
+    const key = `${bridge.workspace.id}:fork-${exploreForkCounterRef.current}`;
+    const workspace = getExploreWorkspace(key, bridge.workspace.recipeId, () => structuredClone(dataset), EXPLORE_WORKSPACE_LIFECYCLES.EPHEMERAL);
     workspace.host.ensureOpen(target).then(async () => {
       await workspace.host.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: bridge.modelPlaygroundId, actor: 'system' });
       setExploreWorkspaceKey(key);
@@ -1496,7 +1528,7 @@ function Workspace() {
       setPlaygroundOpen(true);
       setNotice(t('explore.workspace.bridgeCreated'));
     }).catch((error) => setNotice(translateError(error, t)));
-  }, [dataset, getExploreWorkspace, nodes, t]);
+  }, [dataset, disposeEphemeralExploreWorkspaces, getExploreWorkspace, nodes, t]);
 
   const activeExploreHost = activeExploreWorkspace?.host ?? null;
   const activeExploreAgent = activeExploreWorkspace?.agent ?? null;
@@ -1553,8 +1585,8 @@ function Workspace() {
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     <AiSettingsDialog t={t} />
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => openExplorePlayground(id)} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
-    {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreRecovery(null); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
-    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} preserveSession onClose={() => setPlaygroundOpen(false)} t={t} />
+    {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
+    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
   </div>;
 }
 

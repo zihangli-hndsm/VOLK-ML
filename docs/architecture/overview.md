@@ -127,6 +127,15 @@ recovery condition: it cannot silently continue or rewrite evidence,
 hypotheses, Test Designs, counterfactuals, interpretations, or Inquiry
 Episodes that belong to the original Explore environment.
 
+Workspace lifecycle is explicit. Built-in recipe sessions are `persistent`:
+closing the dialog retains the host and its session-local inquiry context for
+reopen. An explicit Build → Explore fork is `ephemeral`; closing it disposes
+the host, removes its routing entry, and clears the active Agent reference.
+The fork registry uses bounded keys and disposes older ephemeral forks before
+activating another one, so opening custom explorations cannot accumulate
+unbounded hosts. Strict Explore opening rejects a host/playground mismatch;
+recovery must explicitly restore the intended recipe before the dialog opens.
+
 - The browser runtime validates typed connections and executes only implemented browser backends.
 - The compiler generates Python source and never calls the browser runner.
 - The tier estimator can recommend an environment even when no runtime for that environment exists in the UI.

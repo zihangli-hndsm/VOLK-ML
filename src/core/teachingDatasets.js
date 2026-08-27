@@ -3,6 +3,8 @@
 // Feature generation always completes before labels are sampled, so labels can
 // never leak back into inputs.
 
+import { generateXorDataset, XOR_CONCEPT_DATASET_SPEC } from './playground/model/mlpMath.js';
+
 export function createSeededRandom(seed) {
   let state = seed >>> 0;
   return function random() {
@@ -130,7 +132,17 @@ function iris() {
   );
 }
 
-function xorMlp() {
+function xorMlpConcept() {
+  const points = generateXorDataset(XOR_CONCEPT_DATASET_SPEC);
+  const rows = points.map((point) => ({
+    x1: point.features.x1,
+    x2: point.features.x2,
+    label: point.label,
+  }));
+  return datasetShape('XOR Concept', 'classification', rows, ['x1', 'x2'], 'label', 0.75);
+}
+
+function xorMlpRobustness() {
   const random = createSeededRandom(2030);
   const rows = Array.from({ length: 240 }, (_, index) => {
     const magnitude1 = 0.15 + random() * 0.85;
@@ -141,7 +153,7 @@ function xorMlp() {
     const label = random() < 0.05 ? (baseLabel === 'a' ? 'b' : 'a') : baseLabel;
     return { x1, x2, label };
   });
-  return datasetShape('XOR Interactions', 'classification', rows, ['x1', 'x2'], 'label', 0.8);
+  return datasetShape('XOR Label Noise Robustness', 'classification', rows, ['x1', 'x2'], 'label', 0.8);
 }
 
 function spam() {
@@ -280,7 +292,8 @@ export const teachingDatasets = [
   { id: 'house-price', role: 'applied', seed: 2027, dataset: housePrice(), pedagogy: { concept: 'multiple-linear-regression', visualFeatureColumns: ['area_sqm'], irrelevantFeatureColumns: [] }, labelSampling: 'rule', featuresGeneratedBeforeLabels: true },
   { id: 'knn-neighborhood', role: 'concept', seed: 2028, dataset: knnNeighborhood(), pedagogy: { concept: 'nonlinear-decision-boundary', visualFeatureColumns: ['x1', 'x2'], irrelevantFeatureColumns: [] }, labelSampling: 'rule', featuresGeneratedBeforeLabels: true },
   { id: 'iris', role: 'applied', seed: 2029, dataset: iris(), pedagogy: { concept: 'overlapping-classes', visualFeatureColumns: ['petal_length', 'petal_width'], irrelevantFeatureColumns: [] }, labelSampling: 'rule', featuresGeneratedBeforeLabels: true },
-  { id: 'xor-mlp', role: 'concept', seed: 2030, dataset: xorMlp(), pedagogy: { concept: 'nonlinear-decision-boundary', visualFeatureColumns: ['x1', 'x2'], irrelevantFeatureColumns: [] }, labelSampling: 'probability', featuresGeneratedBeforeLabels: true },
+  { id: 'xor-mlp-concept', role: 'concept', seed: XOR_CONCEPT_DATASET_SPEC.seed, dataset: xorMlpConcept(), pedagogy: { concept: 'nonlinear-decision-boundary', visualFeatureColumns: ['x1', 'x2'], irrelevantFeatureColumns: [], geometry: 'four-clear-quadrants', labels: 'deterministic-rule' }, labelSampling: 'rule', featuresGeneratedBeforeLabels: true },
+  { id: 'xor-mlp-robustness', role: 'robustness', seed: 2030, dataset: xorMlpRobustness(), pedagogy: { concept: 'label-noise-robustness', visualFeatureColumns: ['x1', 'x2'], irrelevantFeatureColumns: [] }, labelSampling: 'probability', featuresGeneratedBeforeLabels: true },
   { id: 'spam', role: 'applied', seed: 2031, dataset: spam(), pedagogy: { concept: 'feature-interactions', visualFeatureColumns: ['link_count', 'sender_reputation'], irrelevantFeatureColumns: ['send_hour', 'subject_length'] }, labelSampling: 'probability', featuresGeneratedBeforeLabels: true },
   { id: 'energy', role: 'applied', seed: 2032, dataset: energyDemand(), pedagogy: { concept: 'nonlinear-regression', visualFeatureColumns: ['temperature', 'occupancy'], irrelevantFeatureColumns: [] }, labelSampling: 'rule', featuresGeneratedBeforeLabels: true },
   { id: 'diabetes', role: 'applied', seed: 2033, dataset: diabetes(), pedagogy: { concept: 'feature-interactions', visualFeatureColumns: ['glucose', 'bmi'], irrelevantFeatureColumns: [] }, labelSampling: 'probability', featuresGeneratedBeforeLabels: true },

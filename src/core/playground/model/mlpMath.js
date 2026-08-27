@@ -5,6 +5,15 @@
 
 export const DEFAULT_MLP_SEED = 2026;
 
+// One canonical, clean XOR contract is shared by the first MLP lesson and
+// the teaching-example generator. Robustness experiments intentionally use a
+// separate noisy source in teachingDatasets.js.
+export const XOR_CONCEPT_DATASET_SPEC = Object.freeze({
+  seed: DEFAULT_MLP_SEED,
+  pointsPerCluster: 8,
+  noise: 0.14,
+});
+
 // Small deterministic PRNG (mulberry32). No Math.random() anywhere.
 export function createSeededRandom(seed = DEFAULT_MLP_SEED) {
   let state = seed >>> 0;

@@ -1125,13 +1125,20 @@ surface exposes `Sample again` without opening Full World Tools. It duplicates
 the current Experiment, resamples the same generator-backed World, and keeps
 the new Dataset in the active branch. The optional comparison therefore
 reports `observationProcess` as changed while World, model, learning, and
-evaluation conditions remain held; the sample status and question are
-presentation state derived from the existing semantic events and comparison.
+evaluation conditions remain held. The sample status and question are shown
+only when the active experiment has a current duplicate baseline, the
+authoritative comparison is exactly a same-World observation-process change,
+and the latest sampling event belongs to that active lineage. Historical
+sampling events alone never keep the status visible; view-only camera changes
+do not invalidate it.
 
 The default MLP teaching source is a small, deterministic, two-dimensional
 XOR World with separated binary labels and no default label corruption. Noise
-remains available through the underlying data-generation capability rather
-than being silently introduced into the first teaching view. The
+remains available as the explicitly named `xor-mlp-robustness` teaching source
+rather than being silently introduced into the first teaching view. The
+`xor-mlp-concept` example and the MLP math helper share one clean XOR
+specification: four populated quadrants, two balanced labels, deterministic
+generation, and a meaningful 32-row contract. The
 Representation depth uses the existing `network-graph` primitive, so its
 hidden layer changes with the live `hiddenUnits` control. The Mechanism depth
 uses the existing `loss-curve` primitive and real adapter history: before

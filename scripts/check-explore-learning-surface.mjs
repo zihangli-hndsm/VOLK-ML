@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { classifyPresentationCapabilities } from '../src/core/ui/uiArchitecture.js';
+import { deriveSampleComparisonPresentation } from '../src/core/ui/sampleComparisonPresentation.js';
 
 const dataWorkspaceSource = readFileSync(new URL('../src/components/playground/DataWorkspace.jsx', import.meta.url), 'utf8');
 const detailsSource = readFileSync(new URL('../src/components/playground/ExploreDetailsRegion.jsx', import.meta.url), 'utf8');
@@ -26,6 +27,9 @@ linear = await linearHost.dispatch({ type: 'RESAMPLE_WORLD' });
 assert.equal(linear.datasetProvenance.worldFingerprint, firstWorld, 'Sample again preserves the World identity');
 assert.notEqual(linear.datasetProvenance.datasetId, firstDataset, 'Sample again creates a new finite Dataset');
 assert.ok(linear.semanticEvents.events.some((event) => event.type === 'observation.sampled'));
+assert.equal(deriveSampleComparisonPresentation(linear).available, true, 'same-World new-sample status is available from the active lineage before Compare is opened');
+linear = await linearHost.dispatch({ type: 'SET_WORKSPACE_VIEW', patch: { boundsMode: 'manual', bounds: { xMin: -2, xMax: 2, yMin: -2, yMax: 2 } } });
+assert.equal(deriveSampleComparisonPresentation(linear).available, true, 'view-only changes preserve the active sampling lineage');
 linear = await linearHost.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: firstExperimentId });
 assert.deepEqual(linear.experimentWorkspace.comparison.diff.changedFactors, ['observationProcess']);
 assert.equal(linear.experimentWorkspace.comparison.diff.factors.world.changed, false);
@@ -33,7 +37,15 @@ assert.equal(linear.experimentWorkspace.comparison.diff.factors.observationProce
 for (const factor of ['model', 'learning', 'evaluation']) {
   assert.equal(linear.experimentWorkspace.comparison.diff.factors[factor].changed, false, `${factor} remains held during sample comparison`);
 }
+linear = await linearHost.dispatch({ type: 'APPLY_WORLD_TRANSACTION', transaction: { id: 'ui-sample-truth-world-change', actor: 'human', intent: 'point', operations: [{ type: 'ADD_POINTS', points: [{ x: 9, y: 9, target: 1, membership: 'train' }] }] } });
+assert.equal(deriveSampleComparisonPresentation(linear).available, false, 'World changes invalidate the same-World new-sample presentation');
 await linearHost.close();
+
+const lifecycleSource = readFileSync(new URL('../src/main.jsx', import.meta.url), 'utf8');
+assert.match(lifecycleSource, /EXPLORE_WORKSPACE_LIFECYCLES\.EPHEMERAL/);
+assert.match(lifecycleSource, /exploreForkCounterRef/);
+assert.match(lifecycleSource, /exploreWorkspacesRef\.current\.delete/);
+assert.match(lifecycleSource, /strictOpen/);
 
 const mlpHost = createPlaygroundHost({ getDataset: () => null });
 await mlpHost.open({ playgroundId: 'mlp-classification', seed: 2026 });

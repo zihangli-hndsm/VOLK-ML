@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-08-27 — Explore lifecycle and semantic-truth hardening
+
+- Replaced historical sample-event presentation with an active-lineage projection: “Same World · New sample” now requires a current duplicate baseline, exactly one observation-process change, unchanged model conditions, and a sampling event belonging to the active experiment.
+- Unified the first MLP lesson and example around one deterministic, balanced, four-quadrant clean XOR source; retained label noise as the explicitly named `xor-mlp-robustness` source and regenerated the 32-row example.
+- Added explicit persistent/ephemeral Explore workspace ownership, bounded Build forks, disposal on close, safe Agent routing cleanup, strict mismatch handling, and explicit recovery before reopening an intended recipe.
+- Updated Explore/playground/teaching architecture notes and focused acceptance checks for sampling truth, XOR contracts, lifecycle disposal, and recovery safety.
+- Acceptance: focused checks, `npm run check`, and example generation checks passed; build and diff validation follow.
+
 ## 2026-08-27 — PR #131 final acceptance grounding fix
 
 - Corrected LUMI interpretation grounding to use only Test Design outcome Evidence, fixed the Phase 14 `challenges` vocabulary, and kept execution-only Evidence from triggering interpretation.
