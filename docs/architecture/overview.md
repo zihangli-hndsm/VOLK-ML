@@ -101,6 +101,32 @@ flowchart TD
 
 The browser runtime in `src/core/browserRuntime.js` is separate from `src/core/compiler.js`.
 
+## Build and Explore workspace ownership
+
+The active Build and Explore surfaces share reusable definitions and the
+existing playground runtime primitives, but never share active mutable
+environment state.
+
+- Build Workspace is a free construction environment for the graph, dataset,
+  model, and browser runtime.
+- Explore Workspace is a controlled inquiry environment owned by its
+  Playground/Big Idea session. An Explore Environment Recipe describes the
+  intended reproducible setup; it is not the learner's Explore Session or
+  inquiry history.
+- Build environment changes are not Explore condition changes. Navigation does
+  not synchronize or rebase either environment.
+- Interoperability is an explicit import/fork boundary. A compatibility-gated
+  “Explore this setup” action creates a new custom Explore workspace; an
+  unsupported Build configuration is explained and is not presented as a
+  compatible exploration.
+
+Each built-in Explore session uses its own host and resolves its source from
+its recipe/default rather than the active Build dataset. The host exposes a
+bounded environment identity for compatibility checks. A mismatch is a
+recovery condition: it cannot silently continue or rewrite evidence,
+hypotheses, Test Designs, counterfactuals, interpretations, or Inquiry
+Episodes that belong to the original Explore environment.
+
 - The browser runtime validates typed connections and executes only implemented browser backends.
 - The compiler generates Python source and never calls the browser runner.
 - The tier estimator can recommend an environment even when no runtime for that environment exists in the UI.

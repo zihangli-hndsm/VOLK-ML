@@ -37,6 +37,7 @@ import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
 import { getBigIdeaEntrance } from './core/exploration/bigIdeaRegistry.js';
+import { compareExploreEnvironment, createBuildExploreBridge, createExploreEnvironmentIdentity, createExploreWorkspaceRecord } from './core/exploration/exploreWorkspace.js';
 import { UI_SURFACES } from './core/ui/uiArchitecture.js';
 import { createBuildPanelPresentation, toggleBuildPanel } from './core/ui/buildSurfacePresentation.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
@@ -493,6 +494,8 @@ function Workspace() {
   const [playgroundOpen, setPlaygroundOpen] = useState(false);
   const [playgroundId, setPlaygroundId] = useState(null);
   const [playgroundInitialTab, setPlaygroundInitialTab] = useState('model');
+  const [exploreWorkspaceKey, setExploreWorkspaceKey] = useState(null);
+  const [exploreRecovery, setExploreRecovery] = useState(null);
   const [surface, setSurface] = useState(UI_SURFACES.EXPLORE);
   const [globalMoreOpen, setGlobalMoreOpen] = useState(false);
   const [tutorialManifest, setTutorialManifest] = useState(null);
@@ -527,12 +530,35 @@ function Workspace() {
   const lastDownloadSignature = useRef('');
   const workspaceStateRef = useRef(null);
   const agentAdapterRef = useRef(null);
-  const playgroundHostRef = useRef(null);
-  const playgroundAgentRef = useRef(null);
-  if (!playgroundHostRef.current) {
-    playgroundHostRef.current = createPlaygroundHost({ getDataset: () => workspaceStateRef.current.dataset });
-    playgroundAgentRef.current = createPlaygroundAgentApi(playgroundHostRef.current);
+  const exploreWorkspacesRef = useRef(new Map());
+  const activeExploreAgentRef = useRef(null);
+  const agentPlaygroundHostRef = useRef(null);
+  const agentPlaygroundRef = useRef(null);
+  if (!agentPlaygroundHostRef.current) {
+    agentPlaygroundHostRef.current = createPlaygroundHost({ getDataset: () => null, exploreRecipeId: 'agent-session' });
+    const fallbackAgent = createPlaygroundAgentApi(agentPlaygroundHostRef.current);
+    agentPlaygroundRef.current = new Proxy(fallbackAgent, {
+      get(target, property) {
+        return activeExploreAgentRef.current?.[property] ?? target[property];
+      },
+    });
   }
+  const getExploreWorkspace = useCallback((key, recipeId = null, datasetProvider = () => null) => {
+    const existing = exploreWorkspacesRef.current.get(key);
+    if (existing) return existing;
+    const host = createPlaygroundHost({ getDataset: datasetProvider, exploreRecipeId: recipeId });
+    const agent = createPlaygroundAgentApi(host);
+    const workspace = {
+      key,
+      host,
+      agent,
+      record: createExploreWorkspaceRecord({ id: key, recipeId, playgroundId: null }),
+    };
+    exploreWorkspacesRef.current.set(key, workspace);
+    return workspace;
+  }, []);
+  const activeExploreWorkspace = exploreWorkspaceKey ? exploreWorkspacesRef.current.get(exploreWorkspaceKey) : null;
+  activeExploreAgentRef.current = activeExploreWorkspace?.agent ?? null;
   const flowWrapperRef = useRef(null);
   const reactFlowInstanceRef = useRef(null);
   const pendingFitRef = useRef(false);
@@ -1034,16 +1060,6 @@ function Workspace() {
     setNotice(t('library.customDeleted', { name: t(manifest.name) }));
   };
   const updateParameter = (key, value) => { setNodes((current) => current.map((node) => node.id === selectedNode?.id ? { ...node, data: { ...node.data, parameters: { ...node.data.parameters, [key]: value }, status: 'idle' } } : node)); setModel(null); };
-  useEffect(() => {
-    const host = playgroundHostRef.current;
-    if (!host) return;
-    try {
-      const current = host.getState();
-      if (!current || current.source.kind !== 'workspace-dataset' || current.source.stale) return;
-      const probe = host.currentSourceFingerprint();
-      if (probe && probe.fingerprint !== current.source.fingerprint) host.markSourceStale();
-    } catch { /* no playground session open */ }
-  }, [dataset]);
   const exportCode = (framework) => {
     try {
       const result = framework === 'tensorflow' ? compilePipelineToTensorFlow(nodes, edges) : compilePipelineToPyTorch(nodes, edges);
@@ -1337,7 +1353,7 @@ function Workspace() {
   }, []);
   agentAdapterRef.current = {
     getState: getAgentSnapshot,
-    playground: playgroundAgentRef.current,
+    playground: agentPlaygroundRef.current,
     listComponents: () => [...pluginRegistry, ...workspaceStateRef.current.customComponents].map(summarizeAgentComponent),
     addNode: agentAddNode,
     updateNode: agentUpdateNode,
@@ -1362,7 +1378,7 @@ function Workspace() {
     const api = createCanvasAgentApi({
       instanceId: instanceIdRef.current,
       getState: forward('getState'),
-      playground: playgroundAgentRef.current,
+      playground: agentPlaygroundRef.current,
       listComponents: forward('listComponents'),
       addNode: forward('addNode'),
       updateNode: forward('updateNode'),
@@ -1412,18 +1428,78 @@ function Workspace() {
     window.addEventListener('pointerup', stop);
   };
 
-  const openBigIdea = useCallback(async (id) => {
-    const entrance = getBigIdeaEntrance(id);
-    if (!entrance) return;
+  const openExplorePlayground = useCallback(async (id, { recipeId = null, initialTab = null } = {}) => {
+    const key = `playground:${id}`;
+    const workspace = getExploreWorkspace(key, recipeId);
     try {
-      await playgroundHostRef.current.openBigIdeaEntrance({ id });
-      setPlaygroundInitialTab(entrance.startingPoint.playgroundId === 'data-lab' ? 'data' : 'model');
-      setPlaygroundId(entrance.startingPoint.playgroundId);
+      await workspace.host.ensureOpen(id);
+      setExploreWorkspaceKey(key);
+      setPlaygroundInitialTab(initialTab ?? (id === 'data-lab' ? 'data' : 'model'));
+      setPlaygroundId(id);
       setPlaygroundOpen(true);
+      setExploreRecovery(null);
     } catch (error) {
       setNotice(translateError(error, t));
     }
-  }, [t]);
+  }, [getExploreWorkspace, t]);
+
+  const openBigIdea = useCallback(async (id) => {
+    const entrance = getBigIdeaEntrance(id);
+    if (!entrance) return;
+    const key = `big-idea:${id}`;
+    const workspace = getExploreWorkspace(key, id);
+    try {
+      let current = null;
+      try { current = workspace.host.getState(); } catch { /* first open */ }
+      if (current) {
+        const expected = createExploreEnvironmentIdentity({
+          recipeId: id,
+          playgroundId: entrance.startingPoint.playgroundId,
+          modelAdapterId: entrance.startingPoint.modelAdapterId,
+        });
+        const compatibility = compareExploreEnvironment(expected, workspace.host.getExploreEnvironmentIdentity());
+        if (!compatibility.compatible) {
+          setExploreRecovery({ key, id, expected, actual: compatibility.actual, host: workspace.host });
+          setExploreWorkspaceKey(key);
+          setPlaygroundId(entrance.startingPoint.playgroundId);
+          setPlaygroundOpen(true);
+          return;
+        }
+      } else {
+        await workspace.host.openBigIdeaEntrance({ id });
+      }
+      setExploreWorkspaceKey(key);
+      setPlaygroundInitialTab(entrance.startingPoint.playgroundId === 'data-lab' ? 'data' : 'model');
+      setPlaygroundId(entrance.startingPoint.playgroundId);
+      setPlaygroundOpen(true);
+      setExploreRecovery(null);
+    } catch (error) {
+      setNotice(translateError(error, t));
+    }
+  }, [getExploreWorkspace, t]);
+
+  const openExploreFromBuild = useCallback((target = 'data-lab') => {
+    const modelNode = nodes.find((node) => ['knn_node', 'linear_regression_node', 'supervised_trainer_node'].includes(node.data?.manifest?.id));
+    const modelAdapterId = modelNode?.data?.manifest?.id === 'knn_node' ? 'knn' : modelNode?.data?.manifest?.id === 'supervised_trainer_node' ? 'mlp' : modelNode?.data?.manifest?.id === 'linear_regression_node' ? 'linear-regression' : null;
+    const bridge = createBuildExploreBridge({ build: { dataset, modelAdapterId }, target });
+    if (!bridge.supported) {
+      setNotice(t('explore.workspace.bridgeUnsupported'));
+      return;
+    }
+    const key = `${bridge.workspace.id}:${Date.now()}`;
+    const workspace = getExploreWorkspace(key, bridge.workspace.recipeId, () => structuredClone(dataset));
+    workspace.host.ensureOpen(target).then(async () => {
+      await workspace.host.dispatch({ type: 'ATTACH_MODEL', modelPlaygroundId: bridge.modelPlaygroundId, actor: 'system' });
+      setExploreWorkspaceKey(key);
+      setPlaygroundInitialTab('data');
+      setPlaygroundId(target);
+      setPlaygroundOpen(true);
+      setNotice(t('explore.workspace.bridgeCreated'));
+    }).catch((error) => setNotice(translateError(error, t)));
+  }, [dataset, getExploreWorkspace, nodes, t]);
+
+  const activeExploreHost = activeExploreWorkspace?.host ?? null;
+  const activeExploreAgent = activeExploreWorkspace?.agent ?? null;
 
   const asideBase = 'fixed bottom-3 top-[76px] z-30 overflow-auto rounded-3xl border border-white/80 bg-white/95 p-4 shadow-2xl backdrop-blur transition-transform lg:static lg:z-auto lg:h-auto lg:rounded-3xl lg:bg-white/85 lg:shadow-xl';
   return <div className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-sky-50 via-white to-indigo-100">
@@ -1439,8 +1515,8 @@ function Workspace() {
       </nav>
     </header>
 
-    {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={(id) => { setPlaygroundInitialTab(id === 'data-lab' ? 'data' : 'model'); setPlaygroundId(id); setPlaygroundOpen(true); }} t={t} /> : <>
-      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} setPlaygroundInitialTab={setPlaygroundInitialTab} setPlaygroundId={setPlaygroundId} setPlaygroundOpen={setPlaygroundOpen} setRunnerOpen={setRunnerOpen} t={t} />
+    {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} t={t} /> : <>
+      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} setRunnerOpen={setRunnerOpen} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
       <motion.aside initial={false} animate={{ x: leftOpen ? 0 : '-110%' }} style={{ width: `min(${leftWidth}px, calc(100vw - 24px))` }} className={`${asideBase} left-3 lg:transform-none ${leftOpen ? 'lg:block' : 'lg:hidden'}`}>
@@ -1476,8 +1552,9 @@ function Workspace() {
     <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project, { languagePolicy: 'preserve-current' }); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     <AiSettingsDialog t={t} />
-    {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => { setPlaygroundId(id); setPlaygroundOpen(true); }} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
-    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={playgroundHostRef.current} agent={playgroundAgentRef.current} onClose={() => setPlaygroundOpen(false)} t={t} />
+    {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => openExplorePlayground(id)} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
+    {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreRecovery(null); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
+    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} preserveSession onClose={() => setPlaygroundOpen(false)} t={t} />
   </div>;
 }
 

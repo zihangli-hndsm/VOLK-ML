@@ -74,6 +74,7 @@ import {
   scopeTestDesignEvidence,
   TEST_DESIGN_STATUSES,
 } from './exploration/testDesign.js';
+import { compareExploreEnvironment, createExploreEnvironmentIdentity } from './exploration/exploreWorkspace.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -489,8 +490,10 @@ export function createPlaygroundHost({
   scriptGenerator,
   semanticEventStore = createSemanticEventStore(),
   inquiryTrajectoryStore = createInquiryTrajectoryStore(),
+  exploreRecipeId = null,
 } = {}) {
   let session = null;
+  let exploreEnvironmentIdentity = null;
   // Where the active script came from: 'preset' | 'generated' | 'composed' |
   // 'revised' | 'imported'. The UI surfaces this so users can always tell
   // whether they are looking at a preset, an Agent composition or an import.
@@ -624,6 +627,14 @@ export function createPlaygroundHost({
       }
     }
     session = next;
+    if (!exploreEnvironmentIdentity && next) {
+      exploreEnvironmentIdentity = createExploreEnvironmentIdentity({
+        recipeId: exploreRecipeId,
+        playgroundId: next.playgroundId,
+        modelAdapterId: next.adapterId,
+        sourceFingerprint: next.source?.fingerprint,
+      });
+    }
     notify();
   };
 
@@ -667,6 +678,7 @@ export function createPlaygroundHost({
         dataset: getDataset(),
       });
       scriptProvenance = 'preset';
+      exploreEnvironmentIdentity = null;
       resetInquirySessionState();
       commit(created);
       return present(derivePlaygroundSnapshot(session));
@@ -1072,6 +1084,7 @@ export function createPlaygroundHost({
       if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: id });
       const candidate = initializeBigIdeaSession(entrance, { getDataset, seed });
       scriptProvenance = 'preset';
+      exploreEnvironmentIdentity = null;
       resetInquirySessionState();
       commit(candidate);
       return present(derivePlaygroundSnapshot(session));
@@ -1084,6 +1097,7 @@ export function createPlaygroundHost({
       if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: activeId });
       const candidate = initializeBigIdeaSession(entrance, { getDataset, seed });
       scriptProvenance = 'preset';
+      exploreEnvironmentIdentity = null;
       resetInquirySessionState();
       commit(candidate);
       return present(derivePlaygroundSnapshot(session));
@@ -1646,6 +1660,14 @@ export function createPlaygroundHost({
       }
     },
 
+    getExploreEnvironmentIdentity() {
+      return exploreEnvironmentIdentity ? structuredClone(exploreEnvironmentIdentity) : null;
+    },
+
+    checkExploreEnvironment(expected) {
+      return compareExploreEnvironment(expected, exploreEnvironmentIdentity);
+    },
+
     markSourceStale() {
       if (!session || session.source.stale) return;
       commit({ ...session, source: { ...session.source, stale: true } });
@@ -1653,6 +1675,7 @@ export function createPlaygroundHost({
 
     async close() {
       session = null;
+      exploreEnvironmentIdentity = null;
       resetInquirySessionState();
       notify();
     },
