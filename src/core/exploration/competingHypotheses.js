@@ -22,6 +22,7 @@ export const DISCRIMINATION_STATUSES = Object.freeze({
 });
 
 const VALID_PREDICTIONS = new Set(HYPOTHESIS_PREDICTION_CHOICES);
+const CONCRETE_PREDICTIONS = new Set(['increase', 'decrease', 'similar']);
 const VALID_STATUSES = new Set(Object.values(DISCRIMINATION_STATUSES));
 const MAX_ID_LENGTH = 160;
 
@@ -178,9 +179,13 @@ export function deriveDiscriminationStructure({ plan, group = null, observedPred
   const normalizedPlan = plan && typeof plan === 'object' ? plan : null;
   const predictions = Array.isArray(normalizedPlan?.predictedOutcomes) ? normalizedPlan.predictedOutcomes : [];
   const validPredictions = predictions.filter((item) => VALID_PREDICTIONS.has(item?.prediction));
-  const status = validPredictions.length < (group?.hypothesisIds?.length ?? 2)
+  const expectedIds = Array.isArray(group?.hypothesisIds) ? group.hypothesisIds : [];
+  const predictionByHypothesis = new Map(validPredictions.map((item) => [item.hypothesisId, item.prediction]));
+  const hasConcretePredictionForEveryHypothesis = expectedIds.length > 0
+    && expectedIds.every((hypothesisId) => CONCRETE_PREDICTIONS.has(predictionByHypothesis.get(hypothesisId)));
+  const status = !hasConcretePredictionForEveryHypothesis
     ? DISCRIMINATION_STATUSES.INSUFFICIENT
-    : new Set(validPredictions.map((item) => item.prediction)).size > 1
+    : new Set(expectedIds.map((hypothesisId) => predictionByHypothesis.get(hypothesisId))).size > 1
       ? DISCRIMINATION_STATUSES.DIVERGE
       : DISCRIMINATION_STATUSES.OVERLAP;
   const observed = VALID_PREDICTIONS.has(observedPrediction) ? observedPrediction : null;

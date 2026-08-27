@@ -1,5 +1,12 @@
 # Changelog
 
+## 2026-08-27 — PR #131 acceptance hardening
+
+- Corrected Phase 13–17 semantics: concrete prediction completeness, child-to-parent revision edges, explicit counterfactual lifecycle and Test Design association, factual Evidence-only observation links, separate Inquiry Trail and coherent Inquiry Episodes, and an ungated eight-node Learning Path DAG.
+- Tightened LUMI planner suggestions to existing hypotheses, executed outcomes, authoritative comparison results, and challenged interpretations while keeping every handoff suggestion-only.
+- Updated bilingual UI projections, focused acceptance checks, and exploration architecture documentation.
+- Acceptance: all Phase 13–17 focused checks, `npm run check`, `npm run build`, and `git diff --check` passed.
+
 ## 2026-08-27 — Phase 17 bounded LUMI exploration planner
 
 - Added deterministic, bounded LUMI suggestions across observe, predict, design-test, compare-hypotheses, hold-constant, inspect-evidence, interpret, revise, counterfactual, and explore-concept surfaces.

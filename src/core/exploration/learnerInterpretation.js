@@ -152,7 +152,7 @@ export function interpretationSemanticEdges({ interpretation, revision } = {}) {
     }
   }
   if (revision?.parentHypothesisId && revision?.childHypothesisId) {
-    edges.push(Object.freeze({ from: revision.parentHypothesisId, to: revision.childHypothesisId, relation: 'revised_from' }));
+    edges.push(Object.freeze({ from: revision.childHypothesisId, to: revision.parentHypothesisId, relation: 'revised_from' }));
   }
   return edges.slice(0, 24);
 }

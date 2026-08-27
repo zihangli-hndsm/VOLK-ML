@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { COUNTERFACTUAL_STATUSES, isCounterfactualStale } from '../../core/exploration/counterfactual.js';
+import { COUNTERFACTUAL_STATUSES, isCounterfactualStale, normalizeCounterfactualIntervention } from '../../core/exploration/counterfactual.js';
 import { HYPOTHESIS_PREDICTION_CHOICES } from '../../core/exploration/hypothesis.js';
 
 function optionLabel(option, t) {
@@ -24,9 +24,11 @@ export default function CounterfactualExplorationPanel({ snapshot, capabilities,
   const canCreate = Boolean(question.trim() && selectedOption && baselineExperimentId && fingerprint);
   const create = () => {
     if (!canCreate) return;
+    const normalizedIntervention = normalizeCounterfactualIntervention(selectedOption);
+    if (!normalizedIntervention) return;
     const created = onCreate?.({
       question,
-      intervention: selectedOption,
+      intervention: normalizedIntervention,
       prediction: prediction ? { choice: prediction } : null,
       outcomeObservableIds: outcomeIds,
       heldConstantFactors: options.filter((option) => option.id !== selectedOption.id).slice(0, 6).map((option) => option.semanticPath ?? option.controlKey ?? option.path),
@@ -71,7 +73,7 @@ export default function CounterfactualExplorationPanel({ snapshot, capabilities,
       {questions.map((item) => {
         const stale = item.status !== COUNTERFACTUAL_STATUSES.STALE && isCounterfactualStale(item, { baselineExperimentId, conditionFingerprint: fingerprint });
         const displayStatus = stale ? COUNTERFACTUAL_STATUSES.STALE : item.status;
-        const design = testDesigns.find((candidate) => candidate.id === `test-design-${item.id}`);
+        const design = testDesigns.find((candidate) => candidate.id === item.testDesignId);
         return <article key={item.id} data-counterfactual-question={item.id} className="rounded-xl border border-violet-200 bg-white px-3 py-2">
           <p className="text-xs font-black text-violet-950">{item.question}</p>
           <p className="mt-1 text-[10px] text-slate-600">{optionLabel(item.intervention, t)} · {statusLabel(displayStatus, t)}</p>

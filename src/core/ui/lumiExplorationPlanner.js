@@ -1,3 +1,5 @@
+import { deriveDiscriminationStructure, DISCRIMINATION_STATUSES } from '../exploration/competingHypotheses.js';
+
 // Deterministic, suggestion-only LUMI guidance. This module consumes existing
 // projections and never dispatches, executes, ranks hypotheses, or mutates.
 
@@ -46,21 +48,37 @@ function suggestion(kind, reasonKey, target = null) {
   });
 }
 
-export function deriveLumiExplorationPlan({ snapshot = null, journey = null, hypotheses = [], evidenceInstances = [], testDesigns = [], hypothesisGroups = [], interpretations = [], revisions = [], counterfactualQuestions = [], conceptGraph = null } = {}) {
+export function deriveLumiExplorationPlan({ snapshot = null, journey = null, hypotheses = [], evidenceInstances = [], testDesigns = [], testDesignResults = {}, hypothesisGroups = [], discriminationPlans = [], interpretations = [], revisions = [], counterfactualQuestions = [], conceptGraph = null } = {}) {
   const suggestions = [];
   const availableEvidence = (Array.isArray(evidenceInstances) ? evidenceInstances : []).filter((instance) => instance?.available);
   const observed = (journey?.observedEvidenceIds ?? []).length > 0 || (snapshot?.observations ?? []).length > 0;
   const comparison = snapshot?.experimentWorkspace?.comparison ?? snapshot?.comparison;
   const frontier = conceptGraph?.frontierConceptIds?.[0] ?? journey?.frontierConceptIds?.[0] ?? null;
+  const executedDesigns = testDesigns.filter((design) => design?.status === 'executed');
+  const executedOutcomeIds = new Set(executedDesigns.flatMap((design) => [...(design.outcomeEvidenceIds ?? []), ...(design.executionEvidenceIds ?? [])]));
+  const relevantEvidence = availableEvidence.filter((instance) => executedOutcomeIds.has(instance.id));
+  const concrete = (hypothesis) => ['increase', 'decrease', 'similar'].includes(hypothesis?.prediction?.choice ?? hypothesis?.prediction);
   if (availableEvidence.length > 0) suggestions.push(suggestion('inspect-evidence', 'playground.lumiPlanner.reason.inspectEvidence', availableEvidence[0].id));
   if (!observed) suggestions.push(suggestion('observe', 'playground.lumiPlanner.reason.observe'));
-  if (hypotheses.length === 0) suggestions.push(suggestion('predict', 'playground.lumiPlanner.reason.predict'));
-  if (hypotheses.length > 0 && availableEvidence.length > 0 && interpretations.length === 0) suggestions.push(suggestion('interpret', 'playground.lumiPlanner.reason.interpret', hypotheses[0]?.id));
-  if (testDesigns.length === 0 && hypotheses.length > 0) suggestions.push(suggestion('design-test', 'playground.lumiPlanner.reason.designTest', hypotheses[0]?.id));
-  if (comparison?.enabled && testDesigns.length > 0) suggestions.push(suggestion('hold-constant', 'playground.lumiPlanner.reason.holdConstant'));
-  if (hypotheses.length >= 2 && hypothesisGroups.length === 0) suggestions.push(suggestion('compare-hypotheses', 'playground.lumiPlanner.reason.compareHypotheses'));
-  if (interpretations.length > 0 && revisions.length === 0) suggestions.push(suggestion('revise', 'playground.lumiPlanner.reason.revise', interpretations[0]?.id));
-  if (counterfactualQuestions.length === 0 && hypotheses.length > 0) suggestions.push(suggestion('counterfactual', 'playground.lumiPlanner.reason.counterfactual'));
+  if (hypotheses.length > 0 && hypotheses.some((hypothesis) => !concrete(hypothesis))) suggestions.push(suggestion('predict', 'playground.lumiPlanner.reason.predict', hypotheses.find((hypothesis) => !concrete(hypothesis))?.id));
+  const interpretedEvidenceIds = new Set(interpretations.flatMap((item) => item.evidenceInstanceIds ?? []));
+  if (relevantEvidence.length > 0 && !relevantEvidence.some((item) => interpretedEvidenceIds.has(item.id))) suggestions.push(suggestion('interpret', 'playground.lumiPlanner.reason.interpret', relevantEvidence[0].id));
+  const testedHypothesisIds = new Set(testDesigns.map((design) => design.hypothesisId));
+  const concreteUntested = hypotheses.find((hypothesis) => concrete(hypothesis) && !testedHypothesisIds.has(hypothesis.id));
+  if (concreteUntested) suggestions.push(suggestion('design-test', 'playground.lumiPlanner.reason.designTest', concreteUntested.id));
+  if (Object.values(testDesignResults).some((result) => result?.comparisonClass === 'confounded')) suggestions.push(suggestion('hold-constant', 'playground.lumiPlanner.reason.holdConstant'));
+  if (hypotheses.length >= 2) {
+    if (hypothesisGroups.length === 0) suggestions.push(suggestion('compare-hypotheses', 'playground.lumiPlanner.reason.compareHypotheses'));
+    hypothesisGroups.forEach((group) => {
+      const plan = discriminationPlans.find((item) => item.hypothesisGroupId === group.id);
+      const structure = deriveDiscriminationStructure({ plan, group });
+      if (structure.status === DISCRIMINATION_STATUSES.INSUFFICIENT) suggestions.push(suggestion('compare-hypotheses', 'playground.lumiPlanner.reason.completePredictions', group.id));
+      if (structure.status === DISCRIMINATION_STATUSES.OVERLAP) suggestions.push(suggestion('compare-hypotheses', 'playground.lumiPlanner.reason.discriminatingTest', group.id));
+    });
+  }
+  const challenged = interpretations.find((item) => item.judgment === 'challenged' || item.judgment === 'needs-more-testing');
+  if (challenged && revisions.length === 0) suggestions.push(suggestion('revise', 'playground.lumiPlanner.reason.revise', challenged.id));
+  if (counterfactualQuestions.length === 0 && hypotheses.length > 0 && (executedDesigns.length > 0 || interpretations.length > 0)) suggestions.push(suggestion('counterfactual', 'playground.lumiPlanner.reason.counterfactual'));
   if (frontier) suggestions.push(suggestion('explore-concept', 'playground.lumiPlanner.reason.exploreConcept', frontier));
   const deduped = [...new Map(suggestions.filter(Boolean).map((item) => [item.kind, item])).values()]
     .sort((left, right) => left.priority - right.priority || left.id.localeCompare(right.id))

@@ -31,7 +31,7 @@ import CounterfactualExplorationPanel from './CounterfactualExplorationPanel.jsx
 import InquiryTrail from './InquiryTrail.jsx';
 import LearningPathPanel from './LearningPathPanel.jsx';
 import LumiExplorationPlannerPanel from './LumiExplorationPlannerPanel.jsx';
-import { deriveInquiryEpisodes } from '../../core/exploration/inquiryEpisodes.js';
+import { deriveInquiryEpisodes, deriveInquiryTrailEntries } from '../../core/exploration/inquiryEpisodes.js';
 import { deriveLearningPath } from '../../core/exploration/learningPath.js';
 import { deriveLumiExplorationPlan } from '../../core/ui/lumiExplorationPlanner.js';
 import { rendererByPrimitiveType } from './rendererRegistry.jsx';
@@ -58,7 +58,21 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     interpretations,
     revisions,
   }), [snapshot?.semanticEvents, snapshot?.observations, snapshot?.learnerInquiry, bigIdea?.id, illuminatedConceptIds, journeyIlluminationEvents, hypotheses, interpretations, revisions]);
-  const episodes = useMemo(() => deriveInquiryEpisodes({ semanticEvents: snapshot?.semanticEvents, journey, inquiry: snapshot?.learnerInquiry, hypotheses, testDesigns, interpretations, revisions, illuminationEvents: journeyIlluminationEvents }), [snapshot?.semanticEvents, journey, snapshot?.learnerInquiry, hypotheses, testDesigns, interpretations, revisions, journeyIlluminationEvents]);
+  const inquiryProjection = useMemo(() => ({
+    semanticEvents: snapshot?.semanticEvents,
+    journey,
+    inquiry: snapshot?.learnerInquiry,
+    hypotheses,
+    hypothesisGroups,
+    discriminationPlans,
+    testDesigns,
+    interpretations,
+    revisions,
+    counterfactualQuestions,
+    illuminationEvents: journeyIlluminationEvents,
+  }), [snapshot?.semanticEvents, journey, snapshot?.learnerInquiry, hypotheses, hypothesisGroups, discriminationPlans, testDesigns, interpretations, revisions, counterfactualQuestions, journeyIlluminationEvents]);
+  const trailEntries = useMemo(() => deriveInquiryTrailEntries(inquiryProjection), [inquiryProjection]);
+  const episodes = useMemo(() => deriveInquiryEpisodes(inquiryProjection), [inquiryProjection]);
   const learningPath = useMemo(() => deriveLearningPath({ semanticEvents: snapshot?.semanticEvents, inquiry: snapshot?.learnerInquiry, journey, playgroundId: snapshot?.playgroundId ?? snapshot?.modelPlaygroundId ?? modelPlayground?.id, illuminatedPathIds: learningPathIlluminatedIds }), [snapshot?.semanticEvents, snapshot?.learnerInquiry, journey, snapshot?.playgroundId, snapshot?.modelPlaygroundId, modelPlayground?.id, learningPathIlluminatedIds]);
   const conceptGraph = useMemo(() => deriveConceptGraph({
     inquiry: snapshot?.learnerInquiry,
@@ -75,7 +89,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     testDesigns,
     counterfactualQuestions,
   }), [snapshot?.learnerInquiry, journey, bigIdea?.id, illuminatedConceptIds, selectedConceptId, hypotheses, selectedHypothesisId, hypothesisGroups, discriminationPlans, testDesigns, interpretations, revisions, counterfactualQuestions]);
-  const lumiPlan = useMemo(() => deriveLumiExplorationPlan({ snapshot, journey, hypotheses, evidenceInstances, testDesigns, hypothesisGroups, interpretations, revisions, counterfactualQuestions, conceptGraph }), [snapshot, journey, hypotheses, evidenceInstances, testDesigns, hypothesisGroups, interpretations, revisions, counterfactualQuestions, conceptGraph]);
+  const lumiPlan = useMemo(() => deriveLumiExplorationPlan({ snapshot, journey, hypotheses, evidenceInstances, testDesigns, testDesignResults, hypothesisGroups, discriminationPlans, interpretations, revisions, counterfactualQuestions, conceptGraph }), [snapshot, journey, hypotheses, evidenceInstances, testDesigns, testDesignResults, hypothesisGroups, discriminationPlans, interpretations, revisions, counterfactualQuestions, conceptGraph]);
   const compact = responsive.band === 'compact';
   const panelCloseRef = useRef(null);
   const triggerRefs = useRef({});
@@ -136,7 +150,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     <LumiAttentionRail snapshot={snapshot} attention={attention} activeDepth={activeDepth} illuminatedConceptIds={illuminatedConceptIds} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} t={t} />
     <LumiJourneyTimeline journey={journey} snapshot={snapshot} compact={compact} t={t} onSelectConcept={setSelectedConceptId} />
     <ConceptMap graph={conceptGraph} snapshot={snapshot} evidenceInstances={evidenceInstances} compact={compact} t={t} onSelectConcept={setSelectedConceptId} onSelectHypothesis={setSelectedHypothesisId} />
-    <InquiryTrail episodes={episodes} compact={compact} t={t} />
+    <InquiryTrail entries={trailEntries} episodes={episodes} compact={compact} t={t} />
     <LearningPathPanel path={learningPath} compact={compact} t={t} onIlluminate={onIlluminateLearningPath} />
     <LumiExplorationPlannerPanel plan={lumiPlan} compact={compact} t={t} onAccept={onAcceptLumiSuggestion} />
     <HypothesisPanel attention={attention} graph={conceptGraph} evidenceInstances={evidenceInstances} hypotheses={hypotheses} compact={compact} t={t} onCreate={onCreateHypothesis} onSetStatus={onSetHypothesisStatus} onAttachEvidence={onAttachHypothesisEvidence} onOpenEvidence={onOpenHypothesisEvidence} onOpenExperiment={() => onDepthChange?.(CONCEPTUAL_DEPTHS.TUNE)} onSelectHypothesis={setSelectedHypothesisId} snapshot={snapshot} capabilities={testDesignCapabilities} testDesigns={testDesigns} testDesignResults={testDesignResults} onSaveTestDesign={onSaveTestDesign} onRunTestDesign={onRunTestDesign} />

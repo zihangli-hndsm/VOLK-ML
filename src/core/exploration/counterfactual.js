@@ -2,12 +2,14 @@
 // record; converting it to a Test Design is explicit and still does not run it.
 
 import { createTestDesign } from './testDesign.js';
+import { isEvidenceInstanceId } from './evidenceProvenance.js';
 
 export const COUNTERFACTUAL_VERSION = 1;
 export const MAX_COUNTERFACTUAL_QUESTIONS = 8;
 export const MAX_COUNTERFACTUAL_TEXT_LENGTH = 240;
 export const COUNTERFACTUAL_STATUSES = Object.freeze({
   PROPOSED: 'proposed',
+  CONVERTED: 'converted',
   TESTED: 'tested',
   STALE: 'stale',
 });
@@ -16,6 +18,7 @@ export const COUNTERFACTUAL_GRAPH_RELATIONS = Object.freeze({
   CHANGED: 'changed',
   HELD_FIXED: 'held_fixed',
   OBSERVED_UNDER: 'observed_under',
+  OUTCOME_OF_INTEREST: 'outcome_of_interest',
   PREDICTED: 'predicted',
   TESTED_BY: 'tested_by',
   INTERPRETED_AS: 'interpreted_as',
@@ -34,13 +37,16 @@ function boundedIds(values, limit) {
   return [...new Set((Array.isArray(values) ? values : []).map((value) => boundedString(value, 160)).filter(Boolean))].slice(0, limit);
 }
 
-function normalizeIntervention(value) {
+export function normalizeCounterfactualIntervention(value) {
   if (!value || typeof value !== 'object' || !VALID_FACTORS.has(value.factorKind)) return null;
   const operationType = boundedString(value.operationType, 80);
   const semanticPath = boundedString(value.semanticPath, 160);
   const controlKey = boundedString(value.controlKey, 80);
   const path = boundedString(value.path, 120);
   if (!operationType || (!semanticPath && !controlKey && !path)) return null;
+  const hasFromValue = value.fromValue !== undefined || value.currentValue !== undefined;
+  const hasToValue = value.toValue !== undefined || value.defaultToValue !== undefined;
+  if (operationType !== 'RESAMPLE_WORLD' && (!hasFromValue || !hasToValue)) return null;
   const normalized = {
     factorKind: value.factorKind,
     operationType,
@@ -48,8 +54,8 @@ function normalizeIntervention(value) {
     ...(controlKey ? { controlKey } : {}),
     ...(path ? { path } : {}),
   };
-  if (value.fromValue !== undefined) normalized.fromValue = value.fromValue;
-  if (value.toValue !== undefined) normalized.toValue = value.toValue;
+  if (value.fromValue !== undefined || value.currentValue !== undefined) normalized.fromValue = value.fromValue ?? value.currentValue;
+  if (value.toValue !== undefined || value.defaultToValue !== undefined) normalized.toValue = value.toValue ?? value.defaultToValue;
   if (value.requiresRegenerate) normalized.requiresRegenerate = true;
   return Object.freeze(normalized);
 }
@@ -74,12 +80,14 @@ export function createCounterfactualQuestion({
   prediction = null,
   status = COUNTERFACTUAL_STATUSES.PROPOSED,
   createdFrom = 'learner',
+  testDesignId = null,
+  observedEvidenceInstanceIds = [],
 } = {}) {
   const normalizedId = boundedString(id, 160);
   const normalizedQuestion = boundedString(question);
   const normalizedBaseline = boundedString(baselineExperimentId, 160);
   const normalizedFingerprint = boundedString(baselineConditionFingerprint, 240);
-  const normalizedIntervention = normalizeIntervention(intervention);
+  const normalizedIntervention = normalizeCounterfactualIntervention(intervention);
   if (!normalizedId || !normalizedQuestion || !normalizedBaseline || !normalizedFingerprint || !normalizedIntervention || createdFrom !== 'learner' || !VALID_STATUSES.has(status)) return null;
   return Object.freeze({
     version: COUNTERFACTUAL_VERSION,
@@ -93,6 +101,8 @@ export function createCounterfactualQuestion({
     ...(normalizePrediction(prediction) ? { prediction: normalizePrediction(prediction) } : {}),
     status,
     createdFrom: 'learner',
+    ...(boundedString(testDesignId, 160) ? { testDesignId: boundedString(testDesignId, 160) } : {}),
+    observedEvidenceInstanceIds: Object.freeze(boundedIds(observedEvidenceInstanceIds, 12).filter(isEvidenceInstanceId)),
   });
 }
 
@@ -117,8 +127,28 @@ export function appendCounterfactualQuestion(state, question) {
 
 export function setCounterfactualStatus(state, { questionId, status } = {}) {
   const current = normalizeCounterfactualState(state);
-  if (!boundedString(questionId, 160) || !VALID_STATUSES.has(status)) return current;
+  if (!boundedString(questionId, 160) || status !== COUNTERFACTUAL_STATUSES.STALE) return current;
   return Object.freeze({ version: COUNTERFACTUAL_VERSION, questions: Object.freeze(current.questions.map((question) => question.id === questionId ? Object.freeze({ ...question, status }) : question)) });
+}
+
+export function associateCounterfactualTestDesign(state, { questionId, testDesignId } = {}) {
+  const current = normalizeCounterfactualState(state);
+  const normalizedQuestionId = boundedString(questionId, 160);
+  const normalizedDesignId = boundedString(testDesignId, 160);
+  if (!normalizedQuestionId || !normalizedDesignId) return current;
+  return Object.freeze({ version: COUNTERFACTUAL_VERSION, questions: Object.freeze(current.questions.map((question) => question.id === normalizedQuestionId && question.status !== COUNTERFACTUAL_STATUSES.STALE
+    ? Object.freeze({ ...question, testDesignId: normalizedDesignId, status: COUNTERFACTUAL_STATUSES.CONVERTED })
+    : question)) });
+}
+
+export function markCounterfactualTested(state, { questionId, testDesignId, executionSucceeded = false, observedEvidenceInstanceIds = [] } = {}) {
+  const current = normalizeCounterfactualState(state);
+  const normalizedQuestionId = boundedString(questionId, 160);
+  const normalizedDesignId = boundedString(testDesignId, 160);
+  if (!normalizedQuestionId || !normalizedDesignId || executionSucceeded !== true) return current;
+  return Object.freeze({ version: COUNTERFACTUAL_VERSION, questions: Object.freeze(current.questions.map((question) => question.id === normalizedQuestionId && question.testDesignId === normalizedDesignId && question.status !== COUNTERFACTUAL_STATUSES.STALE
+    ? Object.freeze({ ...question, status: COUNTERFACTUAL_STATUSES.TESTED, observedEvidenceInstanceIds: Object.freeze(boundedIds(observedEvidenceInstanceIds, 12).filter(isEvidenceInstanceId)) })
+    : question)) });
 }
 
 export function isCounterfactualStale(question, { baselineExperimentId, conditionFingerprint } = {}) {
@@ -129,10 +159,11 @@ export function isCounterfactualStale(question, { baselineExperimentId, conditio
   ) || Boolean(conditionFingerprint && conditionFingerprint !== question.baselineConditionFingerprint);
 }
 
-export function counterfactualToTestDesign(question, { hypothesisId, id } = {}) {
+export function counterfactualToTestDesign(question, { hypothesisId, id, currentBaselineExperimentId = null, currentConditionFingerprint = null } = {}) {
   const normalized = normalizeCounterfactualQuestion(question);
   const normalizedHypothesisId = boundedString(hypothesisId, 160);
-  if (!normalized || !normalizedHypothesisId || normalized.status === COUNTERFACTUAL_STATUSES.STALE) return null;
+  if (!normalized || !normalizedHypothesisId || normalized.status === COUNTERFACTUAL_STATUSES.STALE
+    || isCounterfactualStale(normalized, { baselineExperimentId: currentBaselineExperimentId, conditionFingerprint: currentConditionFingerprint })) return null;
   return createTestDesign({
     id: boundedString(id, 160),
     hypothesisId: normalizedHypothesisId,
@@ -153,9 +184,12 @@ export function counterfactualSemanticEdges(question) {
     { from: normalized.id, to: normalized.baselineExperimentId, relation: COUNTERFACTUAL_GRAPH_RELATIONS.COMPARED_WITH },
     { from: normalized.id, to: normalized.intervention.semanticPath ?? normalized.intervention.controlKey ?? normalized.intervention.path, relation: COUNTERFACTUAL_GRAPH_RELATIONS.CHANGED },
     ...normalized.heldConstantFactors.map((factor) => ({ from: normalized.id, to: factor, relation: COUNTERFACTUAL_GRAPH_RELATIONS.HELD_FIXED })),
-    ...normalized.outcomeObservableIds.map((observableId) => ({ from: normalized.id, to: observableId, relation: COUNTERFACTUAL_GRAPH_RELATIONS.OBSERVED_UNDER })),
+    ...normalized.outcomeObservableIds.map((observableId) => ({ from: normalized.id, to: observableId, relation: COUNTERFACTUAL_GRAPH_RELATIONS.OUTCOME_OF_INTEREST })),
   ];
   if (normalized.prediction) edges.push({ from: normalized.id, to: normalized.prediction.choice, relation: COUNTERFACTUAL_GRAPH_RELATIONS.PREDICTED });
+  if (normalized.status === COUNTERFACTUAL_STATUSES.TESTED) {
+    edges.push(...normalized.observedEvidenceInstanceIds.map((evidenceId) => ({ from: evidenceId, to: normalized.id, relation: COUNTERFACTUAL_GRAPH_RELATIONS.OBSERVED_UNDER })));
+  }
   return edges.slice(0, 24).map((edge) => Object.freeze(edge));
 }
 

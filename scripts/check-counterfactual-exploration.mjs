@@ -5,12 +5,14 @@ import { createTestDesign } from '../src/core/exploration/testDesign.js';
 import { deriveConceptGraph } from '../src/core/ui/conceptGraph.js';
 import {
   appendCounterfactualQuestion,
+  associateCounterfactualTestDesign,
   clearCounterfactualQuestions,
   counterfactualSemanticEdges,
   counterfactualToTestDesign,
   createCounterfactualQuestion,
   deriveCounterfactualMap,
   isCounterfactualStale,
+  markCounterfactualTested,
   setCounterfactualStatus,
 } from '../src/core/exploration/counterfactual.js';
 
@@ -20,7 +22,7 @@ const question = createCounterfactualQuestion({
   question: 'What if the learning rate is higher?',
   baselineExperimentId: 'experiment-baseline',
   baselineConditionFingerprint: 'fingerprint-a',
-  intervention: { factorKind: 'learning', semanticPath: 'learning.controls.learningRate', operationType: 'SET_CONTROL', controlKey: 'learningRate', toValue: 0.2 },
+  intervention: { factorKind: 'learning', semanticPath: 'learning.controls.learningRate', operationType: 'SET_CONTROL', controlKey: 'learningRate', fromValue: 0.1, toValue: 0.2 },
   heldConstantFactors: ['world', 'model'],
   outcomeObservableIds: ['outcome.testMse'],
   prediction: { choice: 'increase' },
@@ -36,9 +38,17 @@ const design = counterfactualToTestDesign(question, { hypothesisId: hypothesis.i
 assert.ok(design, 'explicit learner action reuses the existing Test Design contract');
 assert.equal(design.baselineExperimentId, question.baselineExperimentId);
 assert.equal(design.intervention.semanticPath, question.intervention.semanticPath);
+const converted = associateCounterfactualTestDesign(state, { questionId: question.id, testDesignId: design.id });
+assert.equal(converted.questions[0].status, 'converted', 'conversion does not imply execution');
+assert.equal(markCounterfactualTested(converted, { questionId: question.id, testDesignId: design.id, executionSucceeded: false }).questions[0].status, 'converted', 'failed execution does not mark tested');
+const tested = markCounterfactualTested(converted, { questionId: question.id, testDesignId: design.id, executionSucceeded: true, observedEvidenceInstanceIds: ['evidence-instance-1', 'reason-code'] });
+assert.equal(tested.questions[0].status, 'tested');
+assert.deepEqual(tested.questions[0].observedEvidenceInstanceIds, ['evidence-instance-1']);
 const edges = counterfactualSemanticEdges(question);
 assert.ok(edges.some((edge) => edge.relation === 'changed'));
 assert.ok(edges.some((edge) => edge.relation === 'held_fixed'));
+assert.ok(edges.some((edge) => edge.relation === 'outcome_of_interest'));
+assert.ok(edges.every((edge) => edge.relation !== 'observed_under'), 'untested questions do not emit observed evidence');
 assert.ok(edges.every((edge) => !String(edge.relation).includes('cause') && !String(edge.relation).includes('confidence')), 'map relations remain neutral');
 const map = deriveCounterfactualMap(state.questions);
 assert.equal(map.nodes.length, 1);

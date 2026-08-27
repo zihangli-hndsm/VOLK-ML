@@ -80,6 +80,7 @@ const graph = deriveConceptGraph({ hypotheses: nextHypotheses, testDesigns: [des
 assert.equal(graph.interpretationNodes.length, 1, 'Concept Graph projects learner interpretations');
 assert.ok(graph.interpretationEdges.some((edge) => edge.relation === 'interpreted_in'));
 assert.ok(graph.interpretationEdges.some((edge) => edge.relation === 'revised_from'));
+assert.deepEqual(graph.interpretationEdges.find((edge) => edge.relation === 'revised_from'), { from: child.id, to: first.id, relation: 'revised_from' }, 'revision relation points from child to parent');
 assert.ok(!readFileSync(new URL('../src/core/exploration/learnerInterpretation.js', import.meta.url), 'utf8').includes('hypothesis.status'), 'interpretation module has no status mutation authority');
 
 const uiSource = readFileSync(new URL('../src/components/playground/LearnerInterpretationPanel.jsx', import.meta.url), 'utf8');

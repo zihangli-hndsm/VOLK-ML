@@ -914,6 +914,21 @@ No changes to `TutorialDialog` or the unified stage are needed: the tutorial que
 - Multidimensional datasets are shown as a 2D slice: hidden features are fixed at the training mean (`z-score 0` in the normalized view) via `buildProjectionVector()`. `metrics.runtimeAccuracy` is the fitted model's accuracy on the full test vectors; `metrics.currentViewAccuracy` is the slice model's accuracy for the current projection and normalization mode. For two visible features with normalization on, the two are equal.
 - The `normalize` control is a distance-view comparison, not a model switch: with it off, prediction and `currentViewAccuracy` are explicitly what-if results and are labeled as such in the UI.
 
+## Exploration acceptance semantics
+
+- Counterfactual controls are normalized from the playground capability
+  descriptor into explicit current and target values. Saving creates only a
+  learner question; conversion associates an existing detached Test Design;
+  successful host execution is the only transition to `tested`.
+- Inquiry Trail is chronological presentation. Inquiry Episodes are a
+  separate projection grouped by explicit hypothesis, group, Test Design,
+  interpretation, revision, counterfactual, and illumination links. Neither
+  projection changes playground state or persistence.
+- The LUMI planner consumes concrete learner predictions, executed Test Design
+  outcomes, and existing Evidence instances. It can focus an existing panel,
+  but cannot create hypotheses, execute a Test Design, infer a winner, or
+  rewrite a learner interpretation.
+
 ### Concept Graph & Causal Exploration Map
 
 `src/core/ui/conceptGraph.js` derives a bounded Concept Map from the existing

@@ -76,6 +76,10 @@ const overlapPlan = createDiscriminationPlan({
 assert.equal(deriveDiscriminationStructure({ plan: overlapPlan, group }).status, DISCRIMINATION_STATUSES.OVERLAP, 'same learner predictions overlap');
 const incompletePlan = { ...plan, predictedOutcomes: [{ hypothesisId: 'hypothesis-a', prediction: 'increase' }] };
 assert.equal(deriveDiscriminationStructure({ plan: incompletePlan, group }).status, DISCRIMINATION_STATUSES.INSUFFICIENT, 'missing predictions remain insufficient');
+const uncertainPlan = { ...plan, predictedOutcomes: [{ hypothesisId: 'hypothesis-a', prediction: 'increase' }, { hypothesisId: 'hypothesis-b', prediction: 'uncertain' }] };
+assert.equal(deriveDiscriminationStructure({ plan: uncertainPlan, group }).status, DISCRIMINATION_STATUSES.INSUFFICIENT, 'uncertain predictions are not discriminating');
+const bothUncertainPlan = { ...plan, predictedOutcomes: [{ hypothesisId: 'hypothesis-a', prediction: 'uncertain' }, { hypothesisId: 'hypothesis-b', prediction: 'uncertain' }] };
+assert.equal(deriveDiscriminationStructure({ plan: bothUncertainPlan, group }).status, DISCRIMINATION_STATUSES.INSUFFICIENT, 'two uncertain predictions remain insufficient');
 
 const observed = deriveDiscriminationStructure({ plan, group, observedPrediction: 'increase' });
 assert.equal(observed.predictions.find((item) => item.hypothesisId === 'hypothesis-a').matchesObservedDirection, true, 'observed direction is compared factually');

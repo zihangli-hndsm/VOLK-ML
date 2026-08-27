@@ -4,15 +4,16 @@ import { deriveLumiExplorationPlan, LUMI_SUGGESTION_KINDS, MAX_LUMI_SUGGESTIONS 
 
 const empty = deriveLumiExplorationPlan({ snapshot: {}, journey: {}, conceptGraph: { frontierConceptIds: ['generalization'] } });
 assert.ok(empty.suggestions.length <= MAX_LUMI_SUGGESTIONS);
-assert.ok(empty.suggestions.some((item) => item.kind === 'predict'));
+assert.ok(!empty.suggestions.some((item) => item.kind === 'predict'), 'planner does not invent a hypothesis');
 assert.ok(empty.suggestions.some((item) => item.kind === 'explore-concept'));
 assert.ok(empty.suggestions.every((item) => item.authority === 'suggestion-only'));
 const rich = deriveLumiExplorationPlan({
   snapshot: { observations: [{ id: 'TEST_ERROR_CHANGED_MORE' }], experimentWorkspace: { comparison: { enabled: true } } },
   journey: { observedEvidenceIds: ['evidence-instance-1'], frontierConceptIds: ['generalization'] },
   evidenceInstances: [{ id: 'evidence-instance-1', available: true }],
-  hypotheses: [{ id: 'hypothesis-1' }, { id: 'hypothesis-2' }],
-  testDesigns: [{ id: 'design-1' }],
+  hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'increase' } }, { id: 'hypothesis-2', prediction: { choice: 'decrease' } }],
+  testDesigns: [{ id: 'design-1', hypothesisId: 'hypothesis-1', status: 'executed', outcomeEvidenceIds: ['evidence-instance-1'] }, { id: 'design-2', hypothesisId: 'hypothesis-2', status: 'executed', outcomeEvidenceIds: ['evidence-instance-2'] }],
+  testDesignResults: { 'design-1': { comparisonClass: 'confounded' } },
   hypothesisGroups: [],
   interpretations: [],
   revisions: [],
@@ -22,12 +23,16 @@ const rich = deriveLumiExplorationPlan({
 assert.ok(rich.suggestions.some((item) => item.kind === 'inspect-evidence'));
 assert.ok(rich.suggestions.some((item) => item.kind === 'interpret'));
 assert.ok(rich.suggestions.some((item) => item.kind === 'compare-hypotheses'));
-const counterfactualPlan = deriveLumiExplorationPlan({ snapshot: { observations: [{ id: 'observed' }] }, journey: { observedEvidenceIds: ['evidence-instance-1'] }, hypotheses: [{ id: 'hypothesis-1' }], testDesigns: [{ id: 'design-1' }], interpretations: [{ id: 'interpretation-1' }], revisions: [{ id: 'revision-1' }], counterfactualQuestions: [], conceptGraph: {} });
+const counterfactualPlan = deriveLumiExplorationPlan({ snapshot: { observations: [{ id: 'observed' }] }, journey: { observedEvidenceIds: ['evidence-instance-1'] }, hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'increase' } }], testDesigns: [{ id: 'design-1', hypothesisId: 'hypothesis-1', status: 'executed', outcomeEvidenceIds: ['evidence-instance-1'] }], interpretations: [{ id: 'interpretation-1' }], revisions: [{ id: 'revision-1' }], counterfactualQuestions: [], conceptGraph: {} });
 assert.ok(counterfactualPlan.suggestions.some((item) => item.kind === 'counterfactual'));
+const predictionPlan = deriveLumiExplorationPlan({ hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'uncertain' } }] });
+assert.equal(predictionPlan.suggestions.find((item) => item.kind === 'predict')?.target, 'hypothesis-1');
+const comparePlan = deriveLumiExplorationPlan({ hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'increase' } }, { id: 'hypothesis-2', prediction: { choice: 'increase' } }], hypothesisGroups: [{ id: 'group-1', hypothesisIds: ['hypothesis-1', 'hypothesis-2'] }], discriminationPlans: [{ id: 'plan-1', hypothesisGroupId: 'group-1', predictedOutcomes: [{ hypothesisId: 'hypothesis-1', prediction: 'increase' }, { hypothesisId: 'hypothesis-2', prediction: 'increase' }] }] });
+assert.equal(comparePlan.suggestions.find((item) => item.kind === 'compare-hypotheses')?.reasonKey, 'playground.lumiPlanner.reason.discriminatingTest');
 const again = deriveLumiExplorationPlan({
   snapshot: { observations: [{ id: 'TEST_ERROR_CHANGED_MORE' }], experimentWorkspace: { comparison: { enabled: true } } },
   journey: { observedEvidenceIds: ['evidence-instance-1'], frontierConceptIds: ['generalization'] },
-  evidenceInstances: [{ id: 'evidence-instance-1', available: true }], hypotheses: [{ id: 'hypothesis-1' }, { id: 'hypothesis-2' }], testDesigns: [{ id: 'design-1' }], conceptGraph: { frontierConceptIds: ['generalization'] },
+  evidenceInstances: [{ id: 'evidence-instance-1', available: true }], hypotheses: [{ id: 'hypothesis-1', prediction: { choice: 'increase' } }, { id: 'hypothesis-2', prediction: { choice: 'decrease' } }], testDesigns: [{ id: 'design-1', hypothesisId: 'hypothesis-1', status: 'executed', outcomeEvidenceIds: ['evidence-instance-1'] }, { id: 'design-2', hypothesisId: 'hypothesis-2', status: 'executed', outcomeEvidenceIds: ['evidence-instance-2'] }], testDesignResults: { 'design-1': { comparisonClass: 'confounded' } }, conceptGraph: { frontierConceptIds: ['generalization'] },
 });
 assert.deepEqual(rich.suggestions, again.suggestions, 'planner is deterministic for the same semantic projection');
 assert.ok(LUMI_SUGGESTION_KINDS.includes('hold-constant'));

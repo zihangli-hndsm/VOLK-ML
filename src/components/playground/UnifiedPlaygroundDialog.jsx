@@ -61,9 +61,13 @@ import {
 } from '../../core/exploration/learnerInterpretation.js';
 import {
   appendCounterfactualQuestion,
+  associateCounterfactualTestDesign,
   clearCounterfactualQuestions,
   counterfactualToTestDesign,
+  isCounterfactualStale,
   createCounterfactualQuestion,
+  markCounterfactualTested,
+  normalizeCounterfactualIntervention,
   setCounterfactualStatus,
 } from '../../core/exploration/counterfactual.js';
 
@@ -338,10 +342,22 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     if (!result) return null;
     if (!result.valid) {
       setTestDesignResults((current) => ({ ...current, [design.id]: { error: result.code ?? result.errors?.[0] ?? 'invalid' } }));
+      if (result.code === 'TEST_DESIGN_STALE_BASELINE') {
+        setCounterfactualSession((current) => {
+          const question = current.questions.find((item) => item.testDesignId === design.id);
+          return question ? setCounterfactualStatus(current, { questionId: question.id, status: 'stale' }) : current;
+        });
+      }
       return result;
     }
     setTestDesignSession((current) => replaceTestDesign(current, result.design));
     setTestDesignResults((current) => ({ ...current, [design.id]: { ...result.comparison, outcomes: result.outcomes ?? [] } }));
+    setCounterfactualSession((current) => markCounterfactualTested(current, {
+      questionId: current.questions.find((question) => question.testDesignId === result.design?.id)?.id,
+      testDesignId: result.design?.id ?? design.id,
+      executionSucceeded: true,
+      observedEvidenceInstanceIds: result.design?.outcomeEvidenceIds ?? result.executionEvidenceIds ?? [],
+    }));
     return result;
   };
 
@@ -428,7 +444,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       question,
       baselineExperimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,
       baselineConditionFingerprint: currentConditionFingerprint,
-      intervention,
+      intervention: normalizeCounterfactualIntervention(intervention),
       heldConstantFactors,
       outcomeObservableIds,
       prediction,
@@ -442,10 +458,17 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     const design = counterfactualToTestDesign(question, {
       hypothesisId,
       id: `test-design-${question?.id}`,
+      currentBaselineExperimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,
+      currentConditionFingerprint,
     });
-    if (!design) return null;
+    if (!design) {
+      if (question?.id && isCounterfactualStale(question, { baselineExperimentId: snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id, conditionFingerprint: currentConditionFingerprint })) {
+        setCounterfactualSession((current) => setCounterfactualStatus(current, { questionId: question.id, status: 'stale' }));
+      }
+      return null;
+    }
     const saved = saveLearnerTestDesign(design);
-    if (saved) setCounterfactualSession((current) => setCounterfactualStatus(current, { questionId: question.id, status: 'tested' }));
+    if (saved) setCounterfactualSession((current) => associateCounterfactualTestDesign(current, { questionId: question.id, testDesignId: saved.id }));
     return saved;
   };
 

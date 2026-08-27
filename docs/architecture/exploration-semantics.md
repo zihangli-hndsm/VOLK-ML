@@ -632,3 +632,33 @@ replaced by a current notice with the same reason code. LUMI may focus an
 available instance and invite attention, but cannot select, attach, or infer
 status. The canonical Semantic Event payload remains free of raw evidence
 values.
+
+### Phases 13–17 acceptance hardening
+
+Competing-hypothesis discrimination is concrete only when every member of a
+group has an explicit `increase`, `decrease`, or `similar` prediction. Missing
+or `uncertain` predictions remain insufficient; overlap and divergence are
+descriptions, never winner selection. Revision lineage points from the child
+hypothesis to its parent with `revised_from`.
+
+Counterfactual questions are learner-owned records with an explicit
+intervention target (`fromValue` and `toValue` where applicable). Conversion
+creates and associates a detached Test Design, but does not imply execution.
+Only a successful host execution may mark the question tested and attach real
+Evidence-instance IDs. Untested questions use `outcome_of_interest`, never
+`observed_under`; stale baselines remain stale and cannot be converted.
+
+Inquiry Trail entries preserve chronological semantic actions, while Inquiry
+Episodes group only explicit links among hypotheses, groups, Test Designs,
+interpretations, revisions, counterfactuals, and illuminated concepts. Their
+Evidence fields contain only validated Evidence-instance IDs; reason codes and
+observable references remain separate fields. The eight-node Learning Path is
+a session-local DAG of available, explored, and explicitly illuminated topics;
+prerequisites describe structure and do not gate or score the learner.
+
+LUMI's exploration planner is a bounded suggestion projection. It requests
+predictions only for existing hypotheses, interprets only relevant executed
+outcomes, treats `confounded` as authoritative only from actual Test Design
+results, and suggests revision only for challenged or needs-more-testing
+interpretations. Accepting a suggestion may focus an existing surface but
+never mutates semantic state or executes a test.
