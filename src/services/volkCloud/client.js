@@ -34,3 +34,8 @@ export function createVolkCloudClient({ baseUrl, fetchImpl = globalThis.fetch, t
     },
   });
 }
+
+export function createVolkCloudClientForConfig(config, options = {}) {
+  if (!config?.apiUrl) return null;
+  return createVolkCloudClient({ ...options, baseUrl: config.apiUrl });
+}

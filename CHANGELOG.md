@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-01 — Local-first Cloud development bootstrap hardening
+
+- Corrected production configuration semantics: without `VITE_VOLK_API_URL`, GitHub Pages now stays explicitly local-only and makes zero Cloud health requests; development still defaults to `http://127.0.0.1:8000`, while configured production endpoints remain supported.
+- Added `scripts/check-local-backend-integration.mjs`, which starts the real disposable Python fixture on a temporary port, verifies the exact `/health` payload and allowlisted CORS response, and cleans up the process on success or failure.
+- Hardened the Windows backend launcher to try `py -3` first and fall back to `python` only for an `ENOENT` executable-missing error; backend runtime failures are not silently retried.
+- Updated local-development and Cloud-boundary documentation, focused checks, and `test:local` so mocked client checks and the real backend contract test are both explicit.
+- Acceptance: `npm run test:local`, `npm run check`, `npm run build`, and `git diff --check` passed after the hardening changes. No backend product capability, persistence, credentials, Agent authority, or local runtime ownership changed.
+- Correction note: the earlier bootstrap entry described a manually observed local `/health` smoke check; this entry adds the repeatable automated process-level contract test and distinguishes it from mocked client checks.
+
 ## 2026-09-01 — Local-first Cloud development bootstrap
 
 - Added an optional `src/services/volkCloud/` client with `VITE_VOLK_API_URL`, a default local endpoint, and non-blocking `available`/`unavailable` health capability states.

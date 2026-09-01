@@ -442,6 +442,7 @@ export const messages = {
   'cloud.status.checking': { en: 'Checking local backend…', zh: '正在检查本地后端…' },
   'cloud.status.available': { en: 'Cloud development backend connected', zh: '云开发后端已连接' },
   'cloud.status.unavailable': { en: 'Local mode — backend unavailable', zh: '本地模式 — 后端不可用' },
+  'cloud.status.not-configured': { en: 'Local mode — Cloud not configured', zh: '本地模式 — 未配置 Cloud' },
   'nav.blocks': { en: 'Blocks', zh: '组件' },
   'nav.playground': { en: 'Playground', zh: '实验台' },
   'nav.parameters': { en: 'Params', zh: '参数' },
