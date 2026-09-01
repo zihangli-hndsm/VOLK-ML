@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-01 — Local-first Cloud development bootstrap
+
+- Added an optional `src/services/volkCloud/` client with `VITE_VOLK_API_URL`, a default local endpoint, and non-blocking `available`/`unavailable` health capability states.
+- Added a disposable Python standard-library backend fixture at `dev/backend/server.py` with the `/health` contract and allowlisted local CORS origins, plus Windows-compatible `dev:backend` and `dev:all` commands.
+- Added a development-only bilingual status indicator; backend absence leaves Explore, World, Experiment, and deterministic Evidence local and usable.
+- Added the machine-readable boundary contract, operational local-development guide, environment example, focused health/runtime-independence checks, and GitHub Pages-safe configuration.
+- Acceptance: real local `/health` integration, `npm run check:volk-cloud`, `npm run check`, `npm run build`, and `git diff --check` passed. No credentials or provider secrets were added.
+- Follow-up: replace the disposable fixture with the separate private `VOLK-Cloud` repository when that backend exists; do not add production backend logic here.
+
 ## 2026-08-27 — Explore lifecycle and semantic-truth hardening
 
 - Replaced historical sample-event presentation with an active-lineage projection: “Same World · New sample” now requires a current duplicate baseline, exactly one observation-process change, unchanged model conditions, and a sampling event belonging to the active experiment.

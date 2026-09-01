@@ -17,6 +17,13 @@ Platform API version 1 exposes four service groups:
 
 The editor must not contain billing-provider checks or trust a client-side `isPro` flag. A hosted implementation should obtain entitlements from its server and enforce project, collaboration, and compute permissions again on every protected server request.
 
+The optional HTTP health boundary in `src/services/volkCloud/` is separate
+from the injected platform-services implementation. It only reports whether
+the configured development Cloud endpoint answers `GET /health`; it does not
+provide account, storage, compute, Agent, or Evidence authority. A failed
+health check must leave the local editor and deterministic learning runtime
+fully usable.
+
 ## Injection
 
 ```js
