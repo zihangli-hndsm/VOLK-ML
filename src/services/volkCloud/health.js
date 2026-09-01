@@ -1,4 +1,5 @@
 export const CLOUD_AVAILABILITY = Object.freeze({
+  NOT_CONFIGURED: 'not-configured',
   CHECKING: 'checking',
   AVAILABLE: 'available',
   UNAVAILABLE: 'unavailable',

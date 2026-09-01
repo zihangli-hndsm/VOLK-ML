@@ -17,7 +17,7 @@ import { assessConnection } from './core/connections';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
 import { stageForManifest, stageStyles, visualKindForManifest } from './core/visualLanguage';
 import { resolvePlatformServices } from './platform/services';
-import { CLOUD_AVAILABILITY, checkVolkCloudHealth, createVolkCloudClient } from './services/volkCloud/index.js';
+import { CLOUD_AVAILABILITY, checkVolkCloudHealth, createVolkCloudClientForConfig, resolveVolkCloudConfig } from './services/volkCloud/index.js';
 import {
   CanvasAgentError,
   canvasExecutionInputSignature,
@@ -513,9 +513,11 @@ function Workspace() {
   const [pendingConnection, setPendingConnection] = useState(null);
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [notice, setNotice] = useState('');
-  const volkCloudClient = useMemo(() => createVolkCloudClient(), []);
-  const [cloudStatus, setCloudStatus] = useState({ status: CLOUD_AVAILABILITY.CHECKING });
+  const volkCloudConfig = useMemo(() => resolveVolkCloudConfig(), []);
+  const volkCloudClient = useMemo(() => createVolkCloudClientForConfig(volkCloudConfig), [volkCloudConfig]);
+  const [cloudStatus, setCloudStatus] = useState({ status: volkCloudClient ? CLOUD_AVAILABILITY.CHECKING : CLOUD_AVAILABILITY.NOT_CONFIGURED });
   useEffect(() => {
+    if (!volkCloudClient) return undefined;
     let active = true;
     checkVolkCloudHealth(volkCloudClient).then((next) => {
       if (active) setCloudStatus(next);

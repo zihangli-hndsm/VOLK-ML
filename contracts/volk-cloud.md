@@ -8,13 +8,18 @@ This contract belongs to the public VOLK-ML client. The disposable service in
 
 - `src/services/volkCloud/` is the single client abstraction for HTTP Cloud
   capabilities in the open client.
-- The API base URL comes from `VITE_VOLK_API_URL` and defaults to
-  `http://127.0.0.1:8000`.
+- In development, an absent `VITE_VOLK_API_URL` defaults to
+  `http://127.0.0.1:8000`. In production, an absent URL means Cloud is
+  `not-configured`, so the client creates no endpoint and makes no health
+  request.
+- A configured `VITE_VOLK_API_URL` is normalized and used as the API base URL
+  in either mode.
 - The initial endpoint is `GET /health`.
 - A JSON response with `status: "ok"` is `available`; a network failure,
   non-2xx response, or invalid payload is `unavailable`.
 - Health checks are advisory and never gate application startup or local
-  World → Experiment → Evidence interaction.
+  World → Experiment → Evidence interaction. Production local-only mode does
+  not perform a failed localhost probe; it remains explicitly unconfigured.
 
 ## Health response
 
