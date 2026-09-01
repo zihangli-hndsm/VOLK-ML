@@ -1,5 +1,12 @@
 # VOLK-ML
 
+## Local development
+
+VOLK-ML can be developed locally without GitHub Pages or a backend. See
+[`docs/local-development.md`](docs/local-development.md) for frontend-only,
+temporary backend, full-stack Windows commands, environment configuration,
+and acceptance checks.
+
 VOLK-ML (Vivid Online Learning Kit for Machine Learning) is a bilingual visual ML lab that connects intuition, model architecture, and runnable code.
 
 [Open the browser demo](https://zihangli-hndsm.github.io/VOLK-ML/)

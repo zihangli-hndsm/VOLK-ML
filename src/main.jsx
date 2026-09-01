@@ -17,6 +17,7 @@ import { assessConnection } from './core/connections';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
 import { stageForManifest, stageStyles, visualKindForManifest } from './core/visualLanguage';
 import { resolvePlatformServices } from './platform/services';
+import { CLOUD_AVAILABILITY, checkVolkCloudHealth, createVolkCloudClient } from './services/volkCloud/index.js';
 import {
   CanvasAgentError,
   canvasExecutionInputSignature,
@@ -59,6 +60,7 @@ const ExplanationDialog = lazy(() => import('./components/ExplanationDialog'));
 
 const LANGUAGE_STORAGE_KEY = 'volk-ml-language-settings';
 const platformServices = resolvePlatformServices();
+const SHOW_CLOUD_STATUS = import.meta.env.DEV === true;
 
 const LanguageContext = createContext(null);
 const ConnectionContext = createContext({
@@ -511,6 +513,15 @@ function Workspace() {
   const [pendingConnection, setPendingConnection] = useState(null);
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [notice, setNotice] = useState('');
+  const volkCloudClient = useMemo(() => createVolkCloudClient(), []);
+  const [cloudStatus, setCloudStatus] = useState({ status: CLOUD_AVAILABILITY.CHECKING });
+  useEffect(() => {
+    let active = true;
+    checkVolkCloudHealth(volkCloudClient).then((next) => {
+      if (active) setCloudStatus(next);
+    });
+    return () => { active = false; };
+  }, [volkCloudClient]);
   const buildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth, leftOpen, rightOpen, rightWidth }), [viewportWidth, leftOpen, rightOpen, rightWidth]);
   const toggleLeftPanel = useCallback(() => {
     const next = toggleBuildPanel(buildPresentation, 'left');
@@ -1536,7 +1547,7 @@ function Workspace() {
   const asideBase = 'fixed bottom-3 top-[76px] z-30 overflow-auto rounded-3xl border border-white/80 bg-white/95 p-4 shadow-2xl backdrop-blur transition-transform lg:static lg:z-auto lg:h-auto lg:rounded-3xl lg:bg-white/85 lg:shadow-xl';
   return <div className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-sky-50 via-white to-indigo-100">
     <header data-top-level-surface={surface} className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
-      <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><span className="hidden text-xs font-bold text-slate-400 sm:inline">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span></div>
+      <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><span className="hidden text-xs font-bold text-slate-400 sm:inline">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span>{SHOW_CLOUD_STATUS && <span data-cloud-status={cloudStatus.status} aria-live="polite" className={`hidden rounded-full px-2 py-1 text-[10px] font-black sm:inline ${cloudStatus.status === CLOUD_AVAILABILITY.AVAILABLE ? 'bg-emerald-100 text-emerald-800' : cloudStatus.status === CLOUD_AVAILABILITY.CHECKING ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800'}`}>{t(`cloud.status.${cloudStatus.status}`)}</span>}</div>
       <nav aria-label={t('surface.navigation')} className="flex items-center gap-1.5 text-sm">
         <button type="button" aria-pressed={surface === UI_SURFACES.EXPLORE} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.EXPLORE ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setSurface(UI_SURFACES.EXPLORE)}>{t('ui.surface.explore')}</button>
         <button type="button" aria-pressed={surface === UI_SURFACES.BUILD} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.BUILD ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setSurface(UI_SURFACES.BUILD)}>{t('ui.surface.build')}</button>
