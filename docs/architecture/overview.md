@@ -39,6 +39,11 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Core contract tests | `scripts/check-core.mjs` | Registry, compiler, composite, localization, and tier regression checks |
 | Deployment | `.github/workflows/pages.yml` | Build and deploy `dist` to GitHub Pages after a push to `main` |
 
+The first declarative local-first inquiry episode is documented in
+[`inquiry-runtime.md`](./inquiry-runtime.md). It layers contract-owned inquiry
+state and deterministic evidence over the existing Playground host without
+creating a second experiment reducer.
+
 The TypeScript prototype under `src/` and old plugin JSON files are not the active runtime. Do not update them as a substitute for changing the files above.
 
 ## Data flow

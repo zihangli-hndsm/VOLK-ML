@@ -14,6 +14,7 @@ export default function BigIdeaEntrancePanel({ onOpen, t, variant = 'strip' }) {
           key={entry.id}
           type="button"
           data-big-idea-id={entry.id}
+          data-featured={entry.featured ? 'true' : undefined}
           onClick={() => onOpen(entry.id)}
           className="min-w-0 rounded-2xl border border-slate-200 bg-white p-3 text-left shadow-sm transition hover:border-blue-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-blue-500"
         >

@@ -58,7 +58,7 @@ assert.match(mainSource, /global-more-actions/);
 assert.match(mainSource, /aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg/);
 
 const entries = listBigIdeaEntrances();
-assert.equal(entries.length, 5);
+assert.equal(entries.length, 6);
 for (const entry of entries) {
   for (const language of languages) {
     for (const key of [entry.titleKey, entry.summaryKey]) {

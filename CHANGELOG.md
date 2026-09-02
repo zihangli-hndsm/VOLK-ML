@@ -919,3 +919,9 @@
 - Fixed relationship-aware LUMI revision suggestions and added stable revision IDs to Inquiry Trail references.
 - Updated bilingual UI copy, Build/Explore architecture documentation, and focused workspace-isolation regressions.
 - Acceptance: workspace-isolation and relevant inquiry regressions, full `npm run check`, production `npm run build`, and `git diff --check` passed.
+## 2026-09-02 — Episode 1 local-first inquiry runtime
+
+- Added declarative Exploration/Orchestration contracts, first-class inquiry runtime projection, Semantic Event v2 milestones, deterministic sampling-variability evidence, evidence-gated concept eligibility, typed local/optional LUMI policy, and bounded guidance history.
+- Featured Episode 1 in Explore with optional prediction, A/B fit/resample/compare controls, structured changed/held evidence, fitted-line labels, concept relationship, and continuation questions; existing Build, Big Ideas, and project contracts remain compatible.
+- Added bilingual UI copy, inquiry-runtime architecture documentation, and focused end-to-end contract/evidence/policy tests.
+- Acceptance: `npm run check`, `npm run check:episode-1`, `npm run build`, and `git diff --check` passed.

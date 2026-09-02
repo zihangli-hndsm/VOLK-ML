@@ -255,3 +255,8 @@ cannot install arbitrary suggestions as canonical runtime state.
 
 Goal 5 remains deferred: no background AI interpretation, candidate ranking,
 or interruption policy is included here.
+
+Sampling Variability is now an evidence-gated inquiry concept. It is eligible
+only when the local Episode 1 detector verifies a same-World, different-sample
+comparison with two current fits; `valid-weak` evidence remains a repeat
+prompt and does not imply understanding or mastery.

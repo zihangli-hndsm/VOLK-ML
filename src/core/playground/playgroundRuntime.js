@@ -39,6 +39,7 @@ import {
 import { isPublicWorldOperation, listWorldOperations } from '../exploration/operationRegistry.js';
 import { deriveWorldSemanticFactors } from '../exploration/worldSemanticFactors.js';
 import { deriveWorldDataSemantics } from '../exploration/observationProcess.js';
+import { detectSamplingVariability, samplingVariabilityNotice } from '../exploration/samplingVariability.js';
 import { derivePossibleWorldQuestion } from '../exploration/possibleWorlds.js';
 import {
   playgroundError,
@@ -846,11 +847,20 @@ function explorationEvidenceFor(session, experimentWorkspace) {
     } : null,
     repeatEvidence,
   });
+  const samplingVariability = detectSamplingVariability({
+    snapshot: {
+      experiment: session.experiment,
+      experimentWorkspace,
+      observations,
+    },
+  });
+  const samplingNotice = samplingVariabilityNotice(samplingVariability);
   return {
-    version: 1,
+    version: 2,
     observables: evidence.raw,
     derivedObservables: evidence.derived,
-    observations,
+    observations: samplingNotice ? [...observations, samplingNotice] : observations,
+    samplingVariability,
     repeatEvidence,
   };
 }
@@ -1507,6 +1517,7 @@ export function deriveRuntimeSnapshot(session) {
     observables: jsonSafe(explorationEvidence.observables),
     derivedObservables: jsonSafe(explorationEvidence.derivedObservables),
     observations: jsonSafe(explorationEvidence.observations),
+    samplingVariability: jsonSafe(explorationEvidence.samplingVariability),
     repeatEvidence: jsonSafe(explorationEvidence.repeatEvidence),
     world: jsonSafe(session.experiment?.world),
     viewState: jsonSafe(session.viewState),

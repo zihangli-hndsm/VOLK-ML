@@ -6,6 +6,7 @@ export const INQUIRY_CONCEPT_CARD_VERSION = 1;
 export const MAX_CONCEPT_EXPOSURES = 8;
 
 const PRIORITY = [
+  INQUIRY_CONCEPT_IDS.SAMPLING_VARIABILITY,
   INQUIRY_CONCEPT_IDS.DISTRIBUTION_SHIFT,
   INQUIRY_CONCEPT_IDS.GENERALIZATION,
   INQUIRY_CONCEPT_IDS.STABILITY,
@@ -15,6 +16,7 @@ const PRIORITY = [
 ];
 
 const WHY_KEYS = Object.freeze({
+  'sampling-variability-evidenced': ['playground.inquiry.samplingVariability.whyWorld', 'playground.inquiry.samplingVariability.whyData', 'playground.inquiry.samplingVariability.whyModel'],
   'duplicated-one-factor-comparison': ['playground.inquiry.why.duplicated', 'playground.inquiry.why.oneFactor', 'playground.inquiry.why.compared'],
   'changed-one-condition-against-baseline': ['playground.inquiry.why.duplicated', 'playground.inquiry.why.oneFactor', 'playground.inquiry.why.compared'],
   'mixed-factor-comparison': ['playground.inquiry.why.compared', 'playground.inquiry.why.multipleFactors'],

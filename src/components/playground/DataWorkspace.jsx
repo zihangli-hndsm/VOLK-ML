@@ -131,7 +131,8 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const comparisonBounds = snapshot.experimentWorkspace?.comparison?.enabled
     && snapshot.experimentWorkspace.comparison.bounds;
   const phenomenonPrimitives = useMemo(
-    () => getVisiblePrimitives(snapshot, 'stage').filter((primitive) => PHENOMENON_PRIMITIVES.has(primitive.type)),
+    () => getVisiblePrimitives(snapshot, 'stage').filter((primitive) => PHENOMENON_PRIMITIVES.has(primitive.type)
+      && !(snapshot.inquiryRuntime && primitive.type === 'regression-line' && !snapshot.inquiryRuntime.activeFit)),
     [snapshot],
   );
   const reducedMotion = useReducedMotionPreference();

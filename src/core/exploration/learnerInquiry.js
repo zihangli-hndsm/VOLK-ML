@@ -14,6 +14,7 @@ export const INQUIRY_CONCEPT_IDS = Object.freeze({
   GENERALIZATION: 'generalization',
   STABILITY: 'stability',
   COUNTERFACTUAL_REASONING: 'counterfactual-reasoning',
+  SAMPLING_VARIABILITY: 'SAMPLING_VARIABILITY',
 });
 
 import { INQUIRY_CONCEPT_METADATA } from './concepts.js';
@@ -36,11 +37,16 @@ const EVENT_TYPES = new Set([
   'comparison.completed',
   'repeat.completed',
   'observation.detected',
+  'prediction.recorded',
+  'model.fit-completed',
+  'experiment.baseline-captured',
+  'concept.evidenced',
 ]);
 const OBSERVATION_IDS = new Set([
   'COVERAGE_MISMATCH',
   'TEST_ERROR_CHANGED_MORE',
   'REPEAT_VARIATION',
+  'SAMPLING_VARIABILITY_EVIDENCED',
 ]);
 const STAGES = new Set(['exploring', 'comparing', 'observing', 'repeating']);
 
@@ -153,6 +159,10 @@ function candidate(conceptId, supportingEvents, supportingObservations, reasonCo
 
 function directCandidates(events, comparison, activeObservations) {
   const candidates = [];
+  const samplingEvidence = lastEvent(events, (event) => event.type === 'observation.detected' && event.reasonCode === 'SAMPLING_VARIABILITY_EVIDENCED');
+  if (samplingEvidence) {
+    candidates.push(candidate(INQUIRY_CONCEPT_IDS.SAMPLING_VARIABILITY, [samplingEvidence], [samplingEvidence], 'sampling-variability-evidenced'));
+  }
   const comparisonEvent = lastEvent(events, (event) => event.type === 'comparison.completed' && sameExperimentPair(event, comparison));
   const duplicated = lastEvent(events, (event) => event.actor === 'human' && event.type === 'experiment.duplicated' && sameExperimentPair(event, comparison));
   const humanComparison = comparisonEvent?.actor === 'human' ? comparisonEvent : null;
