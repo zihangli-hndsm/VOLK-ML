@@ -12,7 +12,7 @@ function boundedIds(values, max = 8) {
 }
 
 export const LUMI_ACTION_VERSION = 1;
-const PROPOSALS = new Set(['SUGGEST_EXPERIMENT', 'PROPOSE_HYPOTHESIS', 'PROPOSE_COUNTEREXAMPLE', 'OFFER_COMPARISON', 'OFFER_DEPTH']);
+const PROPOSALS = new Set(['SUGGEST_EXPERIMENT', 'PROPOSE_HYPOTHESIS', 'PROPOSE_COUNTEREXAMPLE']);
 
 export function validateLumiAction(action) {
   if (!action || !LUMI_ACTION_TYPES.includes(action.type)) return { valid: false, error: 'unsupported-action' };
@@ -27,20 +27,63 @@ export const staySilent = () => ({ version: LUMI_ACTION_VERSION, type: 'STAY_SIL
 export function projectLumiCloudRequest(context = {}, requestId = `lumi-${Date.now()}`) {
   const runtime = context.inquiryRuntime ?? context;
   const evidence = runtime.evidence ?? context.evidence ?? null;
-  const eventIds = (runtime.recentSemanticEvents ?? []).map((event) => event?.id);
-  const observationIds = (runtime.observations ?? []).map((observation) => observation?.id);
-  return {
+  const observations = (runtime.observations ?? []).filter((observation) => bounded(observation?.id));
+  const request = {
     apiVersion: '0', requestId: bounded(requestId, 96) ?? 'lumi-request',
     inquiry: {
-      contractId: bounded(runtime.contractId), questionKey: bounded(runtime.currentQuestion), stage: bounded(runtime.stage),
-      prediction: runtime.prediction ? { expectation: bounded(runtime.prediction.expectation), skipped: Boolean(runtime.prediction.skipped) } : null,
-      comparison: runtime.comparison ? { experimentIds: boundedIds(runtime.comparison.experimentIds, 2), changedFactors: boundedIds(runtime.comparison.changedFactors, 12), clarity: bounded(runtime.comparison.clarity) } : null,
-      evidence: evidence ? { status: bounded(evidence.status), detectorId: bounded(evidence.structure?.detectorId), experimentIds: boundedIds(evidence.structure?.experimentIds, 2), observationIds: boundedIds(observationIds) } : null,
-      recentSemanticEventIds: boundedIds(eventIds, 24),
-      candidateConcepts: boundedIds(runtime.candidateConcepts, 8),
+      ...(bounded(runtime.currentInquiry) ? { inquiryId: bounded(runtime.currentInquiry) } : {}),
+      ...(bounded(runtime.contractId) ? { orchestrationId: bounded(runtime.contractId) } : {}),
+      ...(bounded(runtime.currentQuestion) ? { currentQuestion: bounded(runtime.currentQuestion) } : {}),
+      ...(bounded(runtime.currentDepth) ? { currentDepth: bounded(runtime.currentDepth) } : {}),
     },
+    ...(runtime.prediction && !runtime.prediction.skipped && bounded(runtime.prediction.expectation)
+      ? { prediction: { expectation: bounded(runtime.prediction.expectation), ...(bounded(runtime.prediction.reasoning, 240) ? { reasoning: bounded(runtime.prediction.reasoning, 240) } : {}) } }
+      : {}),
+    ...(runtime.baseline || runtime.comparison || runtime.worldIdentity ? { experiment: {
+      ...(bounded(runtime.worldIdentity) ? { worldIdentity: bounded(runtime.worldIdentity, 256) } : {}),
+      ...(runtime.baseline?.experimentId ? { baseline: bounded(runtime.baseline.experimentId, 1000) } : {}),
+      ...(runtime.comparison ? { activeComparison: boundedIds(runtime.comparison.experimentIds, 2).join(' vs ') || 'active-comparison' } : {}),
+    } } : {}),
+    recentEvents: (runtime.recentSemanticEvents ?? []).slice(-24).map((event) => ({
+      ...(bounded(event?.id) ? { eventId: bounded(event.id) } : {}),
+      eventType: bounded(event?.type) ?? 'semantic.event',
+      ...(bounded(event?.reasonCode) ? { summary: bounded(event.reasonCode) } : {}),
+    })),
+    evidence: observations.map((observation) => ({
+      evidenceId: bounded(observation.id),
+      evidenceType: observation.id === 'SAMPLING_VARIABILITY_EVIDENCED' ? 'sampling_variability' : (bounded(observation.id) ?? 'observation'),
+      ...(bounded(observation.messageKey) ? { summary: bounded(observation.messageKey) } : {}),
+      ...(observation.evidence && typeof observation.evidence === 'object' ? { facts: boundedIds([
+        ...(observation.evidence.evidence?.changed ?? []),
+        ...(observation.evidence.evidence?.held ?? []),
+        ...(observation.evidence.evidence?.observed ? Object.keys(observation.evidence.evidence.observed) : []),
+      ], 16) } : {}),
+    })),
+    candidateConcepts: boundedIds(runtime.candidateConcepts, 8).map((conceptId) => ({ conceptId, label: conceptId })),
+    conceptsEncountered: boundedIds(runtime.encounteredConcepts, 8),
+    conceptsEvidenced: boundedIds(runtime.evidencedConcepts, 8),
+    recentLumiActions: (runtime.guidanceHistory ?? []).slice(-12).map((entry) => entry?.action?.type).filter((type) => CLOUD_ACTIONS.has(type)).map((action) => ({ action })),
+    policy: { autonomyLevel: 'suggestion-only', proactiveAllowed: true },
   };
+  if (!Object.keys(request.inquiry).length) delete request.inquiry;
+  return request;
 }
+
+export function validateLumiCloudRequestV0(request) {
+  const errors = [];
+  const topKeys = new Set(['apiVersion', 'requestId', 'inquiry', 'prediction', 'experiment', 'recentEvents', 'evidence', 'candidateConcepts', 'conceptsEncountered', 'conceptsEvidenced', 'recentLumiActions', 'policy']);
+  for (const key of Object.keys(request ?? {})) if (!topKeys.has(key)) errors.push(`unknown:${key}`);
+  if (request?.apiVersion !== '0' || typeof request?.requestId !== 'string' || !request.requestId) errors.push('identity');
+  if (!request?.inquiry || typeof request.inquiry !== 'object') errors.push('inquiry');
+  for (const event of request?.recentEvents ?? []) if (!event || typeof event.eventType !== 'string') errors.push('recentEvents');
+  for (const item of request?.evidence ?? []) if (!item || typeof item.evidenceId !== 'string' || typeof item.evidenceType !== 'string' || !Array.isArray(item.facts ?? [])) errors.push('evidence');
+  for (const item of request?.candidateConcepts ?? []) if (!item || typeof item.conceptId !== 'string' || typeof item.label !== 'string') errors.push('candidateConcepts');
+  for (const item of request?.recentLumiActions ?? []) if (!item || !CLOUD_ACTIONS.has(item.action)) errors.push('recentLumiActions');
+  if (request?.policy && (typeof request.policy.proactiveAllowed !== 'boolean' || typeof request.policy.autonomyLevel !== 'string')) errors.push('policy');
+  return { valid: errors.length === 0, errors };
+}
+
+export const validateLumiCloudRequest = validateLumiCloudRequestV0;
 
 export function adaptCloudLumiResponse(response, { requestId, context } = {}) {
   if (!response || response.apiVersion !== '0' || response.requestId !== requestId || !CLOUD_ACTIONS.has(response.action)) return { valid: false, error: 'unsupported-cloud-response' };
@@ -50,17 +93,25 @@ export function adaptCloudLumiResponse(response, { requestId, context } = {}) {
   if (response.action === 'STAY_SILENT' && requires) return { valid: false, error: 'silent-confirmation' };
   const proposal = PROPOSALS.has(response.action);
   if (proposal && !requires) return { valid: false, error: 'proposal-confirmation-required' };
-  if (response.action === 'SUGGEST_EXPERIMENT'
-    && !['RUN', 'RESAMPLE_WORLD', 'DUPLICATE_EXPERIMENT', 'SET_COMPARE'].includes(response.payload.operation)) return { valid: false, error: 'unsupported-experiment-operation' };
-  if (response.action === 'OFFER_DEPTH' && !['PHENOMENON', 'EVIDENCE', 'MECHANISM', 'REPRESENTATION'].includes(response.payload.depth)) return { valid: false, error: 'unsupported-depth' };
-  if (response.action === 'OFFER_COMPARISON' && boundedIds(response.payload.experimentIds, 2).length < 2) return { valid: false, error: 'comparison-reference-required' };
+  const payload = response.payload;
+  if (response.action === 'ASK' && !bounded(payload.question, 2000)) return { valid: false, error: 'invalid-ask-payload' };
+  if (['PROPOSE_HYPOTHESIS', 'PROPOSE_COUNTEREXAMPLE', 'NAME_CONNECTION', 'REFLECT_PATH'].includes(response.action) && !bounded(payload.text, 2000)) return { valid: false, error: 'invalid-text-payload' };
+  if (response.action === 'SUGGEST_EXPERIMENT' && (!bounded(payload.recipeId, 128) || !bounded(payload.description, 2000))) return { valid: false, error: 'invalid-experiment-proposal' };
+  if (response.action === 'OFFER_DEPTH' && !['evidence', 'mechanism', 'representation', 'math', 'builder'].includes(payload.target)) return { valid: false, error: 'unsupported-depth' };
   if (response.action === 'HIGHLIGHT_EVIDENCE') {
     const available = new Set((context?.inquiryRuntime?.observations ?? []).map((item) => item?.id).filter(Boolean));
-    const ids = boundedIds(response.payload.observationIds ?? response.payload.evidenceIds);
+    const ids = boundedIds(payload.evidenceIds);
     if (!ids.length || ids.some((id) => !available.has(id))) return { valid: false, error: 'evidence-reference-out-of-scope' };
-    response = { ...response, payload: { ...response.payload, observationIds: ids } };
   }
-  return validateLumiAction({ type: response.action, payload: response.payload, authority: proposal ? 'suggestion-only' : 'presentation', requiresLearnerAcceptance: requires });
+  if (response.action === 'HIGHLIGHT_EVIDENCE') {
+    response = { ...response, payload: { evidenceIds: boundedIds(payload.evidenceIds), facts: boundedIds(payload.facts, 16) } };
+  }
+  const internalPayload = response.action === 'OFFER_DEPTH'
+    ? { depth: payload.target }
+    : response.action === 'HIGHLIGHT_EVIDENCE'
+      ? response.payload
+      : payload;
+  return validateLumiAction({ type: response.action, payload: internalPayload, authority: proposal ? 'suggestion-only' : 'presentation', requiresLearnerAcceptance: requires });
 }
 
 export function createCloudLumiPolicy(client) {

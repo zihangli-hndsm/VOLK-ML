@@ -22,6 +22,7 @@ export function deriveInquiryRuntimeState({ snapshot, semanticEvents, learnerInq
     contractId: contract.id,
     currentInquiry: contract.id,
     currentQuestion: sessionState.currentQuestion ?? contract.entry.questionKey,
+    worldIdentity: snapshot?.worldIdentity?.fingerprint ?? null,
     stage,
     prediction: sessionState.prediction ? clone(sessionState.prediction) : null,
     actualOutcome: evidence.status === 'insufficient' ? null : evidence.status === 'evidenced' ? 'different' : 'slightly-different',
