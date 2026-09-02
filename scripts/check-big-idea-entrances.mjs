@@ -14,6 +14,7 @@ import { getPlayground } from '../src/core/playgrounds/registry.js';
 
 const entries = listBigIdeaEntrances();
 const expectedIds = [
+  'episode-1-sampling-variability',
   'finding-patterns',
   'noise-robustness',
   'generalization',

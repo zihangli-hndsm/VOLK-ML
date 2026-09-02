@@ -21,6 +21,7 @@ import ExploreContextBar from './ExploreContextBar.jsx';
 import ExploreWorldRegion from './ExploreWorldRegion.jsx';
 import ExploreExperimentRegion from './ExploreExperimentRegion.jsx';
 import ExploreDetailsRegion from './ExploreDetailsRegion.jsx';
+import InquiryEpisodePanel from './InquiryEpisodePanel.jsx';
 import { REDUCED_MOTION_QUERY } from './motion.js';
 import { openFullWorldWorkspacePresentation } from '../../core/ui/layerNavigation.js';
 import { nextInquiryConceptExposure, selectInquiryConceptCard } from '../../core/exploration/inquiryConceptCard.js';
@@ -99,6 +100,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const readySessionRef = useRef(null);
   const activeWorkspaceRef = useRef(null);
   const meaningfulManipulationTrackerRef = useRef(null);
+  const lumiPolicyRequestRef = useRef('');
   if (!meaningfulManipulationTrackerRef.current) meaningfulManipulationTrackerRef.current = createFirstMeaningfulManipulationTracker();
   const openTrackerRef = useRef(null);
   if (!openTrackerRef.current) openTrackerRef.current = createExplorationOpenTracker();
@@ -199,6 +201,18 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     const nextShownConceptIds = nextInquiryConceptExposure(snapshot.learnerInquiry.conceptsPreviouslySurfaced, next.conceptId);
     host.setInquiryPresentationContext?.({ conceptsPreviouslySurfaced: nextShownConceptIds, conceptualDepth: activeDepth });
   }, [snapshot?.learnerInquiry, activeInquiryCard, activeDepth, host]);
+
+  // Episode policy boundary: the Host owns the bounded semantic projection
+  // and chooses Cloud v0 when configured, otherwise its local fallback.
+  useEffect(() => {
+    const runtime = snapshot?.inquiryRuntime;
+    if (!runtime || !host?.decideLumiAction) return;
+    const sequence = snapshot.semanticEvents?.events?.at(-1)?.sequence ?? 0;
+    const key = `${runtime.contractId}:${runtime.stage}:${sequence}`;
+    if (lumiPolicyRequestRef.current === key) return;
+    lumiPolicyRequestRef.current = key;
+    host.decideLumiAction().catch(() => {});
+  }, [snapshot?.inquiryRuntime?.contractId, snapshot?.inquiryRuntime?.stage, snapshot?.semanticEvents?.events?.at(-1)?.sequence, host]);
 
   useEffect(() => {
     if (!open || !snapshot || snapshot.playgroundId !== playgroundId || !readySessionRef.current) return;
@@ -551,7 +565,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} fullWorldToolsOpen={fullWorldToolsOpen} onFullWorldToolsChange={setFullWorldToolsOpen} onOpenFullWorldTools={openFullWorldWorkspaceFromTune} />;
-  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} t={t} intervention={lumiIntervention}><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} interventionPulseKey={lumiIntervention?.sequence ?? null} interventionTarget={lumiIntervention?.target ?? null} /></ExploreExperimentRegion>;
+  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} t={t} intervention={lumiIntervention}><InquiryEpisodePanel snapshot={snapshot} host={host} onDispatch={dispatchAction} t={t} /><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} interventionPulseKey={lumiIntervention?.sequence ?? null} interventionTarget={lumiIntervention?.target ?? null} /></ExploreExperimentRegion>;
   const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} journeyIlluminationEvents={journeySession.illuminationEvents} onIlluminateConcept={illuminateConcept} learningPathIlluminatedIds={learningPathIlluminatedIds} onIlluminateLearningPath={illuminateLearningPath} hypotheses={hypothesisSession.hypotheses} evidenceInstances={evidenceInstances} onCreateHypothesis={createLearnerHypothesis} onSetHypothesisStatus={updateHypothesisStatus} onAttachHypothesisEvidence={attachHypothesisEvidence} onOpenHypothesisEvidence={() => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} testDesigns={testDesignSession.designs} testDesignResults={testDesignResults} testDesignCapabilities={testDesignCapabilities} onSaveTestDesign={saveLearnerTestDesign} onRunTestDesign={runLearnerTestDesign} hypothesisGroups={hypothesisGroupSession.groups} discriminationPlans={discriminationPlanSession.plans} onCreateHypothesisGroup={createLearnerHypothesisGroup} onCreateDiscriminationPlan={createLearnerDiscriminationPlan} interpretations={interpretationSession.interpretations} revisions={revisionSession.revisions} onCreateInterpretation={createLearnerInterpretation} onCreateRevision={createLearnerRevision} counterfactualQuestions={counterfactualSession.questions} onCreateCounterfactual={createLearnerCounterfactual} onConvertCounterfactual={convertLearnerCounterfactual} counterfactualConditionFingerprint={currentConditionFingerprint} onAcceptLumiSuggestion={acceptLumiSuggestion} t={t} intervention={lumiIntervention} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary

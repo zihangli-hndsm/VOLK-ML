@@ -1,0 +1,48 @@
+import { useEffect, useState } from 'react';
+
+export default function InquiryEpisodePanel({ snapshot, host, onDispatch, t }) {
+  const [expectation, setExpectation] = useState('');
+  const [reasoning, setReasoning] = useState('');
+  const [saved, setSaved] = useState(false);
+  const runtime = snapshot?.inquiryRuntime;
+  useEffect(() => { if (runtime?.prediction) setSaved(true); }, [runtime?.prediction]);
+  if (!runtime) return null;
+  const evidence = runtime.evidence;
+  const compare = runtime.comparison;
+  const dispatch = async (action) => {
+    if (action.type === 'SAMPLE_SAME_WORLD') {
+      await onDispatch({ type: 'DUPLICATE_EXPERIMENT' });
+      await onDispatch({ type: 'RESAMPLE_WORLD' });
+      return;
+    }
+    await onDispatch(action);
+  };
+  const savePrediction = async (skipped = false) => {
+    await host.recordInquiryPrediction({ expectation: skipped ? undefined : expectation, reasoning, skipped });
+    setSaved(true);
+  };
+  return <section data-inquiry-episode={runtime.contractId} className="rounded-2xl border border-indigo-100 bg-indigo-50/70 p-3 text-sm text-slate-800">
+    <p className="text-xs font-black uppercase tracking-wide text-indigo-700">{t('episode.one.title')}</p>
+    <h3 className="mt-1 font-black">{t(runtime.currentQuestion)}</h3>
+    {!saved && <div className="mt-3 space-y-2">
+      <p className="text-xs text-slate-600">{t('episode.one.prediction')}</p>
+      <div className="flex flex-wrap gap-2">{['same', 'different', 'unsure'].map((choice) => <button key={choice} type="button" onClick={() => setExpectation(choice)} className={`rounded-xl border px-2.5 py-1.5 text-xs font-bold ${expectation === choice ? 'border-indigo-500 bg-indigo-600 text-white' : 'border-slate-200 bg-white'}`}>{t(`episode.one.prediction.${choice}`)}</button>)}</div>
+      <textarea value={reasoning} maxLength={240} onChange={(event) => setReasoning(event.target.value)} placeholder={t('episode.one.orientation')} className="w-full rounded-xl border border-slate-200 bg-white p-2 text-xs" />
+      <div className="flex gap-2"><button type="button" disabled={!expectation} onClick={() => savePrediction()} className="rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-black text-white disabled:opacity-40">{t('episode.one.prediction.save')}</button><button type="button" onClick={() => savePrediction(true)} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold">{t('episode.one.prediction.skip')}</button></div>
+    </div>}
+    <div className="mt-3 grid gap-2 sm:grid-cols-4">
+      <button type="button" onClick={() => dispatch({ type: 'RUN' })} className="rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm">{t('episode.one.fitA')}</button>
+      <button type="button" onClick={() => dispatch({ type: 'SAMPLE_SAME_WORLD' })} className="rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm">{t('episode.one.sample')}</button>
+      <button type="button" onClick={() => dispatch({ type: 'RUN' })} className="rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm">{t('episode.one.fitB')}</button>
+      <button type="button" disabled={!snapshot?.experimentWorkspace?.comparison?.againstExperimentId} onClick={() => dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: snapshot.experimentWorkspace.comparison.againstExperimentId })} className="rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm disabled:opacity-40">{t('episode.one.compare')}</button>
+    </div>
+    {compare?.enabled && evidence?.status !== 'insufficient' && <div className="mt-3 grid gap-2 sm:grid-cols-3">
+      <div className="rounded-xl bg-white p-2"><p className="text-[10px] font-black uppercase text-emerald-700">{t('episode.one.changed')}</p><p className="mt-1 text-xs">{evidence.evidence?.changed?.join(' · ')}</p></div>
+      <div className="rounded-xl bg-white p-2"><p className="text-[10px] font-black uppercase text-slate-600">{t('episode.one.held')}</p><p className="mt-1 text-xs">{evidence.evidence?.held?.join(' · ')}</p></div>
+      <div className="rounded-xl bg-white p-2"><p className="text-[10px] font-black uppercase text-indigo-700">{t('episode.one.observed')}</p><p className="mt-1 text-xs">{evidence.evidence?.observed?.lineMovement ?? evidence.status}</p></div>
+    </div>}
+    {compare?.enabled && evidence?.status !== 'insufficient' && <div className="mt-2 flex flex-wrap gap-3 text-xs font-bold" aria-label={t('episode.one.fittedLines')}><span><span className="mr-1 inline-block h-0.5 w-6 bg-blue-600 align-middle" />A</span><span><span className="mr-1 inline-block h-0.5 w-6 border-t-2 border-dashed border-violet-600 align-middle" />B</span></div>}
+    {runtime.candidateConcepts.includes('SAMPLING_VARIABILITY') && <div className="mt-3 rounded-xl border border-indigo-200 bg-white p-3"><p className="font-black">{t('playground.inquiry.samplingVariability.title')}</p><p className="mt-1 text-xs">{t('playground.inquiry.samplingVariability.definition')}</p><p className="mt-1 text-xs text-slate-600">{t('playground.inquiry.samplingVariability.summary')}</p></div>}
+    {runtime.continuations?.length > 0 && runtime.candidateConcepts.includes('SAMPLING_VARIABILITY') && <div className="mt-3 flex flex-wrap gap-2">{runtime.continuations.map((item) => <button key={item.id} type="button" onClick={() => host.recordInquiryContinuation?.(item.id)} className="rounded-xl border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-bold">{t(item.questionKey)}</button>)}</div>}
+  </section>;
+}

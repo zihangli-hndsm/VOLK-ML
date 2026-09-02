@@ -669,3 +669,7 @@ grounding uses only the latter; an execution-only occurrence is never a
 substitute. Learner revisions carry their own bounded stable IDs, so Inquiry
 Episodes reference actual revision records rather than reconstructing identity
 from parent and child names.
+
+Episode 1 uses the same semantic boundary for a fixed World and a changed
+sampling realization. Its contract and deterministic fitted-line evidence are
+described in [`inquiry-runtime.md`](./inquiry-runtime.md).

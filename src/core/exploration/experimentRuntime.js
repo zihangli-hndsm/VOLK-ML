@@ -316,6 +316,12 @@ export function deriveExperimentWorkspace(session) {
     version: EXPERIMENT_WORKSPACE_VERSION,
     activeExperimentId: workspace.activeExperimentId,
     experiments: entries,
+    // Detached semantic runtime records are read-only projections used by
+    // inquiry detectors; callers must never mutate or dispatch them.
+    records: Object.fromEntries(Object.values(workspace.entries).map((record) => [record.id, {
+      id: record.id,
+      state: clone(record.state),
+    }])),
     comparison: {
       enabled: Boolean(workspace.comparison.enabled && target),
       againstExperimentId: workspace.comparison.againstExperimentId,

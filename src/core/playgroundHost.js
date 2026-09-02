@@ -75,6 +75,9 @@ import {
   TEST_DESIGN_STATUSES,
 } from './exploration/testDesign.js';
 import { compareExploreEnvironment, createExploreEnvironmentIdentity } from './exploration/exploreWorkspace.js';
+import { getExplorationContract, getOrchestrationContract } from './exploration/inquiryContracts.js';
+import { deriveInquiryRuntimeState } from './exploration/inquiryRuntime.js';
+import { validateLumiAction, decideLumiAction, applyGuidanceBudget, guidanceStageState, staySilent, createCloudLumiPolicy } from './exploration/lumiPolicy.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -481,6 +484,9 @@ function initializeBigIdeaSession(entrance, { getDataset: readDataset, seed } = 
       version: entrance.version,
       starterQuestionKey: entrance.questionKey,
       relevantObservableIds: [...entrance.focus.observables],
+      explorationContractId: entrance.explorationContractId ?? null,
+      orchestrationContractId: entrance.orchestrationContractId ?? null,
+      featured: Boolean(entrance.featured),
     },
   };
 }
@@ -491,6 +497,7 @@ export function createPlaygroundHost({
   semanticEventStore = createSemanticEventStore(),
   inquiryTrajectoryStore = createInquiryTrajectoryStore(),
   exploreRecipeId = null,
+  cloudClient = null,
 } = {}) {
   let session = null;
   let exploreEnvironmentIdentity = null;
@@ -506,6 +513,8 @@ export function createPlaygroundHost({
   let presentedConceptIds = [];
   let conceptExposureIds = [];
   let lastCanonicalConceptSignalIds = [];
+  let inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null };
+  const cloudLumiPolicy = createCloudLumiPolicy(cloudClient);
   const learnerAnnotationStore = createLearnerAnnotationStore();
   const learningConversationStore = createLearningConversationStore();
   const subscribers = new Set();
@@ -518,6 +527,7 @@ export function createPlaygroundHost({
     presentedConceptIds = [];
     conceptExposureIds = [];
     lastCanonicalConceptSignalIds = [];
+    inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null };
     learnerAnnotationStore.reset();
     learningConversationStore.reset();
     inquiryTrajectoryStore.reset();
@@ -558,9 +568,12 @@ export function createPlaygroundHost({
       conceptsPreviouslySurfaced: inquiryPresentationContext.conceptsPreviouslySurfaced,
     });
     const detectedCuriosity = deriveCuriosityState({ semanticEvents, inquiry: learnerInquiry });
+    const contract = getOrchestrationContract(snapshot?.bigIdea?.orchestrationContractId);
+    const inquiryRuntime = contract ? deriveInquiryRuntimeState({ snapshot, semanticEvents, learnerInquiry, sessionState: inquirySessionState, contract }) : null;
     return {
       semanticEvents,
       learnerInquiry,
+      inquiryRuntime,
       curiosity: resolveCuriosityOpportunities({
         curiosity: detectedCuriosity,
         capabilities: deriveCuriosityCapabilities(snapshot),
@@ -570,7 +583,7 @@ export function createPlaygroundHost({
 
   const present = (snapshot) => {
     if (!snapshot) return null;
-    const { semanticEvents, learnerInquiry, curiosity } = deriveInquiryProjection(snapshot);
+    const { semanticEvents, learnerInquiry, inquiryRuntime, curiosity } = deriveInquiryProjection(snapshot);
     const inquiryTrajectory = deriveInquiryTrajectory({
       ...inquiryTrajectoryStore.snapshot(),
       semanticEvents,
@@ -581,6 +594,7 @@ export function createPlaygroundHost({
       provenance: scriptProvenance,
       semanticEvents,
       learnerInquiry,
+      inquiryRuntime,
       curiosity,
       learnerAnnotations: projectLearnerAnnotations(learnerAnnotationStore.snapshot(), { activeOnly: false }),
       learningConversation: learningConversationStore.snapshot(),
@@ -611,16 +625,37 @@ export function createPlaygroundHost({
       try {
         const controlPlayground = getPlayground(next.modelPlaygroundId ?? next.playgroundId)
           ?? getPlayground(next.playgroundId);
-        semanticEventStore.append(deriveSemanticEventDrafts({
-          before: derivePlaygroundSnapshot(before),
-          after: derivePlaygroundSnapshot(next),
+        const beforeSnapshot = derivePlaygroundSnapshot(before);
+        const afterSnapshot = derivePlaygroundSnapshot(next);
+        const drafts = deriveSemanticEventDrafts({
+          before: beforeSnapshot,
+          after: afterSnapshot,
           action,
           controlDescriptors: controlPlayground?.controls ?? [],
           // The detailed World history remains runtime-private. It is passed
           // only to the deterministic event derivation so Undo/Redo can read
           // the entry they reverse/replay, including when Undo empties past.
           beforeWorldHistory: before.worldHistory,
-        }));
+        });
+        const appended = semanticEventStore.append(drafts);
+        const fit = appended.find((event) => event.type === 'model.fit-completed');
+        if (fit && !inquirySessionState.baselineExperimentId) {
+          inquirySessionState.baselineExperimentId = fit.experimentIds[0] ?? null;
+          semanticEventStore.append([{
+            type: 'experiment.baseline-captured', actor: fit.actor, experimentIds: fit.experimentIds,
+            semanticFactors: ['experiment.baseline'], operationTypes: [], reasonCode: 'first-completed-fit',
+          }]);
+        }
+        if (afterSnapshot.samplingVariability?.status === 'evidenced'
+          && !inquirySessionState.conceptSurfacedSequence) {
+          const latest = semanticEventStore.snapshot().events.at(-1)?.sequence ?? 0;
+          inquirySessionState.conceptSurfacedSequence = latest;
+          inquirySessionState.encounteredConcepts = [...new Set([...inquirySessionState.encounteredConcepts, 'SAMPLING_VARIABILITY'])];
+          semanticEventStore.append([{
+            type: 'concept.evidenced', actor: 'system', experimentIds: afterSnapshot.experimentWorkspace?.comparison ? [afterSnapshot.experimentWorkspace.comparison.againstExperimentId, afterSnapshot.experimentWorkspace.activeExperimentId] : [],
+            semanticFactors: ['concept.SAMPLING_VARIABILITY'], operationTypes: [], reasonCode: 'sampling-variability-evidenced',
+          }]);
+        }
       } catch {
         // Inquiry history is presentation context and must never block a
         // successful runtime commit.
@@ -843,7 +878,7 @@ export function createPlaygroundHost({
       const transactionActions = ['APPLY_WORLD_TRANSACTION', 'UNDO_WORLD_ACTION', 'REDO_WORLD_ACTION'];
       const viewActions = ['SET_WORKSPACE_VIEW'];
       const experimentOperations = ['DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS', 'REPEAT_EXPERIMENT', 'UNDO_EXPERIMENT_ACTION'];
-      const { semanticEvents, learnerInquiry, curiosity } = deriveInquiryProjection(snapshot);
+      const { semanticEvents, learnerInquiry, inquiryRuntime, curiosity } = deriveInquiryProjection(snapshot);
       const causalInquiry = deriveCausalInquiryState({
         inquiry: learnerInquiry,
         semanticEvents,
@@ -894,6 +929,7 @@ export function createPlaygroundHost({
         derivedObservables: snapshot.derivedObservables ?? {},
         observations: snapshot.observations ?? [],
         repeatEvidence: snapshot.repeatEvidence ?? null,
+        inquiryRuntime,
         curiosity,
         experimentWorkspace: snapshot.experimentWorkspace ?? null,
         explorationThreads: snapshot.explorationThreads ?? [],
@@ -914,6 +950,7 @@ export function createPlaygroundHost({
           }),
           semanticEvents,
           learnerInquiry,
+          inquiryRuntime,
           curiosity,
           causalInquiry,
           inquiryTrajectory,
@@ -1126,6 +1163,47 @@ export function createPlaygroundHost({
         text,
         scenario,
       }));
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    recordInquiryPrediction({ expectation, reasoning = '', skipped = false, actor = 'human' } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const contract = getOrchestrationContract(session.bigIdea?.orchestrationContractId);
+      if (!contract || contract.prediction.mode === 'disabled') return present(derivePlaygroundSnapshot(session));
+      const allowed = new Set(contract.prediction.choices);
+      const value = skipped ? 'skipped' : String(expectation ?? '');
+      if (!skipped && !allowed.has(value)) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'PREDICTION_RECORDED', reason: 'unsupported prediction' });
+      inquirySessionState.prediction = { expectation: value, reasoning: String(reasoning ?? '').slice(0, contract.prediction.maxReasoningLength), skipped: Boolean(skipped) };
+      semanticEventStore.append([{
+        type: 'prediction.recorded', actor: SEMANTIC_ACTION_ACTORS.has(actor) ? actor : 'human',
+        experimentIds: [session.experiment?.id].filter(Boolean), semanticFactors: [], operationTypes: [], reasonCode: skipped ? 'prediction-skipped' : `prediction-${value}`,
+      }]);
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    async decideLumiAction({ cloudPolicy = cloudLumiPolicy } = {}) {
+      const snapshot = currentPresentedSnapshot();
+      const latestSequence = snapshot?.semanticEvents?.events?.at(-1)?.sequence ?? 0;
+      const cooldownRemaining = inquirySessionState.conceptSurfacedSequence
+        ? Math.max(0, 3 - (latestSequence - inquirySessionState.conceptSurfacedSequence))
+        : 0;
+      const stage = snapshot?.inquiryRuntime?.stage;
+      const stageState = guidanceStageState(inquirySessionState.guidanceHistory, stage);
+      const action = await decideLumiAction({ context: { inquiryRuntime: snapshot?.inquiryRuntime, evidence: snapshot?.inquiryRuntime?.evidence, stage, guidance: { cooldownRemaining, staySilent: stageState.dismissed || stageState.hinted } }, cloudPolicy });
+      const validated = validateLumiAction(action);
+      const canonical = validated.valid ? validated.action : staySilent();
+      inquirySessionState.guidanceHistory = applyGuidanceBudget(inquirySessionState.guidanceHistory, canonical, { stage: snapshot?.inquiryRuntime?.stage });
+      notify();
+      return canonical;
+    },
+
+    recordInquiryContinuation(continuationId) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const contract = getOrchestrationContract(session.bigIdea?.orchestrationContractId);
+      const candidate = contract?.continuations?.find((item) => item.id === continuationId);
+      if (candidate) inquirySessionState.currentQuestion = candidate.questionKey;
+      notify();
       return present(derivePlaygroundSnapshot(session));
     },
 

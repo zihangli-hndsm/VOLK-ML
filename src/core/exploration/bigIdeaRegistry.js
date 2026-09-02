@@ -7,6 +7,7 @@ import { OBSERVABLE_IDS } from './observables.js';
 import { validateCanonicalControlValue } from '../playground/controlValidation.js';
 import { AFFORDANCE_IDS } from './guidedExploration.js';
 import { getWorldRecipePreset } from './worldRecipePresets.js';
+import { EPISODE_ONE_EXPLORATION_CONTRACT, EPISODE_ONE_ORCHESTRATION_CONTRACT } from './inquiryContracts.js';
 
 export const BIG_IDEA_VERSION = 1;
 
@@ -82,6 +83,22 @@ const distributionShiftRecipe = () => {
 };
 
 const entries = [
+  {
+    version: BIG_IDEA_VERSION,
+    id: 'episode-1-sampling-variability',
+    titleKey: 'episode.one.title',
+    summaryKey: 'episode.one.summary',
+    questionKey: 'episode.one.question',
+    explorationContractId: EPISODE_ONE_EXPLORATION_CONTRACT.id,
+    orchestrationContractId: EPISODE_ONE_ORCHESTRATION_CONTRACT.id,
+    featured: true,
+    startingPoint: dataLabSetup({
+      id: 'episode-1-sampling-variability', seed: 7101,
+      generator: linearGenerator({ slope: 1.5, bias: 0.5, noise: 0.8, train: { min: -2, max: 2, samples: 12 }, test: { min: -2, max: 2, samples: 12 } }),
+    }),
+    focus: { observables: ['world.trainSampleCount', 'model.slope', 'model.bias', 'outcome.trainMse'], affordances: ['experiment.duplicate', 'experiment.compare', 'model.run'] },
+    suggestedActions: [{ type: 'RUN' }, { type: 'DUPLICATE_EXPERIMENT' }, { type: 'RESAMPLE_WORLD' }, { type: 'SET_COMPARE' }],
+  },
   {
     version: BIG_IDEA_VERSION,
     id: 'finding-patterns',

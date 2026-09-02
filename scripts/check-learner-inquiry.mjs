@@ -32,7 +32,7 @@ const comparison = (changed = ['world'], clarity = 'high') => ({
   },
 });
 
-assert.equal(listInquiryConcepts().length, 6, 'Goal 2 catalog remains deliberately bounded');
+assert.equal(listInquiryConcepts().length, 7, 'Inquiry catalog remains deliberately bounded with Sampling Variability');
 assert.equal(getInquiryConcept(INQUIRY_CONCEPT_IDS.GENERALIZATION).id, INQUIRY_CONCEPT_IDS.GENERALIZATION, 'registry declarations are available without an Agent or UI');
 assert.deepEqual(getInquiryConcept('not-a-concept'), null, 'unknown concept IDs are not accepted by the registry');
 

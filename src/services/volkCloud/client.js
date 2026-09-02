@@ -32,6 +32,27 @@ export function createVolkCloudClient({ baseUrl, fetchImpl = globalThis.fetch, t
         if (timer) clearTimeout(timer);
       }
     },
+    async lumiRespond(request) {
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+      try {
+        const response = await fetchImpl(`${apiUrl}/v0/lumi/respond`, {
+          method: 'POST',
+          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+          body: JSON.stringify(request),
+          signal: controller?.signal,
+        });
+        let body = null;
+        try { body = await response.json(); } catch { body = null; }
+        if (!response.ok) throw cloudError('VOLK_CLOUD_LUMI_FAILED', { status: response.status });
+        return body;
+      } catch (error) {
+        if (error?.code) throw error;
+        throw cloudError('VOLK_CLOUD_LUMI_UNREACHABLE');
+      } finally {
+        if (timer) clearTimeout(timer);
+      }
+    },
   });
 }
 

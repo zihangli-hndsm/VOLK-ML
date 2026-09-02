@@ -5,12 +5,16 @@ import { canonicalExperimentalControl } from './comparison.js';
 import { deriveWorldSemanticFactors } from './worldSemanticFactors.js';
 import { conditionFingerprintForSession } from './observables.js';
 import { createEvidenceInstance, MAX_EVIDENCE_INSTANCES } from './evidenceProvenance.js';
-export const SEMANTIC_EVENT_VERSION = 1;
-export const SEMANTIC_EVENT_LOG_VERSION = 1;
+export const SEMANTIC_EVENT_VERSION = 2;
+export const SEMANTIC_EVENT_LOG_VERSION = 2;
 export const MAX_SEMANTIC_EVENTS = 100;
 export const SEMANTIC_EVENT_AGGREGATE_VERSION = 1;
 
 export const SEMANTIC_EVENT_TYPES = Object.freeze([
+  'prediction.recorded',
+  'model.fit-completed',
+  'experiment.baseline-captured',
+  'concept.evidenced',
   'experiment.duplicated',
   'experiment.factor-changed',
   'world.intervened',
@@ -253,6 +257,18 @@ function observationSampledEvent(after, action, operations = action?.transaction
   };
 }
 
+function fitCompletedEvents(before, after, action) {
+  if (!['RUN', 'STEP', 'TRAINING_STEP', 'PLAY', 'SCRIPT_STEP', 'SCRIPT_PLAY'].includes(action?.type)) return [];
+  const beforeTraceCount = (before?.traces ?? []).filter((trace) => trace?.type === 'training.completed').length;
+  const afterTraces = (after?.traces ?? []).filter((trace) => trace?.type === 'training.completed');
+  if (afterTraces.length <= beforeTraceCount) return [];
+  const result = after?.experiment?.result?.model;
+  return result && Number.isFinite(Number(result.weight)) ? [{
+    type: 'model.fit-completed', actor: actorFor(action), experimentIds: boundedStrings([activeExperimentId(after)], 1),
+    semanticFactors: ['model.fit'], semanticFactorPaths: ['model.fit'], operationTypes: [action.type], reasonCode: 'fit-committed',
+  }] : [];
+}
+
 function observationConditionFingerprint(after, notice) {
   const comparison = after?.experimentWorkspace?.comparison;
   return hashFingerprint(JSON.stringify({
@@ -360,6 +376,7 @@ export function deriveSemanticEventDrafts({
   } else if (action.type === 'EXECUTE_EXPLORATION') {
     events.push(...executionEvents(before, after, action, controlDescriptors, beforeWorldHistory));
   }
+  events.push(...fitCompletedEvents(before, after, action));
   if (!events.some((event) => event.type === 'world.intervened')) {
     const event = worldEventFromHistory(before, after, action);
     if (event) events.push(event);

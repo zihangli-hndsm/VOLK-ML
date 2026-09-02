@@ -64,6 +64,18 @@ const CATALOG = Object.freeze({
 // to the grounded concept catalog prevents the inquiry matcher and Concept
 // Cards from silently acquiring different definitions for the same concept.
 export const INQUIRY_CONCEPT_METADATA = Object.freeze({
+  SAMPLING_VARIABILITY: Object.freeze({
+    id: 'SAMPLING_VARIABILITY',
+    version: CONCEPT_CATALOG_VERSION,
+    titleKey: 'playground.inquiry.samplingVariability.title',
+    summaryKey: 'playground.inquiry.samplingVariability.summary',
+    definitionKey: 'playground.inquiry.samplingVariability.definition',
+    questionKey: 'episode.one.question',
+    evidenceRequirements: ['same-world-different-sample', 'different-fitted-model'],
+    prerequisites: [],
+    relatedConceptIds: [],
+    nextInquiryActions: ['collect-more-data', 'repeat-many-times', 'noisier-world'],
+  }),
   [CONCEPT_IDS.CONTROLLED_COMPARISON]: Object.freeze({
     ...CATALOG[CONCEPT_IDS.CONTROLLED_COMPARISON],
     summaryKey: CATALOG[CONCEPT_IDS.CONTROLLED_COMPARISON].definitionKey,
