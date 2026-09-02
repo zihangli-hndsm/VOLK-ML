@@ -38,6 +38,7 @@ export function deriveInquiryRuntimeState({ snapshot, semanticEvents, learnerInq
     encounteredConcepts: clone(sessionState.encounteredConcepts ?? []),
     currentDepth: sessionState.currentDepth ?? 'PHENOMENON',
     guidanceHistory: clone(sessionState.guidanceHistory ?? []),
+    reflection: sessionState.reflection ? clone(sessionState.reflection) : null,
     continuations: clone(contract.continuations ?? []),
   };
 }

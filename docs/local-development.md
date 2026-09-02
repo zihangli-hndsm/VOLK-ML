@@ -34,6 +34,47 @@ backend connected” or “Local mode — backend unavailable”. An unavailable
 backend does not block Explore, World manipulation, Experiment operations, or
 deterministic local Evidence.
 
+## Phase A architect iteration workflow
+
+Start the local frontend (and optional disposable backend) with:
+
+```text
+npm run dev:all
+```
+
+Open `http://localhost:5173/?directorDebug=1` in a development build. The
+Explore Home bar is explicitly marked development-only and provides:
+
+- Launch Director — opens the eight-beat presentation. Use Play/Pause,
+  Previous/Next, Restart, or the **Select implemented beat** menu to jump to
+  any beat. The same controls are available with keyboard: Left/Right arrows,
+  Space, and Escape.
+- Start onboarding — opens the Phase A semantic onboarding workspace.
+- Restart onboarding — rebuilds that workspace at deterministic seed `7101`
+  and clears its session events.
+- Enter Episode 1 directly — bypasses Director/onboarding and opens the existing
+  Episode 1 contract, also at seed `7101`.
+
+The Director CTA and Skip intro buttons open onboarding, not Episode 1. In the
+onboarding workspace, use the existing World tools or invitation buttons to
+change Noise/sample size, resample, fit, duplicate, and compare. Learner
+actions emit normal Semantic Event v2 records. Prompts, beat navigation, debug
+shortcuts, and view changes emit none. After any meaningful learner action,
+choose **Explore this question** to promote a clean Episode 1 runtime.
+Promotion is idempotent; selecting it again does not create another runtime.
+
+Useful direct URLs:
+
+```text
+http://localhost:5173/?directorDebug=1   # Director + architect shortcuts
+http://localhost:5173/                  # normal learner Explore Home
+```
+
+Close the playground to return safely. Restart onboarding whenever a clean
+free-exploration state is needed; use direct Episode 1 entry when testing the
+contract independently. These controls are development-only and are not part
+of the production learner surface.
+
 ## Tests
 
 ```text
