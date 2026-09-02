@@ -1,5 +1,6 @@
 # Changelog
 
+
 ## 2026-09-01 — Local-first Cloud development bootstrap hardening
 
 - Corrected production configuration semantics: without `VITE_VOLK_API_URL`, GitHub Pages now stays explicitly local-only and makes zero Cloud health requests; development still defaults to `http://127.0.0.1:8000`, while configured production endpoints remain supported.
@@ -925,3 +926,10 @@
 - Featured Episode 1 in Explore with optional prediction, A/B fit/resample/compare controls, structured changed/held evidence, fitted-line labels, concept relationship, and continuation questions; existing Build, Big Ideas, and project contracts remain compatible.
 - Added bilingual UI copy, inquiry-runtime architecture documentation, and focused end-to-end contract/evidence/policy tests.
 - Acceptance: `npm run check`, `npm run check:episode-1`, `npm run build`, and `git diff --check` passed.
+
+## 2026-09-02 — Episode 1 v0 LUMI policy wiring
+
+- Added the bounded `POST /v0/lumi/respond` client path, semantic request projection, request correlation, strict Cloud response validation, and explicit v0-to-local action adaptation.
+- Episode 1 now invokes the configured Cloud policy boundary while preserving local fallback behavior for offline, timeout, malformed, stale, and unsupported responses; Cloud actions remain suggestion-only and cannot execute experiments.
+- Added deterministic Cloud/runtime regressions for `STAY_SILENT`, scoped evidence highlighting, learner-confirmed proposals, fallback behavior, and truth-preserving non-mutation.
+- Acceptance: full `npm run check`, `npm run check:volk-cloud`, `npm run check:episode-1`, production `npm run build`, and `git diff --check` passed.

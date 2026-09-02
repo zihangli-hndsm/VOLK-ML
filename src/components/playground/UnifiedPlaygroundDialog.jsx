@@ -100,6 +100,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const readySessionRef = useRef(null);
   const activeWorkspaceRef = useRef(null);
   const meaningfulManipulationTrackerRef = useRef(null);
+  const lumiPolicyRequestRef = useRef('');
   if (!meaningfulManipulationTrackerRef.current) meaningfulManipulationTrackerRef.current = createFirstMeaningfulManipulationTracker();
   const openTrackerRef = useRef(null);
   if (!openTrackerRef.current) openTrackerRef.current = createExplorationOpenTracker();
@@ -200,6 +201,18 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     const nextShownConceptIds = nextInquiryConceptExposure(snapshot.learnerInquiry.conceptsPreviouslySurfaced, next.conceptId);
     host.setInquiryPresentationContext?.({ conceptsPreviouslySurfaced: nextShownConceptIds, conceptualDepth: activeDepth });
   }, [snapshot?.learnerInquiry, activeInquiryCard, activeDepth, host]);
+
+  // Episode policy boundary: the Host owns the bounded semantic projection
+  // and chooses Cloud v0 when configured, otherwise its local fallback.
+  useEffect(() => {
+    const runtime = snapshot?.inquiryRuntime;
+    if (!runtime || !host?.decideLumiAction) return;
+    const sequence = snapshot.semanticEvents?.events?.at(-1)?.sequence ?? 0;
+    const key = `${runtime.contractId}:${runtime.stage}:${sequence}`;
+    if (lumiPolicyRequestRef.current === key) return;
+    lumiPolicyRequestRef.current = key;
+    host.decideLumiAction().catch(() => {});
+  }, [snapshot?.inquiryRuntime?.contractId, snapshot?.inquiryRuntime?.stage, snapshot?.semanticEvents?.events?.at(-1)?.sequence, host]);
 
   useEffect(() => {
     if (!open || !snapshot || snapshot.playgroundId !== playgroundId || !readySessionRef.current) return;

@@ -77,7 +77,7 @@ import {
 import { compareExploreEnvironment, createExploreEnvironmentIdentity } from './exploration/exploreWorkspace.js';
 import { getExplorationContract, getOrchestrationContract } from './exploration/inquiryContracts.js';
 import { deriveInquiryRuntimeState } from './exploration/inquiryRuntime.js';
-import { validateLumiAction, decideLumiAction, applyGuidanceBudget, guidanceStageState, staySilent } from './exploration/lumiPolicy.js';
+import { validateLumiAction, decideLumiAction, applyGuidanceBudget, guidanceStageState, staySilent, createCloudLumiPolicy } from './exploration/lumiPolicy.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -497,6 +497,7 @@ export function createPlaygroundHost({
   semanticEventStore = createSemanticEventStore(),
   inquiryTrajectoryStore = createInquiryTrajectoryStore(),
   exploreRecipeId = null,
+  cloudClient = null,
 } = {}) {
   let session = null;
   let exploreEnvironmentIdentity = null;
@@ -513,6 +514,7 @@ export function createPlaygroundHost({
   let conceptExposureIds = [];
   let lastCanonicalConceptSignalIds = [];
   let inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null };
+  const cloudLumiPolicy = createCloudLumiPolicy(cloudClient);
   const learnerAnnotationStore = createLearnerAnnotationStore();
   const learningConversationStore = createLearningConversationStore();
   const subscribers = new Set();
@@ -1180,7 +1182,7 @@ export function createPlaygroundHost({
       return present(derivePlaygroundSnapshot(session));
     },
 
-    async decideLumiAction({ cloudPolicy } = {}) {
+    async decideLumiAction({ cloudPolicy = cloudLumiPolicy } = {}) {
       const snapshot = currentPresentedSnapshot();
       const latestSequence = snapshot?.semanticEvents?.events?.at(-1)?.sequence ?? 0;
       const cooldownRemaining = inquirySessionState.conceptSurfacedSequence

@@ -560,7 +560,7 @@ function Workspace() {
   const getExploreWorkspace = useCallback((key, recipeId = null, datasetProvider = () => null, lifecycle = EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT) => {
     const existing = exploreWorkspacesRef.current.get(key);
     if (existing) return existing;
-    const host = createPlaygroundHost({ getDataset: datasetProvider, exploreRecipeId: recipeId });
+    const host = createPlaygroundHost({ getDataset: datasetProvider, exploreRecipeId: recipeId, cloudClient: volkCloudClient });
     const agent = createPlaygroundAgentApi(host);
     const workspace = {
       key,

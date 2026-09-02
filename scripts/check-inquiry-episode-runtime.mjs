@@ -3,6 +3,7 @@ import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { detectSamplingVariability } from '../src/core/exploration/samplingVariability.js';
 import { validateInquiryContracts } from '../src/core/exploration/inquiryContracts.js';
 import { validateLumiAction, staySilent, decideLumiAction } from '../src/core/exploration/lumiPolicy.js';
+import { createVolkCloudClient } from '../src/services/volkCloud/client.js';
 
 const contracts = validateInquiryContracts();
 assert.equal(contracts.exploration.valid, true);
@@ -35,4 +36,21 @@ const weak = detectSamplingVariability({ snapshot: {
   } },
 } });
 assert.equal(weak.status, 'valid-weak');
+
+let policyCalls = 0;
+const cloudClient = createVolkCloudClient({ baseUrl: 'http://127.0.0.1:8010', fetchImpl: async (url, options) => {
+  policyCalls += 1;
+  assert.equal(url, 'http://127.0.0.1:8010/v0/lumi/respond');
+  const request = JSON.parse(options.body);
+  return { ok: true, status: 200, async json() { return { apiVersion: '0', requestId: request.requestId, action: 'STAY_SILENT', payload: {}, requiresLearnerConfirmation: false }; } };
+} });
+const cloudHost = createPlaygroundHost({ getDataset: () => null, cloudClient });
+await cloudHost.openBigIdeaEntrance({ id: 'episode-1-sampling-variability' });
+const cloudBefore = cloudHost.getState();
+const cloudAction = await cloudHost.decideLumiAction();
+assert.equal(cloudAction.type, 'STAY_SILENT');
+assert.equal(policyCalls, 1);
+const cloudAfter = cloudHost.getState();
+assert.deepEqual(cloudAfter.world, cloudBefore.world);
+assert.deepEqual(cloudAfter.experiment, cloudBefore.experiment);
 console.log('Inquiry Episode 1 runtime checks passed');

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { CLOUD_AVAILABILITY, checkVolkCloudHealth, createVolkCloudClient, createVolkCloudClientForConfig, normalizeVolkApiUrl, resolveVolkCloudConfig } from '../src/services/volkCloud/index.js';
+import { adaptCloudLumiResponse, createCloudLumiPolicy, projectLumiCloudRequest } from '../src/core/exploration/lumiPolicy.js';
 
 assert.equal(normalizeVolkApiUrl('http://localhost:8000///'), 'http://localhost:8000', 'Cloud URL normalization removes only trailing slashes');
 assert.equal(normalizeVolkApiUrl(''), 'http://127.0.0.1:8000', 'Cloud URL falls back to the local development backend');
@@ -31,6 +32,28 @@ const healthy = await checkVolkCloudHealth(healthyClient);
 assert.equal(requestedUrl, 'http://127.0.0.1:8000/health', 'health requests use the configured Cloud client endpoint');
 assert.equal(healthy.status, CLOUD_AVAILABILITY.AVAILABLE, 'a healthy backend is exposed as available');
 assert.equal(healthy.apiVersion, '0');
+
+let lumiRequest = null;
+const lumiClient = createVolkCloudClient({
+  baseUrl: 'http://127.0.0.1:8010',
+  fetchImpl: async (url, options) => {
+    lumiRequest = { url, options };
+    return { ok: true, status: 200, async json() { return { apiVersion: '0', requestId: JSON.parse(options.body).requestId, action: 'STAY_SILENT', payload: {}, requiresLearnerConfirmation: false }; } };
+  },
+});
+const policy = createCloudLumiPolicy(lumiClient);
+const silent = await policy.decide({ inquiryRuntime: { contractId: 'episode-1-sampling-variability', currentQuestion: 'episode.one.question', stage: 'evidence', recentSemanticEvents: [], observations: [] } });
+assert.equal(lumiRequest.url, 'http://127.0.0.1:8010/v0/lumi/respond');
+assert.equal(JSON.parse(lumiRequest.options.body).apiVersion, '0');
+assert.equal(silent.type, 'STAY_SILENT');
+assert.equal(silent.requiresLearnerAcceptance, undefined);
+const projected = projectLumiCloudRequest({ inquiryRuntime: { contractId: 'episode-1-sampling-variability', currentQuestion: 'episode.one.question', stage: 'evidence', observations: [{ id: 'obs-1' }], recentSemanticEvents: [], candidateConcepts: [] } }, 'request-1');
+assert.equal(adaptCloudLumiResponse({ apiVersion: '0', requestId: 'request-1', action: 'HIGHLIGHT_EVIDENCE', payload: { observationIds: ['obs-1'] }, requiresLearnerConfirmation: false }, { requestId: 'request-1', context: { inquiryRuntime: { observations: [{ id: 'obs-1' }] } } }).valid, true);
+assert.equal(adaptCloudLumiResponse({ apiVersion: '0', requestId: 'request-1', action: 'SUGGEST_EXPERIMENT', payload: { operation: 'RESAMPLE_WORLD' }, requiresLearnerConfirmation: true }, { requestId: 'request-1', context: { inquiryRuntime: {} } }).valid, true);
+assert.equal(adaptCloudLumiResponse({ apiVersion: '9', requestId: 'request-1', action: 'STAY_SILENT', payload: {}, requiresLearnerConfirmation: false }, { requestId: 'request-1' }).valid, false);
+assert.equal(adaptCloudLumiResponse({ apiVersion: '0', requestId: 'stale', action: 'STAY_SILENT', payload: {}, requiresLearnerConfirmation: false }, { requestId: 'request-1' }).valid, false);
+assert.equal(adaptCloudLumiResponse({ apiVersion: '0', requestId: 'request-1', action: 'SUGGEST_EXPERIMENT', payload: { operation: 'DELETE_WORLD' }, requiresLearnerConfirmation: true }, { requestId: 'request-1', context: { inquiryRuntime: {} } }).valid, false);
+assert.equal(projected.inquiry.evidence, null);
 
 const unavailable = await checkVolkCloudHealth(createVolkCloudClient({
   baseUrl: 'http://127.0.0.1:65534',
