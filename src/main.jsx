@@ -52,6 +52,7 @@ import PlaygroundDialog from './components/playgrounds/PlaygroundDialog';
 import VisualGlyph from './components/VisualGlyph';
 import AiSettingsDialog from './components/AiSettingsDialog.jsx';
 import ExploreHome from './components/ExploreHome.jsx';
+import DirectorPrototype from './components/DirectorPrototype.jsx';
 import BuildToolbar from './components/BuildToolbar.jsx';
 import { AiProvider, useAiProvider } from './components/ai/AiProviderContext.jsx';
 
@@ -494,6 +495,7 @@ function Workspace() {
   const [compositeOpen, setCompositeOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [playgroundOpen, setPlaygroundOpen] = useState(false);
+  const [directorOpen, setDirectorOpen] = useState(false);
   const [playgroundId, setPlaygroundId] = useState(null);
   const [playgroundInitialTab, setPlaygroundInitialTab] = useState('model');
   const [exploreWorkspaceKey, setExploreWorkspaceKey] = useState(null);
@@ -1482,7 +1484,7 @@ function Workspace() {
     }
   }, [disposeEphemeralExploreWorkspaces, getExploreWorkspace, t]);
 
-  const openBigIdea = useCallback(async (id) => {
+  const openBigIdea = useCallback(async (id, { seed, restart = false } = {}) => {
     const entrance = getBigIdeaEntrance(id);
     if (!entrance) return;
     const key = `big-idea:${id}`;
@@ -1491,7 +1493,9 @@ function Workspace() {
     try {
       let current = null;
       try { current = workspace.host.getState(); } catch { /* first open */ }
-      if (current) {
+      if (current && restart) {
+        await workspace.host.restartBigIdeaEntrance({ id, seed });
+      } else if (current) {
         const expected = createExploreEnvironmentIdentity({
           recipeId: id,
           playgroundId: entrance.startingPoint.playgroundId,
@@ -1509,10 +1513,30 @@ function Workspace() {
           return;
         }
       } else {
-        await workspace.host.openBigIdeaEntrance({ id });
+        await workspace.host.openBigIdeaEntrance({ id, seed });
       }
       setExploreWorkspaceKey(key);
       setPlaygroundInitialTab(entrance.startingPoint.playgroundId === 'data-lab' ? 'data' : 'model');
+      setPlaygroundId(entrance.startingPoint.playgroundId);
+      setPlaygroundOpen(true);
+      setExploreRecovery(null);
+    } catch (error) {
+      setNotice(translateError(error, t));
+    }
+  }, [disposeEphemeralExploreWorkspaces, getExploreWorkspace, t]);
+
+  const openPhaseAHandoff = useCallback(async (id, { seed, restart = false } = {}) => {
+    const entrance = getBigIdeaEntrance(id);
+    if (!entrance) return;
+    const key = `phase-a:${id}`;
+    disposeEphemeralExploreWorkspaces(key);
+    const workspace = getExploreWorkspace(key, id);
+    try {
+      const current = (() => { try { return workspace.host.getState(); } catch { return null; } })();
+      if (current && restart) await workspace.host.restartPhaseAHandoff({ id, seed });
+      else if (!current) await workspace.host.openPhaseAHandoff({ id, seed });
+      setExploreWorkspaceKey(key);
+      setPlaygroundInitialTab('data');
       setPlaygroundId(entrance.startingPoint.playgroundId);
       setPlaygroundOpen(true);
       setExploreRecovery(null);
@@ -1560,7 +1584,7 @@ function Workspace() {
       </nav>
     </header>
 
-    {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} t={t} /> : <>
+    {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenOnboarding={openPhaseAHandoff} onRestartOnboarding={openPhaseAHandoff} t={t} /> : <>
       <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} setRunnerOpen={setRunnerOpen} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
@@ -1600,6 +1624,7 @@ function Workspace() {
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => openExplorePlayground(id)} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
+    <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />
   </div>;
 }
 

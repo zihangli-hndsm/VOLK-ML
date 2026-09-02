@@ -1,10 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { deriveLumiShowcaseStage, lumiTargetKey } from '../../core/ui/lumiInteraction.js';
+import { getInquiryConcept } from '../../core/exploration/learnerInquiry.js';
 import Lumi from './Lumi.jsx';
 
 function targetLabel(target, t) {
   if (target?.type === 'evidence') return t('playground.lumi.target.evidence');
-  if (target?.type === 'concept') return t('playground.lumi.target.concept');
+  if (target?.type === 'concept') {
+    const concept = getInquiryConcept(target.id);
+    return concept?.titleKey ? t(concept.titleKey) : t('playground.lumi.target.concept');
+  }
   return t('playground.lumi.target.experiment');
 }
 
@@ -42,7 +46,7 @@ export default function LumiAttentionRail({ snapshot, attention, activeDepth, il
       {connectionVisible && <span className="lumi-target-connection" aria-hidden="true"><Lumi presence="event" mode="explore" /></span>}
       {attention.conceptTarget && <span data-lumi-target={`concept:${attention.conceptTarget.id}`} className="lumi-target-chip lumi-target-concept rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-xs font-black text-purple-950">
         <span className="block text-[10px] uppercase tracking-wide text-purple-700">{targetLabel(attention.conceptTarget, t)}</span>
-        <span>{t('playground.lumi.attention.conceptHint')}</span>
+        <span>{t('playground.lumi.attention.concreteConceptHint')}</span>
       </span>}
     </div>}
     {attention.interventionTarget && <span data-lumi-target={`experiment:${attention.interventionTarget.id}`} data-lumi-control={attention.interventionControlKey ?? undefined} className="mt-3 block rounded-xl border border-orange-200 bg-orange-50 px-3 py-2 text-xs font-black text-orange-950">

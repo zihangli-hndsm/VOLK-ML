@@ -10,7 +10,7 @@ const SUPPORTING_PRIMITIVES = new Set(['network-graph', 'matrix-grid', 'loss-cur
 // The unified stage only knows primitives. It never imports model math and
 // never special-cases a model; every drawing decision comes from the JSON
 // primitive props in the snapshot.
-export default function PlaygroundStage({ snapshot, motionFrame, t, showSupporting = false }) {
+export default function PlaygroundStage({ snapshot, motionFrame, t, showSupporting = false, showFittedOnly = false }) {
   const visible = useMemo(() => getVisiblePrimitives(snapshot, 'stage'), [snapshot]);
   const reducedMotion = useReducedMotionPreference();
   const motionConfig = resolveMotionConfig(snapshot, reducedMotion);
@@ -21,7 +21,8 @@ export default function PlaygroundStage({ snapshot, motionFrame, t, showSupporti
   const renderedPrimitives = motionFrame
     ? motionFrame.primitives.filter((primitive) => primitive.motionSlot === 'stage')
     : fallbackFrame.primitives;
-  const primaryPrimitives = renderedPrimitives.filter((primitive) => !SUPPORTING_PRIMITIVES.has(primitive.type));
+  const primaryPrimitives = renderedPrimitives.filter((primitive) => !SUPPORTING_PRIMITIVES.has(primitive.type)
+    && !(showFittedOnly && primitive.type === 'regression-line' && Number(snapshot?.scene?.training?.currentStep ?? 0) <= 0));
   const supportingPrimitives = renderedPrimitives.filter((primitive) => SUPPORTING_PRIMITIVES.has(primitive.type));
   const motion = motionFrame?.motion ?? fallbackFrame.motion;
   const scatter = visible.find((primitive) => primitive.type === 'scatter');

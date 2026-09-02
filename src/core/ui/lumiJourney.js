@@ -1,3 +1,5 @@
+import { projectLearnerMilestones } from './journeyProjection.js';
+
 // Session-local LUMI journey projection. Runtime semantic events remain the
 // source of truth; this module only projects bounded learner-facing nodes.
 
@@ -231,5 +233,6 @@ export function deriveLumiJourneyProjection({
     observedEvidenceIds: Object.freeze([...observedIds]),
     connectedConceptIds: Object.freeze([...connectedConceptIds]),
     illuminatedConceptIds: Object.freeze([...illuminated]),
+    milestones: projectLearnerMilestones(events),
   });
 }

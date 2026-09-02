@@ -65,20 +65,21 @@ function JourneyNode({ event, current, snapshot, t, onSelectConcept }) {
 
 function TimelineBody({ journey, snapshot, t, onSelectConcept }) {
   const events = journey?.events ?? [];
+  const milestones = journey?.milestones?.visible ?? [];
   const current = journey?.currentEvent;
   const frontier = journey?.frontierConceptIds ?? [];
+  const meaningfulFrontier = frontier.filter((conceptId) => (
+    snapshot?.inquiryRuntime?.candidateConcepts?.includes(conceptId)
+    || snapshot?.learnerInquiry?.candidates?.some((candidate) => candidate?.conceptId === conceptId)
+  ));
   return <div className="lumi-journey-body">
-    {events.length === 0 && frontier.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500">{t('playground.lumi.journey.empty')}</p>}
-    {events.length > 0 && <div role="list" aria-label={t('playground.lumi.journey.eventsLabel')} className="lumi-journey-events">
-      {events.map((event, index) => <div key={event.id}>
-        <JourneyNode event={event} current={current} snapshot={snapshot} t={t} onSelectConcept={onSelectConcept} />
-        {index < events.length - 1 && <span className="lumi-journey-connector" aria-hidden="true" />}
-      </div>)}
-    </div>}
-    {frontier.length > 0 && <div className="mt-3 border-t border-purple-100 pt-3">
+    {events.length === 0 && meaningfulFrontier.length === 0 && <p className="rounded-xl bg-slate-50 px-3 py-3 text-xs text-slate-500">{t('playground.lumi.journey.empty')}</p>}
+    {milestones.length > 0 && <div role="list" aria-label={t('playground.lumi.journey.milestonesLabel')} className="lumi-journey-events">{milestones.map((milestone, index) => <div key={milestone.id} data-journey-milestone={milestone.kind} className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-2 py-2"><span className="lumi-journey-node-mark" aria-hidden="true" /><p className="min-w-0 flex-1 text-xs font-black">{t(`playground.lumi.journey.milestone.${milestone.kind}`, { count: milestone.count })}</p>{index < milestones.length - 1 && <span className="text-slate-300" aria-hidden="true">→</span>}</div>)}</div>}
+    {events.length > 0 && <details className="mt-2 rounded-xl border border-slate-100 bg-white px-2 py-1"><summary className="cursor-pointer text-[11px] font-bold text-slate-500">{t('playground.lumi.journey.viewFull')}</summary><div role="list" aria-label={t('playground.lumi.journey.eventsLabel')} className="mt-2 lumi-journey-events">{events.map((event, index) => <div key={event.id}><JourneyNode event={event} current={current} snapshot={snapshot} t={t} onSelectConcept={onSelectConcept} />{index < events.length - 1 && <span className="lumi-journey-connector" aria-hidden="true" />}</div>)}</div></details>}
+    {meaningfulFrontier.length > 0 && <div className="mt-3 border-t border-purple-100 pt-3">
       <p className="mb-2 text-[10px] font-black uppercase tracking-wide text-purple-700">{t('playground.lumi.journey.frontier')}</p>
       <div role="list" aria-label={t('playground.lumi.journey.frontierLabel')} className="space-y-2">
-        {frontier.map((conceptId) => {
+        {meaningfulFrontier.map((conceptId) => {
           const concept = getInquiryConcept(conceptId);
           return <button type="button" key={conceptId} data-lumi-journey-frontier={conceptId} onClick={() => onSelectConcept?.(conceptId)} role="listitem" className="lumi-journey-frontier w-full rounded-xl border border-purple-200 bg-purple-50 px-3 py-2 text-left text-xs font-black text-purple-950 focus:outline-none focus:ring-2 focus:ring-purple-500">
             <Lumi presence="ambient" mode="explore" />

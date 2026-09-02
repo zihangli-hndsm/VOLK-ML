@@ -14,7 +14,7 @@ export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTab
         <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
           <h2 className="text-base font-black text-slate-900 sm:text-lg">{phenomenonQuestion}</h2>
           <p className="mt-1 text-xs leading-5 text-slate-500">{t('playground.phenomenon.domainSurfaceHint')}</p>
-          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50"><PlaygroundStage snapshot={snapshot} t={t} /></div>
+          <div className="mt-3 overflow-hidden rounded-xl border border-slate-200 bg-slate-50"><PlaygroundStage snapshot={snapshot} t={t} showFittedOnly={bigIdea?.id === 'episode-1-sampling-variability'} /></div>
         </div>
       </section>;
     }
@@ -33,7 +33,7 @@ export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTab
     </div>
     {activeTab === 'data' ? <div role="tabpanel" className="space-y-4"><WorldBuilder snapshot={snapshot} onDispatch={onDispatch} t={t} highlightedAffordances={highlightedAffordances} /><DataWorkspace snapshot={snapshot} onDispatch={onDispatch} t={t} highlightedAffordances={highlightedAffordances} /></div> : <div role="tabpanel" className="space-y-3">
       {!snapshot.model ? <ModelEmptyState snapshot={snapshot} onDispatch={onDispatch} t={t} /> : <>
-        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><PlaygroundStage snapshot={snapshot} t={t} /></div>
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white"><PlaygroundStage snapshot={snapshot} t={t} showFittedOnly={bigIdea?.id === 'episode-1-sampling-variability'} /></div>
       </>}
     </div>}
   </section>;
