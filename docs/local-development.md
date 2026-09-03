@@ -93,6 +93,10 @@ and local CORS contract, including cleanup. `npm run test:local` runs both
 focused checks. The comprehensive `npm run check` remains the repository-wide
 suite. No production backend is bundled into GitHub Pages.
 
+Episode 0 is frontend-shipped and runs through the same Explore host. Use
+`npm run check:episode-0` to verify its registry, stage derivation, fallback,
+out-of-order progress, and generic-runtime reuse fixture.
+
 ## Future extraction
 
 The disposable `dev/backend/server.py` should be replaced by the private

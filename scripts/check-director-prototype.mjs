@@ -34,8 +34,9 @@ assert.ok(afterAction.semanticEvents.events.some((event) => event.type === 'mode
 await host.promotePhaseAInquiry({ id: DIRECTOR_HANDOFF.target, seed: DIRECTOR_HANDOFF.seed });
 const episode = host.getState();
 assert.equal(episode.bigIdea.phaseA, undefined);
-assert.equal(episode.inquiryRuntime.evidence.status, 'insufficient');
-assert.equal(episode.semanticEvents.events.length, 0);
+assert.equal(episode.bigIdea.episodeId, 'episode-0-world-data-model');
+assert.ok(episode.semanticEvents.events.length > 0, 'Episode 0 promotion preserves onboarding semantic journey');
+assert.ok(episode.inquiryRuntime.baseline?.fit, 'Episode 0 promotion preserves Fit A');
 await host.restartPhaseAHandoff({ id: DIRECTOR_HANDOFF.target, seed: DIRECTOR_HANDOFF.seed });
 assert.equal(host.getState().bigIdea.phaseA, 'onboarding');
 host.close();
@@ -49,7 +50,8 @@ assert.ok(routeEvents.some((event) => event.type === 'experiment.duplicated'));
 assert.ok(routeEvents.some((event) => event.type === 'observation.sampled'));
 await secondRoute.promotePhaseAInquiry({ id: DIRECTOR_HANDOFF.target, seed: DIRECTOR_HANDOFF.seed });
 const cleanSecondEpisode = secondRoute.getState();
-assert.equal(cleanSecondEpisode.semanticEvents.events.length, 0);
+assert.ok(cleanSecondEpisode.semanticEvents.events.length >= 2, 'Episode 0 promotion preserves resample journey');
+assert.equal(cleanSecondEpisode.bigIdea.episodeId, 'episode-0-world-data-model');
 assert.equal(cleanSecondEpisode.inquiryRuntime.contractId, 'episode-1-sampling-variability');
 secondRoute.close();
 

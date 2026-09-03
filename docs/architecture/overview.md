@@ -201,3 +201,8 @@ Generated framework code should also receive focused assertions. When a compiler
 - Framework conversion quality is declared per component and may be `adapted`, `approximate`, or `unsupported`.
 - The optional conversational explanation endpoint must support a chat-completion request shape and browser CORS; no API key is persisted.
 - The Canvas Agent API controls one mounted browser workspace and has no remote authentication or transport. External agent hosts must provide those boundaries themselves.
+
+Frontend-authored Episode contracts and the reusable Orchestration Runtime v1
+are documented in [`inquiry-runtime.md`](inquiry-runtime.md). They project
+learning stages over Explore truth without introducing a second experiment or
+Evidence owner.

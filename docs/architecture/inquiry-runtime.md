@@ -73,3 +73,21 @@ frontiers stay hidden until a deterministic candidate exists. Episode 1's
 fitted regression line appears only after a committed fit, and its A/B overlay
 uses stored fit parameters rather than screen geometry. These are presentation
 projections over authoritative runtime facts and do not mutate the inquiry.
+
+## Orchestration Runtime v1 and Episode 0
+
+Frontend-authored Episodes live in `src/episodes/`. The Episode 0 registry
+entry (`episode-0-world-data-model`) separates its orchestration contract from
+the existing Director presentation contract. `src/core/orchestration/` derives
+the current stage, completed milestones, learner momentum, fallback level,
+semantic target, and continuation options from Exploration snapshots and
+Semantic Event v2 records. It stores only small learner-choice memory such as
+prediction, reflection, guidance dismissals, and continuation selection; World,
+Experiment, fit, comparison, and Evidence remain Exploration-owned.
+
+Episode 1 remains a compatibility alias for the same World/Data/Model inquiry,
+so existing direct entries and API consumers continue to work while Episode 0
+provides the course-opening narrative. Semantic affordance targets such as
+`world.canvas`, `world.noise`, and `experiment.compare` are stable contract IDs
+resolved by the current Explore UI. LUMI receives only the bounded orchestration
+projection and remains suggestion-only.
