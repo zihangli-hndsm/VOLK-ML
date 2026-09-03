@@ -86,6 +86,7 @@ const entries = [
   {
     version: BIG_IDEA_VERSION,
     id: 'episode-1-sampling-variability',
+    episodeId: 'episode-0-world-data-model',
     titleKey: 'episode.one.title',
     summaryKey: 'episode.one.summary',
     questionKey: 'episode.one.question',
@@ -433,6 +434,17 @@ export function listBigIdeaEntrances() {
 }
 
 export function getBigIdeaEntrance(id) {
+  if (id === 'episode-0-world-data-model') {
+    const episodeOne = entries.find((item) => item.id === 'episode-1-sampling-variability');
+    return episodeOne ? clone({
+      ...episodeOne,
+      id: 'episode-0-world-data-model',
+      episodeId: 'episode-0-world-data-model',
+      titleKey: 'episode.zero.title',
+      questionKey: 'episode.zero.question',
+      orchestrationContractId: episodeOne.orchestrationContractId,
+    }) : null;
+  }
   const entry = entries.find((item) => item.id === id);
   return entry ? clone(entry) : null;
 }

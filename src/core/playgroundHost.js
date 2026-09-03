@@ -78,6 +78,8 @@ import { compareExploreEnvironment, createExploreEnvironmentIdentity } from './e
 import { getExplorationContract, getOrchestrationContract } from './exploration/inquiryContracts.js';
 import { deriveInquiryRuntimeState } from './exploration/inquiryRuntime.js';
 import { validateLumiAction, decideLumiAction, applyGuidanceBudget, guidanceStageState, staySilent, createCloudLumiPolicy } from './exploration/lumiPolicy.js';
+import { getEpisode } from '../episodes/registry.js';
+import { deriveOrchestrationState } from './orchestration/runtime.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
 
 const fingerprintOf = (value) => JSON.stringify(value);
@@ -481,6 +483,7 @@ function initializeBigIdeaSession(entrance, { getDataset: readDataset, seed } = 
     ...candidate,
     bigIdea: {
       id: entrance.id,
+      episodeId: entrance.episodeId ?? entrance.id,
       version: entrance.version,
       starterQuestionKey: entrance.questionKey,
       relevantObservableIds: [...entrance.focus.observables],
@@ -527,7 +530,7 @@ export function createPlaygroundHost({
   let presentedConceptIds = [];
   let conceptExposureIds = [];
   let lastCanonicalConceptSignalIds = [];
-  let inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null };
+  let inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null, continuationId: null, interpretations: [] };
   const cloudLumiPolicy = createCloudLumiPolicy(cloudClient);
   const learnerAnnotationStore = createLearnerAnnotationStore();
   const learningConversationStore = createLearningConversationStore();
@@ -541,7 +544,7 @@ export function createPlaygroundHost({
     presentedConceptIds = [];
     conceptExposureIds = [];
     lastCanonicalConceptSignalIds = [];
-    inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null };
+    inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null, continuationId: null, interpretations: [] };
     learnerAnnotationStore.reset();
     learningConversationStore.reset();
     inquiryTrajectoryStore.reset();
@@ -584,10 +587,29 @@ export function createPlaygroundHost({
     const detectedCuriosity = deriveCuriosityState({ semanticEvents, inquiry: learnerInquiry });
     const contract = getOrchestrationContract(snapshot?.bigIdea?.orchestrationContractId);
     const inquiryRuntime = contract ? deriveInquiryRuntimeState({ snapshot, semanticEvents, learnerInquiry, sessionState: inquirySessionState, contract }) : null;
+    const episode = getEpisode(snapshot?.bigIdea?.episodeId)
+      ?? getEpisode(snapshot?.bigIdea?.id)
+      ?? (snapshot?.bigIdea?.id === 'episode-1-sampling-variability' ? getEpisode('episode-0-world-data-model') : null);
+    const orchestrationRuntime = episode?.orchestration
+      ? deriveOrchestrationState({
+        contract: episode.orchestration,
+        snapshot: { ...snapshot, inquiryRuntime },
+        semanticEvents,
+        memory: {
+          prediction: inquirySessionState.prediction,
+          reflection: inquirySessionState.reflection,
+          continuationId: inquirySessionState.continuationId,
+          encounteredConcepts: inquirySessionState.encounteredConcepts,
+          interpretations: inquirySessionState.interpretations,
+          guidance: inquirySessionState.guidanceHistory,
+        },
+      })
+      : null;
     return {
       semanticEvents,
       learnerInquiry,
       inquiryRuntime,
+      orchestrationRuntime,
       curiosity: resolveCuriosityOpportunities({
         curiosity: detectedCuriosity,
         capabilities: deriveCuriosityCapabilities(snapshot),
@@ -597,7 +619,7 @@ export function createPlaygroundHost({
 
   const present = (snapshot) => {
     if (!snapshot) return null;
-    const { semanticEvents, learnerInquiry, inquiryRuntime, curiosity } = deriveInquiryProjection(snapshot);
+    const { semanticEvents, learnerInquiry, inquiryRuntime, orchestrationRuntime, curiosity } = deriveInquiryProjection(snapshot);
     const inquiryTrajectory = deriveInquiryTrajectory({
       ...inquiryTrajectoryStore.snapshot(),
       semanticEvents,
@@ -609,6 +631,7 @@ export function createPlaygroundHost({
       semanticEvents,
       learnerInquiry,
       inquiryRuntime,
+      orchestrationRuntime,
       curiosity,
       learnerAnnotations: projectLearnerAnnotations(learnerAnnotationStore.snapshot(), { activeOnly: false }),
       learningConversation: learningConversationStore.snapshot(),
@@ -892,7 +915,7 @@ export function createPlaygroundHost({
       const transactionActions = ['APPLY_WORLD_TRANSACTION', 'UNDO_WORLD_ACTION', 'REDO_WORLD_ACTION'];
       const viewActions = ['SET_WORKSPACE_VIEW'];
       const experimentOperations = ['DUPLICATE_EXPERIMENT', 'SWITCH_EXPERIMENT', 'SET_COMPARE', 'COMPARE_EXPERIMENTS', 'REPEAT_EXPERIMENT', 'UNDO_EXPERIMENT_ACTION'];
-      const { semanticEvents, learnerInquiry, inquiryRuntime, curiosity } = deriveInquiryProjection(snapshot);
+      const { semanticEvents, learnerInquiry, inquiryRuntime, orchestrationRuntime, curiosity } = deriveInquiryProjection(snapshot);
       const causalInquiry = deriveCausalInquiryState({
         inquiry: learnerInquiry,
         semanticEvents,
@@ -944,6 +967,7 @@ export function createPlaygroundHost({
         observations: snapshot.observations ?? [],
         repeatEvidence: snapshot.repeatEvidence ?? null,
         inquiryRuntime,
+        orchestrationRuntime,
         curiosity,
         experimentWorkspace: snapshot.experimentWorkspace ?? null,
         explorationThreads: snapshot.explorationThreads ?? [],
@@ -965,6 +989,7 @@ export function createPlaygroundHost({
           semanticEvents,
           learnerInquiry,
           inquiryRuntime,
+          orchestrationRuntime,
           curiosity,
           causalInquiry,
           inquiryTrajectory,
@@ -1240,6 +1265,15 @@ export function createPlaygroundHost({
       return present(derivePlaygroundSnapshot(session));
     },
 
+    recordInquiryInterpretation({ text = '', skipped = false } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      if (!skipped && String(text ?? '').trim()) {
+        inquirySessionState.interpretations = [...inquirySessionState.interpretations, { text: String(text).trim().slice(0, 240) }].slice(-12);
+      }
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
     async decideLumiAction({ cloudPolicy = cloudLumiPolicy } = {}) {
       const snapshot = currentPresentedSnapshot();
       const latestSequence = snapshot?.semanticEvents?.events?.at(-1)?.sequence ?? 0;
@@ -1259,8 +1293,13 @@ export function createPlaygroundHost({
     recordInquiryContinuation(continuationId) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const contract = getOrchestrationContract(session.bigIdea?.orchestrationContractId);
-      const candidate = contract?.continuations?.find((item) => item.id === continuationId);
-      if (candidate) inquirySessionState.currentQuestion = candidate.questionKey;
+      const episode = getEpisode(session.bigIdea?.episodeId);
+      const candidates = [...(contract?.continuations ?? []), ...(episode?.orchestration?.continuations ?? [])];
+      const candidate = candidates.find((item) => item.id === continuationId);
+      if (candidate) {
+        inquirySessionState.currentQuestion = candidate.questionKey;
+        inquirySessionState.continuationId = candidate.id;
+      }
       notify();
       return present(derivePlaygroundSnapshot(session));
     },

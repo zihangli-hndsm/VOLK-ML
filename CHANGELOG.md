@@ -954,3 +954,10 @@
 - Kept Explore's primary inquiry loop quiet by moving Concept Map and secondary research surfaces behind disclosure, adding an ambient/expanded LUMI entry, hiding empty frontiers, and preserving a discoverable AI settings boundary.
 - Made Episode 1 fitted lines appear from committed fit state and added a stored Fit A/Fit B comparison overlay with explicit labels.
 - Acceptance: focused journey-projection, Episode 1, Cloud, Director, UI-agent, post-UI7, full repository checks, production build, and diff hygiene checks passed.
+
+## 2026-09-03 — Phase A.6 Orchestration Runtime v1 and Episode 0 registry
+
+- Added the reusable contract-driven Orchestration Runtime v1 with validated stage graphs, named semantic facts, bounded learner-choice memory, momentum/fallback policy, semantic affordance targets, and a bounded LUMI projection.
+- Registered frontend-shipped Episode 0 (`episode-0-world-data-model`) with separated orchestration/presentation content, while retaining Episode 1 direct-entry compatibility and clean Episode 0 aliases.
+- Wired orchestration state into normal host snapshots and `inspectContext()`, connected Phase A onboarding triggers to derived facts, added localized Episode 0 copy, architecture documentation, and synthetic runtime-reuse coverage.
+- Acceptance: focused Episode 0/1/Director checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.

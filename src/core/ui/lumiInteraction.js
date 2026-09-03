@@ -57,7 +57,7 @@ export function deriveLumiInteraction({ snapshot, intervention = null, activeCon
   // historical active-concept fallback for other Big Ideas, but do not turn a
   // candidate-less Episode snapshot into the generic "possible frontier" UI.
   const conceptId = candidate?.conceptId
-    ?? (activeConceptId === 'episode-1-sampling-variability' ? null : activeConceptId);
+    ?? (['episode-1-sampling-variability', 'episode-0-world-data-model'].includes(activeConceptId) ? null : activeConceptId);
   const conceptTarget = createLumiTarget(LUMI_TARGET_TYPES.CONCEPT, conceptId);
   const experimentTarget = createLumiTarget(
     LUMI_TARGET_TYPES.EXPERIMENT,

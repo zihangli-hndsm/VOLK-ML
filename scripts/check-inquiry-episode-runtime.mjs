@@ -35,7 +35,7 @@ assert.equal((await decideLumiAction({ context: { guidance: { cooldownRemaining:
 
 const attentionSource = readFileSync(new URL('../src/core/ui/lumiInteraction.js', import.meta.url), 'utf8');
 const episodeSource = readFileSync(new URL('../src/components/playground/InquiryEpisodePanel.jsx', import.meta.url), 'utf8');
-assert.ok(attentionSource.includes("activeConceptId === 'episode-1-sampling-variability' ? null"), 'Episode 1 does not surface a generic empty frontier');
+assert.ok(attentionSource.includes("'episode-1-sampling-variability', 'episode-0-world-data-model'"), 'Episode 0/1 do not surface a generic empty frontier');
 assert.ok(episodeSource.includes('data-episode-fit-overlay'), 'Episode 1 has a semantic A/B overlay surface');
 
 const weak = detectSamplingVariability({ snapshot: {

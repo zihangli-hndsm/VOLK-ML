@@ -19,6 +19,7 @@ export const DIRECTOR_BEATS = Object.freeze([
 
 export const DIRECTOR_HANDOFF = Object.freeze({
   target: 'episode-1-sampling-variability',
+  episodeId: 'episode-0-world-data-model',
   mode: 'clean-semantic-entry',
   seed: 7101,
 });
