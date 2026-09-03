@@ -52,6 +52,11 @@ Phase A's Director opens a separate onboarding workspace; real learner actions
 use the existing host/event path, and an explicit question trigger promotes a
 clean Episode 1 session. Direct Episode entries remain available.
 
+Explore's attention architecture is described in
+[`inquiry-runtime.md`](./inquiry-runtime.md): bounded semantic milestones and
+Notebook history keep the primary inquiry loop quiet, while LUMI remains an
+ambient, explicit presentation surface over deterministic runtime facts.
+
 The TypeScript prototype under `src/` and old plugin JSON files are not the active runtime. Do not update them as a substitute for changing the files above.
 
 ## Data flow

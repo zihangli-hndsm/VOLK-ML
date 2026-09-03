@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { detectSamplingVariability } from '../src/core/exploration/samplingVariability.js';
 import { validateInquiryContracts } from '../src/core/exploration/inquiryContracts.js';
@@ -19,15 +20,23 @@ await host.recordInquiryPrediction({ expectation: 'different', reasoning: 'A new
 snapshot = await host.dispatch({ type: 'RUN' });
 assert.ok(snapshot.semanticEvents.events.some((event) => event.type === 'model.fit-completed'));
 assert.ok(snapshot.semanticEvents.events.some((event) => event.type === 'experiment.baseline-captured'));
+assert.ok(snapshot.inquiryRuntime.baseline?.fit, 'Fit A is projected into the inquiry runtime immediately');
+assert.ok(snapshot.inquiryRuntime.activeFit, 'active Fit A is available to the learner surface');
 snapshot = await host.dispatch({ type: 'DUPLICATE_EXPERIMENT' });
 snapshot = await host.dispatch({ type: 'RESAMPLE_WORLD' });
 assert.equal(snapshot.worldIdentity.fingerprint, worldFingerprint);
 snapshot = await host.dispatch({ type: 'RUN' });
 snapshot = await host.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: snapshot.experimentWorkspace.comparison.againstExperimentId });
 assert.equal(snapshot.samplingVariability.status, 'evidenced');
+assert.ok(snapshot.inquiryRuntime.baseline?.fit && snapshot.inquiryRuntime.activeFit, 'Fit A and Fit B remain available after comparison');
 assert.ok(snapshot.inquiryRuntime.candidateConcepts.includes('SAMPLING_VARIABILITY'));
 assert.ok(snapshot.semanticEvents.events.some((event) => event.type === 'concept.evidenced'));
 assert.equal((await decideLumiAction({ context: { guidance: { cooldownRemaining: 4 } }, cloudPolicy: { decide: async () => { throw new Error('offline'); } } })).type, 'STAY_SILENT');
+
+const attentionSource = readFileSync(new URL('../src/core/ui/lumiInteraction.js', import.meta.url), 'utf8');
+const episodeSource = readFileSync(new URL('../src/components/playground/InquiryEpisodePanel.jsx', import.meta.url), 'utf8');
+assert.ok(attentionSource.includes("activeConceptId === 'episode-1-sampling-variability' ? null"), 'Episode 1 does not surface a generic empty frontier');
+assert.ok(episodeSource.includes('data-episode-fit-overlay'), 'Episode 1 has a semantic A/B overlay surface');
 
 const weak = detectSamplingVariability({ snapshot: {
   experimentWorkspace: { activeExperimentId: 'b', comparison: { enabled: true, againstExperimentId: 'a', diff: { clarity: 'high', semanticFactorCount: 1 } }, records: {

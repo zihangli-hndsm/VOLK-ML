@@ -50,6 +50,8 @@ assert.deepEqual(observed.primaryTarget, evidence);
 const phenomenon = deriveLumiInteraction({ snapshot: { observations: [{ id: 'observation-1' }] }, activeConceptId: 'distribution-shift' });
 assert.deepEqual(phenomenon.conceptTarget, concept);
 assert.equal(phenomenon.mode, 'explore');
+const emptyEpisode = deriveLumiInteraction({ snapshot: { learnerInquiry: { candidates: [] }, observations: [] }, activeConceptId: 'episode-1-sampling-variability' });
+assert.equal(emptyEpisode.conceptTarget, null, 'Episode 1 hides a generic concept frontier until a candidate exists');
 
 const intervention = deriveLumiInteraction({ snapshot, intervention: { target: experiment, controlKey: 'testShift' } });
 assert.equal(intervention.mode, 'intervene');

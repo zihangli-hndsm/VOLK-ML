@@ -44,11 +44,13 @@ export function projectLumiCloudRequest(context = {}, requestId = `lumi-${Date.n
       ...(runtime.baseline?.experimentId ? { baseline: bounded(runtime.baseline.experimentId, 1000) } : {}),
       ...(runtime.comparison ? { activeComparison: boundedIds(runtime.comparison.experimentIds, 2).join(' vs ') || 'active-comparison' } : {}),
     } } : {}),
-    recentEvents: (runtime.recentSemanticEvents ?? []).slice(-24).map((event) => ({
-      ...(bounded(event?.id) ? { eventId: bounded(event.id) } : {}),
-      eventType: bounded(event?.type) ?? 'semantic.event',
-      ...(bounded(event?.reasonCode) ? { summary: bounded(event.reasonCode) } : {}),
-    })),
+    recentEvents: (runtime.recentSemanticEvents ?? []).slice(-24)
+      .filter((event) => bounded(event?.type))
+      .map((event) => ({
+        ...(bounded(event?.id) ? { eventId: bounded(event.id) } : {}),
+        eventType: bounded(event.type),
+        ...(bounded(event?.reasonCode) ? { summary: bounded(event.reasonCode) } : {}),
+      })),
     evidence: observations.map((observation) => ({
       evidenceId: bounded(observation.id),
       evidenceType: observation.id === 'SAMPLING_VARIABILITY_EVIDENCED' ? 'sampling_variability' : (bounded(observation.id) ?? 'observation'),

@@ -147,29 +147,24 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
       </div>
     </section>
 
+    {agent && <div data-lumi-ambient="true" className="flex items-center gap-2 rounded-2xl border border-cyan-100 bg-cyan-50/60 px-3 py-2"><Lumi presence="ambient" mode={deriveLumiMode({ hasObservation: Boolean(snapshot.observations?.length), hasGuidance: Boolean(snapshot.learnerInquiry?.candidates?.length) })} onClick={onAgentOpen} label={t('playground.lumi.ambient')} /><div className="min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-wide text-cyan-700">{t('playground.lumi.name')}</p><p className="truncate text-xs font-bold text-slate-700">{t('playground.lumi.ambientHint')}</p></div><button type="button" onClick={onAgentOpen} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-cyan-800"><span className="sr-only">{t('playground.agentGuide.entry')}</span>{t('playground.lumi.openGuidance')}</button><button type="button" onClick={openSettings} className="shrink-0 rounded-xl px-2 py-2 text-[11px] font-bold text-cyan-800 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500">{isConfigured ? t('ai.settings') : t('ai.configure')}</button></div>}
     <LumiAttentionRail snapshot={snapshot} attention={attention} activeDepth={activeDepth} illuminatedConceptIds={illuminatedConceptIds} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} t={t} />
     <LumiJourneyTimeline journey={journey} snapshot={snapshot} compact={compact} t={t} onSelectConcept={setSelectedConceptId} />
-    <ConceptMap graph={conceptGraph} snapshot={snapshot} evidenceInstances={evidenceInstances} compact={compact} t={t} onSelectConcept={setSelectedConceptId} onSelectHypothesis={setSelectedHypothesisId} />
-    <InquiryTrail entries={trailEntries} episodes={episodes} compact={compact} t={t} />
-    <LearningPathPanel path={learningPath} compact={compact} t={t} onIlluminate={onIlluminateLearningPath} />
-    <LumiExplorationPlannerPanel plan={lumiPlan} compact={compact} t={t} onAccept={onAcceptLumiSuggestion} />
-    <HypothesisPanel attention={attention} graph={conceptGraph} evidenceInstances={evidenceInstances} hypotheses={hypotheses} compact={compact} t={t} onCreate={onCreateHypothesis} onSetStatus={onSetHypothesisStatus} onAttachEvidence={onAttachHypothesisEvidence} onOpenEvidence={onOpenHypothesisEvidence} onOpenExperiment={() => onDepthChange?.(CONCEPTUAL_DEPTHS.TUNE)} onSelectHypothesis={setSelectedHypothesisId} snapshot={snapshot} capabilities={testDesignCapabilities} testDesigns={testDesigns} testDesignResults={testDesignResults} onSaveTestDesign={onSaveTestDesign} onRunTestDesign={onRunTestDesign} />
-    <CompetingHypothesesPanel hypotheses={hypotheses} groups={hypothesisGroups} plans={discriminationPlans} testDesigns={testDesigns} testDesignResults={testDesignResults} compact={compact} t={t} onCreateGroup={onCreateHypothesisGroup} onCreatePlan={onCreateDiscriminationPlan} />
-    <LearnerInterpretationPanel hypotheses={hypotheses} evidenceInstances={evidenceInstances} testDesigns={testDesigns} interpretations={interpretations} revisions={revisions} compact={compact} t={t} onCreateInterpretation={onCreateInterpretation} onCreateRevision={onCreateRevision} />
-    <CounterfactualExplorationPanel snapshot={snapshot} capabilities={testDesignCapabilities} hypotheses={hypotheses} questions={counterfactualQuestions} testDesigns={testDesigns} compact={compact} t={t} onCreate={onCreateCounterfactual} onConvert={onConvertCounterfactual} conditionFingerprint={counterfactualConditionFingerprint} />
-
-    {agent && <>
-      <div className="flex min-w-0 items-center gap-2">
-        <Lumi presence="ambient" mode={deriveLumiMode({ hasObservation: Boolean(snapshot.observations?.length), hasGuidance: Boolean(snapshot.learnerInquiry?.candidates?.length) })} onClick={onAgentOpen} label={t('playground.lumi.openGuidance')} />
-        <button ref={agentTriggerRef} type="button" aria-expanded={Boolean(agentOpen)} aria-controls="explore-agent-guide" onClick={onAgentOpen} className="ui-motion-interactive min-w-0 flex-1 rounded-2xl border border-violet-200 bg-violet-50/70 px-3 py-2 text-left text-sm font-black text-violet-900 hover:bg-violet-100 focus:outline-none focus:ring-2 focus:ring-violet-500">
-          {t('playground.agentGuide.entry')}
-        </button>
-        <button type="button" onClick={openSettings} className="shrink-0 rounded-xl px-2 py-2 text-[11px] font-bold text-violet-700 hover:bg-violet-50 focus:outline-none focus:ring-2 focus:ring-violet-500">
-          {isConfigured ? t('ai.settings') : t('ai.configure')}
-        </button>
+    <details data-secondary-inquiry-surfaces className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+      <summary className="cursor-pointer list-none rounded-xl px-1 py-1 text-sm font-black text-slate-700 focus:outline-none focus:ring-2 focus:ring-cyan-500">{t('playground.explore.secondarySurfaces')}</summary>
+      <div className="mt-3 space-y-3">
+        <ConceptMap graph={conceptGraph} snapshot={snapshot} evidenceInstances={evidenceInstances} compact t={t} onSelectConcept={setSelectedConceptId} onSelectHypothesis={setSelectedHypothesisId} />
+        <InquiryTrail entries={trailEntries} episodes={episodes} compact t={t} />
+        <LearningPathPanel path={learningPath} compact t={t} onIlluminate={onIlluminateLearningPath} />
+        <LumiExplorationPlannerPanel plan={lumiPlan} compact t={t} onAccept={onAcceptLumiSuggestion} />
+        <HypothesisPanel attention={attention} graph={conceptGraph} evidenceInstances={evidenceInstances} hypotheses={hypotheses} compact={compact} t={t} onCreate={onCreateHypothesis} onSetStatus={onSetHypothesisStatus} onAttachEvidence={onAttachHypothesisEvidence} onOpenEvidence={onOpenHypothesisEvidence} onOpenExperiment={() => onDepthChange?.(CONCEPTUAL_DEPTHS.TUNE)} onSelectHypothesis={setSelectedHypothesisId} snapshot={snapshot} capabilities={testDesignCapabilities} testDesigns={testDesigns} testDesignResults={testDesignResults} onSaveTestDesign={onSaveTestDesign} onRunTestDesign={onRunTestDesign} />
+        <CompetingHypothesesPanel hypotheses={hypotheses} groups={hypothesisGroups} plans={discriminationPlans} testDesigns={testDesigns} testDesignResults={testDesignResults} compact={compact} t={t} onCreateGroup={onCreateHypothesisGroup} onCreatePlan={onCreateDiscriminationPlan} />
+        <LearnerInterpretationPanel hypotheses={hypotheses} evidenceInstances={evidenceInstances} testDesigns={testDesigns} interpretations={interpretations} revisions={revisions} compact={compact} t={t} onCreateInterpretation={onCreateInterpretation} onCreateRevision={onCreateRevision} />
+        <CounterfactualExplorationPanel snapshot={snapshot} capabilities={testDesignCapabilities} hypotheses={hypotheses} questions={counterfactualQuestions} testDesigns={testDesigns} compact={compact} t={t} onCreate={onCreateCounterfactual} onConvert={onConvertCounterfactual} conditionFingerprint={counterfactualConditionFingerprint} />
       </div>
-      {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} initialSelection={initialSelection} onAskAboutSelection={onAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} onIlluminateConcept={onIlluminateConcept} t={t} /></div>}
-    </>}
+    </details>
+
+    {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} initialSelection={initialSelection} onAskAboutSelection={onAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} onIlluminateConcept={onIlluminateConcept} t={t} /></div>}
 
     {activeDepth && <CompactBottomSheet compact={compact} open onClose={() => onDepthChange?.(null)} id={`explore-depth-${activeDepth}`} data-ui-motion="depth-panel" role="dialog" aria-modal="false" aria-labelledby={`explore-depth-title-${activeDepth}`} className={`ui-motion-overlay-enter ${panelClass}`}>
       <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-200 pb-3">

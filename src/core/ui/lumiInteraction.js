@@ -53,7 +53,12 @@ function firstLinkedEvidenceInstance(snapshot, candidate) {
 export function deriveLumiInteraction({ snapshot, intervention = null, activeConceptId = null } = {}) {
   const candidate = snapshot?.learnerInquiry?.candidates?.[0] ?? null;
   const evidenceTarget = createLumiTarget(LUMI_TARGET_TYPES.EVIDENCE, firstLinkedEvidenceInstance(snapshot, candidate));
-  const conceptTarget = createLumiTarget(LUMI_TARGET_TYPES.CONCEPT, activeConceptId ?? candidate?.conceptId);
+  // Episode 1's orchestration id is not itself a surfaced Concept. Keep the
+  // historical active-concept fallback for other Big Ideas, but do not turn a
+  // candidate-less Episode snapshot into the generic "possible frontier" UI.
+  const conceptId = candidate?.conceptId
+    ?? (activeConceptId === 'episode-1-sampling-variability' ? null : activeConceptId);
+  const conceptTarget = createLumiTarget(LUMI_TARGET_TYPES.CONCEPT, conceptId);
   const experimentTarget = createLumiTarget(
     LUMI_TARGET_TYPES.EXPERIMENT,
     snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,

@@ -57,3 +57,19 @@ launches or restarts onboarding and enters Episode 1 directly; Director debug
 includes arbitrary implemented-beat selection. See
 [`docs/local-development.md`](../local-development.md) for the complete
 shortcut and clean-reset sequence.
+
+## Explore attention surfaces
+
+Explore keeps the primary World, Experiment and Evidence loop visible while
+placing the Notebook, Concept Map, hypotheses and other research tools behind
+an explicit secondary-surfaces disclosure. The Notebook is a bounded view of
+the session's semantic trail; `src/core/ui/journeyProjection.js` coalesces
+consecutive human World changes and resamples into compact milestones while
+retaining source event IDs for inspection. Presentation, pointer and camera
+state are never projected as learner milestones.
+
+LUMI has an ambient entry and an explicit expanded surface. Empty concept
+frontiers stay hidden until a deterministic candidate exists. Episode 1's
+fitted regression line appears only after a committed fit, and its A/B overlay
+uses stored fit parameters rather than screen geometry. These are presentation
+projections over authoritative runtime facts and do not mutate the inquiry.

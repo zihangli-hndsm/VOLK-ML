@@ -947,3 +947,10 @@
 - Added idempotent Phase A open/restart/promote host boundaries; promotion resets to a clean Episode 1 session, preserves the direct Episode card path, and keeps prompts/presentation out of semantic Evidence.
 - Added bilingual onboarding and trigger UI plus two-route runtime regressions covering learner events, prompt isolation, singular promotion, clean state, and offline operation.
 - Acceptance: focused Director, Episode 1, and Cloud checks passed; full suite/build were green on the preceding revision, with final journey changes covered by focused checks.
+
+## 2026-09-03 — Phase A.5 Explore attention architecture
+
+- Added a bounded learner-journey projection that coalesces consecutive World changes and resamples while retaining semantic source IDs; Notebook history is capped and full history is opt-in.
+- Kept Explore's primary inquiry loop quiet by moving Concept Map and secondary research surfaces behind disclosure, adding an ambient/expanded LUMI entry, hiding empty frontiers, and preserving a discoverable AI settings boundary.
+- Made Episode 1 fitted lines appear from committed fit state and added a stored Fit A/Fit B comparison overlay with explicit labels.
+- Acceptance: focused journey-projection, Episode 1, Cloud, Director, UI-agent, post-UI7, full repository checks, production build, and diff hygiene checks passed.
