@@ -32,7 +32,10 @@ export function deriveOrchestrationFacts({ snapshot = null, semanticEvents = [],
     sampled: hasType(events, 'observation.sampled'),
     duplicated: hasType(events, 'experiment.duplicated'),
     fitA: Boolean(baselineFit) || fitEvents.length >= 1 || hasType(events, 'experiment.baseline-captured'),
-    fitB: Boolean(activeFit && baselineFit && activeFit.experimentId !== baselineFit.experimentId) || fitEvents.length >= 2,
+    fitB: fitEvents.length >= 2 || Boolean(
+      fitEvents.length >= 1
+      && events.some((event) => event.type === 'observation.sampled' && (event.sequence ?? 0) < (fitEvents.at(-1)?.sequence ?? 0)),
+    ),
     comparison: Boolean(comparison?.enabled && comparison?.againstExperimentId),
     interpretation: Array.isArray(memory.interpretations) && memory.interpretations.length > 0,
     evidence: Boolean(evidence && ['valid-weak', 'evidenced'].includes(evidence.status)),

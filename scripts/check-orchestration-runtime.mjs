@@ -16,6 +16,25 @@ assert.equal(direct.bigIdea.episodeId, 'episode-0-world-data-model');
 assert.equal(direct.orchestrationRuntime.episodeId, 'episode-0-world-data-model');
 host.close();
 
+const continuityHost = createPlaygroundHost({ getDataset: () => null });
+await continuityHost.openPhaseAHandoff({ id: 'episode-1-sampling-variability', seed: 7101 });
+await continuityHost.dispatch({ type: 'RUN', actor: 'human' });
+await continuityHost.dispatch({ type: 'DUPLICATE_EXPERIMENT', actor: 'human' });
+await continuityHost.dispatch({ type: 'RESAMPLE_WORLD', actor: 'human' });
+const promoted = await continuityHost.promotePhaseAInquiry({ id: 'episode-1-sampling-variability' });
+assert.equal(promoted.bigIdea.episodeId, 'episode-0-world-data-model');
+assert.equal(promoted.semanticEvents.events.filter((event) => event.actor === 'human').length, 4);
+assert.equal(promoted.orchestrationRuntime.stageId, 'SECOND_FIT');
+await continuityHost.dispatch({ type: 'RUN', actor: 'human' });
+let continuity = continuityHost.getState();
+continuity = await continuityHost.dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: continuity.experimentWorkspace.comparison.againstExperimentId, actor: 'human' });
+assert.equal(continuity.samplingVariability.status, 'evidenced');
+assert.equal(continuity.orchestrationRuntime.stageId, 'CONTINUATION');
+await continuityHost.recordInquiryContinuation('collect-more-data');
+await continuityHost.recordInquiryReflection({ skipped: true });
+assert.equal(continuityHost.getState().inquiryRuntime.evidence.status, 'evidenced');
+continuityHost.close();
+
 const initial = deriveOrchestrationState({ contract: EPISODE_ZERO_ORCHESTRATION, semanticEvents: { events: [] }, snapshot: {} });
 assert.equal(initial.stageId, 'FOUNDATION');
 assert.equal(initial.fallbackLevel, ORCHESTRATION_FALLBACK_LEVELS.VISUAL_CUE);

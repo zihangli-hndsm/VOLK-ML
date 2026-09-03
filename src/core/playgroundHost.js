@@ -1250,11 +1250,24 @@ export function createPlaygroundHost({
       if (session.bigIdea?.phaseA !== 'onboarding') return present(derivePlaygroundSnapshot(session));
       const entrance = getBigIdeaEntrance(id);
       if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: id });
-      const candidate = initializeBigIdeaSession(entrance, { getDataset, seed });
-      scriptProvenance = 'preset';
-      exploreEnvironmentIdentity = null;
-      resetInquirySessionState();
-      commit(candidate);
+      // Episode 0 owns the handoff. Promote the existing onboarding session
+      // instead of replacing it with a fresh Episode 1 reducer: the World,
+      // experiment branches, semantic events, and bounded inquiry memory are
+      // the learner's truthful journey and must remain intact.
+      session = {
+        ...session,
+        bigIdea: {
+          ...session.bigIdea,
+          id: 'episode-0-world-data-model',
+          episodeId: 'episode-0-world-data-model',
+          starterQuestionKey: 'episode.zero.question',
+          orchestrationContractId: entrance.orchestrationContractId ?? 'episode-1-sampling-variability',
+          phaseA: undefined,
+          phaseATarget: undefined,
+          featured: true,
+        },
+      };
+      notify();
       return present(derivePlaygroundSnapshot(session));
     },
 

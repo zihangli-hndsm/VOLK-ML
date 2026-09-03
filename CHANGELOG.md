@@ -961,3 +961,10 @@
 - Registered frontend-shipped Episode 0 (`episode-0-world-data-model`) with separated orchestration/presentation content, while retaining Episode 1 direct-entry compatibility and clean Episode 0 aliases.
 - Wired orchestration state into normal host snapshots and `inspectContext()`, connected Phase A onboarding triggers to derived facts, added localized Episode 0 copy, architecture documentation, and synthetic runtime-reuse coverage.
 - Acceptance: focused Episode 0/1/Director checks, full `npm run check`, production `npm run build`, and `git diff --check` passed.
+
+## 2026-09-03 — Phase A.6 Episode 0 continuity repair
+
+- Promoted Phase A onboarding in place into the Episode 0 orchestration identity instead of resetting into a separate Episode 1 session.
+- Preserved the learner's World, experiment branches, semantic resample/fit events, Fit A provenance, and inquiry memory through the first-question handoff.
+- Added continuity coverage through Fit B, comparison, deterministic Evidence, continuation, and reflection skip while retaining Episode 1 compatibility.
+- Acceptance: full `npm run check`, focused Episode 0/1/Director checks, production `npm run build`, and `git diff --check` passed.
