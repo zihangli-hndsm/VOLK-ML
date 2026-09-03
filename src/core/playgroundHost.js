@@ -491,6 +491,20 @@ function initializeBigIdeaSession(entrance, { getDataset: readDataset, seed } = 
   };
 }
 
+function initializePhaseAHandoff(entrance, options = {}) {
+  const candidate = initializeBigIdeaSession(entrance, options);
+  return {
+    ...candidate,
+    bigIdea: {
+      ...candidate.bigIdea,
+      phaseA: 'onboarding',
+      phaseATarget: entrance.id,
+      explorationContractId: null,
+      orchestrationContractId: null,
+    },
+  };
+}
+
 export function createPlaygroundHost({
   getDataset,
   scriptGenerator,
@@ -513,7 +527,7 @@ export function createPlaygroundHost({
   let presentedConceptIds = [];
   let conceptExposureIds = [];
   let lastCanonicalConceptSignalIds = [];
-  let inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null };
+  let inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null };
   const cloudLumiPolicy = createCloudLumiPolicy(cloudClient);
   const learnerAnnotationStore = createLearnerAnnotationStore();
   const learningConversationStore = createLearningConversationStore();
@@ -527,7 +541,7 @@ export function createPlaygroundHost({
     presentedConceptIds = [];
     conceptExposureIds = [];
     lastCanonicalConceptSignalIds = [];
-    inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null };
+    inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null };
     learnerAnnotationStore.reset();
     learningConversationStore.reset();
     inquiryTrajectoryStore.reset();
@@ -1178,6 +1192,50 @@ export function createPlaygroundHost({
         type: 'prediction.recorded', actor: SEMANTIC_ACTION_ACTORS.has(actor) ? actor : 'human',
         experimentIds: [session.experiment?.id].filter(Boolean), semanticFactors: [], operationTypes: [], reasonCode: skipped ? 'prediction-skipped' : `prediction-${value}`,
       }]);
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    async openPhaseAHandoff({ id = 'episode-1-sampling-variability', seed } = {}) {
+      if (session) throw playgroundError('PLAYGROUND_ALREADY_OPEN', { playgroundId: session.playgroundId });
+      const entrance = getBigIdeaEntrance(id);
+      if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: id });
+      const candidate = initializePhaseAHandoff(entrance, { getDataset, seed });
+      scriptProvenance = 'preset';
+      exploreEnvironmentIdentity = null;
+      resetInquirySessionState();
+      commit(candidate);
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    async restartPhaseAHandoff({ id = 'episode-1-sampling-variability', seed } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const entrance = getBigIdeaEntrance(id);
+      if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: id });
+      const candidate = initializePhaseAHandoff(entrance, { getDataset, seed });
+      scriptProvenance = 'preset';
+      exploreEnvironmentIdentity = null;
+      resetInquirySessionState();
+      commit(candidate);
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    async promotePhaseAInquiry({ id = 'episode-1-sampling-variability', seed } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      if (session.bigIdea?.phaseA !== 'onboarding') return present(derivePlaygroundSnapshot(session));
+      const entrance = getBigIdeaEntrance(id);
+      if (!entrance) throw playgroundError('PLAYGROUND_NOT_FOUND', { bigIdeaId: id });
+      const candidate = initializeBigIdeaSession(entrance, { getDataset, seed });
+      scriptProvenance = 'preset';
+      exploreEnvironmentIdentity = null;
+      resetInquirySessionState();
+      commit(candidate);
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    recordInquiryReflection({ text = '', skipped = false } = {}) {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      inquirySessionState.reflection = { text: skipped ? '' : String(text ?? '').slice(0, 240), skipped: Boolean(skipped) };
       notify();
       return present(derivePlaygroundSnapshot(session));
     },

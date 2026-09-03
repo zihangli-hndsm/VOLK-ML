@@ -23,3 +23,37 @@ LUMI actions are typed proposals. Proposal-bearing actions carry
 malformed Cloud policy falls back to the deterministic local policy. Guidance
 budgeting, cooldown and dismissal history are presentation context; they
 cannot mutate experiment truth.
+
+## Director handoff
+
+`src/core/director/directorPrototype.js` is a declarative, presentation-only
+eight-beat orientation. Its reducer supports deterministic play, pause, seek,
+reset and replay; it never appends semantic events. The Explore Home CTA and
+Skip action call `openPhaseAHandoff` with the Episode 1 id and seed `7101`,
+opening the bounded onboarding workspace before inquiry promotion. Director
+debug controls are development-only and expose beat/time and handoff identity
+without telemetry.
+
+The Episode panel provides optional, non-blocking onboarding invitations and an
+optional reflection stored in inquiry-session metadata. Reflection text is not
+fed to the deterministic detector and cannot create Evidence or execute an
+experiment.
+
+## Phase A journey
+
+The Director CTA opens a separate `phase-a:*` workspace through
+`openPhaseAHandoff`. This workspace uses the Episode 1 World and model
+capabilities but has no orchestration contract, so its presentation prompts
+cannot create inquiry milestones. Learner buttons and World tools dispatch the
+normal host actions and therefore produce the ordinary Semantic Event v2
+records. Once at least one meaningful learner event exists, the bounded
+question trigger calls `promotePhaseAInquiry`; the host is idempotent and
+reinitializes the clean Episode 1 session exactly once. Direct Big Idea cards
+continue to call `openBigIdeaEntrance` independently of this handoff.
+
+For the executable architect workflow, run `npm run dev:all` and open
+`http://localhost:5173/?directorDebug=1`. The development-only Explore bar
+launches or restarts onboarding and enters Episode 1 directly; Director debug
+includes arbitrary implemented-beat selection. See
+[`docs/local-development.md`](../local-development.md) for the complete
+shortcut and clean-reset sequence.
