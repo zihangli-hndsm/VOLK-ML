@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-04 — Phase A.7 Cycle 3 Agent task wiring
+
+- Wired the validated LUMI `experiment-suggestion` task through the host's
+  existing Experiment Agent planner. Structured intent now affects proposal
+  planning; generic suggestions remain bounded local requests rather than
+  inventing an operation, and execution still requires learner acceptance.
+- Added strict intent filtering and regression coverage for the host task
+  boundary. Full repository checks and build pass.
+
 ## 2026-09-04 — Phase A.7 Cycle 2 acceptance corrections
 
 - Episode 1 now opens on the sparse Draw/brush affordance. LUMI follow-up

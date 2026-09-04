@@ -52,6 +52,7 @@ assert.match(learningAssistantPrompt({ question: 'Why?', context: projected }), 
 const suggestionTask = createExperimentSuggestionTask(answer.tryExperiment);
 assert.deepEqual(suggestionTask, { version: 1, kind: 'experiment-suggestion', prompt: answer.tryExperiment, source: 'lumi', requiresLearnerAcceptance: true }, 'LUMI follow-up becomes a structured Agent task');
 assert.equal(EXPERIMENT_SUGGESTION_TASK_SCHEMA.schema.additionalProperties, false, 'structured Agent task rejects opaque fields');
+assert.equal(createExperimentSuggestionTask({ prompt: 'Try it', intent: 'SET_CONTROL' }).intent, undefined, 'unsupported task intents are not forwarded to the planner');
 
 const conversations = createLearningConversationStore();
 const firstMessage = conversations.append({ role: 'user', text: 'first', at: 0 });

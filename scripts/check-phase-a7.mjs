@@ -8,6 +8,7 @@ const details = read('src/components/playground/ExploreDetailsRegion.jsx');
 const microscope = read('src/components/playground/TrainingMicroscopePanel.jsx');
 const main = read('src/main.jsx');
 const locales = read('src/locales/ui.js');
+const host = read('src/core/playgroundHost.js');
 
 assert.match(workspace, /useState\(phenomenonMode \? 'point' : 'brush'\)/, 'Explore defaults to a sparse draw/brush tool');
 assert.match(workspace, /useState\(2\)/, 'brush density starts low');
@@ -20,6 +21,8 @@ assert.equal(runtimeSource.includes('const illuminateConcept ='), false, 'auto-i
 assert.match(details, /<LumiCompanion/, 'Explore mounts the companion');
 assert.match(details, /data-secondary-inquiry-surfaces/, 'Ideas map remains reachable through the companion');
 assert.match(runtimeSource, /setLearningPathIlluminatedIds\(\(current\) => current\.includes\('sampling-variation'\)/, 'eligible sampling evidence illuminates the canonical learning path');
+assert.match(host, /proposeExploration\(\{ request, intent, worldDesign, design, task \}/, 'host accepts structured Experiment Agent tasks');
+assert.match(host, /taskIntent\s*=\s*structuredTask\?\.intent/, 'structured task intent drives planning');
 assert.match(main, /restoreCandidate && surface === UI_SURFACES\.BUILD/, 'Build owns saved-project resume prompt');
 assert.match(locales, /playground\.lumi\.companion\.ask.*Ask LUMI/, 'Ask LUMI copy is localized');
 assert.match(locales, /playground\.lifecycle\.run.*Fit current data/, 'current-data action copy is localized');
