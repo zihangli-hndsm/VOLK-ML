@@ -1,11 +1,11 @@
 import { projectLearnerAnnotations } from './learnerAnnotations.js';
 
-import { isExplorationIntent } from './explorationIntents.js';
 
 export const LEARNING_ASSISTANT_VERSION = 1;
 export const MAX_LEARNING_TURNS = 8;
 export const LEARNING_MESSAGE_VERSION = 1;
 export const EXPERIMENT_SUGGESTION_TASK_VERSION = 1;
+export const EXPERIMENT_DESIGN_REQUEST_VERSION = 1;
 const MAX_CONTEXT_TEXT = 260;
 const DEPTHS = new Set(['phenomenon', 'tune', 'evidence', 'mechanism', 'representation']);
 
@@ -31,28 +31,93 @@ export const EXPERIMENT_SUGGESTION_TASK_SCHEMA = Object.freeze({
   },
 });
 
+const EXPERIMENT_DESIGN_GOALS = new Set(['class-separation', 'train-test-support-shift', 'observation-noise', 'outlier-sensitivity', 'more-same-distribution-data']);
+
+export const EXPERIMENT_DESIGN_REQUEST_SCHEMA = Object.freeze({
+  name: 'volk_ml_experiment_design_request',
+  schema: {
+    type: 'object', additionalProperties: false,
+    properties: {
+      version: { type: 'integer', const: EXPERIMENT_DESIGN_REQUEST_VERSION },
+      kind: { type: 'string', const: 'experiment-design-request' },
+      source: { type: 'string', const: 'lumi' },
+      learnerQuestion: { type: 'string', minLength: 1, maxLength: 240 },
+      goal: { type: 'string', enum: [...EXPERIMENT_DESIGN_GOALS] },
+      requestedChange: { type: 'object', additionalProperties: false, properties: {
+        factor: { type: 'string', maxLength: 64 }, direction: { type: 'string', maxLength: 32 }, scope: { type: 'string', maxLength: 32 },
+      } },
+      requestedHolds: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 120 } },
+      requestedObservables: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 120 } },
+      experimentDesign: { type: ['object', 'null'] },
+      requiresLearnerAcceptance: { type: 'boolean', const: true },
+    },
+    required: ['version', 'kind', 'source', 'learnerQuestion', 'goal', 'requestedChange', 'requestedHolds', 'requestedObservables', 'requiresLearnerAcceptance'],
+  },
+});
+
 export function createExperimentSuggestionTask(value) {
-  const prompt = bounded(typeof value === 'string' ? value : value?.prompt, 240);
-  if (!prompt) return null;
-  const proposedIntent = typeof value === 'object' && value?.intent ? bounded(value.intent, 64) : suggestedExperimentIntent(prompt);
-  const intent = isExplorationIntent(proposedIntent) ? proposedIntent : null;
+  if (typeof value === 'string') {
+    const prompt = bounded(value, 240);
+    return prompt ? Object.freeze({ version: EXPERIMENT_SUGGESTION_TASK_VERSION, kind: 'experiment-suggestion', prompt, source: 'lumi', requiresLearnerAcceptance: true }) : null;
+  }
+  if (value && typeof value === 'object' && !value.question && !value.learnerQuestion && value.prompt) {
+    const prompt = bounded(value.prompt, 240);
+    return prompt ? Object.freeze({ version: EXPERIMENT_SUGGESTION_TASK_VERSION, kind: 'experiment-suggestion', prompt, source: 'lumi', requiresLearnerAcceptance: true }) : null;
+  }
+  return createExperimentDesignRequest(value);
+}
+
+function designGoal(value, question) {
+  const explicit = value?.goal ?? value?.design?.goal ?? value?.experimentDesign?.goal;
+  if (typeof explicit === 'string' && EXPERIMENT_DESIGN_GOALS.has(explicit)) return explicit;
+  const text = `${question} ${JSON.stringify(value?.requestedChange ?? value?.design?.requestedChange ?? '')}`;
+  if (/sample|data|batch|更多|样本|数据/i.test(text) && /increase|more|add|增加|更多|提高/i.test(text)) return 'more-same-distribution-data';
+  return null;
+}
+
+export function createExperimentDesignRequest(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const learnerQuestion = bounded(value.question ?? value.learnerQuestion ?? value.prompt, 240);
+  const goal = designGoal(value, learnerQuestion ?? '');
+  if (!learnerQuestion || !goal) return null;
+  const rawChange = value.requestedChange ?? value.design?.requestedChange;
+  const requestedChange = rawChange && typeof rawChange === 'object'
+    ? Object.fromEntries(['factor', 'direction', 'scope'].filter((key) => typeof rawChange[key] === 'string').map((key) => [key, rawChange[key].slice(0, 64)]))
+    : goal === 'more-same-distribution-data' ? { factor: 'sample-size', direction: 'increase', scope: 'train' } : {};
+  const requestedHolds = [...new Set((value.requestedHolds ?? value.design?.requestedHolds ?? [
+    'world-generating-process', 'model-configuration', 'learning-configuration', 'evaluation-configuration',
+  ]).filter((item) => typeof item === 'string').map((item) => item.slice(0, 120)))].slice(0, 12);
+  const requestedObservables = [...new Set((value.requestedObservables ?? (goal === 'more-same-distribution-data'
+    ? ['outcome.trainMse', 'outcome.testMse'] : [])).filter((item) => typeof item === 'string').map((item) => item.slice(0, 120)))].slice(0, 12);
+  const design = value.experimentDesign ?? value.design;
   return Object.freeze({
-    version: EXPERIMENT_SUGGESTION_TASK_VERSION,
-    kind: 'experiment-suggestion',
-    prompt,
+    version: EXPERIMENT_DESIGN_REQUEST_VERSION,
+    kind: 'experiment-design-request',
     source: 'lumi',
+    learnerQuestion,
+    goal,
+    requestedChange,
+    requestedHolds,
+    requestedObservables,
+    ...(design?.kind === 'exploration-design' ? { experimentDesign: structuredClone(design) } : {}),
     requiresLearnerAcceptance: true,
-    ...(intent ? { intent } : {}),
   });
 }
 
-function suggestedExperimentIntent(prompt) {
-  if (/noise|噪声/i.test(prompt)) return 'harder-noise';
-  if (/outlier|异常点|离群点/i.test(prompt)) return 'outliers';
-  if (/learning\s*rate|学习率/i.test(prompt)) return /lower|decrease|减少|降低/i.test(prompt) ? 'learning-rate-decrease' : 'learning-rate-increase';
-  if (/\btest\b|\bdistribution\b|\bsupport\b|\brange\b|测试|分布|范围/i.test(prompt)) return 'test-shift';
-  if (/line|slope|point|直线|斜率|点/i.test(prompt)) return 'line-move';
-  return null;
+// Presentation-only projection. Consumers must pass its designRequest through
+// the planner boundary; question/message are never valid Agent task fields.
+export function createLearnerExperimentSuggestion(value) {
+  if (typeof value === 'string') {
+    const question = bounded(value, 240);
+    return question ? Object.freeze({ question, message: question, designRequest: null }) : null;
+  }
+  const designRequest = createExperimentDesignRequest(value);
+  if (!designRequest) return null;
+  return Object.freeze({
+    question: designRequest.learnerQuestion,
+    message: bounded(value?.message, 240),
+    designRequest,
+  });
 }
 
 export const LEARNING_ANSWER_SCHEMA = Object.freeze({
@@ -62,7 +127,22 @@ export const LEARNING_ANSWER_SCHEMA = Object.freeze({
     additionalProperties: false,
     properties: {
       answer: { type: 'string', minLength: 1, maxLength: 1200 },
-      tryExperiment: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },
+      tryExperiment: { anyOf: [
+        { type: 'string', maxLength: 240 },
+        { type: 'object', additionalProperties: false, properties: {
+          question: { type: 'string', minLength: 1, maxLength: 240 },
+          message: { anyOf: [{ type: 'string', maxLength: 240 }, { type: 'null' }] },
+          design: { type: 'object', additionalProperties: false, properties: {
+            goal: { type: 'string', enum: [...EXPERIMENT_DESIGN_GOALS] },
+            requestedChange: { type: 'object', additionalProperties: false, properties: {
+              factor: { type: 'string', maxLength: 64 }, direction: { type: 'string', maxLength: 32 }, scope: { type: 'string', maxLength: 32 },
+            } },
+            requestedHolds: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 120 } },
+            requestedObservables: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 120 } },
+          }, required: ['goal'] },
+        }, required: ['question', 'design'] },
+        { type: 'null' },
+      ] },
       depth: { anyOf: [{ type: 'string', enum: [...DEPTHS] }, { type: 'null' }] },
     },
     required: ['answer', 'tryExperiment', 'depth'],
@@ -115,7 +195,26 @@ export function validateLearningAnswer(value) {
   const answer = bounded(value.answer, 1200);
   const tryExperiment = value.tryExperiment === null || value.tryExperiment === undefined
     ? null
-    : bounded(value.tryExperiment, 240);
+    : typeof value.tryExperiment === 'string'
+      ? bounded(value.tryExperiment, 240)
+      : value.tryExperiment && typeof value.tryExperiment === 'object' && !Array.isArray(value.tryExperiment)
+        ? (() => {
+          const question = bounded(value.tryExperiment.question, 240);
+          const design = value.tryExperiment.design;
+          const goal = design?.goal;
+          if (!question || !design || !EXPERIMENT_DESIGN_GOALS.has(goal)) return null;
+          return {
+            question,
+            message: value.tryExperiment.message === null || value.tryExperiment.message === undefined ? null : bounded(value.tryExperiment.message, 240),
+            design: {
+              goal,
+              ...(design.requestedChange && typeof design.requestedChange === 'object' ? { requestedChange: Object.fromEntries(['factor', 'direction', 'scope'].filter((key) => typeof design.requestedChange[key] === 'string').map((key) => [key, design.requestedChange[key].slice(0, 64)])) } : {}),
+              ...(Array.isArray(design.requestedHolds) ? { requestedHolds: design.requestedHolds.filter((item) => typeof item === 'string').slice(0, 12) } : {}),
+              ...(Array.isArray(design.requestedObservables) ? { requestedObservables: design.requestedObservables.filter((item) => typeof item === 'string').slice(0, 12) } : {}),
+            },
+          };
+        })()
+        : null;
   const depth = value.depth === null || value.depth === undefined ? null : DEPTHS.has(value.depth) ? value.depth : null;
   if (!answer || (value.tryExperiment !== null && value.tryExperiment !== undefined && !tryExperiment)
     || (value.depth !== null && value.depth !== undefined && !depth)) throw new Error('AI_LEARNING_ANSWER_INVALID');
@@ -129,7 +228,7 @@ export function learningAssistantPrompt({ question, context } = {}) {
     'This is an answer-only request. Never execute actions, emit operations, mutate World or Experiment state, or claim to have run an experiment.',
     'Runtime facts and supplied evidence are authoritative. Do not invent metrics, observations, data, or hidden application state.',
     'Explain concepts plainly and distinguish a conceptual explanation from measured runtime evidence.',
-    'If a follow-up experiment would help, put a short learner-facing question in tryExperiment; it is only a suggestion and must be explicitly reviewed by the existing Experiment Agent.',
+    'If a follow-up experiment suggestion would help, return tryExperiment as {question, design:{goal, requestedChange?, requestedHolds?, requestedObservables?}}. The question is learner-facing copy; design is structured semantic intent reviewed by the existing Experiment Agent. Never return confirmation copy as a task.',
     `Bounded learning context: ${JSON.stringify(context)}`,
     `Learner question: ${String(question ?? '').trim().slice(0, 500)}`,
   ].join('\n\n');

@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
-import { createExperimentSuggestionTask, createLearningAssistant } from '../../core/exploration/learningAssistant.js';
+import { createLearningAssistant } from '../../core/exploration/learningAssistant.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import AiDiagnosticPanel from '../ai/AiDiagnosticPanel.jsx';
 import LearningContextDisclosure from './LearningContextDisclosure.jsx';
@@ -92,7 +92,7 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
       <p data-annotation-surface="agent-answer" onMouseUp={captureAnswerSelection} onTouchEnd={captureAnswerSelection} className="mt-1 select-text text-sm leading-6 text-slate-800">{answer.answer}</p>
       {selection?.messageId === answerIdentity && <InstructionalAnnotationActions selection={selection} agent={agent} onAskAbout={askAboutSelection} t={t} />}
       {annotationMessage && <p className="mt-2 text-xs font-bold text-emerald-700">{annotationMessage}</p>}
-      {answer.tryExperiment && <button type="button" onClick={() => onTryExperiment?.(createExperimentSuggestionTask(answer.tryExperiment))} className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('ai.tryInWorld')}</button>}
+      {answer.tryExperiment && <button type="button" onClick={() => onTryExperiment?.(answer.tryExperiment)} className="mt-3 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-black text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('ai.tryInWorld')}</button>}
     </section>}
     <AiDiagnosticPanel diagnostic={diagnostic} trace={gateway.getRequestTrace?.()} t={t} />
   </div>;

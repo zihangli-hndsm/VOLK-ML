@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-09-04 — More-data World/Data comparison semantics correction
+
+- Kept sample-count changes in the observation-process category while retaining
+  the World-generating process as held constant in A/B comparison projection.
+- Added regression assertions for `changed: observationProcess`, unchanged
+  World, and the exact `sampleCount` generator detail. Full checks and build
+  pass.
+
+## 2026-09-04 — Direct more-data design classification correction
+
+- Recognized English and Chinese “more same-distribution training data” wording
+  in the local Design Experiment classifier, including the bounded “some” /
+  “一些” variants. Direct entry now selects the same sample-size goal as the
+  structured Ask LUMI handoff instead of test-support shift.
+- Added exact-language regression coverage and re-ran the complete check/build
+  acceptance suite.
+
+## 2026-09-04 — Ask LUMI experiment-design handoff and World capability split
+
+- Separated learner-facing LUMI suggestions from typed Experiment Agent design
+  requests. The Ask LUMI handoff now opens Design Experiment and plans a real
+  proposal automatically; confirmation copy is rejected at the Agent boundary.
+- Added the bounded `more-same-distribution-data` goal with deterministic
+  sample-count planning, changed/held/observed evidence, and grounded
+  pedagogical observations.
+- Exposed independent World Generator capabilities so local Rings, Moons, XOR,
+  and Checkerboard presets remain usable without a provider while free-form
+  World interpretation can still request one.
+- Added `check-experiment-design-handoff.mjs`, architecture documentation, and
+  localization for the new proposal/evidence surfaces. Focused checks,
+  repository checks, `npm run build`, and `git diff --check` pass.
+
 ## 2026-09-04 — Phase A.7 Cycle 3 Agent task wiring
 
 - Wired the validated LUMI `experiment-suggestion` task through the host's

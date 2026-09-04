@@ -3,7 +3,7 @@ import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, deriveAgentSemanticExplanation, routeAgentAiInterpretation, AGENT_GUIDANCE_OUTCOMES } from '../../core/ui/agentGuide.js';
 import { deriveCleanerComparisonProposal } from '../../core/exploration/cleanerComparison.js';
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
-import { createExperimentSuggestionTask } from '../../core/exploration/learningAssistant.js';
+import { createExperimentDesignRequest, createExperimentSuggestionTask } from '../../core/exploration/learningAssistant.js';
 import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
 import { getWorldRecipePreset, WORLD_RECIPE_PRESET_IDS } from '../../core/exploration/worldRecipePresets.js';
 import { deriveConceptState } from '../../core/ui/lumiSemantics.js';
@@ -34,6 +34,11 @@ const pedagogicalGoalCopy = {
     change: 'playground.pedagogical.goal.outliers.change',
     watch: 'playground.pedagogical.goal.outliers.watch',
   },
+  'more-same-distribution-data': {
+    question: 'playground.pedagogical.goal.moreData.question',
+    change: 'playground.pedagogical.goal.moreData.change',
+    watch: 'playground.pedagogical.goal.moreData.watch',
+  },
 };
 
 function semanticLabel(value, t) {
@@ -63,6 +68,7 @@ function compactProposal(proposal, t) {
       goal: scenario.pedagogicalDesign.goal,
       copy: pedagogicalGoalCopy[scenario.pedagogicalDesign.goal] ?? null,
     } : null,
+    observe: scenario.observe ?? [],
   } : null;
 }
 
@@ -95,7 +101,8 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     availableDepths: [CONCEPTUAL_DEPTHS.EVIDENCE, CONCEPTUAL_DEPTHS.MECHANISM, CONCEPTUAL_DEPTHS.REPRESENTATION]
       .filter((depth) => capabilities[depth]),
   };
-  const worldSupported = Boolean(snapshot.capabilities?.canEditWorld);
+  const worldSupported = Boolean(snapshot.capabilities?.canUseWorldPresets ?? snapshot.capabilities?.canEditWorld);
+  const worldRecipeSupported = Boolean(snapshot.capabilities?.canExecuteWorldRecipe ?? worldSupported);
 
   useEffect(() => {
     if (!initialSelection?.quote) return;
@@ -118,7 +125,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     clearResponse();
   };
 
-  const loadProposal = async (nextOutcome, proposalRequest = request) => {
+  const loadProposal = async (nextOutcome, proposalRequest = request, taskOverride = pendingExperimentTask) => {
     setOutcome(nextOutcome);
     setProposal(null);
     setResult(null);
@@ -128,7 +135,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     try {
       const nextProposal = await agent.proposeExploration({
         request: proposalRequest,
-        ...(pendingExperimentTask ? { task: pendingExperimentTask } : {}),
+        ...(taskOverride ? { task: taskOverride } : {}),
         ...(nextOutcome.intent ? { intent: nextOutcome.intent } : {}),
         ...(nextOutcome.design ? { design: nextOutcome.design } : {}),
         ...(nextOutcome.worldDesign ? { worldDesign: { ...nextOutcome.worldDesign, requestedHolds: nextOutcome.requestedHolds ?? [] } } : {}),
@@ -142,6 +149,15 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       setBusy(false);
     }
   };
+
+  useEffect(() => {
+    if (mode !== 'experiment' || !pendingExperimentTask || busy || proposal) return;
+    loadProposal(
+      { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL },
+      pendingExperimentTask.learnerQuestion,
+      pendingExperimentTask,
+    );
+  }, [mode, pendingExperimentTask, busy, proposal]);
 
   const askExperiment = async () => {
     if (!request.trim() || busy) return;
@@ -181,7 +197,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   };
 
   const askWorld = async () => {
-    if (!request.trim() || busy || !worldSupported || !isConfigured) return;
+    if (!request.trim() || busy || !worldRecipeSupported || !isConfigured) return;
     setBusy(true);
     setError(null);
     setAiDiagnostic(null);
@@ -223,7 +239,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   };
 
   const proposeWorldPreset = (presetId) => {
-    if (!worldSupported || busy) return;
+    if (!worldRecipeSupported || busy) return;
     const recipe = getWorldRecipePreset(presetId);
     if (!recipe) return;
     const presetRequest = t(`playground.agentGuide.worldPreset.${presetId}`);
@@ -331,20 +347,20 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     </div>
     <div className="mt-3 flex gap-2">
       <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitRequest(); }} placeholder={t(mode === 'ask' ? 'ai.askPlaceholder' : mode === 'world' ? 'playground.agentGuide.worldPlaceholder' : 'playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
-      <button type="button" disabled={!request.trim() || busy || (mode === 'world' && (!worldSupported || !isConfigured))} onClick={submitRequest} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t(mode === 'world' ? 'playground.agentGuide.proposeWorld' : 'playground.agentGuide.ask')}</button>
+      <button type="button" disabled={!request.trim() || busy || (mode === 'world' && (!worldRecipeSupported || !isConfigured))} onClick={submitRequest} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t(mode === 'world' ? 'playground.agentGuide.proposeWorld' : 'playground.agentGuide.ask')}</button>
     </div>
-    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(task) => { const safeTask = createExperimentSuggestionTask(task); setPendingExperimentTask(safeTask); selectMode('experiment'); setRequest(safeTask?.prompt ?? ''); }} t={t} />}
+    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(suggestion) => { const safeTask = createExperimentDesignRequest(suggestion) ?? createExperimentSuggestionTask(suggestion); if (!safeTask || safeTask.kind !== 'experiment-design-request') return; setPendingExperimentTask(safeTask); setRequest(safeTask.learnerQuestion); selectMode('experiment'); }} t={t} />}
     <div className={mode === 'ask' ? 'hidden' : ''}>
     {mode === 'world' && <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3">
       <p className="text-xs font-black text-cyan-950">{t('playground.agentGuide.worldPresets')}</p>
       <p className="mt-1 text-xs text-cyan-800">{t('playground.agentGuide.worldIntro')}</p>
       <div className="mt-3 grid grid-cols-2 gap-2">
-        {WORLD_RECIPE_PRESET_IDS.map((presetId) => <button key={presetId} type="button" disabled={!worldSupported || busy} onClick={() => proposeWorldPreset(presetId)} className="rounded-xl border border-cyan-200 bg-white px-3 py-3 text-left text-xs font-black text-cyan-900 shadow-sm hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40">
+        {WORLD_RECIPE_PRESET_IDS.map((presetId) => <button key={presetId} type="button" disabled={!worldRecipeSupported || busy} onClick={() => proposeWorldPreset(presetId)} className="rounded-xl border border-cyan-200 bg-white px-3 py-3 text-left text-xs font-black text-cyan-900 shadow-sm hover:border-cyan-400 disabled:cursor-not-allowed disabled:opacity-40">
           {t(`playground.agentGuide.worldPreset.${presetId}`)}
         </button>)}
       </div>
-      {!worldSupported && <p role="status" className="mt-2 text-xs font-bold text-amber-800">{t('playground.agentGuide.worldUnavailable')}</p>}
-      {worldSupported && !isConfigured && <p className="mt-2 text-xs text-cyan-800">{t('playground.agentGuide.worldNeedsProvider')}</p>}
+      {!worldRecipeSupported && <p role="status" className="mt-2 text-xs font-bold text-amber-800">{t('playground.agentGuide.worldUnavailable')}</p>}
+      {worldRecipeSupported && !isConfigured && <p className="mt-2 text-xs text-cyan-800">{t('playground.agentGuide.worldNeedsProvider')}</p>}
     </div>}
     <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-500">
       <span>{isConfigured ? t('ai.statusConfigured') : t(mode === 'world' ? 'playground.agentGuide.worldPresetLocal' : 'ai.statusLocalFallback')}</span>
@@ -385,6 +401,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         <p className="mt-1">{compactProposal(proposal, t).summary}</p>
         <p className="mt-2"><span className="font-black">{t('playground.explorationAgent.change')}:</span> {compactProposal(proposal, t).change.map((item) => semanticLabel(item, t)).join(', ')}</p>
         <p className="mt-1"><span className="font-black">{t('playground.explorationAgent.hold')}:</span> {compactProposal(proposal, t).hold.join(', ') || t('playground.explorationAgent.none')}</p>
+        <p className="mt-1"><span className="font-black">{t('playground.explorationAgent.observe')}:</span> {compactProposal(proposal, t).observe.map((item) => semanticLabel(item, t)).join(', ') || t('playground.explorationAgent.none')}</p>
       </>}
       <p className="mt-1 text-slate-500">{t('playground.agentGuide.proposalReady')}</p>
       <button type="button" disabled={busy} onClick={runProposal} className="mt-3 rounded-xl bg-emerald-600 px-3 py-2 font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-500">{compactProposal(proposal, t).pedagogical ? t('playground.pedagogical.runExperiment') : t('playground.agentGuide.tryIt')}</button>

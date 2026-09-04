@@ -11,6 +11,7 @@ const SUMMARY_KEYS = Object.freeze({
   [PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT]: 'playground.pedagogical.observation.supportShift',
   [PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE]: 'playground.pedagogical.observation.noise',
   [PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY]: 'playground.pedagogical.observation.outliers',
+  [PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA]: 'playground.pedagogical.observation.moreData',
 });
 
 const FACT_CONTRACTS = Object.freeze({
@@ -20,6 +21,7 @@ const FACT_CONTRACTS = Object.freeze({
   'train-position-changes': { kind: 'intervention', labelKey: 'playground.pedagogical.observation.trainPositionsChanged', numeric: true },
   'test-realization-held': { kind: 'hold', labelKey: 'playground.pedagogical.observation.testHeld', numeric: false },
   'train-outlier-count': { kind: 'intervention', labelKey: 'playground.pedagogical.observation.outlierCount', numeric: true },
+  'train-sample-count': { kind: 'intervention', labelKey: 'playground.explorationAgent.semantic.trainSamples', numeric: true },
   'outcome.trainAccuracy': { kind: 'outcome', labelKey: 'playground.pedagogical.trainOutcome', numeric: true },
   'outcome.testAccuracy': { kind: 'outcome', labelKey: 'playground.pedagogical.testOutcome', numeric: true },
   'outcome.trainMse': { kind: 'outcome', labelKey: 'playground.pedagogical.trainMse', numeric: true },
@@ -182,6 +184,13 @@ export function derivePedagogicalObservation({ design, evidence, verification } 
       after: measurements.outliersAfter,
     }));
     facts.push({ id: 'test-realization-held', kind: 'hold', labelKey: 'playground.pedagogical.observation.testHeld', direction: 'unchanged' });
+  }
+  if (goal === PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA) {
+    const before = (verification.measurements?.trainSamplesBefore);
+    const after = (verification.measurements?.trainSamplesAfter);
+    if (Number.isFinite(before) && Number.isFinite(after)) facts.push(numericFact({
+      id: 'train-sample-count', kind: 'intervention', labelKey: 'playground.explorationAgent.semantic.trainSamples', before, after,
+    }));
   }
 
   const summaryKey = SUMMARY_KEYS[goal] ?? null;

@@ -100,3 +100,22 @@ provides the course-opening narrative. Semantic affordance targets such as
 `world.canvas`, `world.noise`, and `experiment.compare` are stable contract IDs
 resolved by the current Explore UI. LUMI receives only the bounded orchestration
 projection and remains suggestion-only.
+
+## Experiment design handoff
+
+Ask LUMI returns separate learner-facing copy (`question`/`message`) and a
+bounded semantic design request. Only that typed request is accepted by
+`playgroundHost.proposeExploration`; it is converted to a validated pedagogical
+design and then to a deterministic `ScenarioSpec`. Legacy string suggestions
+remain display-only and are rejected at the Agent boundary, so confirmation
+wording can never become an executable task. The
+`more-same-distribution-data` goal changes Train sample count while holding the
+generating process, model, and evaluation configuration, and still requires
+learner approval.
+
+World Generator capabilities are exposed independently as
+`canUseWorldPresets`, `canDesignWorldFromNaturalLanguage`,
+`canExecuteWorldRecipe`, and `canEditCurrentWorldRecipe`. Presets use the local
+recipe validator/materializer and work without a provider; free-form World
+interpretation may require a configured provider. Neither path executes until
+the learner accepts the rendered proposal.

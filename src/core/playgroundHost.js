@@ -38,6 +38,7 @@ import { conditionFingerprintForSession } from './exploration/observables.js';
 import { getBigIdeaEntrance, listBigIdeaEntrances, resolveBigIdeaInitialization } from './exploration/bigIdeaRegistry.js';
 import { evaluateScenarioFidelity } from './exploration/scenarioFidelity.js';
 import { planExplorationIntent, planExplorationRequest, planWorldDesign, planPedagogicalExperiment } from './exploration/scenarioPlanner.js';
+import { createPedagogicalExperimentDesign, PEDAGOGICAL_EXPERIMENT_GOALS } from './exploration/pedagogicalExperiment.js';
 import { derivePedagogicalEvidence } from './exploration/pedagogicalEvidence.js';
 import { derivePedagogicalObservation } from './exploration/pedagogicalObservation.js';
 import { derivePedagogicalNextQuestionCandidates } from './exploration/pedagogicalNextQuestions.js';
@@ -1344,16 +1345,26 @@ export function createPlaygroundHost({
     proposeExploration({ request, intent, worldDesign, design, task } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const context = this.inspectContext();
-      const structuredTask = task?.kind === 'experiment-suggestion'
+      const structuredTask = task?.kind === 'experiment-design-request'
+        && task?.version === 1
         && task?.source === 'lumi'
         && task?.requiresLearnerAcceptance === true
+        && typeof task?.learnerQuestion === 'string'
         ? task
         : null;
-      const taskRequest = structuredTask?.prompt ?? request;
-      const taskIntent = structuredTask?.intent ?? intent;
+      const taskRequest = structuredTask?.learnerQuestion ?? request;
+      const taskIntent = structuredTask?.intent ?? (structuredTask?.goal === 'more-same-distribution-data' ? 'more-data' : intent);
+      const taskDesign = structuredTask?.experimentDesign ?? (structuredTask?.goal
+        ? createPedagogicalExperimentDesign(structuredTask.goal)
+        : null);
+      if (task && !structuredTask && task.kind === 'experiment-suggestion') {
+        return { kind: 'clarification', request: request ?? '', interpretation: { ambiguity: 'legacy-suggestion-not-a-design-request', messageKey: 'playground.explorationAgent.designRequired', choices: [] } };
+      }
       let planned;
       try {
-        planned = design
+        planned = taskDesign
+          ? planPedagogicalExperiment(taskDesign, taskRequest ?? 'Design a controlled experiment', context)
+          : design
           ? planPedagogicalExperiment(design, taskRequest ?? 'Design a controlled experiment', context)
           : worldDesign
           ? planWorldDesign(worldDesign, taskRequest ?? 'Design a deterministic world', context)

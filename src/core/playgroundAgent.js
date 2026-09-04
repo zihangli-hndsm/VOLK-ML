@@ -28,6 +28,10 @@ export {
 } from './exploration/learnerAnnotations.js';
 export {
   LEARNING_ANSWER_SCHEMA,
+  EXPERIMENT_DESIGN_REQUEST_SCHEMA,
+  createExperimentDesignRequest,
+  createLearnerExperimentSuggestion,
+  createExperimentSuggestionTask,
   createLearningAssistant,
   learningAssistantPrompt,
   projectLearningAssistantContext,

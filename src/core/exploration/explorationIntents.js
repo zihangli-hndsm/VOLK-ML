@@ -8,6 +8,7 @@ export const EXPLORATION_INTENTS = Object.freeze({
   LEARNING_RATE_DECREASE: 'learning-rate-decrease',
   DOMAIN_CONTROL: 'domain-control',
   DOMAIN_REPRESENTATION: 'domain-representation',
+  MORE_DATA: 'more-data',
 });
 
 export const EXPLORATION_INTENT_IDS = Object.freeze(Object.values(EXPLORATION_INTENTS));
