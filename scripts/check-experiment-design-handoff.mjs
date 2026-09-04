@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { normalizeGeneratorSpec } from '../src/core/exploration/generator.js';
 import { createExperimentDesignRequest, createExperimentSuggestionTask, createLearnerExperimentSuggestion } from '../src/core/exploration/learningAssistant.js';
+import { classifyAgentGuideRequest, AGENT_GUIDANCE_OUTCOMES } from '../src/core/ui/agentGuide.js';
 
 const spec = normalizeGeneratorSpec({
   relation: { slope: 1.5, bias: 0.5 },
@@ -15,6 +16,14 @@ const designRequest = createExperimentDesignRequest({
   question: 'Increase same-distribution training data and compare train/test error.',
   design: { goal: 'more-same-distribution-data' },
 });
+for (const question of [
+  '增加一些同分布训练数据，其他条件不变，比较训练和测试误差。',
+  'Increase some same-distribution training data, keep everything else fixed, and compare train and test error.',
+]) {
+  const direct = classifyAgentGuideRequest({ request: question, snapshot: { model: { adapterId: 'linear-regression' }, world: { task: 'regression' } } });
+  assert.equal(direct.kind, AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL);
+  assert.equal(direct.design.goal, 'more-same-distribution-data');
+}
 assert.equal(designRequest.kind, 'experiment-design-request');
 assert.equal(designRequest.requestedChange.factor, 'sample-size');
 assert.equal(createLearnerExperimentSuggestion({ question: 'More?', message: 'Try it', design: { goal: 'more-same-distribution-data' } }).designRequest.kind, 'experiment-design-request');

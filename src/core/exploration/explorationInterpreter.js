@@ -1,5 +1,5 @@
 const patterns = Object.freeze([
-  { id: 'more-data', match: /more data|more samples|increase (?:the )?(?:train(?:ing)? )?sample|larger (?:train(?:ing)? )?set|更多(?:同分布)?(?:训练)?(?:数据|样本)|增加(?:同分布)?(?:训练)?(?:数据|样本)/i, summary: 'Increase same-distribution training data while holding the generating process fixed.' },
+  { id: 'more-data', match: /more data|more samples|increase (?:the )?(?:some )?(?:same[- ]distribution )?(?:train(?:ing)? )?(?:samples?|data)|larger (?:train(?:ing)? )?set|更多(?:同分布)?(?:训练)?(?:数据|样本)|增加(?:一些)?(?:同分布)?(?:训练)?(?:数据|样本)/i, summary: 'Increase same-distribution training data while holding the generating process fixed.' },
   { id: 'outliers', match: /outlier|anomal|异常点|离群点/i, summary: 'Test sensitivity to bounded outliers.' },
   { id: 'test-shift', match: /test.{0,30}(different|distribution|shift|support|range)|distribution.{0,30}test|测试.{0,20}(不同|分布|范围)|分布.{0,20}测试/i, summary: 'Test the model where training data has less support.' },
   { id: 'two-distributions', match: /two.{0,20}distribution|different distributions|两个分布|两种分布/i, summary: 'Compare two supported input distributions.' },

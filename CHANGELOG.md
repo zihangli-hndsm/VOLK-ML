@@ -1,5 +1,14 @@
 # Changelog
 
+## 2026-09-04 — Direct more-data design classification correction
+
+- Recognized English and Chinese “more same-distribution training data” wording
+  in the local Design Experiment classifier, including the bounded “some” /
+  “一些” variants. Direct entry now selects the same sample-size goal as the
+  structured Ask LUMI handoff instead of test-support shift.
+- Added exact-language regression coverage and re-ran the complete check/build
+  acceptance suite.
+
 ## 2026-09-04 — Ask LUMI experiment-design handoff and World capability split
 
 - Separated learner-facing LUMI suggestions from typed Experiment Agent design
