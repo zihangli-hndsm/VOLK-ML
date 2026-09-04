@@ -267,10 +267,15 @@ export function compareExperiments(left, right) {
   // Keep the legacy changed[] vocabulary stable for existing callers that
   // treated generator configuration as a World edit. New consumers should use
   // factors/semantic paths, where sampling is explicitly distinct.
+  const generatorChanged = details.worldGenerator?.changed ?? [];
+  const recipeChanged = details.worldRecipe?.changedPaths ?? [];
+  const onlySampleCountChanged = generatorChanged.length > 0
+    ? generatorChanged.every((field) => field === 'sampleCount')
+    : recipeChanged.length > 0 && recipeChanged.every((path) => /\.sampling\.(?:train|test)\.count$/.test(path));
   const legacyChanged = factorChanged.length === 1
     && factorChanged[0] === 'observationProcess'
-    && ((details.worldGenerator?.changed ?? []).some((field) => field !== 'seedPolicy')
-      || (details.worldRecipe?.changedPaths ?? []).length > 0)
+    && ((generatorChanged.some((field) => field !== 'seedPolicy') || recipeChanged.length > 0))
+    && !onlySampleCountChanged
     ? ['world']
     : factorChanged;
   return {

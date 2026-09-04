@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-04 — More-data World/Data comparison semantics correction
+
+- Kept sample-count changes in the observation-process category while retaining
+  the World-generating process as held constant in A/B comparison projection.
+- Added regression assertions for `changed: observationProcess`, unchanged
+  World, and the exact `sampleCount` generator detail. Full checks and build
+  pass.
+
 ## 2026-09-04 — Direct more-data design classification correction
 
 - Recognized English and Chinese “more same-distribution training data” wording

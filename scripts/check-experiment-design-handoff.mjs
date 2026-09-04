@@ -48,6 +48,10 @@ assert.equal(result.pedagogicalObservation.available, true);
 assert.equal(result.snapshot.experimentWorkspace.experiments.length, 2);
 assert.equal(before.experiment.world.generator.spec.train.samples, 12);
 assert.equal(result.snapshot.experimentWorkspace.comparison.enabled, true);
+const comparison = result.snapshot.experimentWorkspace.comparison.diff;
+assert.deepEqual(comparison.changed, ['observationProcess']);
+assert.equal(comparison.unchanged.includes('world'), true);
+assert.deepEqual(comparison.details.worldGenerator.changed, ['sampleCount']);
 
 const legacy = host.proposeExploration({ task: createExperimentSuggestionTask('是否要请 Experiment Agent 审核一个实验？') });
 assert.equal(legacy.kind, 'clarification');
