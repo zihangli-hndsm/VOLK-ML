@@ -1,8 +1,11 @@
 import { projectLearnerAnnotations } from './learnerAnnotations.js';
 
+import { isExplorationIntent } from './explorationIntents.js';
+
 export const LEARNING_ASSISTANT_VERSION = 1;
 export const MAX_LEARNING_TURNS = 8;
 export const LEARNING_MESSAGE_VERSION = 1;
+export const EXPERIMENT_SUGGESTION_TASK_VERSION = 1;
 const MAX_CONTEXT_TEXT = 260;
 const DEPTHS = new Set(['phenomenon', 'tune', 'evidence', 'mechanism', 'representation']);
 
@@ -10,6 +13,47 @@ const bounded = (value, max = MAX_CONTEXT_TEXT) => {
   const text = typeof value === 'string' ? value.trim() : '';
   return text && text.length <= max ? text : null;
 };
+
+export const EXPERIMENT_SUGGESTION_TASK_SCHEMA = Object.freeze({
+  name: 'volk_ml_experiment_suggestion_task',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      version: { type: 'integer', const: EXPERIMENT_SUGGESTION_TASK_VERSION },
+      kind: { type: 'string', const: 'experiment-suggestion' },
+      prompt: { type: 'string', minLength: 1, maxLength: 240 },
+      source: { type: 'string', const: 'lumi' },
+      requiresLearnerAcceptance: { type: 'boolean', const: true },
+      intent: { anyOf: [{ type: 'string', maxLength: 64 }, { type: 'null' }] },
+    },
+    required: ['version', 'kind', 'prompt', 'source', 'requiresLearnerAcceptance'],
+  },
+});
+
+export function createExperimentSuggestionTask(value) {
+  const prompt = bounded(typeof value === 'string' ? value : value?.prompt, 240);
+  if (!prompt) return null;
+  const proposedIntent = typeof value === 'object' && value?.intent ? bounded(value.intent, 64) : suggestedExperimentIntent(prompt);
+  const intent = isExplorationIntent(proposedIntent) ? proposedIntent : null;
+  return Object.freeze({
+    version: EXPERIMENT_SUGGESTION_TASK_VERSION,
+    kind: 'experiment-suggestion',
+    prompt,
+    source: 'lumi',
+    requiresLearnerAcceptance: true,
+    ...(intent ? { intent } : {}),
+  });
+}
+
+function suggestedExperimentIntent(prompt) {
+  if (/noise|噪声/i.test(prompt)) return 'harder-noise';
+  if (/outlier|异常点|离群点/i.test(prompt)) return 'outliers';
+  if (/learning\s*rate|学习率/i.test(prompt)) return /lower|decrease|减少|降低/i.test(prompt) ? 'learning-rate-decrease' : 'learning-rate-increase';
+  if (/\btest\b|\bdistribution\b|\bsupport\b|\brange\b|测试|分布|范围/i.test(prompt)) return 'test-shift';
+  if (/line|slope|point|直线|斜率|点/i.test(prompt)) return 'line-move';
+  return null;
+}
 
 export const LEARNING_ANSWER_SCHEMA = Object.freeze({
   name: 'volk_ml_learning_answer',

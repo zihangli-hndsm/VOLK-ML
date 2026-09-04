@@ -51,7 +51,7 @@ export default function TrainingMicroscopePanel({ snapshot, onDispatch, t, openB
             <span className="block font-black">{point.step}</span><span className="font-mono text-slate-600">{numberText(point.loss)}</span>
           </button>)}
         </div> : <p className="text-sm text-slate-500">{t('playground.trainingMicroscope.noTrace')}</p>}
-        <div className="grid gap-3 md:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <section className="rounded-xl bg-white p-3"><h4 className="text-xs font-black uppercase text-slate-500">{t('playground.trainingMicroscope.before')}</h4><ParameterPair value={selected?.parameters?.before} t={t} /></section>
           <section className="rounded-xl bg-white p-3"><h4 className="text-xs font-black uppercase text-slate-500">{t('playground.trainingMicroscope.gradient')}</h4><ParameterPair value={selected?.gradients} t={t} /></section>
           <section className="rounded-xl bg-white p-3"><h4 className="text-xs font-black uppercase text-slate-500">{t('playground.trainingMicroscope.update')}</h4><p className="text-xs text-slate-500">{t('playground.trainingMicroscope.learningRate')}: <span className="font-mono font-bold">{numberText(selected?.update?.learningRate)}</span></p><ParameterPair value={selected?.update?.delta} t={t} /></section>

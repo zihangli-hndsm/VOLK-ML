@@ -68,11 +68,20 @@ consecutive human World changes and resamples into compact milestones while
 retaining source event IDs for inspection. Presentation, pointer and camera
 state are never projected as learner milestones.
 
-LUMI has an ambient entry and an explicit expanded surface. Empty concept
-frontiers stay hidden until a deterministic candidate exists. Episode 1's
-fitted regression line appears only after a committed fit, and its A/B overlay
-uses stored fit parameters rather than screen geometry. These are presentation
-projections over authoritative runtime facts and do not mutate the inquiry.
+LUMI is a persistent, compact companion owned by Explore presentation. Its
+semantic body states are AMBIENT, LOOK, GUIDE, NOTICE and ILLUMINATE; opening
+the companion only reveals existing guidance, Evidence or Ideas Map surfaces.
+It never executes a proposal. Empty concept frontiers stay hidden until a
+deterministic candidate exists. Episode 1's fitted regression line appears only
+after a committed fit, and its A/B overlay uses stored fit parameters rather
+than screen geometry. These are presentation projections over authoritative
+runtime facts and do not mutate the inquiry.
+
+When `SAMPLING_VARIABILITY` becomes eligible from deterministic Evidence, the
+host performs one idempotent presentation illumination and the companion
+announces the connection. This is an Encountered/Evidenced signal, not a
+mastery claim. Continuation questions are proposals that focus an existing
+surface; selecting one never runs an experiment automatically.
 
 ## Orchestration Runtime v1 and Episode 0
 

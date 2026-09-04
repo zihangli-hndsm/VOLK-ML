@@ -1341,18 +1341,25 @@ export function createPlaygroundHost({
       return present(derivePlaygroundSnapshot(session));
     },
 
-    proposeExploration({ request, intent, worldDesign, design } = {}) {
+    proposeExploration({ request, intent, worldDesign, design, task } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const context = this.inspectContext();
+      const structuredTask = task?.kind === 'experiment-suggestion'
+        && task?.source === 'lumi'
+        && task?.requiresLearnerAcceptance === true
+        ? task
+        : null;
+      const taskRequest = structuredTask?.prompt ?? request;
+      const taskIntent = structuredTask?.intent ?? intent;
       let planned;
       try {
         planned = design
-          ? planPedagogicalExperiment(design, request ?? 'Design a controlled experiment', context)
+          ? planPedagogicalExperiment(design, taskRequest ?? 'Design a controlled experiment', context)
           : worldDesign
-          ? planWorldDesign(worldDesign, request ?? 'Design a deterministic world', context)
-          : intent
-            ? planExplorationIntent(intent, request ?? String(intent), context)
-            : planExplorationRequest(request, context);
+          ? planWorldDesign(worldDesign, taskRequest ?? 'Design a deterministic world', context)
+          : taskIntent
+            ? planExplorationIntent(taskIntent, taskRequest ?? String(taskIntent), context)
+            : planExplorationRequest(taskRequest, context);
       } catch (error) {
         if (design && error?.code === 'EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION') {
           return {

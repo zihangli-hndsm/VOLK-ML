@@ -102,6 +102,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const activeWorkspaceRef = useRef(null);
   const meaningfulManipulationTrackerRef = useRef(null);
   const lumiPolicyRequestRef = useRef('');
+  const autoIlluminationRef = useRef(null);
   if (!meaningfulManipulationTrackerRef.current) meaningfulManipulationTrackerRef.current = createFirstMeaningfulManipulationTracker();
   const openTrackerRef = useRef(null);
   if (!openTrackerRef.current) openTrackerRef.current = createExplorationOpenTracker();
@@ -154,6 +155,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       setLearningPathIlluminatedIds([]);
       setLumiIntervention(null);
       setInterventionPulseKey(null);
+      autoIlluminationRef.current = null;
       setPresentationMode(false);
     }
     setActiveTab(initialTab);
@@ -214,6 +216,24 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     lumiPolicyRequestRef.current = key;
     host.decideLumiAction().catch(() => {});
   }, [snapshot?.inquiryRuntime?.contractId, snapshot?.inquiryRuntime?.stage, snapshot?.semanticEvents?.events?.at(-1)?.sequence, host]);
+
+  // Concept eligibility is deterministic runtime evidence. The companion may
+  // illuminate that eligible concept once as a presentation notification;
+  // this never appends semantic events or changes experiment truth.
+  useEffect(() => {
+    const runtime = snapshot?.inquiryRuntime;
+    const evidenceId = runtime?.evidence?.evidenceId
+      ?? runtime?.evidence?.evidence?.id
+      ?? (runtime?.evidence?.structure?.experimentIds?.length ? `${runtime.evidence.detectorId}:${runtime.evidence.structure.experimentIds.join(':')}` : null);
+    const eligible = runtime?.evidence?.status === 'evidenced'
+      && (runtime?.candidateConcepts ?? []).includes('SAMPLING_VARIABILITY');
+    if (!eligible || !evidenceId || autoIlluminationRef.current === evidenceId) return;
+    autoIlluminationRef.current = evidenceId;
+    illuminateConcept('SAMPLING_VARIABILITY');
+    setLearningPathIlluminatedIds((current) => current.includes('sampling-variation') ? current : [...current, 'sampling-variation'].slice(-8));
+    const target = createLumiTarget('concept', 'SAMPLING_VARIABILITY');
+    if (target) setLumiIntervention((current) => ({ target, sequence: (current?.sequence ?? 0) + 1 }));
+  }, [snapshot?.inquiryRuntime, illuminateConcept]);
 
   useEffect(() => {
     if (!open || !snapshot || snapshot.playgroundId !== playgroundId || !readySessionRef.current) return;
@@ -298,7 +318,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     });
   };
 
-  const illuminateConcept = (conceptId) => {
+  function illuminateConcept(conceptId) {
     if (!conceptId) return;
     setIlluminatedConceptIds((current) => {
       if (current.includes(conceptId)) return current;
@@ -310,7 +330,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       timestamp: Date.now(),
       afterSequence: snapshot?.semanticEvents?.events?.at(-1)?.sequence ?? 0,
     }));
-  };
+  }
 
   const createLearnerHypothesis = ({ statement, linkedConceptIds = [], prediction = null } = {}) => {
     const id = `hypothesis-${sessionSequenceRef.current}-${hypothesisSession.hypotheses.length + 1}`;

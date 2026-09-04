@@ -1,5 +1,51 @@
 # Changelog
 
+## 2026-09-04 — Phase A.7 Cycle 3 Agent task wiring
+
+- Wired the validated LUMI `experiment-suggestion` task through the host's
+  existing Experiment Agent planner. Structured intent now affects proposal
+  planning; generic suggestions remain bounded local requests rather than
+  inventing an operation, and execution still requires learner acceptance.
+- Added strict intent filtering and regression coverage for the host task
+  boundary. Full repository checks and build pass.
+
+## 2026-09-04 — Phase A.7 Cycle 2 acceptance corrections
+
+- Episode 1 now opens on the sparse Draw/brush affordance. LUMI follow-up
+  questions cross a validated structured `experiment-suggestion` task boundary
+  before reaching the existing Experiment Agent, with learner confirmation
+  still required for execution.
+- Deterministic Sampling Variability eligibility now illuminates the canonical
+  `sampling-variation` Ideas Map node exactly once alongside the concept
+  companion notification.
+- Added focused regression coverage for defaults, task schema, canonical map
+  illumination, and safe initialization. Full repository checks and build pass.
+
+## 2026-09-04 — Phase A.7 render-blocker correction
+
+- Replaced the auto-illumination callback's late `const` initialization with a
+  hoisted function boundary, so a fresh Explore render no longer throws before
+  the LUMI companion or Episode surface mounts.
+- Added a focused Phase A.7 regression assertion covering the initialization
+  boundary. Full repository checks and production build pass.
+
+## 2026-09-04 — Phase A.7 LUMI companion and Explore interaction cleanup
+
+- Added a persistent semantic LUMI companion for Explore with localized body
+  states, Ask LUMI, Evidence, Ideas Map, continuation and Cloud-optional local
+  fallback entry points. Eligible Sampling Variability now receives one
+  deterministic, presentation-only illumination.
+- Open Explore with a low-density brush, keep saved Build-project resume in
+  Build, stack Training Microscope parameters in narrow panels, show the
+  World → sampling → Data → learning → Model relationship, and rename the
+  current-data action to “Fit current data”.
+- Added `scripts/check-phase-a7.mjs` and updated architecture/local-development
+  notes. Existing semantic runtime, Experiment Agent proposal confirmation,
+  World/Experiment truth and Cloud boundary remain unchanged.
+- Acceptance: focused Episode 0/1, UI Agent, journey, Phase A.7, full `npm run
+  check`, production build, and diff validation passed. Browser connected/offline
+  E2E was not run in this environment.
+
 
 ## 2026-09-01 — Local-first Cloud development bootstrap hardening
 

@@ -3,6 +3,7 @@ import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, deriveAgentSemanticExplanation, routeAgentAiInterpretation, AGENT_GUIDANCE_OUTCOMES } from '../../core/ui/agentGuide.js';
 import { deriveCleanerComparisonProposal } from '../../core/exploration/cleanerComparison.js';
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
+import { createExperimentSuggestionTask } from '../../core/exploration/learningAssistant.js';
 import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
 import { getWorldRecipePreset, WORLD_RECIPE_PRESET_IDS } from '../../core/exploration/worldRecipePresets.js';
 import { deriveConceptState } from '../../core/ui/lumiSemantics.js';
@@ -82,6 +83,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   const [askSubmitToken, setAskSubmitToken] = useState(0);
   const [cleanerOptions, setCleanerOptions] = useState(null);
   const [cleanerUnavailable, setCleanerUnavailable] = useState(false);
+  const [pendingExperimentTask, setPendingExperimentTask] = useState(null);
   const comparison = deriveAgentComparisonExplanation(snapshot);
   const cleanerCandidate = deriveCleanerComparisonProposal({ snapshot, comparison: snapshot.experimentWorkspace?.comparison });
   const semanticExplanation = outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION
@@ -126,11 +128,13 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     try {
       const nextProposal = await agent.proposeExploration({
         request: proposalRequest,
+        ...(pendingExperimentTask ? { task: pendingExperimentTask } : {}),
         ...(nextOutcome.intent ? { intent: nextOutcome.intent } : {}),
         ...(nextOutcome.design ? { design: nextOutcome.design } : {}),
         ...(nextOutcome.worldDesign ? { worldDesign: { ...nextOutcome.worldDesign, requestedHolds: nextOutcome.requestedHolds ?? [] } } : {}),
       });
       setProposal(nextProposal);
+      setPendingExperimentTask(null);
       if (nextProposal?.kind === 'clarification') setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: nextProposal.interpretation?.messageKey ?? nextProposal.interpretation?.ambiguity ?? nextProposal.reason ?? 'world-composer-unavailable' });
     } catch (caught) {
       setError(caught);
@@ -329,7 +333,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitRequest(); }} placeholder={t(mode === 'ask' ? 'ai.askPlaceholder' : mode === 'world' ? 'playground.agentGuide.worldPlaceholder' : 'playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
       <button type="button" disabled={!request.trim() || busy || (mode === 'world' && (!worldSupported || !isConfigured))} onClick={submitRequest} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t(mode === 'world' ? 'playground.agentGuide.proposeWorld' : 'playground.agentGuide.ask')}</button>
     </div>
-    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(text) => { selectMode('experiment'); setRequest(text); }} t={t} />}
+    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(task) => { const safeTask = createExperimentSuggestionTask(task); setPendingExperimentTask(safeTask); selectMode('experiment'); setRequest(safeTask?.prompt ?? ''); }} t={t} />}
     <div className={mode === 'ask' ? 'hidden' : ''}>
     {mode === 'world' && <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3">
       <p className="text-xs font-black text-cyan-950">{t('playground.agentGuide.worldPresets')}</p>

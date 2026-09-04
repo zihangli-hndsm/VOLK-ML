@@ -71,6 +71,9 @@
 @keyframes lumi-frontier { 0%, 100% { opacity: .45; transform: scale(.94) rotate(-4deg); } 50% { opacity: .9; transform: scale(1.06) rotate(4deg); } }
 
 .lumi-attention-rail { transition: border-color 180ms ease, box-shadow 180ms ease; }
+.lumi-companion { max-height: min(24rem, calc(100dvh - 1.5rem)); overflow-y: auto; }
+.lumi-companion .lumi-ambient { width: 2.8rem; height: 2.6rem; flex: 0 0 auto; }
+[data-lumi-body-state="ILLUMINATE"] { border-color: color-mix(in srgb, var(--volk-concept-illuminated) 48%, white); box-shadow: 0 0 0 3px color-mix(in srgb, var(--volk-concept-illuminated) 16%, transparent), 0 1rem 2rem rgb(15 23 42 / 12%); }
 .lumi-attention-path { display: flex; min-width: 0; align-items: center; gap: .5rem; }
 .lumi-target-chip { position: relative; min-width: 0; flex: 1 1 0; }
 .lumi-target-connection { display: grid; min-width: 3rem; place-items: center; color: var(--lumi-glow); }
