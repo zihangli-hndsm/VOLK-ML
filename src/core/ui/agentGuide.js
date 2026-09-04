@@ -15,12 +15,14 @@ const NAVIGATION_RE = /where can i|how do i|show me|open .*settings|model settin
 const EXPERIMENT_RE = /what happens (if|when)|what if|try (a|an|the)?\s*|could we see whether|move .*class.*closer|less separated|increase|decrease|lower|raise|larger|smaller|make .* (more|less)|add .*noise|add .*outlier|如果.*(增加|减少|提高|降低|靠近|接近)|尝试|增加|减少|提高|降低|添加|靠近|接近|噪声|异常点/i;
 const COMPARISON_RE = /clean comparison|what caused|comparison|compare|clarity|干净.*比较|什么导致|比较|对照|清晰/i;
 const CLASS_SEPARATION_RE = /overlap|classes?\s+(?:move|are)\s+closer|move .*class.*closer|bring .*class.*closer|reduce class separation|less separated|toward the other class|重叠|类别.*(靠近|接近)|类.*(靠近|接近)|减小类别间距|类别间距.*变小/i;
+const MORE_DATA_RE = /more data|more samples|increase (?:the )?(?:train(?:ing)? )?sample|larger (?:train(?:ing)? )?set|additional same[- ]distribution|更多(?:同分布)?(?:训练)?(?:数据|样本)|增加(?:同分布)?(?:训练)?(?:数据|样本)/i;
 
 function has(snapshot, key) {
   return snapshot?.[key] !== undefined && snapshot?.[key] !== null;
 }
 
 function proposalIntent(text) {
+  if (MORE_DATA_RE.test(text)) return 'more-data';
   if (/hidden\s*units|hidden layer|network width|隐藏层|隐层|隐藏单元/i.test(text)
     && /compare|比较|对比|区别|和|与/i.test(text)) return 'hidden-units-compare';
   if (/learning\s*rate|learning-rate|学习率/i.test(text)) {
@@ -50,6 +52,7 @@ function localPedagogicalDesign(text, snapshot) {
     && /what happens|what if|why|does|增加|添加|敏感/i.test(text)) {
     return createPedagogicalExperimentDesign(PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY);
   }
+  if (MORE_DATA_RE.test(text)) return createPedagogicalExperimentDesign(PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA);
   return null;
 }
 

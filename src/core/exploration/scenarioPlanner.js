@@ -160,6 +160,24 @@ function intentSpec(intent, request, context) {
     hold: ['model-configuration', 'learning-configuration', 'latent-relation'],
     observe: ['world.generatorNoise', 'model.slope', 'outcome.trainMse', 'outcome.testMse'],
   };
+  if (intent === EXPLORATION_INTENTS.MORE_DATA) {
+    if (!context.world?.generator?.spec) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'generator-required' });
+    const current = Number(context.world.generator.spec.train?.samples ?? 0);
+    const capability = requireGeneratorCapability(context, 'train.samples');
+    const next = Math.min(Number(capability.max ?? 500), current + Math.max(4, Math.ceil(current * 0.25)));
+    if (next <= current) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'train-sample-count-unavailable' });
+    return {
+      ...common,
+      intendedFactors: ['world', 'observationProcess'],
+      interpretation: { summary: 'Increase same-distribution training data while holding the generating process and model configuration fixed.', ambiguity: null },
+      change: [
+        { semanticTarget: 'train-sample-count', operation: worldOperationType(context, 'world.generator.parameter'), parameters: { path: 'train.samples', value: next } },
+        { semanticTarget: 'generator-realization', operation: worldOperationType(context, 'world.generator.regenerate'), parameters: { seed: context.world.randomness?.seed ?? 42 } },
+      ],
+      hold: ['world-generating-process', 'latent-relation', 'noise', 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
+      observe: ['outcome.trainMse', 'outcome.testMse', 'model.slope', 'model.bias'],
+    };
+  }
   if (intent === EXPLORATION_INTENTS.LEARNING_RATE_INCREASE || intent === EXPLORATION_INTENTS.LEARNING_RATE_DECREASE) return {
     ...common,
     interpretation: { summary: 'Change only the learning rate while holding the World and model configuration fixed.', ambiguity: null },
@@ -329,6 +347,19 @@ function recipeForPedagogicalDesign(design, context) {
       changes: [{ type: 'SET_OUTLIERS', split: 'train', fraction: Number(Math.min(0.25, current + 0.03).toFixed(6)), placement: 'radial', distance: 2 }],
     };
   }
+  if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA) {
+    const trainGroups = groups.filter((group) => Number(group.sampling?.train?.count ?? 0) > 0);
+    if (!trainGroups.length) throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION', { reason: 'train-sample-count-unavailable' });
+    return {
+      version: 1,
+      changes: trainGroups.map((group) => ({
+        type: 'SET_GROUP_SAMPLE_COUNT',
+        groupId: group.id,
+        split: 'train',
+        count: Math.min(500, Math.max(Number(group.sampling.train.count) + Math.max(4, Math.ceil(Number(group.sampling.train.count) * 0.25)), Number(group.sampling.train.count) + 1)),
+      })),
+    };
+  }
   throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_REQUEST', { goal: design.goal });
 }
 
@@ -384,6 +415,7 @@ export function planPedagogicalExperiment(designInput, request, context) {
       'learning-configuration',
       'evaluation-configuration',
       'randomness-policy',
+      ...(design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA ? ['world-generating-process'] : []),
       ...(design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT ? ['train-world'] : []),
     ];
     return { kind: 'proposal', scenario: validateScenarioSpec(draft, context), interpretation: { kind: 'exploration-design', design } };
@@ -393,6 +425,7 @@ export function planPedagogicalExperiment(designInput, request, context) {
     [PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT]: EXPLORATION_INTENTS.TEST_SHIFT,
     [PEDAGOGICAL_EXPERIMENT_GOALS.OBSERVATION_NOISE]: EXPLORATION_INTENTS.HARDER_NOISE,
     [PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY]: EXPLORATION_INTENTS.OUTLIERS,
+    [PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA]: EXPLORATION_INTENTS.MORE_DATA,
   }[design.goal];
   if (!legacyIntent) {
     return {

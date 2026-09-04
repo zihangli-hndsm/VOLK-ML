@@ -230,7 +230,7 @@ function promptFor({ request, context }) {
     'Explanation shape: {"kind":"explanation","topic":"...","explanation":"short conceptual explanation"}',
     'Navigation shape: {"kind":"navigation","depth":"one available depth"}',
     'Experiment shape: {"kind":"experiment","intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
-    'Pedagogical experiment shape: {"kind":"experiment","experimentDesign":{"version":1,"kind":"exploration-design","goal":"class-separation|train-test-support-shift|observation-noise|outlier-sensitivity","intervention":"...","evidence":"...","prediction":null},"intent":null,"ambiguity":null}',
+    'Pedagogical experiment shape: {"kind":"experiment","experimentDesign":{"version":1,"kind":"exploration-design","goal":"class-separation|train-test-support-shift|observation-noise|outlier-sensitivity|more-same-distribution-data","intervention":"...","evidence":"...","prediction":null},"intent":null,"ambiguity":null}',
     'World-design shape: {"kind":"world-design","design":{"mode":"create","recipe":{...canonical recipe...},"patch":null},"requestedHolds":[]}',
     'Clarification shape: {"kind":"clarification","reason":"short bounded reason"}',
     `Learner request: ${String(request ?? '').trim()}`,

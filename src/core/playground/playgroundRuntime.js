@@ -1440,6 +1440,19 @@ export function deriveRuntimeSnapshot(session) {
   capabilities.worldOperations = capabilities.canEditWorld
     ? listWorldOperations()
     : [];
+  const worldOperationCapabilities = new Set(capabilities.worldOperations.map((operation) => operation.capability));
+  capabilities.canExecuteWorldRecipe = capabilities.canEditWorld
+    && worldOperationCapabilities.has('world.recipe.configure')
+    && worldOperationCapabilities.has('world.generator.regenerate');
+  capabilities.canUseWorldPresets = capabilities.canExecuteWorldRecipe;
+  capabilities.canEditCurrentWorldRecipe = capabilities.canEditWorld
+    && session.experiment?.world?.generator?.kind === 'world-recipe'
+    && worldOperationCapabilities.has('world.recipe.patch')
+    && worldOperationCapabilities.has('world.generator.regenerate');
+  // Runtime support and provider availability are deliberately separate. The
+  // UI may gate free-form interpretation on a provider, but local recipes do
+  // not depend on one.
+  capabilities.canDesignWorldFromNaturalLanguage = capabilities.canExecuteWorldRecipe;
   capabilities.canCreateObservationFromProjection = canCreateObservationFromProjection(
     session.experiment.world,
     session.viewState.xFeature,

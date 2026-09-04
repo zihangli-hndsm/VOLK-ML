@@ -193,6 +193,27 @@ export function verifyPedagogicalIntervention({ design, baselineWorld, candidate
       ? { valid: true, goal, measurements: { outliersBefore: before, outliersAfter: after }, reason: null }
       : invalid(goal, after > before ? 'test-realization-changed' : 'outliers-produced-no-change');
   }
+  if (goal === PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA) {
+    const generatorChange = scenario?.change?.find((change) => change.operation === 'SET_GENERATOR_PARAMETER' && change.parameters?.path === 'train.samples');
+    const changedPaths = recipePaths;
+    const recipeCountChange = changedPaths.length > 0 && changedPaths.every((path) => /\.groups\.[^.]+\.sampling\.train\.count$/.test(path));
+    if (!generatorChange && !recipeCountChange) return invalid(goal, 'sample-count-only-change-required');
+    const baselineTrain = pointsFor(baselineWorld, (point) => point.membership === 'train');
+    const candidateTrain = pointsFor(candidateWorld, (point) => point.membership === 'train');
+    const baselineTest = pointsFor(baselineWorld, (point) => point.membership === 'test');
+    const candidateTest = pointsFor(candidateWorld, (point) => point.membership === 'test');
+    const baselineSpec = baselineWorld.generator?.spec;
+    const candidateSpec = candidateWorld.generator?.spec;
+    const generatorHeld = baselineSpec && candidateSpec
+      ? JSON.stringify({ ...baselineSpec, train: { ...baselineSpec.train, samples: undefined } }) === JSON.stringify({ ...candidateSpec, train: { ...candidateSpec.train, samples: undefined } })
+      : true;
+    const testSampleCountHeld = baselineSpec && candidateSpec
+      ? Number(baselineSpec.test?.samples) === Number(candidateSpec.test?.samples)
+      : baselineTest.length === candidateTest.length;
+    return candidateTrain.length > baselineTrain.length && generatorHeld && testSampleCountHeld
+      ? { valid: true, goal, measurements: { trainSamplesBefore: baselineTrain.length, trainSamplesAfter: candidateTrain.length, testRealizationHeld: true }, reason: null }
+      : invalid(goal, candidateTrain.length > baselineTrain.length ? 'generating-process-changed' : 'sample-count-did-not-increase');
+  }
   return invalid(goal, 'unsupported-goal');
 }
 

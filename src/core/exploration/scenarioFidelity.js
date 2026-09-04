@@ -10,6 +10,7 @@ const FACTOR_BY_TARGET = Object.freeze({
   'world-recipe': 'world',
   'learning-configuration': 'learning',
   'model-configuration': 'model',
+  'train-sample-count': 'observationProcess',
 });
 
 const HOLD_TO_FACTOR = Object.freeze({
@@ -20,6 +21,7 @@ const HOLD_TO_FACTOR = Object.freeze({
   'latent-relation': 'world',
   noise: 'world',
   'existing-train-test-setup': 'trainTest',
+  'world-generating-process': 'world',
 });
 
 const TARGET_TO_GENERATOR_DETAIL = Object.freeze({
@@ -32,12 +34,14 @@ const TARGET_TO_GENERATOR_DETAIL = Object.freeze({
 
 const TARGET_TO_GENERATOR_DETAILS = Object.freeze({
   'input-distribution': ['trainInputDistribution', 'testInputDistribution'],
+  'train-sample-count': ['sampleCount'],
 });
 
 const HOLD_TO_GENERATOR_DETAIL = Object.freeze({
   noise: 'noise',
   'latent-relation': 'linearRelation',
   'train-distribution': 'trainInputDistribution',
+  'world-generating-process': 'worldGeneratingProcess',
 });
 
 export function evaluateScenarioFidelity(spec, comparison) {

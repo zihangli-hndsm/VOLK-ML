@@ -9,6 +9,7 @@ export const PEDAGOGICAL_EXPERIMENT_GOALS = Object.freeze({
   TRAIN_TEST_SUPPORT_SHIFT: 'train-test-support-shift',
   OBSERVATION_NOISE: 'observation-noise',
   OUTLIER_SENSITIVITY: 'outlier-sensitivity',
+  MORE_SAME_DISTRIBUTION_DATA: 'more-same-distribution-data',
 });
 
 export const PEDAGOGICAL_INTERVENTIONS = Object.freeze({
@@ -16,6 +17,7 @@ export const PEDAGOGICAL_INTERVENTIONS = Object.freeze({
   SHIFT_TEST_SUPPORT: 'shift-test-support',
   INCREASE_POSITION_NOISE: 'increase-position-noise',
   ADD_OUTLIERS: 'add-outliers',
+  INCREASE_SAMPLE_SIZE: 'increase-same-distribution-sample-size',
 });
 
 export const PEDAGOGICAL_EVIDENCE = Object.freeze({
@@ -43,6 +45,10 @@ const GOAL_CONTRACTS = Object.freeze({
   [PEDAGOGICAL_EXPERIMENT_GOALS.OUTLIER_SENSITIVITY]: {
     intervention: PEDAGOGICAL_INTERVENTIONS.ADD_OUTLIERS,
     evidence: PEDAGOGICAL_EVIDENCE.TASK_OUTCOME,
+  },
+  [PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA]: {
+    intervention: PEDAGOGICAL_INTERVENTIONS.INCREASE_SAMPLE_SIZE,
+    evidence: PEDAGOGICAL_EVIDENCE.OUTCOME_AND_STABILITY,
   },
 });
 
