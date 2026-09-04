@@ -32,6 +32,7 @@ export default function ConceptCard({ signal, observation, nextQuestion, t, onNe
     {observation.facts.slice(0, 3).map((fact) => <p key={fact.id} className="mt-1 text-xs">{factText(fact, t)}</p>)}
     <p className="mt-3 text-[10px] font-black uppercase tracking-wide">{t('playground.concept.definition')}</p>
     <p className="mt-1 text-xs">{t(concept.definitionKey)}</p>
+    {signal.id === 'SAMPLING_VARIABILITY' && <p data-concept-relationship="world-sampling-data-learning-model" className="mt-3 rounded-xl border border-indigo-100 bg-indigo-50 px-3 py-2 text-xs font-black text-indigo-950">{t('playground.concept.samplingRelationship')}</p>}
     <p className="mt-3 text-[10px] font-black uppercase tracking-wide">{t('playground.concept.tryNext')}</p>
     {nextQuestion ? <button type="button" onClick={onNextQuestion} className="mt-1 rounded-lg bg-white px-3 py-2 text-left text-xs font-black text-blue-800 ring-1 ring-blue-200 focus:outline-none focus:ring-2 focus:ring-blue-500">{t(nextQuestion.questionKey)}</button> : <p className="mt-1 text-xs">{t(concept.questionKey)}</p>}
     {normalizedState === CONCEPT_STATES.ACTIVE && onIlluminate && <button type="button" onClick={() => onIlluminate(signal.id)} className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-black text-emerald-800 ring-1 ring-emerald-200 focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('playground.concept.illuminate')}</button>}

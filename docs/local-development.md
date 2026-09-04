@@ -75,6 +75,17 @@ free-exploration state is needed; use direct Episode 1 entry when testing the
 contract independently. These controls are development-only and are not part
 of the production learner surface.
 
+## LUMI companion checks
+
+Inside any Explore playground, the small floating LUMI companion stays
+available while you work. Its body state names whether it is ambient, looking,
+guiding, noticing evidence, or illuminating a newly eligible concept. **Ask
+LUMI** opens the existing suggestion surface; **See evidence** opens the
+structured comparison; **Ideas map** opens the read-only concept map. A
+continuation question only focuses the relevant surface and does not run an
+experiment. With no Cloud URL or an unavailable service, the same companion
+uses the deterministic local policy.
+
 ## Tests
 
 ```text

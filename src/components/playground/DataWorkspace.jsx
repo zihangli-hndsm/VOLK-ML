@@ -85,10 +85,13 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const gestureRef = useRef(null);
   const dragRef = useRef(null);
   const counterRef = useRef(0);
-  const [tool, setTool] = useState(phenomenonMode ? 'select' : 'point');
+  // Explore opens with a low-density brush so the first learner action is a
+  // gentle, inspectable change rather than a dense spray of points. The
+  // phenomenon surface keeps its deliberate move/select affordance.
+  const [tool, setTool] = useState(phenomenonMode ? 'select' : 'brush');
   const [layer, setLayer] = useState('train');
   const [spread, setSpread] = useState(0.12);
-  const [density, setDensity] = useState(6);
+  const [density, setDensity] = useState(2);
   const [selectedId, setSelectedId] = useState(null);
   const [viewMode, setViewMode] = useState(snapshot.viewState?.mode ?? 'scatter');
   const [xFeature, setXFeature] = useState(snapshot.viewState?.xFeature ?? snapshot.world?.featureNames?.[0] ?? 'x');

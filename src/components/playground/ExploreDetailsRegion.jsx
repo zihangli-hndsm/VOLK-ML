@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
-import { deriveLumiMode } from '../../core/ui/lumiSemantics.js';
 import { deriveLumiInteraction } from '../../core/ui/lumiInteraction.js';
 import { deriveLumiJourneyProjection } from '../../core/ui/lumiJourney.js';
 import { deriveConceptGraph } from '../../core/ui/conceptGraph.js';
@@ -20,9 +19,9 @@ import FormulaRenderer from './renderers/FormulaRenderer.jsx';
 import { usePresentationCapabilities } from './usePresentationCapabilities.jsx';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import CompactBottomSheet from '../CompactBottomSheet.jsx';
-import Lumi from './Lumi.jsx';
 import LumiAttentionRail from './LumiAttentionRail.jsx';
 import LumiJourneyTimeline from './LumiJourneyTimeline.jsx';
+import LumiCompanion from './LumiCompanion.jsx';
 import ConceptMap from './ConceptMap.jsx';
 import HypothesisPanel from './HypothesisPanel.jsx';
 import CompetingHypothesesPanel from './CompetingHypothesesPanel.jsx';
@@ -147,7 +146,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
       </div>
     </section>
 
-    {agent && <div data-lumi-ambient="true" className="flex items-center gap-2 rounded-2xl border border-cyan-100 bg-cyan-50/60 px-3 py-2"><Lumi presence="ambient" mode={deriveLumiMode({ hasObservation: Boolean(snapshot.observations?.length), hasGuidance: Boolean(snapshot.learnerInquiry?.candidates?.length) })} onClick={onAgentOpen} label={t('playground.lumi.ambient')} /><div className="min-w-0 flex-1"><p className="text-[10px] font-black uppercase tracking-wide text-cyan-700">{t('playground.lumi.name')}</p><p className="truncate text-xs font-bold text-slate-700">{t('playground.lumi.ambientHint')}</p></div><button type="button" onClick={onAgentOpen} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-cyan-800"><span className="sr-only">{t('playground.agentGuide.entry')}</span>{t('playground.lumi.openGuidance')}</button><button type="button" onClick={openSettings} className="shrink-0 rounded-xl px-2 py-2 text-[11px] font-bold text-cyan-800 hover:bg-white focus:outline-none focus:ring-2 focus:ring-cyan-500">{isConfigured ? t('ai.settings') : t('ai.configure')}</button></div>}
+    {agent && <div data-lumi-ambient="true"><LumiCompanion snapshot={snapshot} attention={attention} onOpenGuidance={onAgentOpen} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} onOpenIdeas={() => { const node = document.querySelector('[data-secondary-inquiry-surfaces]'); if (node) { node.open = true; node.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); } }} onSelectContinuation={(id) => host?.recordInquiryContinuation?.(id)} onOpenSettings={openSettings} isConfigured={isConfigured} configureLabel={t('ai.configure')} t={t} /></div>}
     <LumiAttentionRail snapshot={snapshot} attention={attention} activeDepth={activeDepth} illuminatedConceptIds={illuminatedConceptIds} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} t={t} />
     <LumiJourneyTimeline journey={journey} snapshot={snapshot} compact={compact} t={t} onSelectConcept={setSelectedConceptId} />
     <details data-secondary-inquiry-surfaces className="rounded-2xl border border-slate-200 bg-slate-50 p-3">

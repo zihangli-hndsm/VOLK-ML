@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026-09-04 — Phase A.7 LUMI companion and Explore interaction cleanup
+
+- Added a persistent semantic LUMI companion for Explore with localized body
+  states, Ask LUMI, Evidence, Ideas Map, continuation and Cloud-optional local
+  fallback entry points. Eligible Sampling Variability now receives one
+  deterministic, presentation-only illumination.
+- Open Explore with a low-density brush, keep saved Build-project resume in
+  Build, stack Training Microscope parameters in narrow panels, show the
+  World → sampling → Data → learning → Model relationship, and rename the
+  current-data action to “Fit current data”.
+- Added `scripts/check-phase-a7.mjs` and updated architecture/local-development
+  notes. Existing semantic runtime, Experiment Agent proposal confirmation,
+  World/Experiment truth and Cloud boundary remain unchanged.
+- Acceptance: focused Episode 0/1, UI Agent, journey, Phase A.7, full `npm run
+  check`, production build, and diff validation passed. Browser connected/offline
+  E2E was not run in this environment.
+
 
 ## 2026-09-01 — Local-first Cloud development bootstrap hardening
 
