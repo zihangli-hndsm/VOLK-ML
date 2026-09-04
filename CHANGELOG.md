@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-04 — Phase A.7 render-blocker correction
+
+- Replaced the auto-illumination callback's late `const` initialization with a
+  hoisted function boundary, so a fresh Explore render no longer throws before
+  the LUMI companion or Episode surface mounts.
+- Added a focused Phase A.7 regression assertion covering the initialization
+  boundary. Full repository checks and production build pass.
+
 ## 2026-09-04 — Phase A.7 LUMI companion and Explore interaction cleanup
 
 - Added a persistent semantic LUMI companion for Explore with localized body

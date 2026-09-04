@@ -317,7 +317,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     });
   };
 
-  const illuminateConcept = (conceptId) => {
+  function illuminateConcept(conceptId) {
     if (!conceptId) return;
     setIlluminatedConceptIds((current) => {
       if (current.includes(conceptId)) return current;
@@ -329,7 +329,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       timestamp: Date.now(),
       afterSequence: snapshot?.semanticEvents?.events?.at(-1)?.sequence ?? 0,
     }));
-  };
+  }
 
   const createLearnerHypothesis = ({ statement, linkedConceptIds = [], prediction = null } = {}) => {
     const id = `hypothesis-${sessionSequenceRef.current}-${hypothesisSession.hypotheses.length + 1}`;
