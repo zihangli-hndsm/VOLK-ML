@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-04 — Phase A.7 Cycle 2 acceptance corrections
+
+- Episode 1 now opens on the sparse Draw/brush affordance. LUMI follow-up
+  questions cross a validated structured `experiment-suggestion` task boundary
+  before reaching the existing Experiment Agent, with learner confirmation
+  still required for execution.
+- Deterministic Sampling Variability eligibility now illuminates the canonical
+  `sampling-variation` Ideas Map node exactly once alongside the concept
+  companion notification.
+- Added focused regression coverage for defaults, task schema, canonical map
+  illumination, and safe initialization. Full repository checks and build pass.
+
 ## 2026-09-04 — Phase A.7 render-blocker correction
 
 - Replaced the auto-illumination callback's late `const` initialization with a

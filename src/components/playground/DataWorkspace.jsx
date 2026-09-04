@@ -88,7 +88,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   // Explore opens with a low-density brush so the first learner action is a
   // gentle, inspectable change rather than a dense spray of points. The
   // phenomenon surface keeps its deliberate move/select affordance.
-  const [tool, setTool] = useState(phenomenonMode ? 'select' : 'brush');
+  const [tool, setTool] = useState(phenomenonMode ? 'point' : 'brush');
   const [layer, setLayer] = useState('train');
   const [spread, setSpread] = useState(0.12);
   const [density, setDensity] = useState(2);

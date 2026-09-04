@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict';
 import {
   LEARNING_ANSWER_SCHEMA,
+  EXPERIMENT_SUGGESTION_TASK_SCHEMA,
+  createExperimentSuggestionTask,
   createLearningAssistant,
   createLearningConversationStore,
   learningAssistantPrompt,
@@ -47,6 +49,9 @@ assert.equal(calls[0].messages[0].content.includes('point-1'), false, 'prompt do
 assert.throws(() => validateLearningAnswer({ answer: 'ok', tryExperiment: { operation: 'SET_CONTROL' }, depth: null }), /AI_LEARNING_ANSWER_INVALID/);
 assert.throws(() => validateLearningAnswer({ answer: 'ok', tryExperiment: null, depth: 'arbitrary-command' }), /AI_LEARNING_ANSWER_INVALID/);
 assert.match(learningAssistantPrompt({ question: 'Why?', context: projected }), /suggestion/);
+const suggestionTask = createExperimentSuggestionTask(answer.tryExperiment);
+assert.deepEqual(suggestionTask, { version: 1, kind: 'experiment-suggestion', prompt: answer.tryExperiment, source: 'lumi', requiresLearnerAcceptance: true }, 'LUMI follow-up becomes a structured Agent task');
+assert.equal(EXPERIMENT_SUGGESTION_TASK_SCHEMA.schema.additionalProperties, false, 'structured Agent task rejects opaque fields');
 
 const conversations = createLearningConversationStore();
 const firstMessage = conversations.append({ role: 'user', text: 'first', at: 0 });

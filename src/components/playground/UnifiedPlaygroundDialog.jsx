@@ -230,6 +230,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     if (!eligible || !evidenceId || autoIlluminationRef.current === evidenceId) return;
     autoIlluminationRef.current = evidenceId;
     illuminateConcept('SAMPLING_VARIABILITY');
+    setLearningPathIlluminatedIds((current) => current.includes('sampling-variation') ? current : [...current, 'sampling-variation'].slice(-8));
     const target = createLumiTarget('concept', 'SAMPLING_VARIABILITY');
     if (target) setLumiIntervention((current) => ({ target, sequence: (current?.sequence ?? 0) + 1 }));
   }, [snapshot?.inquiryRuntime, illuminateConcept]);

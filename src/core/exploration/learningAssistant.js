@@ -3,6 +3,7 @@ import { projectLearnerAnnotations } from './learnerAnnotations.js';
 export const LEARNING_ASSISTANT_VERSION = 1;
 export const MAX_LEARNING_TURNS = 8;
 export const LEARNING_MESSAGE_VERSION = 1;
+export const EXPERIMENT_SUGGESTION_TASK_VERSION = 1;
 const MAX_CONTEXT_TEXT = 260;
 const DEPTHS = new Set(['phenomenon', 'tune', 'evidence', 'mechanism', 'representation']);
 
@@ -10,6 +11,34 @@ const bounded = (value, max = MAX_CONTEXT_TEXT) => {
   const text = typeof value === 'string' ? value.trim() : '';
   return text && text.length <= max ? text : null;
 };
+
+export const EXPERIMENT_SUGGESTION_TASK_SCHEMA = Object.freeze({
+  name: 'volk_ml_experiment_suggestion_task',
+  schema: {
+    type: 'object',
+    additionalProperties: false,
+    properties: {
+      version: { type: 'integer', const: EXPERIMENT_SUGGESTION_TASK_VERSION },
+      kind: { type: 'string', const: 'experiment-suggestion' },
+      prompt: { type: 'string', minLength: 1, maxLength: 240 },
+      source: { type: 'string', const: 'lumi' },
+      requiresLearnerAcceptance: { type: 'boolean', const: true },
+    },
+    required: ['version', 'kind', 'prompt', 'source', 'requiresLearnerAcceptance'],
+  },
+});
+
+export function createExperimentSuggestionTask(value) {
+  const prompt = bounded(typeof value === 'string' ? value : value?.prompt, 240);
+  if (!prompt) return null;
+  return Object.freeze({
+    version: EXPERIMENT_SUGGESTION_TASK_VERSION,
+    kind: 'experiment-suggestion',
+    prompt,
+    source: 'lumi',
+    requiresLearnerAcceptance: true,
+  });
+}
 
 export const LEARNING_ANSWER_SCHEMA = Object.freeze({
   name: 'volk_ml_learning_answer',
