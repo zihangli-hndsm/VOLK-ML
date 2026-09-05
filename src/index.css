@@ -52,6 +52,8 @@
 .lumi-idle { animation: lumi-hover 4.8s ease-in-out infinite; }
 .lumi-observe { filter: drop-shadow(0 0 0.7rem color-mix(in srgb, var(--lumi-glow) 58%, transparent)); }
 .lumi-observe .lumi-visual { transform: translateX(.08rem) rotate(2deg); }
+.lumi-think { filter: drop-shadow(0 0 .8rem color-mix(in srgb, var(--lumi-glow) 55%, transparent)); }
+.lumi-think::before { content: ''; position: absolute; inset: -.18rem; border: 1px solid color-mix(in srgb, var(--lumi-glow) 42%, transparent); border-radius: 999px; animation: lumi-think-orbit 2.8s linear infinite; pointer-events: none; }
 .lumi-guide .lumi-visual { transform: translateX(.1rem); }
 .lumi-explore { position: relative; filter: drop-shadow(0 0 .65rem color-mix(in srgb, var(--volk-concept-unexplored) 48%, transparent)); }
 .lumi-explore::before { content: ''; position: absolute; inset: -.2rem; border: 1px dashed color-mix(in srgb, var(--volk-concept-unexplored) 60%, transparent); border-radius: 999px; animation: lumi-frontier 3.2s ease-in-out infinite; pointer-events: none; }
@@ -65,6 +67,7 @@
 [data-ui-concept-card][data-concept-state="illuminated"] { box-shadow: 0 0 0 3px color-mix(in srgb, var(--volk-observation) 22%, transparent); }
 
 @keyframes lumi-hover { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-0.22rem); } }
+@keyframes lumi-think-orbit { 0% { transform: rotate(0deg) scale(.94); opacity: .35; } 50% { transform: rotate(180deg) scale(1.04); opacity: .8; } 100% { transform: rotate(360deg) scale(.94); opacity: .35; } }
 @keyframes lumi-pulse { 0% { transform: translate(-50%, 0) scale(.65); opacity: .95; } 70%, 100% { transform: translate(-50%, -.95rem) scale(1.8); opacity: 0; } }
 @keyframes lumi-illumination-pulse { 0% { transform: translate(-50%, 0) scale(.7); opacity: .95; } 45% { transform: translate(-50%, -.7rem) scale(1.25); opacity: .9; } 100% { transform: translate(-50%, -1.15rem) scale(.4); opacity: 0; } }
 @keyframes lumi-illuminate { 0% { transform: translateX(-.45rem) scale(.96); filter: brightness(.95); } 45% { transform: translateX(.1rem) scale(1.04); filter: brightness(1.18); } 100% { transform: translateX(0) scale(1); filter: brightness(1); } }
@@ -73,6 +76,10 @@
 .lumi-attention-rail { transition: border-color 180ms ease, box-shadow 180ms ease; }
 .lumi-companion { max-height: min(24rem, calc(100dvh - 1.5rem)); overflow-y: auto; }
 .lumi-companion .lumi-ambient { width: 2.8rem; height: 2.6rem; flex: 0 0 auto; }
+.lumi-companion:not(.lumi-companion-open) { width: auto; max-width: 4.8rem; padding: .35rem; border-color: transparent; background: transparent; box-shadow: none; }
+.lumi-companion:not(.lumi-companion-open) > div { align-items: center; }
+.lumi-notification { position: absolute; top: .35rem; left: 3rem; width: .55rem; height: .55rem; border: 2px solid white; border-radius: 999px; background: var(--lumi-pulse); box-shadow: 0 0 .45rem color-mix(in srgb, var(--lumi-pulse) 72%, transparent); }
+.lumi-companion { isolation: isolate; }
 [data-lumi-body-state="ILLUMINATE"] { border-color: color-mix(in srgb, var(--volk-concept-illuminated) 48%, white); box-shadow: 0 0 0 3px color-mix(in srgb, var(--volk-concept-illuminated) 16%, transparent), 0 1rem 2rem rgb(15 23 42 / 12%); }
 .lumi-attention-path { display: flex; min-width: 0; align-items: center; gap: .5rem; }
 .lumi-target-chip { position: relative; min-width: 0; flex: 1 1 0; }
@@ -164,7 +171,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .lumi-idle, .lumi-explore::before, .lumi-intervene .lumi-pulse, .lumi-illuminate .lumi-pulse, .lumi-illuminate .lumi-visual, .lumi-target-connection .lumi { animation: none; }
+  .lumi-idle, .lumi-think::before, .lumi-explore::before, .lumi-intervene .lumi-pulse, .lumi-illuminate .lumi-pulse, .lumi-illuminate .lumi-visual, .lumi-target-connection .lumi { animation: none; }
   .lumi-intervene .lumi-pulse, .lumi-illuminate .lumi-pulse { opacity: .95; }
   .lumi-attention-path-settled .lumi-target-connection { transition: none; }
   .lumi-journey-node { transition: none; }

@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026-09-06 — Phase A.8 embodied LUMI companion
+
+- Replaced the Explore companion's legacy inline treatment with a persistent,
+  bounded asset-backed companion using the supplied transparent state artwork,
+  semantic AMBIENT/OBSERVE/THINK/GUIDE/NOTICE/ILLUMINATE resolution, keyboard
+  opening/closing, notification affordances, and reduced-motion support.
+- Added the pure companion resolver, state asset derivatives, localized panel
+  labels, semantic target projection, focused checks, and architecture mapping.
+- Validation: full `npm run check`, production build, focused embodied-companion
+  checks, and `git diff --check` pass. Browser acceptance remains for VOLK-Dev.
+
+
 ## 2026-09-06 — More-data comparison label correction
 
 - Kept sample-count-only proposals in the observation-process category so the

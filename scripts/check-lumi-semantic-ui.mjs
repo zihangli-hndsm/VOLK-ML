@@ -21,11 +21,11 @@ const guidanceSource = read('src/components/playground/GuidedExplore.jsx');
 const evidenceSource = read('src/components/playground/ExplorationEvidence.jsx');
 const experimentSource = read('src/components/playground/ExperimentBar.jsx');
 const localeSource = read('src/locales/ui.js');
-const lumiAssets = ['idle', 'observe', 'guide', 'illuminate'].map((state) => `src/assets/lumi/lumi-${state}.svg`);
+const lumiAssets = ['ambient', 'observe', 'think', 'guide', 'illuminate'].map((state) => `src/assets/lumi/lumi-${state}.png`);
 
 assert.deepEqual(Object.values(CONCEPT_STATES), ['unexplored', 'active', 'illuminated']);
 assert.deepEqual(Object.values(LUMI_PRESENCE), ['hidden', 'ambient', 'contextual', 'event']);
-assert.deepEqual(Object.values(LUMI_MODES), ['idle', 'observe', 'guide', 'intervene', 'illuminate', 'explore']);
+assert.deepEqual(Object.values(LUMI_MODES), ['idle', 'observe', 'guide', 'intervene', 'illuminate', 'explore', 'think']);
 assert.equal(deriveConceptState({ conceptId: 'distribution-shift' }), CONCEPT_STATES.UNEXPLORED);
 assert.equal(deriveConceptState({ conceptId: 'distribution-shift', conceptSignals: { concepts: [{ id: 'distribution-shift' }] } }), CONCEPT_STATES.ACTIVE);
 assert.equal(deriveConceptState({ conceptId: 'distribution-shift', conceptSignals: { concepts: [{ id: 'distribution-shift' }] }, illuminatedConceptIds: ['distribution-shift'] }), CONCEPT_STATES.ILLUMINATED);
@@ -46,7 +46,7 @@ assert.ok(mainSource.includes("import './index.css';"), 'active application entr
 assert.ok(lumiSource.includes('data-lumi-presence'), 'LUMI exposes semantic presence');
 assert.ok(lumiSource.includes('data-lumi-mode'), 'LUMI exposes semantic mode');
 assert.ok(lumiSource.includes('MODE_ASSETS'), 'LUMI maps semantic modes to dedicated visual assets');
-for (const asset of ['lumi-idle.svg', 'lumi-observe.svg', 'lumi-guide.svg', 'lumi-illuminate.svg']) {
+for (const asset of ['lumi-ambient.png', 'lumi-observe.png', 'lumi-think.png', 'lumi-guide.png', 'lumi-illuminate.png']) {
   assert.ok(lumiSource.includes(`new URL('../../assets/lumi/${asset}', import.meta.url).href`), `LUMI uses a literal Vite URL for ${asset}`);
 }
 assert.ok(!lumiSource.includes('resolveAsset'), 'LUMI assets are not resolved from runtime path strings');
