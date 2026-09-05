@@ -1013,7 +1013,7 @@ export const messages = {
   'playground.experiment.metric.slope': { en: 'Slope', zh: '斜率' },
   'playground.experiment.metric.bias': { en: 'Bias', zh: '偏置' },
   'playground.experiment.factor.world': { en: 'World / Dataset', zh: 'World / 数据集' },
-  'playground.experiment.factor.observationProcess': { en: 'Observation process / sample', zh: '观测过程 / 样本' },
+  'playground.experiment.factor.observationProcess': { en: 'Observation process / sample count', zh: '观测过程 / 样本数' },
   'playground.lumi.journey.event.predict': { en: 'Predict', zh: '预测' },
   'playground.lumi.journey.event.revise': { en: 'Revise', zh: '修正' },
   'playground.lumi.target.hypothesis': { en: 'Learner hypothesis', zh: '学习者假设' },

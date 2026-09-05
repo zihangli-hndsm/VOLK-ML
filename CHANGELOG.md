@@ -1,5 +1,13 @@
 # Changelog
 
+## 2026-09-06 — More-data comparison label correction
+
+- Kept sample-count-only proposals in the observation-process category so the
+  comparison no longer labels a finite Data amount as a changed World while
+  also listing the generating process as held constant.
+- Updated the learner-facing factor label to “Observation process / sample
+  count” and added focused comparison assertions. Full checks and build pass.
+
 ## 2026-09-04 — More-data World/Data comparison semantics correction
 
 - Kept sample-count changes in the observation-process category while retaining
