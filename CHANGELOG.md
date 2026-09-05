@@ -1,5 +1,18 @@
 # Changelog
 
+## 2026-09-06 — Phase A.8.1 mascot-first LUMI presentation
+
+- Refined the accepted companion into a transparent fixed desktop-pet body:
+  closed state is mascot-only, contextual bubbles are short and event-based,
+  and inquiry text/actions stay in the interaction-triggered desktop panel or
+  compact bottom sheet.
+- Preserved semantic resolver, pending THINK projection, deterministic
+  illumination, target guidance, continuations, and learner agency boundaries.
+- Validation: focused companion checks, Phase A.7 checks, and production build
+  pass. Full repository validation and browser acceptance remain for the
+  VOLK-Dev handoff.
+
+
 ## 2026-09-06 — Phase A.8 Ask lifecycle projection repair
 
 - Projected the existing Explore Agent request lifecycle into the persistent

@@ -74,12 +74,17 @@
 @keyframes lumi-frontier { 0%, 100% { opacity: .45; transform: scale(.94) rotate(-4deg); } 50% { opacity: .9; transform: scale(1.06) rotate(4deg); } }
 
 .lumi-attention-rail { transition: border-color 180ms ease, box-shadow 180ms ease; }
-.lumi-companion { max-height: min(24rem, calc(100dvh - 1.5rem)); overflow-y: auto; }
-.lumi-companion .lumi-ambient { width: 2.8rem; height: 2.6rem; flex: 0 0 auto; }
-.lumi-companion:not(.lumi-companion-open) { width: auto; max-width: 4.8rem; padding: .35rem; border-color: transparent; background: transparent; box-shadow: none; }
-.lumi-companion:not(.lumi-companion-open) > div { align-items: center; }
-.lumi-notification { position: absolute; top: .35rem; left: 3rem; width: .55rem; height: .55rem; border: 2px solid white; border-radius: 999px; background: var(--lumi-pulse); box-shadow: 0 0 .45rem color-mix(in srgb, var(--lumi-pulse) 72%, transparent); }
-.lumi-companion { isolation: isolate; }
+.lumi-companion { position: fixed; right: .9rem; bottom: .9rem; z-index: 70; isolation: isolate; pointer-events: none; }
+.lumi-companion-body { position: relative; display: grid; place-items: center; pointer-events: auto; }
+.lumi-companion .lumi-ambient { width: 4.8rem; height: 4.5rem; flex: 0 0 auto; }
+.lumi-companion:not(.lumi-companion-open) .lumi-button { border-radius: 999px; }
+.lumi-notification { position: absolute; top: .3rem; right: .15rem; width: .58rem; height: .58rem; border: 2px solid white; border-radius: 999px; background: var(--lumi-pulse); box-shadow: 0 0 .45rem color-mix(in srgb, var(--lumi-pulse) 72%, transparent); pointer-events: none; }
+.lumi-context-bubble { position: absolute; right: .15rem; bottom: calc(100% + .25rem); width: max-content; max-width: min(18rem, calc(100vw - 2rem)); border: 1px solid color-mix(in srgb, var(--lumi-glow) 28%, white); border-radius: 1rem; background: color-mix(in srgb, white 94%, var(--lumi-glow)); padding: .5rem .7rem; color: var(--volk-structure); font-size: .72rem; font-weight: 800; line-height: 1.25rem; box-shadow: 0 .5rem 1.2rem rgb(15 23 42 / 12%); pointer-events: none; }
+.lumi-companion-panel { position: absolute; right: 0; bottom: calc(100% + .55rem); width: min(22rem, calc(100vw - 2rem)); max-height: min(32rem, calc(100dvh - 2rem)); overflow-y: auto; border: 1px solid color-mix(in srgb, var(--lumi-glow) 28%, white); border-radius: 1.25rem; background: rgb(255 255 255 / 97%); padding: .85rem; box-shadow: 0 1rem 2.2rem rgb(15 23 42 / 18%); pointer-events: auto; }
+.lumi-companion-panel-compact { position: fixed; right: 0; bottom: 0; left: 0; width: auto; max-height: 78dvh; border-radius: 1.25rem 1.25rem 0 0; }
+.lumi-companion-panel-header { display: flex; align-items: flex-start; justify-content: space-between; gap: .75rem; border-bottom: 1px solid color-mix(in srgb, var(--lumi-glow) 18%, white); padding-bottom: .65rem; }
+.lumi-companion-close { min-width: 2rem; min-height: 2rem; border: 1px solid color-mix(in srgb, var(--volk-structure) 22%, white); border-radius: .65rem; background: white; color: var(--volk-structure); font-size: 1.2rem; line-height: 1; }
+.lumi-companion-close:focus-visible { outline: 3px solid color-mix(in srgb, var(--lumi-glow) 45%, transparent); outline-offset: 2px; }
 [data-lumi-body-state="ILLUMINATE"] { border-color: color-mix(in srgb, var(--volk-concept-illuminated) 48%, white); box-shadow: 0 0 0 3px color-mix(in srgb, var(--volk-concept-illuminated) 16%, transparent), 0 1rem 2rem rgb(15 23 42 / 12%); }
 .lumi-attention-path { display: flex; min-width: 0; align-items: center; gap: .5rem; }
 .lumi-target-chip { position: relative; min-width: 0; flex: 1 1 0; }
