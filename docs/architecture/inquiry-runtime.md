@@ -69,13 +69,33 @@ retaining source event IDs for inspection. Presentation, pointer and camera
 state are never projected as learner milestones.
 
 LUMI is a persistent, compact companion owned by Explore presentation. Its
-semantic body states are AMBIENT, LOOK, GUIDE, NOTICE and ILLUMINATE; opening
-the companion only reveals existing guidance, Evidence or Ideas Map surfaces.
+semantic body states are AMBIENT, OBSERVE, THINK, GUIDE, NOTICE and
+ILLUMINATE; opening the companion only reveals existing guidance, Evidence or
+Ideas Map surfaces. `src/core/ui/lumiCompanion.js` is a pure resolver over a
+bounded semantic projection, so state changes cannot create events or mutate
+World/Experiment truth.
 It never executes a proposal. Empty concept frontiers stay hidden until a
 deterministic candidate exists. Episode 1's fitted regression line appears only
 after a committed fit, and its A/B overlay uses stored fit parameters rather
 than screen geometry. These are presentation projections over authoritative
 runtime facts and do not mutate the inquiry.
+
+The embodied visual mapping uses optimized, transparent PNG derivatives of the
+canonical concept artwork supplied for Phase A.8:
+
+| Companion state | Runtime asset | Role |
+| --- | --- | --- |
+| AMBIENT | `src/assets/lumi/lumi-ambient.png` | idle/fallback/avatar |
+| OBSERVE / NOTICE | `src/assets/lumi/lumi-observe.png` | notice an observation |
+| THINK | `src/assets/lumi/lumi-think.png` | policy/Ask busy state |
+| GUIDE | `src/assets/lumi/lumi-guide.png` | bounded nudge |
+| ILLUMINATE | `src/assets/lumi/lumi-illuminate.png` | deterministic concept event |
+
+There is no separate THINK asset in the legacy set; the new `lumi-think.png`
+derivative is used directly. Motion is a subtle glow/orbit and is disabled
+under `prefers-reduced-motion`. The canonical 1254px masters remain source
+artwork outside the shipped bundle; the 256px derivatives keep the floating
+companion lightweight at desktop and compact sizes.
 
 When `SAMPLING_VARIABILITY` becomes eligible from deterministic Evidence, the
 host performs one idempotent presentation illumination and the companion

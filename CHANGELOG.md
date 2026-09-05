@@ -1,5 +1,37 @@
 # Changelog
 
+## 2026-09-06 — Phase A.8 Ask lifecycle projection repair
+
+- Projected the existing Explore Agent request lifecycle into the persistent
+  LUMI companion so delayed Ask LUMI requests visibly and accessibly render
+  THINK with the dedicated artwork, then return to the grounded state when the
+  request settles.
+- Added pending-state precedence and integration assertions while preserving
+  presentation-only semantics, learner confirmation, and local runtime truth.
+- Validation: focused embodied-companion checks, full `npm run check`, build,
+  and `git diff --check` pass. Browser acceptance remains for VOLK-Dev.
+
+
+## 2026-09-06 — Phase A.8 embodied LUMI companion
+
+- Replaced the Explore companion's legacy inline treatment with a persistent,
+  bounded asset-backed companion using the supplied transparent state artwork,
+  semantic AMBIENT/OBSERVE/THINK/GUIDE/NOTICE/ILLUMINATE resolution, keyboard
+  opening/closing, notification affordances, and reduced-motion support.
+- Added the pure companion resolver, state asset derivatives, localized panel
+  labels, semantic target projection, focused checks, and architecture mapping.
+- Validation: full `npm run check`, production build, focused embodied-companion
+  checks, and `git diff --check` pass. Browser acceptance remains for VOLK-Dev.
+
+
+## 2026-09-06 — More-data comparison label correction
+
+- Kept sample-count-only proposals in the observation-process category so the
+  comparison no longer labels a finite Data amount as a changed World while
+  also listing the generating process as held constant.
+- Updated the learner-facing factor label to “Observation process / sample
+  count” and added focused comparison assertions. Full checks and build pass.
+
 ## 2026-09-04 — More-data World/Data comparison semantics correction
 
 - Kept sample-count changes in the observation-process category while retaining

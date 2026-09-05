@@ -72,7 +72,7 @@ function compactProposal(proposal, t) {
   } : null;
 }
 
-export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, initialSelection = null, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, t }) {
+export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, initialSelection = null, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, onBusyChange, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const aiInterpreter = useMemo(() => createExplorationAiInterpreter({ gateway }), [gateway]);
   const [request, setRequest] = useState('');
@@ -90,6 +90,10 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   const [cleanerOptions, setCleanerOptions] = useState(null);
   const [cleanerUnavailable, setCleanerUnavailable] = useState(false);
   const [pendingExperimentTask, setPendingExperimentTask] = useState(null);
+  useEffect(() => {
+    onBusyChange?.(busy);
+    return () => onBusyChange?.(false);
+  }, [busy, onBusyChange]);
   const comparison = deriveAgentComparisonExplanation(snapshot);
   const cleanerCandidate = deriveCleanerComparisonProposal({ snapshot, comparison: snapshot.experimentWorkspace?.comparison });
   const semanticExplanation = outcome?.kind === AGENT_GUIDANCE_OUTCOMES.EXPLANATION
