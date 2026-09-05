@@ -41,10 +41,14 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
   const capabilities = useMemo(() => deriveExploreDepthCapabilities(snapshot), [snapshot]);
   const [selectedConceptId, setSelectedConceptId] = useState(null);
   const [selectedHypothesisId, setSelectedHypothesisId] = useState(null);
+  const [agentBusy, setAgentBusy] = useState(false);
   useEffect(() => {
     setSelectedConceptId(null);
     setSelectedHypothesisId(null);
   }, [bigIdea?.id]);
+  useEffect(() => {
+    if (!agentOpen) setAgentBusy(false);
+  }, [agentOpen]);
   const attention = useMemo(() => deriveLumiInteraction({ snapshot, intervention, activeConceptId: bigIdea?.id }), [snapshot, intervention, bigIdea?.id]);
   const journey = useMemo(() => deriveLumiJourneyProjection({
     semanticEvents: snapshot?.semanticEvents,
@@ -152,7 +156,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
       </div>
     </section>
 
-    {agent && <div data-lumi-ambient="true"><LumiCompanion snapshot={snapshot} attention={attention} semanticAction={lumiSemanticAction} semanticTarget={lumiSemanticTarget} recentConceptEvent={lumiRecentConceptEvent} meaningfulResult={lumiMeaningfulResult} askBusy={Boolean(snapshot?.lumiPolicy?.busy)} onOpenGuidance={onAgentOpen} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} onOpenIdeas={() => { const node = document.querySelector('[data-secondary-inquiry-surfaces]'); if (node) { node.open = true; node.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); } }} onSelectContinuation={(id) => host?.recordInquiryContinuation?.(id)} onOpenSettings={openSettings} isConfigured={isConfigured} configureLabel={t('ai.configure')} t={t} /></div>}
+    {agent && <div data-lumi-ambient="true"><LumiCompanion snapshot={snapshot} attention={attention} semanticAction={lumiSemanticAction} semanticTarget={lumiSemanticTarget} recentConceptEvent={lumiRecentConceptEvent} meaningfulResult={lumiMeaningfulResult} askBusy={agentBusy} onOpenGuidance={onAgentOpen} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} onOpenIdeas={() => { const node = document.querySelector('[data-secondary-inquiry-surfaces]'); if (node) { node.open = true; node.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); } }} onSelectContinuation={(id) => host?.recordInquiryContinuation?.(id)} onOpenSettings={openSettings} isConfigured={isConfigured} configureLabel={t('ai.configure')} t={t} /></div>}
     <LumiAttentionRail snapshot={snapshot} attention={attention} activeDepth={activeDepth} illuminatedConceptIds={illuminatedConceptIds} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} t={t} />
     <LumiJourneyTimeline journey={journey} snapshot={snapshot} compact={compact} t={t} onSelectConcept={setSelectedConceptId} />
     <details data-secondary-inquiry-surfaces className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
@@ -169,7 +173,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
       </div>
     </details>
 
-    {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} initialSelection={initialSelection} onAskAboutSelection={onAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} onIlluminateConcept={onIlluminateConcept} t={t} /></div>}
+    {agentOpen && <div id="explore-agent-guide"><ExploreAgentSurface snapshot={snapshot} agent={agent} capabilities={capabilities} compact={compact} onClose={onAgentClose} onDepthChange={onDepthChange} onOpenAiSettings={openSettings} host={host} closeRef={agentCloseRef} initialSelection={initialSelection} onAskAboutSelection={onAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} onIlluminateConcept={onIlluminateConcept} onBusyChange={setAgentBusy} t={t} /></div>}
 
     {activeDepth && <CompactBottomSheet compact={compact} open onClose={() => onDepthChange?.(null)} id={`explore-depth-${activeDepth}`} data-ui-motion="depth-panel" role="dialog" aria-modal="false" aria-labelledby={`explore-depth-title-${activeDepth}`} className={`ui-motion-overlay-enter ${panelClass}`}>
       <div className="mb-3 flex items-center justify-between gap-3 border-b border-slate-200 pb-3">

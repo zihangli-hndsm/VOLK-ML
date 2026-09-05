@@ -14,6 +14,7 @@ const read = (relative) => fs.readFileSync(path.join(root, relative), 'utf8');
 
 assert.equal(resolveLumiCompanionState(), LUMI_COMPANION_STATES.AMBIENT);
 assert.equal(resolveLumiCompanionState({ askBusy: true }), LUMI_COMPANION_STATES.THINK);
+assert.equal(resolveLumiCompanionState({ askBusy: true, recentConceptEvent: { type: 'concept.evidenced', conceptId: 'SAMPLING_VARIABILITY' } }), LUMI_COMPANION_STATES.THINK, 'pending Ask takes precedence over a prior concept event');
 assert.equal(resolveLumiCompanionState({ semanticTarget: 'world.sample' }), LUMI_COMPANION_STATES.GUIDE);
 assert.equal(resolveLumiCompanionState({ semanticAction: 'OBSERVE' }), LUMI_COMPANION_STATES.OBSERVE);
 assert.equal(resolveLumiCompanionState({ meaningfulResult: true }), LUMI_COMPANION_STATES.NOTICE);
@@ -22,11 +23,16 @@ assert.equal(normalizeLumiSemanticTarget('document.querySelector'), null);
 assert.deepEqual([...LUMI_SEMANTIC_TARGETS].sort(), ['continuation.next', 'evidence.current', 'experiment.compare', 'ideas.map', 'model.fit', 'world.canvas', 'world.sample'].sort());
 
 const component = read('src/components/playground/LumiCompanion.jsx');
+const details = read('src/components/playground/ExploreDetailsRegion.jsx');
+const agentSurface = read('src/components/playground/ExploreAgentSurface.jsx');
 assert.ok(component.includes('data-lumi-companion-panel'), 'companion panel is explicit and bounded');
 assert.ok(component.includes('role="dialog"'), 'companion panel has an accessible dialog boundary');
 assert.ok(component.includes('Escape'), 'companion closes with Escape');
 assert.ok(component.includes('onSelectContinuation'), 'continuations remain proposal-only');
 assert.ok(component.includes('data-lumi-notification'), 'meaningful events have a notification indicator');
+assert.ok(details.includes('askBusy={agentBusy}'), 'Explore projects the pending Agent request into LUMI');
+assert.ok(details.includes('onBusyChange={setAgentBusy}'), 'Explore owns the request-lifecycle projection');
+assert.ok(agentSurface.includes('onBusyChange?.(busy)'), 'Agent surface reports pending request state');
 
 const lumi = read('src/components/playground/Lumi.jsx');
 for (const asset of ['lumi-ambient.png', 'lumi-observe.png', 'lumi-think.png', 'lumi-guide.png', 'lumi-illuminate.png']) {
