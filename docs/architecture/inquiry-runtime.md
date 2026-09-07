@@ -68,12 +68,15 @@ consecutive human World changes and resamples into compact milestones while
 retaining source event IDs for inspection. Presentation, pointer and camera
 state are never projected as learner milestones.
 
-LUMI is a persistent, compact companion owned by Explore presentation. Its
-semantic body states are AMBIENT, OBSERVE, THINK, GUIDE, NOTICE and
-ILLUMINATE; opening the companion only reveals existing guidance, Evidence or
-Ideas Map surfaces. `src/core/ui/lumiCompanion.js` is a pure resolver over a
-bounded semantic projection, so state changes cannot create events or mutate
-World/Experiment truth.
+LUMI is a persistent, mascot-first companion owned by Explore presentation.
+Its transparent body stays fixed at the viewport edge; a bounded event bubble
+is used only for GUIDE, NOTICE, and ILLUMINATE, while inquiry text and actions
+live in the interaction-triggered panel. Its semantic body states are AMBIENT,
+OBSERVE, THINK, GUIDE, NOTICE and ILLUMINATE; opening the companion only
+reveals existing guidance, Evidence or Ideas Map surfaces.
+`src/core/ui/lumiCompanion.js` is a pure resolver over a bounded semantic
+projection, so state changes cannot create events or mutate World/Experiment
+truth.
 It never executes a proposal. Empty concept frontiers stay hidden until a
 deterministic candidate exists. Episode 1's fitted regression line appears only
 after a committed fit, and its A/B overlay uses stored fit parameters rather

@@ -97,7 +97,8 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
     : attention?.conceptTarget ? 'ideas.map'
       : attention?.interventionTarget ? 'experiment.compare' : null;
   const lumiSemanticAction = attention?.interventionTarget ? 'GUIDE' : attention?.evidenceTarget ? 'OBSERVE' : null;
-  const lumiMeaningfulResult = Boolean(snapshot?.inquiryRuntime?.comparison || snapshot?.inquiryRuntime?.evidence?.status);
+  const lumiEvidenceStatus = snapshot?.inquiryRuntime?.evidence?.status ?? 'insufficient';
+  const lumiMeaningfulResult = ['valid-weak', 'evidenced'].includes(lumiEvidenceStatus);
   const lumiRecentConceptEvent = journeyIlluminationEvents.at(-1) ?? null;
   const compact = responsive.band === 'compact';
   const panelCloseRef = useRef(null);
@@ -156,7 +157,7 @@ export default function ExploreDetailsRegion({ snapshot, modelPlayground, bigIde
       </div>
     </section>
 
-    {agent && <div data-lumi-ambient="true"><LumiCompanion snapshot={snapshot} attention={attention} semanticAction={lumiSemanticAction} semanticTarget={lumiSemanticTarget} recentConceptEvent={lumiRecentConceptEvent} meaningfulResult={lumiMeaningfulResult} askBusy={agentBusy} onOpenGuidance={onAgentOpen} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} onOpenIdeas={() => { const node = document.querySelector('[data-secondary-inquiry-surfaces]'); if (node) { node.open = true; node.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); } }} onSelectContinuation={(id) => host?.recordInquiryContinuation?.(id)} onOpenSettings={openSettings} isConfigured={isConfigured} configureLabel={t('ai.configure')} t={t} /></div>}
+    {agent && <div data-lumi-ambient="true"><LumiCompanion snapshot={snapshot} attention={attention} compact={compact} semanticAction={lumiSemanticAction} semanticTarget={lumiSemanticTarget} recentConceptEvent={lumiRecentConceptEvent} meaningfulResult={lumiMeaningfulResult} askBusy={agentBusy} onOpenGuidance={onAgentOpen} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} onOpenIdeas={() => { const node = document.querySelector('[data-secondary-inquiry-surfaces]'); if (node) { node.open = true; node.scrollIntoView?.({ behavior: 'smooth', block: 'center' }); } }} onSelectContinuation={(id) => host?.recordInquiryContinuation?.(id)} onOpenSettings={openSettings} isConfigured={isConfigured} configureLabel={t('ai.configure')} t={t} /></div>}
     <LumiAttentionRail snapshot={snapshot} attention={attention} activeDepth={activeDepth} illuminatedConceptIds={illuminatedConceptIds} onOpenEvidence={() => onDepthChange?.(CONCEPTUAL_DEPTHS.EVIDENCE)} t={t} />
     <LumiJourneyTimeline journey={journey} snapshot={snapshot} compact={compact} t={t} onSelectConcept={setSelectedConceptId} />
     <details data-secondary-inquiry-surfaces className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
