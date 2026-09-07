@@ -89,6 +89,7 @@ await host.close();
 const companion = await import('../src/core/ui/lumiCompanion.js');
 const css = await (await import('node:fs/promises')).readFile(new URL('../src/index.css', import.meta.url), 'utf8');
 assert.ok(css.includes('--lumi-companion-size'), 'companion sizing is scoped to responsive tokens');
+assert.match(css, /\.lumi-companion \.lumi-button \{ width: var\(--lumi-companion-size\); height: calc\(var\(--lumi-companion-size\) \* \.94\); \}/, 'companion hit target scales with the visible body');
 assert.ok(css.includes('@media (min-width: 1600px)'), 'wide desktop companion breakpoint exists');
 assert.ok(companion.resolveLumiCompanionState({ askBusy: true }) === companion.LUMI_COMPANION_STATES.THINK);
 

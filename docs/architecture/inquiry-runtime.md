@@ -104,7 +104,9 @@ Phase A.8.2 keeps companion sizing local to the companion surface. The
 responsive token is `4rem` (64px) at compact widths, `5.25rem` (84px) from
 tablet/desktop widths, and `6rem` (96px) on wide desktop; the panel remains a
 compact bottom sheet on narrow screens and a bounded popover on larger screens.
-These rules do not alter the inline LUMI treatment elsewhere in Explore.
+The closed art, button hit/focus target, and fixed anchor all use that same
+token, so the visible character never exceeds its interactive body. These
+rules do not alter the inline LUMI treatment elsewhere in Explore.
 
 Natural-language interpretation may provide `requestedHolds`, a bounded
 semantic vocabulary used to constrain an Experiment or World proposal. The

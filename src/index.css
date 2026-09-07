@@ -77,6 +77,7 @@
 .lumi-companion { position: fixed; right: .9rem; bottom: .9rem; z-index: 70; isolation: isolate; pointer-events: none; }
 .lumi-companion-body { position: relative; display: grid; place-items: center; pointer-events: auto; }
 .lumi-companion { --lumi-companion-size: 4rem; --lumi-companion-edge: .75rem; }
+.lumi-companion .lumi-button { width: var(--lumi-companion-size); height: calc(var(--lumi-companion-size) * .94); }
 .lumi-companion .lumi-ambient { width: var(--lumi-companion-size); height: calc(var(--lumi-companion-size) * .94); flex: 0 0 auto; }
 .lumi-companion:not(.lumi-companion-open) .lumi-button { border-radius: 999px; }
 .lumi-notification { position: absolute; top: calc(var(--lumi-companion-size) * .07); right: calc(var(--lumi-companion-size) * .03); width: clamp(.45rem, calc(var(--lumi-companion-size) * .12), .68rem); height: clamp(.45rem, calc(var(--lumi-companion-size) * .12), .68rem); border: 2px solid white; border-radius: 999px; background: var(--lumi-pulse); box-shadow: 0 0 .45rem color-mix(in srgb, var(--lumi-pulse) 72%, transparent); pointer-events: none; }

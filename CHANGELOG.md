@@ -1,5 +1,16 @@
 # Changelog
 
+## 2026-09-08 — Phase A.8.2 responsive hit-target repair
+
+- Aligned the closed companion's mascot art, interactive button, focus target,
+  and viewport anchor to the same responsive token at compact, desktop, and
+  wide breakpoints.
+- Added a focused regression assertion preventing the visible mascot from
+  exceeding its interactive body.
+- Validation: full repository check, focused responsive/motion checks,
+  production build, four-viewport browser measurements, and `git diff --check`
+  pass.
+
 ## 2026-09-08 — Phase A.8.2 responsive companion and requested-holds boundary
 
 - Added companion-scoped responsive sizing for compact, desktop, and wide
