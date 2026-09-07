@@ -176,14 +176,15 @@ export function routeAgentAiInterpretation({ interpretation, request, snapshot =
   }
   if (interpretation?.kind === 'experiment' && interpretation.design) {
     if (!snapshot.model) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'model-unavailable', source: 'ai', request };
-    return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, design: interpretation.design, source: 'ai', request };
+    return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, design: interpretation.design, requestedHolds: interpretation.requestedHolds ?? [], requestedHoldsNormalization: interpretation.requestedHoldsNormalization ?? null, source: 'ai', request };
   }
   if (interpretation?.kind === 'world-design') {
     if (capabilities.worldComposer === false) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'world-composer-unavailable', source: 'ai', request };
     return {
       kind: AGENT_GUIDANCE_OUTCOMES.WORLD_DESIGN_PROPOSAL,
-      worldDesign: interpretation.design,
+      worldDesign: { ...interpretation.design, requestedHolds: interpretation.requestedHolds ?? [] },
       requestedHolds: interpretation.requestedHolds ?? [],
+      requestedHoldsNormalization: interpretation.requestedHoldsNormalization ?? null,
       source: 'ai',
       request,
     };
@@ -191,7 +192,7 @@ export function routeAgentAiInterpretation({ interpretation, request, snapshot =
   const intent = interpretation?.intent;
   if (!isExplorationIntent(intent)) return null;
   if (!snapshot.model) return { kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'model-unavailable' };
-  return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent, source: 'ai', request };
+  return { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL, intent, requestedHolds: interpretation.requestedHolds ?? [], requestedHoldsNormalization: interpretation.requestedHoldsNormalization ?? null, source: 'ai', request };
 }
 
 export function deriveAgentSemanticExplanation(topic, snapshot = {}) {

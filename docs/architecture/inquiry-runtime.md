@@ -100,6 +100,24 @@ under `prefers-reduced-motion`. The canonical 1254px masters remain source
 artwork outside the shipped bundle; the 256px derivatives keep the floating
 companion lightweight at desktop and compact sizes.
 
+Phase A.8.2 keeps companion sizing local to the companion surface. The
+responsive token is `4rem` (64px) at compact widths, `5.25rem` (84px) from
+tablet/desktop widths, and `6rem` (96px) on wide desktop; the panel remains a
+compact bottom sheet on narrow screens and a bounded popover on larger screens.
+These rules do not alter the inline LUMI treatment elsewhere in Explore.
+
+Natural-language interpretation may provide `requestedHolds`, a bounded
+semantic vocabulary used to constrain an Experiment or World proposal. The
+normalizer in `src/core/exploration/requestedHolds.js` accepts canonical IDs
+and exact aliases, treats omitted/null/empty input as no additional holds,
+deduplicates deterministically, and rejects unknown, prose, mixed-object,
+over-limit, or broad-plus-specific contradictory holds. The interpreter
+returns normalization details for diagnostics, while `scenarioPlanner` remains
+the owner of the validated `ScenarioSpec` and merges explicit holds into its
+existing deterministic defaults. These holds are planning intent only: they do
+not execute an experiment or change World/Experiment truth before learner
+acceptance.
+
 When `SAMPLING_VARIABILITY` becomes eligible from deterministic Evidence, the
 host performs one idempotent presentation illumination and the companion
 announces the connection. This is an Encountered/Evidenced signal, not a

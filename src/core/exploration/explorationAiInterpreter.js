@@ -5,6 +5,7 @@ import { applyWorldRecipePatch, normalizeWorldRecipe, worldRecipeJsonSchema, wor
 import { pedagogicalExperimentSchema, validateExplorationDesign, pedagogicalGoalIds } from './pedagogicalExperiment.js';
 import { canonicalizePedagogicalObservation } from './pedagogicalObservation.js';
 import { projectCuriosityContext } from './curiosity.js';
+import { normalizeRequestedHolds, REQUESTED_HOLD_LIMIT } from './requestedHolds.js';
 
 const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
@@ -24,7 +25,7 @@ export function explorationGuidanceResponseSchema({ availableDepths = [] } = {})
       depth: { anyOf: [{ type: 'string', enum: depths }, { type: 'null' }] },
       intent: { anyOf: [{ type: 'string', enum: INTENTS }, { type: 'null' }] },
       requestedChange: nullableStringSchema(),
-      requestedHolds: { anyOf: [{ type: 'array', maxItems: 12, items: { type: 'string' } }, { type: 'null' }] },
+      requestedHolds: { anyOf: [{ type: 'array', maxItems: REQUESTED_HOLD_LIMIT, items: { type: 'string', maxLength: 120 } }, { type: 'null' }] },
       design: { anyOf: [{ type: 'object', additionalProperties: false, properties: {
         mode: { type: 'string', enum: ['create', 'edit'] },
         recipe: { anyOf: [worldRecipeJsonSchema(), { type: 'null' }] },
@@ -119,13 +120,16 @@ function validateInterpretation(value, context) {
       if (design.mode === 'create' && !recipe) throw new Error('recipe-required');
       if (design.mode === 'edit' && !patch) throw new Error('patch-required');
       if (patch && context?.world?.generator?.kind === 'world-recipe') applyWorldRecipePatch(context.world.generator.recipe, patch);
+      const normalizedHolds = normalizeRequestedHolds(value.requestedHolds);
       return {
         kind: 'world-design',
         design: { mode: design.mode, recipe, patch },
-        requestedHolds: [...(value.requestedHolds ?? [])].filter((item) => typeof item === 'string').slice(0, 12),
+        requestedHolds: normalizedHolds.holds,
+        requestedHoldsNormalization: normalizedHolds.details,
         ambiguity: value.ambiguity ?? null,
       };
-    } catch {
+    } catch (error) {
+      if (error?.code === 'AI_INVALID_REQUESTED_HOLDS') throw error;
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid World design.');
     }
   }
@@ -135,7 +139,11 @@ function validateInterpretation(value, context) {
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported exploration intent.');
       }
     }
-    if (value.requestedHolds !== undefined && (!Array.isArray(value.requestedHolds) || value.requestedHolds.some((item) => typeof item !== 'string'))) {
+    let normalizedHolds;
+    try {
+      normalizedHolds = normalizeRequestedHolds(value.requestedHolds);
+    } catch (error) {
+      if (error?.code === 'AI_INVALID_REQUESTED_HOLDS') throw error;
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned invalid requested holds.');
     }
     let experimentDesign = null;
@@ -151,7 +159,8 @@ function validateInterpretation(value, context) {
       intent: value.intent,
       design: experimentDesign,
       requestedChange: typeof value.requestedChange === 'string' ? value.requestedChange.slice(0, 240) : null,
-      requestedHolds: [...(value.requestedHolds ?? [])].slice(0, 12),
+      requestedHolds: normalizedHolds.holds,
+      requestedHoldsNormalization: normalizedHolds.details,
       ambiguity: value.ambiguity ?? null,
     };
   }
@@ -229,7 +238,7 @@ function promptFor({ request, context }) {
     `Bounded semantic context: ${JSON.stringify(projectExplorationAiContext(context))}`,
     'Explanation shape: {"kind":"explanation","topic":"...","explanation":"short conceptual explanation"}',
     'Navigation shape: {"kind":"navigation","depth":"one available depth"}',
-    'Experiment shape: {"kind":"experiment","intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
+    'Experiment shape: {"kind":"experiment","intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}. requestedHolds may be null or omitted to mean no additional model-supplied hold; unknown, prose, mixed, contradictory, and over-limit holds are invalid.',
     'Pedagogical experiment shape: {"kind":"experiment","experimentDesign":{"version":1,"kind":"exploration-design","goal":"class-separation|train-test-support-shift|observation-noise|outlier-sensitivity|more-same-distribution-data","intervention":"...","evidence":"...","prediction":null},"intent":null,"ambiguity":null}',
     'World-design shape: {"kind":"world-design","design":{"mode":"create","recipe":{...canonical recipe...},"patch":null},"requestedHolds":[]}',
     'Clarification shape: {"kind":"clarification","reason":"short bounded reason"}',

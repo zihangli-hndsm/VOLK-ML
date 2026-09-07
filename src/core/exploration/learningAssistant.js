@@ -1,4 +1,5 @@
 import { projectLearnerAnnotations } from './learnerAnnotations.js';
+import { normalizeRequestedHolds } from './requestedHolds.js';
 
 
 export const LEARNING_ASSISTANT_VERSION = 1;
@@ -84,9 +85,17 @@ export function createExperimentDesignRequest(value) {
   const requestedChange = rawChange && typeof rawChange === 'object'
     ? Object.fromEntries(['factor', 'direction', 'scope'].filter((key) => typeof rawChange[key] === 'string').map((key) => [key, rawChange[key].slice(0, 64)]))
     : goal === 'more-same-distribution-data' ? { factor: 'sample-size', direction: 'increase', scope: 'train' } : {};
-  const requestedHolds = [...new Set((value.requestedHolds ?? value.design?.requestedHolds ?? [
-    'world-generating-process', 'model-configuration', 'learning-configuration', 'evaluation-configuration',
-  ]).filter((item) => typeof item === 'string').map((item) => item.slice(0, 120)))].slice(0, 12);
+  const rawRequestedHolds = value.requestedHolds !== undefined
+    ? value.requestedHolds
+    : value.design?.requestedHolds !== undefined
+      ? value.design.requestedHolds
+      : ['world-generating-process', 'model-configuration', 'learning-configuration', 'evaluation-configuration'];
+  let requestedHolds;
+  try {
+    requestedHolds = normalizeRequestedHolds(rawRequestedHolds).holds;
+  } catch {
+    return null;
+  }
   const requestedObservables = [...new Set((value.requestedObservables ?? (goal === 'more-same-distribution-data'
     ? ['outcome.trainMse', 'outcome.testMse'] : [])).filter((item) => typeof item === 'string').map((item) => item.slice(0, 120)))].slice(0, 12);
   const design = value.experimentDesign ?? value.design;
@@ -203,13 +212,17 @@ export function validateLearningAnswer(value) {
           const design = value.tryExperiment.design;
           const goal = design?.goal;
           if (!question || !design || !EXPERIMENT_DESIGN_GOALS.has(goal)) return null;
+          let requestedHolds = undefined;
+          if (design.requestedHolds !== undefined) {
+            try { requestedHolds = normalizeRequestedHolds(design.requestedHolds).holds; } catch { return null; }
+          }
           return {
             question,
             message: value.tryExperiment.message === null || value.tryExperiment.message === undefined ? null : bounded(value.tryExperiment.message, 240),
             design: {
               goal,
               ...(design.requestedChange && typeof design.requestedChange === 'object' ? { requestedChange: Object.fromEntries(['factor', 'direction', 'scope'].filter((key) => typeof design.requestedChange[key] === 'string').map((key) => [key, design.requestedChange[key].slice(0, 64)])) } : {}),
-              ...(Array.isArray(design.requestedHolds) ? { requestedHolds: design.requestedHolds.filter((item) => typeof item === 'string').slice(0, 12) } : {}),
+              ...(requestedHolds !== undefined ? { requestedHolds } : {}),
               ...(Array.isArray(design.requestedObservables) ? { requestedObservables: design.requestedObservables.filter((item) => typeof item === 'string').slice(0, 12) } : {}),
             },
           };

@@ -10,6 +10,7 @@ import {
   validateExplorationDesign,
 } from './pedagogicalExperiment.js';
 import { planCrossDomainIntent, planCrossDomainRequest } from './crossDomainPlanner.js';
+import { normalizeRequestedHolds } from './requestedHolds.js';
 
 const clone = (value) => structuredClone(value);
 
@@ -222,12 +223,13 @@ function worldDesignSpec(worldDesign, request, context) {
     experimentId: context.experiment.id,
     conditionFingerprint: conditionFingerprintForSession({ world: context.world, adapterId: context.experiment.model?.adapterId, experiment: context.experiment }),
   };
+  const normalizedRequestedHolds = normalizeRequestedHolds(worldDesign.requestedHolds).holds;
   const common = {
     version: 1,
     request,
     baseline,
     execution: { duplicateBaseline: true, run: true, compare: true, repeat: null },
-    hold: [...(worldDesign.requestedHolds ?? []), 'model-configuration', 'learning-configuration', 'evaluation-configuration'],
+    hold: [...new Set([...normalizedRequestedHolds, 'model-configuration', 'learning-configuration', 'evaluation-configuration'])],
     intendedWorldRecipeDomains,
     intendedWorldRecipePaths,
     heldWorldRecipeDomains,
@@ -373,7 +375,7 @@ function pedagogicalObservables(design, task) {
   return outcome;
 }
 
-export function planPedagogicalExperiment(designInput, request, context) {
+export function planPedagogicalExperiment(designInput, request, context, requestedHolds = []) {
   const design = validateExplorationDesign(designInput, { context });
   const currentRecipe = context.world?.generator?.kind === 'world-recipe' ? context.world.generator.recipe : null;
   const generator = context.world?.generator;
@@ -410,14 +412,15 @@ export function planPedagogicalExperiment(designInput, request, context) {
     draft.pedagogicalDesign = design;
     draft.interpretation = { summary: 'Prepare a one-factor pedagogical experiment from the current World.', ambiguity: null };
     draft.observe = pedagogicalObservables(design, currentRecipe.task);
-    draft.hold = [
+    draft.hold = [...new Set([
+      ...normalizeRequestedHolds(requestedHolds).holds,
       'model-configuration',
       'learning-configuration',
       'evaluation-configuration',
       'randomness-policy',
       ...(design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA ? ['world-generating-process'] : []),
       ...(design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.TRAIN_TEST_SUPPORT_SHIFT ? ['train-world'] : []),
-    ];
+    ])];
     return { kind: 'proposal', scenario: validateScenarioSpec(draft, context), interpretation: { kind: 'exploration-design', design } };
   }
 
@@ -435,6 +438,7 @@ export function planPedagogicalExperiment(designInput, request, context) {
     };
   }
   const draft = intentSpec(legacyIntent, request, context);
+  draft.hold = [...new Set([...normalizeRequestedHolds(requestedHolds).holds, ...draft.hold])];
   draft.pedagogicalDesign = design;
   draft.interpretation = { summary: 'Prepare a one-factor pedagogical experiment from the current World.', ambiguity: null };
   draft.observe = pedagogicalObservables(design, context.world?.task);
@@ -471,7 +475,7 @@ export function planExplorationRequest(request, context) {
   return { kind: 'proposal', scenario: validateScenarioSpec(draft, context), interpretation };
 }
 
-export function planExplorationIntent(intent, request, context) {
+export function planExplorationIntent(intent, request, context, requestedHolds = []) {
   const crossDomain = planCrossDomainIntent(intent, request, context);
   if (crossDomain) return crossDomain.kind === 'proposal'
     ? { ...crossDomain, scenario: validateScenarioSpec(crossDomain.scenario, context) }
@@ -496,6 +500,7 @@ export function planExplorationIntent(intent, request, context) {
       },
     };
   }
+  draft.hold = [...new Set([...normalizeRequestedHolds(requestedHolds).holds, ...draft.hold])];
   return { kind: 'proposal', scenario: validateScenarioSpec(draft, context) };
 }
 
