@@ -142,6 +142,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         ...(taskOverride ? { task: taskOverride } : {}),
         ...(nextOutcome.intent ? { intent: nextOutcome.intent } : {}),
         ...(nextOutcome.design ? { design: nextOutcome.design } : {}),
+        ...(Array.isArray(nextOutcome.requestedHolds) ? { requestedHolds: nextOutcome.requestedHolds } : {}),
         ...(nextOutcome.worldDesign ? { worldDesign: { ...nextOutcome.worldDesign, requestedHolds: nextOutcome.requestedHolds ?? [] } } : {}),
       });
       setProposal(nextProposal);

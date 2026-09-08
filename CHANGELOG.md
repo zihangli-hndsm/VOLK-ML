@@ -1,5 +1,30 @@
 # Changelog
 
+## 2026-09-08 — Phase A.8.2 responsive hit-target repair
+
+- Aligned the closed companion's mascot art, interactive button, focus target,
+  and viewport anchor to the same responsive token at compact, desktop, and
+  wide breakpoints.
+- Added a focused regression assertion preventing the visible mascot from
+  exceeding its interactive body.
+- Validation: full repository check, focused responsive/motion checks,
+  production build, four-viewport browser measurements, and `git diff --check`
+  pass.
+
+## 2026-09-08 — Phase A.8.2 responsive companion and requested-holds boundary
+
+- Added companion-scoped responsive sizing for compact, desktop, and wide
+  layouts while preserving the mascot-first A.8.1 composition and compact
+  bottom-sheet behavior.
+- Added strict `requestedHolds` normalization for interpreter, learning
+  assistant, agent routing, host proposals, and planner preservation. Null or
+  omitted holds are safe no-ops; unknown, contradictory, malformed, and
+  over-limit values are rejected without mutating runtime truth.
+- Added focused Phase A.8.2 contract coverage and architecture documentation.
+- Validation: focused interpreter/planner/responsive checks and the affected
+  Episode, Cloud, UI, and LUMI checks pass. Full repository/build and browser
+  acceptance are reported separately for VOLK-Dev.
+
 ## 2026-09-06 — Phase A.8.1 mascot-first LUMI presentation
 
 - Refined the accepted companion into a transparent fixed desktop-pet body:

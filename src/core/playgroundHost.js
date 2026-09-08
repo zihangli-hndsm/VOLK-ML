@@ -1345,6 +1345,7 @@ export function createPlaygroundHost({
     proposeExploration({ request, intent, worldDesign, design, task } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
       const context = this.inspectContext();
+      const requestedHolds = arguments[0]?.requestedHolds;
       const structuredTask = task?.kind === 'experiment-design-request'
         && task?.version === 1
         && task?.source === 'lumi'
@@ -1354,6 +1355,7 @@ export function createPlaygroundHost({
         : null;
       const taskRequest = structuredTask?.learnerQuestion ?? request;
       const taskIntent = structuredTask?.intent ?? (structuredTask?.goal === 'more-same-distribution-data' ? 'more-data' : intent);
+      const taskRequestedHolds = structuredTask?.requestedHolds ?? requestedHolds ?? worldDesign?.requestedHolds ?? [];
       const taskDesign = structuredTask?.experimentDesign ?? (structuredTask?.goal
         ? createPedagogicalExperimentDesign(structuredTask.goal)
         : null);
@@ -1363,15 +1365,27 @@ export function createPlaygroundHost({
       let planned;
       try {
         planned = taskDesign
-          ? planPedagogicalExperiment(taskDesign, taskRequest ?? 'Design a controlled experiment', context)
+          ? planPedagogicalExperiment(taskDesign, taskRequest ?? 'Design a controlled experiment', context, taskRequestedHolds)
           : design
-          ? planPedagogicalExperiment(design, taskRequest ?? 'Design a controlled experiment', context)
+          ? planPedagogicalExperiment(design, taskRequest ?? 'Design a controlled experiment', context, taskRequestedHolds)
           : worldDesign
-          ? planWorldDesign(worldDesign, taskRequest ?? 'Design a deterministic world', context)
+          ? planWorldDesign({ ...worldDesign, requestedHolds: taskRequestedHolds }, taskRequest ?? 'Design a deterministic world', context)
           : taskIntent
-            ? planExplorationIntent(taskIntent, taskRequest ?? String(taskIntent), context)
-            : planExplorationRequest(taskRequest, context);
+            ? planExplorationIntent(taskIntent, taskRequest ?? String(taskIntent), context, taskRequestedHolds)
+            : planExplorationRequest(taskRequest, context, taskRequestedHolds);
       } catch (error) {
+        if (error?.code === 'EXPLORATION_SCENARIO_REQUESTED_HOLD_CONFLICT') {
+          return {
+            kind: 'clarification',
+            request: request ?? 'Design a controlled experiment',
+            interpretation: {
+              ambiguity: error.details?.reason ?? 'requested-hold-conflict',
+              messageKey: 'playground.pedagogical.unsupported',
+              choices: [],
+              details: { requestedHolds: error.details?.requestedHolds ?? [], changedFactors: error.details?.changedFactors ?? [] },
+            },
+          };
+        }
         if (design && error?.code === 'EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION') {
           return {
             kind: 'clarification',

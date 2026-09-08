@@ -59,7 +59,7 @@ export function classifyAiError(error) {
   if (error?.code === 'AI_PROVIDER_OUTPUT_MISSING') return 'AI_OUTPUT_MISSING';
   if (error?.code === 'AI_PROVIDER_REFUSAL') return 'AI_OUTPUT_MISSING';
   if (error?.code === 'AI_PROVIDER_RESPONSE_INCOMPLETE') return 'AI_TIMEOUT';
-  if (error?.code === 'AI_INVALID_EXPLORATION_INTERPRETATION') return 'AI_INTERPRETER_INVALID';
+  if (error?.code === 'AI_INVALID_EXPLORATION_INTERPRETATION' || error?.code === 'AI_INVALID_REQUESTED_HOLDS') return 'AI_INTERPRETER_INVALID';
   if (/structured|response[_ -]?format|json[_ -]?object/.test(providerMessage)) return 'AI_STRUCTURED_OUTPUT_UNSUPPORTED';
   if (error?.code === 'AI_PROVIDER_REQUEST_FAILED') return 'AI_NETWORK_OR_CORS';
   if (error?.code === 'AI_PROVIDER_UNAVAILABLE' || error?.code === 'AI_PROVIDER_UNSUPPORTED') return 'AI_NETWORK_OR_CORS';
@@ -72,6 +72,9 @@ export function createAiDiagnostic({ error, config = {}, stage = 'failed', fallb
     version: 1,
     stage: normalizedStage,
     errorCode: classifyAiError(error),
+    internalCode: String(error?.code ?? '').slice(0, 80) || null,
+    field: String(error?.details?.field ?? '').slice(0, 80) || null,
+    reason: String(error?.details?.reason ?? '').slice(0, 120) || null,
     protocol: String(config?.protocol ?? '').slice(0, 80) || null,
     vendor: String(config?.vendorId ?? config?.displayName ?? '').slice(0, 80) || null,
     model: String(config?.model ?? '').slice(0, 120) || null,
@@ -114,6 +117,9 @@ export function diagnosticText(diagnostic) {
   return [
     `stage=${diagnostic.stage}`,
     `code=${diagnostic.errorCode}`,
+    diagnostic.internalCode ? `internalCode=${diagnostic.internalCode}` : null,
+    diagnostic.field ? `field=${diagnostic.field}` : null,
+    diagnostic.reason ? `reason=${diagnostic.reason}` : null,
     diagnostic.protocol ? `protocol=${diagnostic.protocol}` : null,
     diagnostic.vendor ? `vendor=${diagnostic.vendor}` : null,
     diagnostic.model ? `model=${diagnostic.model}` : null,

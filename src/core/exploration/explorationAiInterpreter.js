@@ -5,6 +5,7 @@ import { applyWorldRecipePatch, normalizeWorldRecipe, worldRecipeJsonSchema, wor
 import { pedagogicalExperimentSchema, validateExplorationDesign, pedagogicalGoalIds } from './pedagogicalExperiment.js';
 import { canonicalizePedagogicalObservation } from './pedagogicalObservation.js';
 import { projectCuriosityContext } from './curiosity.js';
+import { normalizeRequestedHolds, requestedHoldsJsonSchema } from './requestedHolds.js';
 
 const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
@@ -24,7 +25,7 @@ export function explorationGuidanceResponseSchema({ availableDepths = [] } = {})
       depth: { anyOf: [{ type: 'string', enum: depths }, { type: 'null' }] },
       intent: { anyOf: [{ type: 'string', enum: INTENTS }, { type: 'null' }] },
       requestedChange: nullableStringSchema(),
-      requestedHolds: { anyOf: [{ type: 'array', maxItems: 12, items: { type: 'string' } }, { type: 'null' }] },
+      requestedHolds: requestedHoldsJsonSchema(),
       design: { anyOf: [{ type: 'object', additionalProperties: false, properties: {
         mode: { type: 'string', enum: ['create', 'edit'] },
         recipe: { anyOf: [worldRecipeJsonSchema(), { type: 'null' }] },
@@ -119,13 +120,16 @@ function validateInterpretation(value, context) {
       if (design.mode === 'create' && !recipe) throw new Error('recipe-required');
       if (design.mode === 'edit' && !patch) throw new Error('patch-required');
       if (patch && context?.world?.generator?.kind === 'world-recipe') applyWorldRecipePatch(context.world.generator.recipe, patch);
+      const normalizedHolds = normalizeRequestedHolds(value.requestedHolds);
       return {
         kind: 'world-design',
         design: { mode: design.mode, recipe, patch },
-        requestedHolds: [...(value.requestedHolds ?? [])].filter((item) => typeof item === 'string').slice(0, 12),
+        requestedHolds: normalizedHolds.holds,
+        requestedHoldsNormalization: normalizedHolds.details,
         ambiguity: value.ambiguity ?? null,
       };
-    } catch {
+    } catch (error) {
+      if (error?.code === 'AI_INVALID_REQUESTED_HOLDS') throw error;
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid World design.');
     }
   }
@@ -135,7 +139,11 @@ function validateInterpretation(value, context) {
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported exploration intent.');
       }
     }
-    if (value.requestedHolds !== undefined && (!Array.isArray(value.requestedHolds) || value.requestedHolds.some((item) => typeof item !== 'string'))) {
+    let normalizedHolds;
+    try {
+      normalizedHolds = normalizeRequestedHolds(value.requestedHolds);
+    } catch (error) {
+      if (error?.code === 'AI_INVALID_REQUESTED_HOLDS') throw error;
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned invalid requested holds.');
     }
     let experimentDesign = null;
@@ -151,7 +159,8 @@ function validateInterpretation(value, context) {
       intent: value.intent,
       design: experimentDesign,
       requestedChange: typeof value.requestedChange === 'string' ? value.requestedChange.slice(0, 240) : null,
-      requestedHolds: [...(value.requestedHolds ?? [])].slice(0, 12),
+      requestedHolds: normalizedHolds.holds,
+      requestedHoldsNormalization: normalizedHolds.details,
       ambiguity: value.ambiguity ?? null,
     };
   }
@@ -201,6 +210,24 @@ export function projectExplorationAiContext(context = {}) {
 }
 
 function promptFor({ request, context }) {
+  const availableDepths = Array.isArray(context?.presentation?.availableDepths)
+    ? context.presentation.availableDepths
+    : [];
+  const exampleDepth = availableDepths[0] ?? 'unavailable';
+  const responseExample = (label, overrides = {}) => `Response example (${label}): ${JSON.stringify({
+    kind: 'explanation',
+    topic: null,
+    explanation: null,
+    depth: null,
+    intent: null,
+    requestedChange: null,
+    requestedHolds: [],
+    design: null,
+    experimentDesign: null,
+    reason: null,
+    ambiguity: null,
+    ...overrides,
+  })}`;
   return [
     'Interpret the learner request into one bounded high-level VOLK-ML guidance outcome.',
     'Return JSON only. Never return runtime operations, operation IDs, control IDs, observable IDs, code, or a ScenarioSpec.',
@@ -227,12 +254,50 @@ function promptFor({ request, context }) {
     `Allowed explanation topics: ${EXPLANATION_TOPICS.join(', ')}`,
     'The deterministic planner and capability registry will choose all executable operations after this response.',
     `Bounded semantic context: ${JSON.stringify(projectExplorationAiContext(context))}`,
-    'Explanation shape: {"kind":"explanation","topic":"...","explanation":"short conceptual explanation"}',
-    'Navigation shape: {"kind":"navigation","depth":"one available depth"}',
-    'Experiment shape: {"kind":"experiment","intent":"...","requestedChange":"...","requestedHolds":["..."],"ambiguity":null}',
-    'Pedagogical experiment shape: {"kind":"experiment","experimentDesign":{"version":1,"kind":"exploration-design","goal":"class-separation|train-test-support-shift|observation-noise|outlier-sensitivity|more-same-distribution-data","intervention":"...","evidence":"...","prediction":null},"intent":null,"ambiguity":null}',
-    'World-design shape: {"kind":"world-design","design":{"mode":"create","recipe":{...canonical recipe...},"patch":null},"requestedHolds":[]}',
-    'Clarification shape: {"kind":"clarification","reason":"short bounded reason"}',
+    responseExample('explanation', { kind: 'explanation', topic: 'comparison', explanation: 'short conceptual explanation' }),
+    responseExample('navigation', { kind: 'navigation', depth: exampleDepth }),
+    responseExample('experiment-hold-realized-world', {
+      kind: 'experiment',
+      intent: 'learning-rate-increase',
+      requestedChange: 'increase the learning rate',
+      requestedHolds: ['world'],
+    }),
+    responseExample('experiment-hold-world-process', {
+      kind: 'experiment',
+      intent: 'more-data',
+      requestedChange: 'increase same-distribution training data',
+      requestedHolds: ['world-generating-process'],
+    }),
+    responseExample('pedagogical-experiment', {
+      kind: 'experiment',
+      experimentDesign: {
+        version: 1,
+        kind: 'exploration-design',
+        goal: 'more-same-distribution-data',
+        intervention: 'increase-same-distribution-sample-size',
+        evidence: 'outcome-and-stability',
+        prediction: null,
+      },
+    }),
+    responseExample('world-design', {
+      kind: 'world-design',
+      design: {
+        mode: 'edit',
+        recipe: null,
+        patch: {
+          version: 1,
+          changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }],
+        },
+      },
+    }),
+    responseExample('clarification', {
+      kind: 'clarification',
+      reason: 'short bounded reason',
+      ambiguity: 'short bounded ambiguity',
+    }),
+    'requestedHolds semantics: ["world"] means hold the current realized World identity/state. ["world-generating-process"] means hold the generating relation/process; it is distinct from the realized World and must not be substituted for it.',
+    'Invalid requestedHolds examples (reject rather than emit): ["constructor"] (unknown ID), ["keep everything else unchanged"] (prose), ["world","noise"] (contradictory broad realized-World hold plus a noise change), and ["world","world-generating-process"] (ambiguous broad and specific World holds).',
+    'requestedHolds may be null or omitted to mean no additional model-supplied hold. Use only canonical IDs: world, world-generating-process, latent-relation, noise, model-configuration, learning-configuration, evaluation-configuration, existing-train-test-setup, train-distribution, test-distribution, train-sample-count, train-world, test-world, randomness-policy. Exact compatibility aliases may be normalized at the compatibility boundary; do not prefer aliases in new output. Unknown, prose, contradictory, and over-limit holds are invalid.',
     `Learner request: ${String(request ?? '').trim()}`,
   ].join('\n\n');
 }

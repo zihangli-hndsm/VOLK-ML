@@ -23,6 +23,7 @@ import { listWorldOperations } from '../src/core/exploration/operationRegistry.j
 import { evaluateScenarioFidelity } from '../src/core/exploration/scenarioFidelity.js';
 import { validateScenarioSpec } from '../src/core/exploration/scenarioSpec.js';
 import { isWorldModelCompatibilityError } from '../src/core/exploration/worldModelCompatibility.js';
+import { createPedagogicalExperimentDesign } from '../src/core/exploration/pedagogicalExperiment.js';
 
 const noise = () => ({
   train: { position: { amount: 0 }, label: { probability: 0, policy: 'flip' }, outliers: { fraction: 0, placement: 'radial', distance: 2 }, local: [] },
@@ -445,7 +446,23 @@ assert.equal(isWorldModelCompatibilityError({ code: 'INVALID_PLAYGROUND_ACTION',
 assert.equal(isWorldModelCompatibilityError({ code: 'EXPLORATION_SCENARIO_STALE', details: { reasonCode: 'world-task-incompatible' } }), false);
 assert.equal(isWorldModelCompatibilityError({ code: 'INVALID_PLAYGROUND_ACTION', details: { reasonCode: 'knn-world-invalid' } }), false);
 const regressionRecipe = normalizeWorldRecipe({ ...base, task: 'regression' });
-const regressionProposal = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: { mode: 'create', recipe: regressionRecipe, patch: null, requestedHolds: [] } });
+const regressionWorldDesign = { mode: 'create', recipe: regressionRecipe, patch: null, requestedHolds: [] };
+const worldDesignBeforeHoldChecks = structuredClone(host.getState().experiment);
+const topLevelHoldProposal = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: regressionWorldDesign, requestedHolds: ['randomness-policy'] });
+assert.equal(topLevelHoldProposal.kind, 'proposal');
+assert.ok(topLevelHoldProposal.scenario.hold.includes('randomness-policy'), 'host forwards top-level World-design holds into the final ScenarioSpec');
+assert.deepEqual(host.getState().experiment, worldDesignBeforeHoldChecks, 'top-level World-design hold preflight remains detached');
+const embeddedHoldProposal = host.proposeExploration({
+  request: 'Create a regression ring world',
+  worldDesign: { ...regressionWorldDesign, requestedHolds: ['randomness-policy'] },
+});
+assert.equal(embeddedHoldProposal.kind, 'proposal');
+assert.ok(embeddedHoldProposal.scenario.hold.includes('randomness-policy'), 'embedded World-design holds remain preserved');
+assert.deepEqual(host.getState().experiment, worldDesignBeforeHoldChecks, 'embedded World-design hold preflight remains detached');
+const conflictingWorldHold = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: regressionWorldDesign, requestedHolds: ['world'] });
+assert.equal(conflictingWorldHold.kind, 'clarification', 'conflicting top-level World-design hold is rejected before proposal');
+assert.deepEqual(host.getState().experiment, worldDesignBeforeHoldChecks, 'conflicting World-design hold cannot mutate the live experiment');
+const regressionProposal = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: regressionWorldDesign });
 assert.equal(regressionProposal.kind, 'proposal');
 assert.equal(regressionProposal.assessment.fidelity.status, 'exact');
 const result = await host.executeExploration({ scenario: regressionProposal.scenario });
@@ -508,7 +525,68 @@ assert.deepEqual(
   classificationResult.snapshot.experiment.world.observations.map((point) => point.membership),
   'KNN preserves generated train/test membership',
 );
+const moreDataDesign = createPedagogicalExperimentDesign('more-same-distribution-data');
+const recipeMoreDataBefore = structuredClone(classificationHost.getState().experiment);
+const recipeMoreData = classificationHost.proposeExploration({ request: 'Add more same-distribution data', design: moreDataDesign, requestedHolds: [] });
+assert.equal(recipeMoreData.kind, 'proposal', 'clean Recipe more-data route remains a proposal without explicit holds');
+assert.ok(recipeMoreData.scenario.change.some((change) => change.semanticTarget === 'world-recipe'), 'Recipe more-data uses the actual patch operation');
+assert.ok(recipeMoreData.scenario.hold.includes('world-generating-process'), 'Recipe more-data defaults to holding the generating process');
+assert.deepEqual(classificationHost.getState().experiment, recipeMoreDataBefore, 'Recipe more-data preflight is detached');
+const recipeMoreDataProcessHold = classificationHost.proposeExploration({ request: 'Add more same-distribution data', design: moreDataDesign, requestedHolds: ['world-generating-process'] });
+assert.equal(recipeMoreDataProcessHold.kind, 'proposal', 'Recipe more-data preserves an explicit generating-process hold');
+assert.ok(recipeMoreDataProcessHold.scenario.hold.includes('world-generating-process'));
+const recipeMoreDataSampleHold = classificationHost.proposeExploration({ request: 'Add more same-distribution data', design: moreDataDesign, requestedHolds: ['train-sample-count'] });
+assert.equal(recipeMoreDataSampleHold.kind, 'clarification', 'Recipe more-data rejects holding the changed sample count');
+const recipeNoiseHold = classificationHost.proposeExploration({
+  request: 'Increase training noise',
+  worldDesign: {
+    mode: 'edit',
+    recipe: null,
+    patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.2 }] },
+    requestedHolds: [],
+  },
+  requestedHolds: ['noise'],
+});
+assert.equal(recipeNoiseHold.kind, 'clarification', 'Recipe noise patch rejects holding the changed noise factor');
+const recipeWorldBeforeNoiseHold = structuredClone(classificationHost.getState());
+const recipeBroadWorldNoiseHold = classificationHost.proposeExploration({
+  request: 'Increase training noise',
+  worldDesign: {
+    mode: 'edit',
+    recipe: null,
+    patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.2 }] },
+    requestedHolds: [],
+  },
+  requestedHolds: ['world'],
+});
+assert.equal(recipeBroadWorldNoiseHold.kind, 'clarification', 'Recipe noise patch rejects a broad World hold');
+assert.deepEqual(classificationHost.getState().world, recipeWorldBeforeNoiseHold.world, 'broad World/noise conflict leaves the live World untouched');
+assert.deepEqual(classificationHost.getState().experiment, recipeWorldBeforeNoiseHold.experiment, 'broad World/noise conflict leaves the live Experiment untouched');
+const recipeWorldBeforeTransformHold = structuredClone(classificationHost.getState());
+const recipeBroadWorldTransformHold = classificationHost.proposeExploration({
+  request: 'Translate class B',
+  worldDesign: {
+    mode: 'edit',
+    recipe: null,
+    patch: { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-b', split: 'all', delta: [0.1, 0] }] },
+    requestedHolds: [],
+  },
+  requestedHolds: ['world'],
+});
+assert.equal(recipeBroadWorldTransformHold.kind, 'clarification', 'Recipe transform patch rejects a broad World hold');
+assert.deepEqual(classificationHost.getState().world, recipeWorldBeforeTransformHold.world, 'broad World/transform conflict leaves the live World untouched');
+assert.deepEqual(classificationHost.getState().experiment, recipeWorldBeforeTransformHold.experiment, 'broad World/transform conflict leaves the live Experiment untouched');
 await classificationHost.close();
+
+const legacyMoreDataHost = createPlaygroundHost({ getDataset: () => null });
+await legacyMoreDataHost.open({ playgroundId: 'linear-regression', seed: 45 });
+const legacyMoreData = legacyMoreDataHost.proposeExploration({ request: 'Add more same-distribution data', design: moreDataDesign, requestedHolds: ['world-generating-process'] });
+assert.equal(legacyMoreData.kind, 'proposal', 'legacy generator more-data route remains available with the same generating-process hold');
+assert.ok(legacyMoreData.scenario.change.some((change) => change.semanticTarget === 'train-sample-count'), 'legacy route keeps its generator parameter operation');
+assert.ok(legacyMoreData.scenario.hold.includes('world-generating-process'));
+const legacySampleHold = legacyMoreDataHost.proposeExploration({ request: 'Add more same-distribution data', design: moreDataDesign, requestedHolds: ['train-sample-count'] });
+assert.equal(legacySampleHold.kind, 'clarification', 'legacy route rejects holding its changed sample count');
+await legacyMoreDataHost.close();
 
 const mlpHost = createPlaygroundHost({ getDataset: () => null });
 await mlpHost.open({ playgroundId: 'mlp-classification', seed: 44 });

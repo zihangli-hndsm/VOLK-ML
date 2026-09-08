@@ -1,5 +1,6 @@
 import { conditionFingerprintForSession } from './observables.js';
 import { scenarioError } from './scenarioSpec.js';
+import { normalizeRequestedHolds } from './requestedHolds.js';
 
 export const CROSS_DOMAIN_INTENTS = Object.freeze({
   DOMAIN_CONTROL: 'domain-control',
@@ -45,9 +46,18 @@ function baseline(context) {
   };
 }
 
-function scenarioForControl({ request, context, key, value, rule }) {
+function scenarioForControl({ request, context, key, value, rule, requestedHolds = [] }) {
   const schema = (context.controlSchemas ?? []).find((item) => item.key === key);
   if (!schema || schema.domain === 'view') throw scenarioError('EXPLORATION_SCENARIO_UNSUPPORTED_CONTROL', { key });
+  const changedFactor = ['learningRate', 'trainingSteps'].includes(key) ? 'learning' : 'model';
+  const changedHold = changedFactor === 'learning' ? 'learning-configuration' : 'model-configuration';
+  if (requestedHolds.includes(changedHold)) {
+    throw scenarioError('EXPLORATION_SCENARIO_REQUESTED_HOLD_CONFLICT', {
+      reason: 'requested-hold-conflicts-with-change',
+      requestedHolds: [changedHold],
+      changedFactors: [changedFactor],
+    });
+  }
   return {
     version: 1,
     request,
@@ -58,17 +68,25 @@ function scenarioForControl({ request, context, key, value, rule }) {
     },
     // Keep the existing canonical fidelity factor. The precise control path
     // remains in the SET_CONTROL parameters and comparison details.
-    change: [{ semanticTarget: 'model-configuration', operation: 'SET_CONTROL', parameters: { key, value } }],
-    hold: ['world', 'model-configuration', 'learning-configuration', 'evaluation-configuration', 'randomness-policy'],
+    change: [{ semanticTarget: changedFactor === 'learning' ? 'learning-configuration' : 'model-configuration', operation: 'SET_CONTROL', parameters: { key, value } }],
+    hold: [...new Set([...requestedHolds, 'world', changedFactor === 'learning' ? 'model-configuration' : 'learning-configuration', 'evaluation-configuration', 'randomness-policy'])],
     observe: [...rule.observables],
     execution: { duplicateBaseline: true, run: true, compare: true, repeat: null },
   };
 }
 
-export function planCrossDomainIntent(intent, request, context) {
+export function planCrossDomainIntent(intent, request, context, requestedHolds = []) {
+  const normalizedRequestedHolds = normalizeRequestedHolds(requestedHolds).holds;
   const rule = ruleFor(context);
   if (!rule) return null;
   if (intent === CROSS_DOMAIN_INTENTS.DOMAIN_REPRESENTATION) {
+    if (normalizedRequestedHolds.length) {
+      return {
+        kind: 'clarification',
+        request,
+        interpretation: { kind: 'navigation', depth: rule.depth, ambiguity: 'requested-holds-not-applicable' },
+      };
+    }
     return {
       kind: 'navigation',
       request,
@@ -89,22 +107,22 @@ export function planCrossDomainIntent(intent, request, context) {
   return {
     kind: 'proposal',
     request,
-    scenario: scenarioForControl({ request, context, key: schema.key, value, rule }),
+    scenario: scenarioForControl({ request, context, key: schema.key, value, rule, requestedHolds: normalizedRequestedHolds }),
     interpretation: { kind: 'domain-experiment', domain: context.playground.domain, control: schema.key },
   };
 }
 
-export function planCrossDomainRequest(request, context) {
+export function planCrossDomainRequest(request, context, requestedHolds = []) {
   const text = String(request ?? '').trim();
   if (!text) return null;
   const rule = ruleFor(context);
   if (!rule) return null;
   if (/(show|inspect|see|look at|feature map|embedding|attention|sources|grounding|显示|查看|注意力|特征图|嵌入|来源|引用)/i.test(text)
     && !/(what happens|what if|try|increase|decrease|改变|增加|减少|如果)/i.test(text)) {
-    return planCrossDomainIntent(CROSS_DOMAIN_INTENTS.DOMAIN_REPRESENTATION, request, context);
+    return planCrossDomainIntent(CROSS_DOMAIN_INTENTS.DOMAIN_REPRESENTATION, request, context, requestedHolds);
   }
   if (/(what happens|what if|try|increase|decrease|change|影响|增加|减少|改变|提高|降低)/i.test(text)) {
-    return planCrossDomainIntent(CROSS_DOMAIN_INTENTS.DOMAIN_CONTROL, request, context);
+    return planCrossDomainIntent(CROSS_DOMAIN_INTENTS.DOMAIN_CONTROL, request, context, requestedHolds);
   }
   return null;
 }

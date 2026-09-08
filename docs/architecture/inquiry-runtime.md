@@ -100,6 +100,35 @@ under `prefers-reduced-motion`. The canonical 1254px masters remain source
 artwork outside the shipped bundle; the 256px derivatives keep the floating
 companion lightweight at desktop and compact sizes.
 
+Phase A.8.2 keeps companion sizing local to the companion surface. The
+responsive token is `4rem` (64px) at compact widths, `5.25rem` (84px) from
+tablet/desktop widths, and `6rem` (96px) on wide desktop; the panel remains a
+compact bottom sheet on narrow screens and a bounded popover on larger screens.
+The closed art, button hit/focus target, and fixed anchor all use that same
+token, so the visible character never exceeds its interactive body. These
+rules do not alter the inline LUMI treatment elsewhere in Explore.
+
+Natural-language interpretation may provide `requestedHolds`, a bounded
+semantic vocabulary used to constrain an Experiment or World proposal. The
+normalizer in `src/core/exploration/requestedHolds.js` accepts canonical IDs
+and exact aliases, treats omitted/null/empty input as no additional holds,
+deduplicates deterministically, and rejects unknown, prose, mixed-object,
+over-limit, or broad-plus-specific contradictory holds. The interpreter
+returns normalization details for diagnostics, while `scenarioPlanner` remains
+the owner of the validated `ScenarioSpec` and merges explicit holds into its
+existing deterministic defaults. These holds are planning intent only: they do
+not execute an experiment or change World/Experiment truth before learner
+acceptance.
+
+Canonical holds are also checked against the proposed change before a proposal
+is exposed. For example, a learning-rate intervention cannot claim to hold
+`learning-configuration`, and a sample-count intervention cannot claim to hold
+`train-sample-count`; the host returns a localized clarification instead.
+Cross-domain control/navigation branches use the same boundary, and detached
+fidelity marks any hold/change overlap as partial. The diagnostic retains the
+internal validation code and bounded field/reason details while classifying the
+failure as interpreter validation rather than network/CORS.
+
 When `SAMPLING_VARIABILITY` becomes eligible from deterministic Evidence, the
 host performs one idempotent presentation illumination and the companion
 announces the connection. This is an Encountered/Evidenced signal, not a
