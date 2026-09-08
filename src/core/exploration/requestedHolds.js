@@ -21,33 +21,38 @@ export const REQUESTED_HOLD_IDS = Object.freeze([
   'randomness-policy',
 ]);
 
-const aliases = Object.freeze({
-  model: 'model-configuration',
-  'model-config': 'model-configuration',
-  'model-configuration': 'model-configuration',
-  learning: 'learning-configuration',
-  'learning-config': 'learning-configuration',
-  'learning-configuration': 'learning-configuration',
-  evaluation: 'evaluation-configuration',
-  'evaluation-config': 'evaluation-configuration',
-  'evaluation-configuration': 'evaluation-configuration',
-  'world-process': 'world-generating-process',
-  'world-generating': 'world-generating-process',
-  'world-generating-process': 'world-generating-process',
-  'latent-relation': 'latent-relation',
-  'latent relation': 'latent-relation',
-  'train-test': 'existing-train-test-setup',
-  'train-test-setup': 'existing-train-test-setup',
-  'existing-train-test-setup': 'existing-train-test-setup',
-  'train-distribution': 'train-distribution',
-  'test-distribution': 'test-distribution',
-  'train-sample-count': 'train-sample-count',
-  'train-world': 'train-world',
-  'test-world': 'test-world',
-  'randomness-policy': 'randomness-policy',
-  world: 'world',
-  noise: 'noise',
-});
+export function requestedHoldsJsonSchema({ nullable = true } = {}) {
+  const array = { type: 'array', maxItems: REQUESTED_HOLD_LIMIT, items: { type: 'string', enum: [...REQUESTED_HOLD_IDS], maxLength: 120 } };
+  return nullable ? { anyOf: [array, { type: 'null' }] } : array;
+}
+
+const aliases = new Map([
+  ['model', 'model-configuration'],
+  ['model-config', 'model-configuration'],
+  ['model-configuration', 'model-configuration'],
+  ['learning', 'learning-configuration'],
+  ['learning-config', 'learning-configuration'],
+  ['learning-configuration', 'learning-configuration'],
+  ['evaluation', 'evaluation-configuration'],
+  ['evaluation-config', 'evaluation-configuration'],
+  ['evaluation-configuration', 'evaluation-configuration'],
+  ['world-process', 'world-generating-process'],
+  ['world-generating', 'world-generating-process'],
+  ['world-generating-process', 'world-generating-process'],
+  ['latent-relation', 'latent-relation'],
+  ['latent relation', 'latent-relation'],
+  ['train-test', 'existing-train-test-setup'],
+  ['train-test-setup', 'existing-train-test-setup'],
+  ['existing-train-test-setup', 'existing-train-test-setup'],
+  ['train-distribution', 'train-distribution'],
+  ['test-distribution', 'test-distribution'],
+  ['train-sample-count', 'train-sample-count'],
+  ['train-world', 'train-world'],
+  ['test-world', 'test-world'],
+  ['randomness-policy', 'randomness-policy'],
+  ['world', 'world'],
+  ['noise', 'noise'],
+]);
 
 const broadWorldHolds = new Set(['world']);
 const specificWorldHolds = new Set([
@@ -92,8 +97,8 @@ export function normalizeRequestedHolds(value, { field = 'requestedHolds' } = {}
   for (const item of value) {
     if (typeof item !== 'string' || !item.trim() || item.length > 120) throw holdError('invalid-item', { field });
     const key = lookupKey(item);
-    const canonical = aliases[key];
-    if (!canonical) throw holdError('unknown-hold', { field, value: item });
+    const canonical = aliases.get(key);
+    if (typeof canonical !== 'string') throw holdError('unknown-hold', { field, value: item });
     if (canonical !== item) aliasChanges.push({ from: item, to: canonical });
     if (holds.includes(canonical)) {
       deduplicated.push(canonical);

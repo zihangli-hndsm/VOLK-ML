@@ -120,6 +120,15 @@ existing deterministic defaults. These holds are planning intent only: they do
 not execute an experiment or change World/Experiment truth before learner
 acceptance.
 
+Canonical holds are also checked against the proposed change before a proposal
+is exposed. For example, a learning-rate intervention cannot claim to hold
+`learning-configuration`, and a sample-count intervention cannot claim to hold
+`train-sample-count`; the host returns a localized clarification instead.
+Cross-domain control/navigation branches use the same boundary, and detached
+fidelity marks any hold/change overlap as partial. The diagnostic retains the
+internal validation code and bounded field/reason details while classifying the
+failure as interpreter validation rather than network/CORS.
+
 When `SAMPLING_VARIABILITY` becomes eligible from deterministic Evidence, the
 host performs one idempotent presentation illumination and the companion
 announces the connection. This is an Encountered/Evidenced signal, not a

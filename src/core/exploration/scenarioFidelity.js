@@ -14,14 +14,20 @@ const FACTOR_BY_TARGET = Object.freeze({
 });
 
 const HOLD_TO_FACTOR = Object.freeze({
+  world: 'world',
   'model-configuration': 'model',
   'learning-configuration': 'learning',
   'evaluation-configuration': 'evaluation',
-  'train-distribution': 'world',
-  'latent-relation': 'world',
-  noise: 'world',
+  'train-distribution': 'trainDistribution',
+  'test-distribution': 'testDistribution',
+  'latent-relation': 'latentRelation',
+  noise: 'noise',
   'existing-train-test-setup': 'trainTest',
-  'world-generating-process': 'world',
+  'world-generating-process': 'worldGeneratingProcess',
+  'train-sample-count': 'observationProcess',
+  'train-world': 'trainWorld',
+  'test-world': 'testWorld',
+  'randomness-policy': 'randomness',
 });
 
 const TARGET_TO_GENERATOR_DETAIL = Object.freeze({
@@ -48,7 +54,7 @@ export function evaluateScenarioFidelity(spec, comparison) {
   const changed = new Set(comparison?.changed ?? []);
   const intended = new Set((spec.intendedFactors ?? spec.change.map((change) => change.semanticTarget)).map((factor) => FACTOR_BY_TARGET[factor] ?? factor));
   const held = new Set(spec.hold.map((item) => HOLD_TO_FACTOR[item] ?? item));
-  const confounds = [...held].filter((factor) => changed.has(factor) && !intended.has(factor));
+  const confounds = [...held].filter((factor) => changed.has(factor));
   const unrepresented = [...changed].filter((factor) => !intended.has(factor));
   const generatorChanged = new Set(comparison?.details?.worldGenerator?.changed ?? []);
   const intendedGenerator = new Set(spec.change.flatMap((change) => (

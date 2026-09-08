@@ -1369,11 +1369,23 @@ export function createPlaygroundHost({
           : design
           ? planPedagogicalExperiment(design, taskRequest ?? 'Design a controlled experiment', context, taskRequestedHolds)
           : worldDesign
-          ? planWorldDesign(worldDesign, taskRequest ?? 'Design a deterministic world', context)
+          ? planWorldDesign({ ...worldDesign, requestedHolds: taskRequestedHolds }, taskRequest ?? 'Design a deterministic world', context)
           : taskIntent
             ? planExplorationIntent(taskIntent, taskRequest ?? String(taskIntent), context, taskRequestedHolds)
-            : planExplorationRequest(taskRequest, context);
+            : planExplorationRequest(taskRequest, context, taskRequestedHolds);
       } catch (error) {
+        if (error?.code === 'EXPLORATION_SCENARIO_REQUESTED_HOLD_CONFLICT') {
+          return {
+            kind: 'clarification',
+            request: request ?? 'Design a controlled experiment',
+            interpretation: {
+              ambiguity: error.details?.reason ?? 'requested-hold-conflict',
+              messageKey: 'playground.pedagogical.unsupported',
+              choices: [],
+              details: { requestedHolds: error.details?.requestedHolds ?? [], changedFactors: error.details?.changedFactors ?? [] },
+            },
+          };
+        }
         if (design && error?.code === 'EXPLORATION_SCENARIO_UNSUPPORTED_OPERATION') {
           return {
             kind: 'clarification',

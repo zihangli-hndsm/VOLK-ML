@@ -127,6 +127,50 @@ function learningRateChange(context, direction) {
   return { key: 'learningRate', value: Number(value.toFixed(6)) };
 }
 
+const HOLD_TO_CHANGE_FACTOR = Object.freeze({
+  world: 'world',
+  'world-generating-process': 'world-generating-process',
+  'latent-relation': 'latent-relation',
+  noise: 'noise',
+  'model-configuration': 'model',
+  'learning-configuration': 'learning',
+  'evaluation-configuration': 'evaluation',
+  'existing-train-test-setup': 'trainTest',
+  'train-distribution': 'trainDistribution',
+  'test-distribution': 'testDistribution',
+  'train-sample-count': 'observationProcess',
+  'train-world': 'trainWorld',
+  'test-world': 'testWorld',
+  'randomness-policy': 'randomness',
+});
+
+function changeFactors(change) {
+  const target = change?.semanticTarget;
+  if (target === 'learning-configuration') return ['learning'];
+  if (target === 'model-configuration') return ['model'];
+  if (target === 'train-sample-count') return ['observationProcess'];
+  if (target === 'existing-train-test-setup') return ['trainTest'];
+  if (target === 'generator-realization') return [];
+  if (target === 'world-recipe' || target === 'world-recipe.patch') return ['world', 'world-generating-process'];
+  if (target === 'noise' || target === 'observation-noise') return ['world', 'world-generating-process', 'noise'];
+  if (target === 'input-distribution') return ['world', 'world-generating-process', 'trainDistribution', 'testDistribution'];
+  if (target === 'test-input-support') return ['world', 'testDistribution'];
+  if (target === 'outliers' || target === 'observation-values') return ['world'];
+  return [];
+}
+
+function assertRequestedHoldsAreCompatible(requestedHolds, draft) {
+  const normalized = normalizeRequestedHolds(requestedHolds).holds;
+  const changed = new Set((draft.change ?? []).flatMap(changeFactors));
+  const conflicts = normalized.filter((hold) => changed.has(HOLD_TO_CHANGE_FACTOR[hold]));
+  if (!conflicts.length) return normalized;
+  throw scenarioError('EXPLORATION_SCENARIO_REQUESTED_HOLD_CONFLICT', {
+    reason: 'requested-hold-conflicts-with-change',
+    requestedHolds: conflicts,
+    changedFactors: [...changed],
+  });
+}
+
 function intentSpec(intent, request, context) {
   const baseline = {
     experimentId: context.experiment.id,
@@ -412,8 +456,9 @@ export function planPedagogicalExperiment(designInput, request, context, request
     draft.pedagogicalDesign = design;
     draft.interpretation = { summary: 'Prepare a one-factor pedagogical experiment from the current World.', ambiguity: null };
     draft.observe = pedagogicalObservables(design, currentRecipe.task);
+    const normalizedRequestedHolds = assertRequestedHoldsAreCompatible(requestedHolds, draft);
     draft.hold = [...new Set([
-      ...normalizeRequestedHolds(requestedHolds).holds,
+      ...normalizedRequestedHolds,
       'model-configuration',
       'learning-configuration',
       'evaluation-configuration',
@@ -438,15 +483,17 @@ export function planPedagogicalExperiment(designInput, request, context, request
     };
   }
   const draft = intentSpec(legacyIntent, request, context);
-  draft.hold = [...new Set([...normalizeRequestedHolds(requestedHolds).holds, ...draft.hold])];
+  const normalizedRequestedHolds = assertRequestedHoldsAreCompatible(requestedHolds, draft);
+  draft.hold = [...new Set([...normalizedRequestedHolds, ...draft.hold])];
   draft.pedagogicalDesign = design;
   draft.interpretation = { summary: 'Prepare a one-factor pedagogical experiment from the current World.', ambiguity: null };
   draft.observe = pedagogicalObservables(design, context.world?.task);
   return { kind: 'proposal', scenario: validateScenarioSpec(draft, context), interpretation: { kind: 'exploration-design', design } };
 }
 
-export function planExplorationRequest(request, context) {
-  const crossDomain = planCrossDomainRequest(request, context);
+export function planExplorationRequest(request, context, requestedHolds = []) {
+  const normalizedRequestedHolds = normalizeRequestedHolds(requestedHolds).holds;
+  const crossDomain = planCrossDomainRequest(request, context, normalizedRequestedHolds);
   if (crossDomain) return crossDomain.kind === 'proposal'
     ? { ...crossDomain, scenario: validateScenarioSpec(crossDomain.scenario, context) }
     : crossDomain;
@@ -472,11 +519,14 @@ export function planExplorationRequest(request, context) {
       },
     };
   }
+  const compatibleHolds = assertRequestedHoldsAreCompatible(normalizedRequestedHolds, draft);
+  draft.hold = [...new Set([...compatibleHolds, ...draft.hold])];
   return { kind: 'proposal', scenario: validateScenarioSpec(draft, context), interpretation };
 }
 
 export function planExplorationIntent(intent, request, context, requestedHolds = []) {
-  const crossDomain = planCrossDomainIntent(intent, request, context);
+  const normalizedRequestedHolds = normalizeRequestedHolds(requestedHolds).holds;
+  const crossDomain = planCrossDomainIntent(intent, request, context, normalizedRequestedHolds);
   if (crossDomain) return crossDomain.kind === 'proposal'
     ? { ...crossDomain, scenario: validateScenarioSpec(crossDomain.scenario, context) }
     : crossDomain;
@@ -500,7 +550,8 @@ export function planExplorationIntent(intent, request, context, requestedHolds =
       },
     };
   }
-  draft.hold = [...new Set([...normalizeRequestedHolds(requestedHolds).holds, ...draft.hold])];
+  const compatibleHolds = assertRequestedHoldsAreCompatible(normalizedRequestedHolds, draft);
+  draft.hold = [...new Set([...compatibleHolds, ...draft.hold])];
   return { kind: 'proposal', scenario: validateScenarioSpec(draft, context) };
 }
 
@@ -515,5 +566,6 @@ export function planWorldDesign(worldDesign, request, context) {
     };
   }
   const draft = worldDesignSpec(worldDesign, request, context);
+  assertRequestedHoldsAreCompatible(worldDesign.requestedHolds, draft);
   return { kind: 'proposal', scenario: validateScenarioSpec(draft, context), interpretation: { kind: 'world-design', mode: worldDesign.mode } };
 }

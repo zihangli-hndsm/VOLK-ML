@@ -1,5 +1,5 @@
 import { projectLearnerAnnotations } from './learnerAnnotations.js';
-import { normalizeRequestedHolds } from './requestedHolds.js';
+import { normalizeRequestedHolds, requestedHoldsJsonSchema, REQUESTED_HOLD_IDS } from './requestedHolds.js';
 
 
 export const LEARNING_ASSISTANT_VERSION = 1;
@@ -47,7 +47,7 @@ export const EXPERIMENT_DESIGN_REQUEST_SCHEMA = Object.freeze({
       requestedChange: { type: 'object', additionalProperties: false, properties: {
         factor: { type: 'string', maxLength: 64 }, direction: { type: 'string', maxLength: 32 }, scope: { type: 'string', maxLength: 32 },
       } },
-      requestedHolds: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 120 } },
+      requestedHolds: requestedHoldsJsonSchema(),
       requestedObservables: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 120 } },
       experimentDesign: { type: ['object', 'null'] },
       requiresLearnerAcceptance: { type: 'boolean', const: true },
@@ -146,7 +146,7 @@ export const LEARNING_ANSWER_SCHEMA = Object.freeze({
             requestedChange: { type: 'object', additionalProperties: false, properties: {
               factor: { type: 'string', maxLength: 64 }, direction: { type: 'string', maxLength: 32 }, scope: { type: 'string', maxLength: 32 },
             } },
-            requestedHolds: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 120 } },
+            requestedHolds: requestedHoldsJsonSchema(),
             requestedObservables: { type: 'array', maxItems: 12, items: { type: 'string', maxLength: 120 } },
           }, required: ['goal'] },
         }, required: ['question', 'design'] },
@@ -241,7 +241,7 @@ export function learningAssistantPrompt({ question, context } = {}) {
     'This is an answer-only request. Never execute actions, emit operations, mutate World or Experiment state, or claim to have run an experiment.',
     'Runtime facts and supplied evidence are authoritative. Do not invent metrics, observations, data, or hidden application state.',
     'Explain concepts plainly and distinguish a conceptual explanation from measured runtime evidence.',
-    'If a follow-up experiment suggestion would help, return tryExperiment as {question, design:{goal, requestedChange?, requestedHolds?, requestedObservables?}}. The question is learner-facing copy; design is structured semantic intent reviewed by the existing Experiment Agent. Never return confirmation copy as a task.',
+    `If a follow-up experiment suggestion would help, return tryExperiment as {question, design:{goal, requestedChange?, requestedHolds?, requestedObservables?}}. requestedHolds must use canonical IDs only: ${REQUESTED_HOLD_IDS.join(', ')}; null/omitted/empty means no additional hold. The question is learner-facing copy; design is structured semantic intent reviewed by the existing Experiment Agent. Never return confirmation copy as a task.`,
     `Bounded learning context: ${JSON.stringify(context)}`,
     `Learner question: ${String(question ?? '').trim().slice(0, 500)}`,
   ].join('\n\n');

@@ -445,7 +445,23 @@ assert.equal(isWorldModelCompatibilityError({ code: 'INVALID_PLAYGROUND_ACTION',
 assert.equal(isWorldModelCompatibilityError({ code: 'EXPLORATION_SCENARIO_STALE', details: { reasonCode: 'world-task-incompatible' } }), false);
 assert.equal(isWorldModelCompatibilityError({ code: 'INVALID_PLAYGROUND_ACTION', details: { reasonCode: 'knn-world-invalid' } }), false);
 const regressionRecipe = normalizeWorldRecipe({ ...base, task: 'regression' });
-const regressionProposal = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: { mode: 'create', recipe: regressionRecipe, patch: null, requestedHolds: [] } });
+const regressionWorldDesign = { mode: 'create', recipe: regressionRecipe, patch: null, requestedHolds: [] };
+const worldDesignBeforeHoldChecks = structuredClone(host.getState().experiment);
+const topLevelHoldProposal = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: regressionWorldDesign, requestedHolds: ['randomness-policy'] });
+assert.equal(topLevelHoldProposal.kind, 'proposal');
+assert.ok(topLevelHoldProposal.scenario.hold.includes('randomness-policy'), 'host forwards top-level World-design holds into the final ScenarioSpec');
+assert.deepEqual(host.getState().experiment, worldDesignBeforeHoldChecks, 'top-level World-design hold preflight remains detached');
+const embeddedHoldProposal = host.proposeExploration({
+  request: 'Create a regression ring world',
+  worldDesign: { ...regressionWorldDesign, requestedHolds: ['randomness-policy'] },
+});
+assert.equal(embeddedHoldProposal.kind, 'proposal');
+assert.ok(embeddedHoldProposal.scenario.hold.includes('randomness-policy'), 'embedded World-design holds remain preserved');
+assert.deepEqual(host.getState().experiment, worldDesignBeforeHoldChecks, 'embedded World-design hold preflight remains detached');
+const conflictingWorldHold = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: regressionWorldDesign, requestedHolds: ['world'] });
+assert.equal(conflictingWorldHold.kind, 'clarification', 'conflicting top-level World-design hold is rejected before proposal');
+assert.deepEqual(host.getState().experiment, worldDesignBeforeHoldChecks, 'conflicting World-design hold cannot mutate the live experiment');
+const regressionProposal = host.proposeExploration({ request: 'Create a regression ring world', worldDesign: regressionWorldDesign });
 assert.equal(regressionProposal.kind, 'proposal');
 assert.equal(regressionProposal.assessment.fidelity.status, 'exact');
 const result = await host.executeExploration({ scenario: regressionProposal.scenario });
