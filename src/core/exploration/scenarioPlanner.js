@@ -151,7 +151,29 @@ function changeFactors(change) {
   if (target === 'train-sample-count') return ['observationProcess'];
   if (target === 'existing-train-test-setup') return ['trainTest'];
   if (target === 'generator-realization') return [];
-  if (target === 'world-recipe' || target === 'world-recipe.patch') return ['world', 'world-generating-process'];
+  if (target === 'world-recipe' || target === 'world-recipe.patch') {
+    const patch = change?.parameters?.patch;
+    if (!patch || !Array.isArray(patch.changes)) return ['world', 'world-generating-process'];
+    const factors = new Set();
+    for (const operation of patch.changes) {
+      if (operation?.type === 'SET_GROUP_SAMPLE_COUNT') factors.add('observationProcess');
+      else if (operation?.type === 'SET_GROUP_SAMPLING') {
+        factors.add('observationProcess');
+        factors.add(operation.split === 'test' ? 'testDistribution' : 'trainDistribution');
+      } else if (['SET_NOISE', 'SET_OUTLIERS', 'SET_LOCAL_NOISE'].includes(operation?.type)) {
+        factors.add('world');
+        factors.add('world-generating-process');
+        factors.add('noise');
+      }
+      else if (['TRANSLATE_GROUP', 'ROTATE_GROUP', 'SCALE_GROUP'].includes(operation?.type)) {
+        factors.add('world');
+        factors.add('world-generating-process');
+        factors.add('latent-relation');
+      }
+      else factors.add('world');
+    }
+    return [...factors];
+  }
   if (target === 'noise' || target === 'observation-noise') return ['world', 'world-generating-process', 'noise'];
   if (target === 'input-distribution') return ['world', 'world-generating-process', 'trainDistribution', 'testDistribution'];
   if (target === 'test-input-support') return ['world', 'testDistribution'];
@@ -455,6 +477,7 @@ export function planPedagogicalExperiment(designInput, request, context, request
     const draft = worldDesignSpec({ mode: 'edit', patch, requestedHolds: [] }, request, context);
     draft.pedagogicalDesign = design;
     draft.interpretation = { summary: 'Prepare a one-factor pedagogical experiment from the current World.', ambiguity: null };
+    if (design.goal === PEDAGOGICAL_EXPERIMENT_GOALS.MORE_SAME_DISTRIBUTION_DATA) draft.intendedFactors = ['train-sample-count'];
     draft.observe = pedagogicalObservables(design, currentRecipe.task);
     const normalizedRequestedHolds = assertRequestedHoldsAreCompatible(requestedHolds, draft);
     draft.hold = [...new Set([

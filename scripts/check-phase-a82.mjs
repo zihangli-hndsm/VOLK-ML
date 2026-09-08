@@ -54,6 +54,9 @@ const promptExamples = capturedPrompt
   .map((line) => JSON.parse(line.slice(line.indexOf(': ') + 2)));
 assert.equal(promptExamples.length, 7, 'provider prompt contains one complete response example per guidance kind/hold case');
 const requiredResponseKeys = Object.keys(schema.properties).sort();
+const promptSemanticHost = createPlaygroundHost({ getDataset: () => null });
+await promptSemanticHost.open({ playgroundId: 'linear-regression', seed: 8199 });
+const promptSemanticAgent = createPlaygroundAgentApi(promptSemanticHost);
 for (const [index, example] of promptExamples.entries()) {
   assert.deepEqual(Object.keys(example).sort(), requiredResponseKeys, `prompt example ${index + 1} has the complete response envelope`);
   assert.ok(schema.properties.kind.enum.includes(example.kind), `prompt example ${index + 1} uses a registered kind`);
@@ -63,12 +66,24 @@ for (const [index, example] of promptExamples.entries()) {
   }
   const exampleInterpreter = createExplorationAiInterpreter({ gateway: { complete: async () => ({ protocol: 'prompt-example', text: JSON.stringify(example) }) } });
   await exampleInterpreter.interpret({ request: 'validate the captured prompt example', context: { presentation: { availableDepths: ['evidence', 'mechanism'] } }, config });
+  if (example.kind === 'experiment') {
+    const semanticProposal = promptSemanticAgent.proposeExploration({
+      request: 'validate the captured prompt example',
+      intent: example.intent,
+      design: example.experimentDesign,
+      requestedHolds: example.requestedHolds,
+    });
+    assert.equal(semanticProposal.kind, 'proposal', `prompt example ${index + 1} is semantically compatible with a supported host/planner context`);
+    if (example.requestedHolds?.includes('world')) assert.ok(semanticProposal.scenario.hold.includes('world'), 'realized World hold remains held in the compatible learning-rate example');
+    if (example.requestedHolds?.includes('world-generating-process')) assert.ok(semanticProposal.scenario.hold.includes('world-generating-process'), 'World-generating-process hold remains held in the compatible more-data example');
+  }
 }
 assert.ok(promptExamples.some((example) => example.requestedHolds?.includes('world')), 'prompt includes realized World hold example');
 assert.ok(promptExamples.some((example) => example.requestedHolds?.includes('world-generating-process')), 'prompt includes World-generating-process hold example');
 assert.ok(capturedPrompt.includes('["constructor"]'), 'prompt includes concise invalid unknown-hold example');
 assert.ok(capturedPrompt.includes('["world","world-generating-process"]'), 'prompt distinguishes invalid broad/specific World holds');
 assert.throws(() => normalizeRequestedHolds(['world', 'world-generating-process']), (error) => error.code === 'AI_INVALID_REQUESTED_HOLDS');
+await promptSemanticHost.close();
 
 const normalization = normalizeRequestedHolds(['model', 'world-generating', 'model']);
 assert.deepEqual(normalization.holds, ['model-configuration', 'world-generating-process']);
@@ -97,7 +112,8 @@ const host = createPlaygroundHost({ getDataset: () => null });
 await host.open({ playgroundId: 'linear-regression', seed: 8201 });
 const agent = createPlaygroundAgentApi(host);
 const caseResults = [];
-for (const item of requestCases) {
+async function executeRequestCase(item) {
+  const callsBefore = providerCalls;
   const interpretation = await interpretFixture(item);
   const routed = routeAgentAiInterpretation({ interpretation, request: item.request, snapshot: { model: {} } });
   let actual = routed?.kind === 'experiment-proposal' ? 'valid plan' : 'clarification';
@@ -112,7 +128,25 @@ for (const item of requestCases) {
     }
   }
   assert.equal(actual, item.expected, `${item.id} expected outcome`);
-  caseResults.push({ id: item.id, capability: item.capability, expected: item.expected, actual, changes: proposal?.scenario.change.map((change) => change.semanticTarget) ?? [], holds: proposal?.scenario.hold ?? [], route: routed?.source ?? 'ai', providerCalls: 1, normalization: interpretation.requestedHoldsNormalization?.input ?? 'array', fallback: false, pass: true });
+  const observed = {
+    id: item.id,
+    capability: item.capability,
+    expected: item.expected,
+    actual,
+    changes: proposal?.scenario.change.map((change) => change.semanticTarget) ?? [],
+    holds: proposal?.scenario.hold ?? [],
+    route: routed?.source ?? null,
+    providerCalls: providerCalls - callsBefore,
+    normalization: interpretation.requestedHoldsNormalization?.input ?? null,
+    fallback: routed?.source === 'local',
+    pass: true,
+  };
+  assert.equal(observed.providerCalls, 1, `${item.id} observed one bounded provider call`);
+  caseResults.push(observed);
+  return observed;
+}
+for (const item of requestCases) {
+  await executeRequestCase(item);
 }
 
 const beforeTask = host.inspectContext();
@@ -129,6 +163,12 @@ assert.equal(agent.proposeExploration({ request: 'increase data', intent: 'more-
 
 const fabricatedFidelity = evaluateScenarioFidelity({ intendedFactors: ['learning'], change: [{ semanticTarget: 'learning-configuration' }], hold: ['learning-configuration'] }, { changed: ['learning'] });
 assert.equal(fabricatedFidelity.status, 'partial', 'fidelity rejects a fabricated hold/change conflict');
+const deliberateReplacement = { ...requestCases[1], response: completeResponse({ intent: 'more-data', requestedHolds: [] }) };
+await assert.rejects(
+  () => executeRequestCase(deliberateReplacement),
+  (error) => /seed-2-noise preserves noise/.test(error?.message ?? ''),
+  'suite rejects a genuine noise case when only its provider fixture is replaced by more-data',
+);
 await host.close();
 
 for (const [playgroundId, request, hold] of [
@@ -170,17 +210,6 @@ assert.ok(diagnosticText(holdDiagnostic).includes('reason=unknown-hold'));
 const aliasResponse = await createExplorationAiInterpreter({ gateway: { complete: async () => ({ protocol: 'fixture', text: JSON.stringify(completeResponse({ requestedHolds: ['model', 'latent relation'] })) }) } }).interpret({ request: seedRequests[0], context: { presentation: { availableDepths: [] } }, config });
 assert.deepEqual(aliasResponse.requestedHolds, ['model-configuration', 'latent-relation']);
 assert.deepEqual(routeAgentAiInterpretation({ interpretation: aliasResponse, request: seedRequests[0], snapshot: { model: {} } }).requestedHolds, aliasResponse.requestedHolds);
-
-const deliberateReplacement = { ...requestCases[0], expected: 'clarification', response: completeResponse({ intent: 'more-data', requestedHolds: [] }) };
-let replacementRejected = false;
-try {
-  const interpretation = await interpretFixture(deliberateReplacement);
-  const routed = routeAgentAiInterpretation({ interpretation, request: deliberateReplacement.request, snapshot: { model: {} } });
-  assert.equal(routed?.kind === 'experiment-proposal' ? 'valid plan' : 'clarification', deliberateReplacement.expected);
-} catch {
-  replacementRejected = true;
-}
-assert.equal(replacementRejected, true, 'suite rejects a deliberate non-more-data expectation replaced by more-data');
 
 const css = await readFile(new URL('../src/index.css', import.meta.url), 'utf8');
 assert.ok(css.includes('--lumi-companion-size'), 'companion sizing is scoped to responsive tokens');

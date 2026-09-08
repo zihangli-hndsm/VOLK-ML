@@ -258,8 +258,8 @@ function promptFor({ request, context }) {
     responseExample('navigation', { kind: 'navigation', depth: exampleDepth }),
     responseExample('experiment-hold-realized-world', {
       kind: 'experiment',
-      intent: 'more-data',
-      requestedChange: 'increase same-distribution training data',
+      intent: 'learning-rate-increase',
+      requestedChange: 'increase the learning rate',
       requestedHolds: ['world'],
     }),
     responseExample('experiment-hold-world-process', {
