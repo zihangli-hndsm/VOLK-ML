@@ -24,6 +24,11 @@ malformed Cloud policy falls back to the deterministic local policy. Guidance
 budgeting, cooldown and dismissal history are presentation context; they
 cannot mutate experiment truth.
 
+The optional Episode 1 teaching-dialogue pilot is documented in
+[`teaching-dialogue-pilot.md`](./teaching-dialogue-pilot.md). It projects
+read-only runtime facts into a strict, bounded response envelope and keeps
+learner statements and provisional hypotheses separate from semantic truth.
+
 ## Director handoff
 
 `src/core/director/directorPrototype.js` is a declarative, presentation-only

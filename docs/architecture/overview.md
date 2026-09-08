@@ -206,3 +206,6 @@ Frontend-authored Episode contracts and the reusable Orchestration Runtime v1
 are documented in [`inquiry-runtime.md`](inquiry-runtime.md). They project
 learning stages over Explore truth without introducing a second experiment or
 Evidence owner.
+
+The default-off, Episode 1-only dialogue pilot is described in
+[`teaching-dialogue-pilot.md`](teaching-dialogue-pilot.md).

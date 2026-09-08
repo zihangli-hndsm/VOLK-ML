@@ -79,6 +79,7 @@ import { compareExploreEnvironment, createExploreEnvironmentIdentity } from './e
 import { getExplorationContract, getOrchestrationContract } from './exploration/inquiryContracts.js';
 import { deriveInquiryRuntimeState } from './exploration/inquiryRuntime.js';
 import { validateLumiAction, decideLumiAction, applyGuidanceBudget, guidanceStageState, staySilent, createCloudLumiPolicy } from './exploration/lumiPolicy.js';
+import { createTeachingDialogueSession, isTeachingDialoguePilotEnabled, projectTeachingDialogueContext, decideTeachingDialogue, validateTeachingDialogueResponse, recordTeachingDialogueTurn, storeTeachingHypothesis, reviseTeachingHypothesis, retractTeachingHypothesis, stopTeachingDialogue } from './exploration/teachingDialoguePilot.js';
 import { getEpisode } from '../episodes/registry.js';
 import { deriveOrchestrationState } from './orchestration/runtime.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
@@ -516,6 +517,8 @@ export function createPlaygroundHost({
   inquiryTrajectoryStore = createInquiryTrajectoryStore(),
   exploreRecipeId = null,
   cloudClient = null,
+  teachingDialoguePilotEnabled = null,
+  teachingDialoguePolicy = null,
 } = {}) {
   let session = null;
   let exploreEnvironmentIdentity = null;
@@ -532,6 +535,10 @@ export function createPlaygroundHost({
   let conceptExposureIds = [];
   let lastCanonicalConceptSignalIds = [];
   let inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null, continuationId: null, interpretations: [] };
+  const teachingDialogueSessionId = `teaching-dialogue-${Date.now()}`;
+  let teachingDialogueSession = createTeachingDialogueSession({ id: teachingDialogueSessionId });
+  let teachingDialogueRequestToken = 0;
+  const pilotEnabled = () => teachingDialoguePilotEnabled === null ? isTeachingDialoguePilotEnabled() : Boolean(teachingDialoguePilotEnabled);
   const cloudLumiPolicy = createCloudLumiPolicy(cloudClient);
   const learnerAnnotationStore = createLearnerAnnotationStore();
   const learningConversationStore = createLearningConversationStore();
@@ -546,6 +553,8 @@ export function createPlaygroundHost({
     conceptExposureIds = [];
     lastCanonicalConceptSignalIds = [];
     inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null, continuationId: null, interpretations: [] };
+    teachingDialogueSession = createTeachingDialogueSession({ id: teachingDialogueSessionId });
+    teachingDialogueRequestToken += 1;
     learnerAnnotationStore.reset();
     learningConversationStore.reset();
     inquiryTrajectoryStore.reset();
@@ -643,6 +652,9 @@ export function createPlaygroundHost({
       }),
       inquiryTrajectory,
       conceptExposure: { version: 1, shownConceptIds: [...conceptExposureIds] },
+      teachingDialogue: pilotEnabled() && snapshot?.bigIdea?.id === 'episode-1-sampling-variability'
+        ? { ...teachingDialogueSession, context: teachingDialogueSession.optedIn ? projectTeachingDialogueContext({ snapshot: { ...snapshot, inquiryRuntime }, session: teachingDialogueSession }) : null }
+        : null,
     };
   };
 
@@ -1214,10 +1226,83 @@ export function createPlaygroundHost({
       const value = skipped ? 'skipped' : String(expectation ?? '');
       if (!skipped && !allowed.has(value)) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'PREDICTION_RECORDED', reason: 'unsupported prediction' });
       inquirySessionState.prediction = { expectation: value, reasoning: String(reasoning ?? '').slice(0, contract.prediction.maxReasoningLength), skipped: Boolean(skipped) };
+      teachingDialogueSession = { ...teachingDialogueSession, prediction: { ref: `${session.bigIdea?.id ?? 'episode-1'}:prediction`, expectation: value, reasoning: inquirySessionState.prediction.reasoning, source: 'episode.prediction' }, contextRevision: (teachingDialogueSession.contextRevision ?? 0) + 1 };
+      teachingDialogueRequestToken += 1;
       semanticEventStore.append([{
         type: 'prediction.recorded', actor: SEMANTIC_ACTION_ACTORS.has(actor) ? actor : 'human',
         experimentIds: [session.experiment?.id].filter(Boolean), semanticFactors: [], operationTypes: [], reasonCode: skipped ? 'prediction-skipped' : `prediction-${value}`,
       }]);
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    getTeachingDialogueContext({ requestId = null, language = 'en' } = {}) {
+      if (!session || !pilotEnabled() || session.bigIdea?.id !== 'episode-1-sampling-variability' || !teachingDialogueSession.optedIn) return null;
+      const snapshot = derivePlaygroundSnapshot(session);
+      return projectTeachingDialogueContext({ snapshot, session: teachingDialogueSession, language, requestId });
+    },
+
+    optInTeachingDialogue({ language = 'en' } = {}) {
+      if (!session || !pilotEnabled() || session.bigIdea?.id !== 'episode-1-sampling-variability') return null;
+      teachingDialogueSession = { ...teachingDialogueSession, optedIn: true, stopped: false, language: language === 'zh' ? 'zh' : 'en' };
+      teachingDialogueRequestToken += 1;
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    async requestTeachingDialogue({ requestId = null, language = teachingDialogueSession.language, preferredMove = null, allowTransferHelp = false } = {}) {
+      if (!session || !pilotEnabled() || session.bigIdea?.id !== 'episode-1-sampling-variability' || !teachingDialogueSession.optedIn || teachingDialogueSession.stopped) return null;
+      if (teachingDialogueSession.assistanceDisabled && !allowTransferHelp) return null;
+      const snapshot = derivePlaygroundSnapshot(session);
+      const context = projectTeachingDialogueContext({ snapshot, session: teachingDialogueSession, language, requestId });
+      const requestToken = ++teachingDialogueRequestToken;
+      const contextFingerprint = JSON.stringify({ comparison: context.activeComparison, evidence: context.evidence, activeFit: context.activeFit, prediction: context.prediction, revision: context.contextRevision });
+      const response = await decideTeachingDialogue({ context, session: teachingDialogueSession, provider: teachingDialoguePolicy, preferredMove });
+      const currentSnapshot = derivePlaygroundSnapshot(session);
+      const currentContext = projectTeachingDialogueContext({ snapshot: currentSnapshot, session: teachingDialogueSession, language, requestId });
+      const currentFingerprint = JSON.stringify({ comparison: currentContext.activeComparison, evidence: currentContext.evidence, activeFit: currentContext.activeFit, prediction: currentContext.prediction, revision: currentContext.contextRevision });
+      if (requestToken !== teachingDialogueRequestToken || teachingDialogueSession.stopped || currentFingerprint !== contextFingerprint) return null;
+      const safe = validateTeachingDialogueResponse(response, { context });
+      if (!safe) return null;
+      teachingDialogueSession = { ...teachingDialogueSession, stage: safe.move, contextRevision: context.contextRevision, summaryVisible: safe.move === 'SUMMARIZE_AND_PAUSE', ...(allowTransferHelp ? { transferReady: false, assistanceDisabled: false } : {}), ...(safe.provisionalHypothesis ? { hypotheses: storeTeachingHypothesis(teachingDialogueSession, safe.provisionalHypothesis).hypotheses } : {}) };
+      notify();
+      return safe;
+    },
+
+    recordTeachingDialogueTurn({ kind = 'statement', text: value = '' } = {}) {
+      if (!session || !pilotEnabled() || !teachingDialogueSession.optedIn) return null;
+      teachingDialogueSession = recordTeachingDialogueTurn(teachingDialogueSession, { role: 'learner', kind, text: value });
+      teachingDialogueRequestToken += 1;
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    stopTeachingDialogue() {
+      if (!session) return null;
+      teachingDialogueSession = stopTeachingDialogue(teachingDialogueSession);
+      teachingDialogueRequestToken += 1;
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    beginTeachingTransfer() {
+      if (!session || !pilotEnabled() || !teachingDialogueSession.optedIn) return null;
+      teachingDialogueSession = { ...teachingDialogueSession, transferReady: true, assistanceDisabled: true, summaryVisible: false, contextRevision: teachingDialogueSession.contextRevision + 1 };
+      teachingDialogueRequestToken += 1;
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    reviseTeachingHypothesis({ id, text, statementRefs = [] } = {}) {
+      teachingDialogueSession = reviseTeachingHypothesis(teachingDialogueSession, { id, text, statementRefs });
+      teachingDialogueRequestToken += 1;
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    retractTeachingHypothesis(id) {
+      teachingDialogueSession = retractTeachingHypothesis(teachingDialogueSession, id);
+      teachingDialogueRequestToken += 1;
       notify();
       return present(derivePlaygroundSnapshot(session));
     },
