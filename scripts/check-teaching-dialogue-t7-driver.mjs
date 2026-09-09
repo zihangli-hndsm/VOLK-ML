@@ -95,12 +95,30 @@ assert.equal(Object.keys(TEACHING_DIALOGUE_T7_CASE_FIXTURES).length, 12, 'every 
 assert.equal(assertTeachingDialogueT7FixtureIntegrity({ revision: 'fixture-integrity', run: 1 }), true, 'all authored contexts pass fixture integrity checks');
 const unchangedContext = createTeachingDialogueT7Context(TEACHING_DIALOGUE_AUTHORED_CASES.find((item) => item.id === 'unchanged'), 'fixture-integrity', 1);
 assert.equal(unchangedContext.facts.filter((fact) => fact.id === 'evidence.observed.lineMovement').length, 1, 'unchanged context contains exactly one line-movement fact');
+assert.equal(unchangedContext.facts.find((fact) => fact.id === 'evidence.status')?.value, unchangedContext.evidence[0].summary, 'unchanged status fact matches evidence summary');
 assert.deepEqual(createTeachingDialogueT7Context(TEACHING_DIALOGUE_AUTHORED_CASES.find((item) => item.id === 'unchanged'), 'fixture-integrity', 1), unchangedContext, 'fixture construction order is deterministic');
 const originalDuplicateFixture = { ...unchangedContext, facts: [...unchangedContext.facts.map((fact) => fact.id === 'evidence.observed.lineMovement' ? { ...fact, value: 'visible' } : fact), { id: 'evidence.observed.lineMovement', kind: 'observation', value: 'unchanged' }] };
 const duplicateValidation = validateTeachingDialogueT7FixtureContext(originalDuplicateFixture, { caseId: 'unchanged' });
 assert.equal(duplicateValidation.valid, false, 'the original append-style unchanged fixture is rejected');
 assert.ok(duplicateValidation.errors.includes('duplicate-line-movement'));
 assert.ok(duplicateValidation.errors.includes('line-movement-does-not-match-outcome'));
+for (const caseId of ['mixed-factor', 'hint-direct-choice']) {
+  const item = TEACHING_DIALOGUE_AUTHORED_CASES.find((candidate) => candidate.id === caseId);
+  const context = createTeachingDialogueT7Context(item, 'fixture-integrity', 1);
+  assert.equal(context.facts.find((fact) => fact.id === 'evidence.status')?.value, context.evidence[0].summary, `${caseId} status fact matches evidence summary`);
+  assert.equal(context.facts.filter((fact) => fact.id === 'evidence.observed.lineMovement').length, 1, `${caseId} has one line-movement fact`);
+}
+const statusConflictFixture = {
+  ...unchangedContext,
+  facts: unchangedContext.facts.map((fact) => fact.id === 'evidence.status' ? { ...fact, value: 'evidenced' } : fact),
+};
+const statusConflictValidation = validateTeachingDialogueT7FixtureContext(statusConflictFixture, { caseId: 'unchanged' });
+assert.equal(statusConflictValidation.valid, false, 'status/summary conflict is rejected before provider execution');
+assert.deepEqual(statusConflictValidation.errors, ['status-fact-summary-mismatch'], 'status conflict is the only defect in the narrow negative fixture');
+const mixedContext = createTeachingDialogueT7Context(TEACHING_DIALOGUE_AUTHORED_CASES.find((item) => item.id === 'mixed-factor'), 'fixture-integrity', 1);
+const unchangedAfterMixed = createTeachingDialogueT7Context(TEACHING_DIALOGUE_AUTHORED_CASES.find((item) => item.id === 'unchanged'), 'fixture-integrity', 1);
+assert.deepEqual(unchangedAfterMixed, unchangedContext, 'creating another case does not leak mixed-factor state');
+assert.equal(mixedContext.evidence[0].summary, 'valid-weak');
 assert.ok(TEACHING_DIALOGUE_T7_CASE_FIXTURES['chinese-misconception'].learnerStatements.length > 0, 'misconception fixture includes learner input');
 assert.ok(TEACHING_DIALOGUE_T7_CASE_FIXTURES['english-mixed-paraphrase'].learnerStatements[0].text.includes('Data'), 'mixed-language fixture includes its authored paraphrase');
 const chineseItem = TEACHING_DIALOGUE_AUTHORED_CASES.find((item) => item.id === 'chinese-misconception');
