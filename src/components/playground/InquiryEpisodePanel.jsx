@@ -1,7 +1,11 @@
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import TeachingDialoguePanel from './TeachingDialoguePanel.jsx';
 
-export default function InquiryEpisodePanel({ snapshot, host, onDispatch, t }) {
+const TeachingDialogueT7MatrixPanel = import.meta.env.DEV === true
+  ? lazy(() => import('./TeachingDialogueT7MatrixPanel.jsx'))
+  : null;
+
+export default function InquiryEpisodePanel({ snapshot, host, onDispatch, t, developmentMatrixDriver = null }) {
   const [expectation, setExpectation] = useState('');
   const [reasoning, setReasoning] = useState('');
   const [saved, setSaved] = useState(false);
@@ -61,5 +65,6 @@ export default function InquiryEpisodePanel({ snapshot, host, onDispatch, t }) {
     {runtime.candidateConcepts.includes('SAMPLING_VARIABILITY') && !reflectionSaved && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3"><p className="font-black">{t('episode.one.reflection.title')}</p><p className="mt-1 text-xs text-slate-600">{t('episode.one.reflection.body')}</p><textarea value={reflectionText} maxLength={240} onChange={(event) => setReflectionText(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 p-2 text-xs" placeholder={t('episode.one.reflection.placeholder')} /><div className="mt-2 flex gap-2"><button type="button" disabled={!reflectionText.trim()} onClick={async () => { await host.recordInquiryReflection({ text: reflectionText }); setReflectionSaved(true); }} className="rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-black text-white disabled:opacity-40">{t('episode.one.reflection.save')}</button><button type="button" onClick={async () => { await host.recordInquiryReflection({ skipped: true }); setReflectionSaved(true); }} className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-bold">{t('episode.one.reflection.skip')}</button></div></div>}
     {runtime.continuations?.length > 0 && runtime.candidateConcepts.includes('SAMPLING_VARIABILITY') && <div className="mt-3 flex flex-wrap gap-2">{runtime.continuations.map((item) => <button key={item.id} type="button" onClick={() => host.recordInquiryContinuation?.(item.id)} className="rounded-xl border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-bold">{t(item.questionKey)}</button>)}</div>}
     <TeachingDialoguePanel snapshot={snapshot} host={host} t={t} />
+    {TeachingDialogueT7MatrixPanel && developmentMatrixDriver && <Suspense fallback={null}><TeachingDialogueT7MatrixPanel driver={developmentMatrixDriver} t={t} /></Suspense>}
   </section>;
 }

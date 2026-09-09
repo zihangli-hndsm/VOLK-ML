@@ -79,8 +79,12 @@ of the production learner surface.
 
 The development build exposes a credential-safe test driver only while the
 page is running in Vite development mode. Configure the provider through the
-existing AI settings dialog; the key remains in volatile page memory. Then
-open the browser console and run:
+existing AI settings dialog; the key remains in volatile page memory. Open
+Episode 1 and use the amber **Architect iteration shortcuts (development
+only)** panel to enter a frozen revision and choose **Run matrix**. Progress
+and bounded rows appear in the panel.
+
+For an automation channel that can access page globals, the equivalent call is:
 
 ```js
 await globalThis.__VOLK_ML_T7_MATRIX__.run({ revision: 'ae5b0d0' })

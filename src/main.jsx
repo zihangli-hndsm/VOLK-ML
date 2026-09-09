@@ -478,15 +478,19 @@ function Workspace() {
   const aiConfigRef = useRef(config);
   aiConfigRef.current = config;
   const teachingDialoguePolicy = useMemo(() => createTeachingDialogueProvider({ gateway, getConfig: () => aiConfigRef.current }), [gateway]);
+  const [developmentMatrixDriver, setDevelopmentMatrixDriver] = useState(null);
   useEffect(() => {
     if (import.meta.env.DEV !== true) return undefined;
     let active = true;
     import('./core/exploration/teachingDialogueT7Matrix.js').then(({ createTeachingDialogueT7BrowserDriver }) => {
       if (!active) return;
-      globalThis.__VOLK_ML_T7_MATRIX__ = createTeachingDialogueT7BrowserDriver({ provider: teachingDialoguePolicy });
+      const driver = createTeachingDialogueT7BrowserDriver({ provider: teachingDialoguePolicy });
+      setDevelopmentMatrixDriver(driver);
+      globalThis.__VOLK_ML_T7_MATRIX__ = driver;
     }).catch(() => {});
     return () => {
       active = false;
+      setDevelopmentMatrixDriver(null);
       if (globalThis.__VOLK_ML_T7_MATRIX__) delete globalThis.__VOLK_ML_T7_MATRIX__;
     };
   }, [teachingDialoguePolicy]);
@@ -1639,7 +1643,7 @@ function Workspace() {
     <AiSettingsDialog t={t} />
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => openExplorePlayground(id)} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
-    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
+    <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} developmentMatrixDriver={developmentMatrixDriver} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
     <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />
   </div>;
 }

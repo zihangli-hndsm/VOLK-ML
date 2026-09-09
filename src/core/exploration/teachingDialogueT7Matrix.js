@@ -124,6 +124,7 @@ function rowFor({ item, runNumber, context, result }) {
   const { failureReasons, rubric } = evaluation;
   const safety = adversarialSafetyProbe({ item, context, result });
   if (safety && safety.status !== 'contained') failureReasons.push('adversarial-not-contained');
+  const safeFailure = TEACHING_DIALOGUE_FAILURE_REASONS.includes(result?.fallbackReason) ? result.fallbackReason : null;
   return {
     caseId: item.id,
     run: runNumber,
@@ -138,7 +139,7 @@ function rowFor({ item, runNumber, context, result }) {
     rubric,
     scores: Object.fromEntries(Object.entries(rubric).filter(([, value]) => value && typeof value.score === 'number').map(([key, value]) => [key, value.score])),
     safety,
-    failureReasons: [...new Set(failureReasons)].slice(0, 4),
+    failureCategories: safeFailure ? [safeFailure] : [],
     status: failureReasons.length === 0 ? 'passed' : 'failed',
   };
 }
@@ -157,7 +158,7 @@ function adversarialSafetyProbe({ item, context, result }) {
     : kind === 'stale-response'
       ? probe.failureReasons.includes('stale-result') || probe.failureReasons.includes('response-invalid-or-ungrounded')
       : probe.failureReasons.includes('response-invalid-or-ungrounded');
-  return { kind, status: contained ? 'contained' : 'uncontained', failureReasons: probe.failureReasons.slice(0, 4) };
+  return { kind, status: contained ? 'contained' : 'uncontained' };
 }
 
 function forbiddenOutcomes({ context, result }) {
@@ -215,7 +216,7 @@ export function evaluateTeachingDialogueT7Result({ item, context, result } = {})
   return { rubric, failureReasons: [...new Set(failureReasons)].slice(0, 8), responseValid, selectedMoveAllowed };
 }
 
-export async function runTeachingDialogueT7Matrix({ provider = null, revision, runs = TEACHING_DIALOGUE_T7_MATRIX_RUNS, cases = TEACHING_DIALOGUE_AUTHORED_CASES, timeoutMs } = {}) {
+export async function runTeachingDialogueT7Matrix({ provider = null, revision, runs = TEACHING_DIALOGUE_T7_MATRIX_RUNS, cases = TEACHING_DIALOGUE_AUTHORED_CASES, timeoutMs, onRow = null } = {}) {
   const selectedRevision = safeRevision(revision);
   const runCount = Math.max(1, Math.min(TEACHING_DIALOGUE_T7_MATRIX_RUNS, Number.isInteger(runs) ? runs : TEACHING_DIALOGUE_T7_MATRIX_RUNS));
   const selectedCases = Array.isArray(cases) ? cases.slice(0, TEACHING_DIALOGUE_T7_MAX_CASES) : [];
@@ -226,7 +227,9 @@ export async function runTeachingDialogueT7Matrix({ provider = null, revision, r
       const context = contextForCase(item, selectedRevision, runNumber);
       const session = sessionForCase(item, selectedRevision, runNumber);
       const result = await decideTeachingDialogue({ context, session, provider, timeoutMs });
-      rows.push(rowFor({ item, runNumber, context, result }));
+      const row = rowFor({ item, runNumber, context, result });
+      rows.push(row);
+      try { onRow?.(row, { completed: rows.length, total: selectedCases.length * runCount }); } catch { /* reporting must never affect the run */ }
     }
   }
   const passed = rows.filter((row) => row.status === 'passed').length;
