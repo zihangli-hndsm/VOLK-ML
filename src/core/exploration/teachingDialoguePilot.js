@@ -14,7 +14,7 @@ export const TEACHING_DIALOGUE_MOVES = Object.freeze([
 ]);
 export const TEACHING_DIALOGUE_REPLY_KINDS = Object.freeze(['prediction', 'reason', 'teach-back', 'none']);
 export const TEACHING_DIALOGUE_ORIGINS = Object.freeze(['local', 'provider', 'fallback']);
-export const TEACHING_DIALOGUE_FAILURE_REASONS = Object.freeze(['unavailable', 'timeout', 'aborted', 'transport', 'malformed', 'semantic']);
+export const TEACHING_DIALOGUE_FAILURE_REASONS = Object.freeze(['unavailable', 'timeout', 'aborted', 'transport', 'provider-4xx', 'provider-5xx', 'provider-response', 'malformed', 'semantic']);
 export const TEACHING_DIALOGUE_PROVIDER_TIMEOUT_MS = 10000;
 export const TEACHING_DIALOGUE_CONTENT_KEYS = Object.freeze([
   'episode.one.teachingDialogue.prediction',
@@ -65,6 +65,15 @@ const PROVIDER_FAILURE = Object.freeze({
   malformed: Object.freeze({ kind: 'provider-failure', reason: 'malformed' }),
 });
 
+export function classifyTeachingDialogueFailure(error) {
+  const status = Number(error?.details?.status);
+  if (Number.isInteger(status) && status >= 400 && status < 500) return 'provider-4xx';
+  if (Number.isInteger(status) && status >= 500 && status < 600) return 'provider-5xx';
+  if (String(error?.code ?? '').startsWith('AI_PROVIDER_RESPONSE')) return 'provider-response';
+  if (error?.code === 'AI_PROVIDER_REQUEST_FAILED') return 'provider-response';
+  return 'transport';
+}
+
 const clone = (value) => structuredClone(value);
 const text = (value, max = MAX_TEXT) => {
   const result = typeof value === 'string' ? value.trim() : '';
@@ -85,16 +94,16 @@ export const TEACHING_DIALOGUE_RESPONSE_SCHEMA = Object.freeze({
     type: 'object',
     additionalProperties: false,
     properties: {
-      version: { type: 'integer', const: TEACHING_DIALOGUE_PILOT_VERSION },
-      sessionId: { type: 'string', minLength: 1, maxLength: 120 },
-      contextRevision: { type: 'integer', minimum: 0 },
+      version: { type: 'integer', enum: [TEACHING_DIALOGUE_PILOT_VERSION] },
+      sessionId: { type: 'string' },
+      contextRevision: { type: 'integer' },
       move: { type: 'string', enum: [...TEACHING_DIALOGUE_MOVES] },
-      questionRef: { anyOf: [{ type: 'string', maxLength: 120 }, { type: 'null' }] },
-      statementRefs: { type: 'array', maxItems: MAX_STATEMENTS, items: { type: 'string', maxLength: 120 } },
-      evidenceRefs: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 120 } },
-      provisionalHypothesis: { anyOf: [{ type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 120 }, text: { type: 'string', maxLength: MAX_TEXT }, statementRefs: { type: 'array', maxItems: MAX_STATEMENTS, items: { type: 'string', maxLength: 120 } }, status: { type: 'string', const: 'tentative' } }, required: ['id', 'text', 'statementRefs', 'status'] }, { type: 'null' }] },
+      questionRef: { anyOf: [{ type: 'string' }, { type: 'null' }] },
+      statementRefs: { type: 'array', items: { type: 'string' } },
+      evidenceRefs: { type: 'array', items: { type: 'string' } },
+      provisionalHypothesis: { anyOf: [{ type: 'object', additionalProperties: false, properties: { id: { type: 'string' }, text: { type: 'string' }, statementRefs: { type: 'array', items: { type: 'string' } }, status: { type: 'string', enum: ['tentative'] } }, required: ['id', 'text', 'statementRefs', 'status'] }, { type: 'null' }] },
       expectedReplyKind: { type: 'string', enum: [...TEACHING_DIALOGUE_REPLY_KINDS] },
-      content: { type: 'object', additionalProperties: false, properties: { key: { type: 'string', enum: [...TEACHING_DIALOGUE_CONTENT_KEYS] }, params: { type: 'object', additionalProperties: false, maxProperties: 0 } }, required: ['key', 'params'] },
+      content: { type: 'object', additionalProperties: false, properties: { key: { type: 'string', enum: [...TEACHING_DIALOGUE_CONTENT_KEYS] }, params: { type: 'object', additionalProperties: false } }, required: ['key', 'params'] },
       grounding: { type: 'string', enum: ['none', 'conceptual', 'evidence'] },
       origin: { type: 'string', enum: [...TEACHING_DIALOGUE_ORIGINS] },
       fallbackReason: { anyOf: [{ type: 'string', enum: [...TEACHING_DIALOGUE_FAILURE_REASONS] }, { type: 'null' }] },
@@ -245,19 +254,19 @@ export async function decideTeachingDialogue({ context, session = {}, provider =
   try {
     const result = await Promise.race([
       Promise.resolve(provider(clone(context), { signal: controller?.signal }))
-        .then((value) => ({ kind: 'response', value }), () => ({ kind: 'transport' })),
+        .then((value) => ({ kind: 'response', value }), (error) => ({ kind: 'error', error })),
       new Promise((resolve) => setTimeout(() => resolve({ kind: 'timeout' }), Math.max(0, timeoutMs))),
       abortPromise,
     ].filter(Boolean));
     if (result?.kind === 'aborted') return { ...fallback, origin: 'fallback', fallbackReason: 'aborted' };
     if (result?.kind === 'timeout') return { ...fallback, origin: 'fallback', fallbackReason: 'timeout' };
-    if (result?.kind === 'transport') return { ...fallback, origin: 'fallback', fallbackReason: 'transport' };
+    if (result?.kind === 'error') return { ...fallback, origin: 'fallback', fallbackReason: classifyTeachingDialogueFailure(result.error) };
     if (result?.kind === 'response' && result.value?.kind === 'provider-failure') return { ...fallback, origin: 'fallback', fallbackReason: result.value.reason };
     const validated = validateTeachingDialogueResponse(result?.value, { context });
     if (validated && (!preferredMove || validated.move === preferredMove)) return { ...validated, origin: 'provider' };
     return { ...fallback, origin: 'fallback', fallbackReason: result?.kind === 'response' ? (result.value == null ? 'unavailable' : 'semantic') : 'malformed' };
-  } catch {
-    return { ...fallback, origin: 'fallback', fallbackReason: 'transport' };
+  } catch (error) {
+    return { ...fallback, origin: 'fallback', fallbackReason: classifyTeachingDialogueFailure(error) };
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener?.('abort', forwardAbort);

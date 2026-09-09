@@ -11,6 +11,7 @@ import {
   createTeachingDialogueProvider,
   parseTeachingDialogueProviderResponse,
   TEACHING_DIALOGUE_PROVIDER_TIMEOUT_MS,
+  classifyTeachingDialogueFailure,
   decideTeachingDialogue,
   validateTeachingDialogueResponse,
   recordTeachingDialogueTurn,
@@ -29,6 +30,7 @@ assert.equal(TEACHING_DIALOGUE_MOVES.length, 6);
 assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties)), 'OpenAI strict root schema requires every declared property');
 assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.content.required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.content.properties)), 'OpenAI strict content schema requires every declared property');
 assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.provisionalHypothesis.anyOf[0].required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.provisionalHypothesis.anyOf[0].properties)), 'OpenAI strict hypothesis schema requires every declared property');
+for (const unsupportedKeyword of ['minLength', 'maxLength', 'minItems', 'maxItems', 'minimum', 'maximum', 'maxProperties']) assert.equal(JSON.stringify(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema).includes(`"${unsupportedKeyword}"`), false, `teaching schema avoids provider strict keyword ${unsupportedKeyword}`);
 
 const session = createTeachingDialogueSession({ id: 'pilot-test', language: 'en' });
 const context = projectTeachingDialogueContext({
@@ -90,6 +92,13 @@ const providerFallback = await decideTeachingDialogue({ context, session, provid
 assert.equal(providerFallback.origin, 'fallback', 'provider failure preserves authored local fallback origin');
 assert.equal(providerFallback.fallbackReason, 'transport', 'transport failure is classified without exposing provider details');
 assert.equal(providerFallback.move, local.move);
+assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_REQUEST_FAILED', details: { status: 422, providerMessage: 'secret provider text' } }), 'provider-4xx');
+assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_REQUEST_FAILED', details: { status: 503, providerMessage: 'secret provider text' } }), 'provider-5xx');
+assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_RESPONSE_FAILED', details: { status: 'failed', providerMessage: 'secret provider text' } }), 'provider-response');
+assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_UNAVAILABLE' }), 'transport');
+assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_REQUEST_FAILED', details: { status: 422, providerMessage: 'secret provider text' } }).includes('secret'), false, 'failure classification never retains provider text');
+const rejectedProviderFallback = await decideTeachingDialogue({ context, session, provider: async () => { const error = new Error('provider rejected'); error.code = 'AI_PROVIDER_REQUEST_FAILED'; error.details = { status: 422, providerMessage: 'do not retain this' }; throw error; } });
+assert.equal(rejectedProviderFallback.fallbackReason, 'provider-4xx');
 const malformedFallback = await decideTeachingDialogue({ context, session, provider: async () => ({ version: 99 }) });
 assert.equal(malformedFallback.origin, 'fallback', 'malformed or unsupported provider output falls back');
 assert.equal(malformedFallback.fallbackReason, 'semantic', 'schema-validity failure is classified as semantic rejection');
