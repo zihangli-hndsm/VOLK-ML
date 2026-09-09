@@ -9,6 +9,7 @@ import {
   createTeachingDialogueResponse,
   TEACHING_DIALOGUE_AUTHORED_CASES,
   createTeachingDialogueProvider,
+  parseTeachingDialogueProviderResponse,
   decideTeachingDialogue,
   validateTeachingDialogueResponse,
   recordTeachingDialogueTurn,
@@ -65,6 +66,10 @@ assert.equal(providerCalls, 1, 'configured provider adapter makes one bounded ca
 assert.match(capturedProviderPrompt, /The learner wrote this/);
 assert.ok(providerSignal, 'provider boundary receives a cancellation signal');
 assert.equal(providerResult.origin, 'provider');
+assert.match(capturedProviderPrompt, /must contain exactly these keys/);
+assert.match(capturedProviderPrompt, /statementRefs and evidenceRefs must contain only IDs supplied/);
+assert.deepEqual(parseTeachingDialogueProviderResponse('```json\n{"ok":true}\n```'), { ok: true }, 'a single JSON code fence is safely unwrapped');
+assert.equal(parseTeachingDialogueProviderResponse('prefix {"ok":true}'), null, 'non-JSON provider prose is rejected');
 const providerFallback = await decideTeachingDialogue({ context, session, provider: async () => { throw new Error('offline'); } });
 assert.equal(providerFallback.origin, 'fallback', 'provider failure preserves authored local fallback origin');
 assert.equal(providerFallback.move, local.move);

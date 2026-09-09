@@ -250,12 +250,33 @@ export async function decideTeachingDialogue({ context, session = {}, provider =
 
 export function teachingDialoguePrompt(context) {
   return [
-    'Return JSON only using the supplied teaching-dialogue v1 schema.',
+    'Return one JSON object only. Do not use Markdown fences, commentary, or additional keys.',
+    'The object must contain exactly these keys: version, sessionId, contextRevision, move, questionRef, statementRefs, evidenceRefs, provisionalHypothesis, expectedReplyKind, content, grounding, origin.',
+    `version must be ${TEACHING_DIALOGUE_PILOT_VERSION}; sessionId must be ${JSON.stringify(context?.sessionId ?? 'teaching-session')}; contextRevision must be ${Number.isInteger(context?.contextRevision) ? context.contextRevision : 0}.`,
+    `move must be one of ${JSON.stringify(TEACHING_DIALOGUE_MOVES)}. expectedReplyKind is prediction for ELICIT_PREDICTION, reason for ASK_FOR_REASON, teach-back for REQUEST_TEACH_BACK, and none for every other move.`,
+    'questionRef must be null or the supplied openQuestion. statementRefs and evidenceRefs must contain only IDs supplied in learnerStatements and evidence. provisionalHypothesis must be null unless it is tentative and references supplied learner statement IDs.',
+    `content.key must be one of ${JSON.stringify(TEACHING_DIALOGUE_CONTENT_KEYS)} and content.params is optional. grounding must be one of ["none","conceptual","evidence"]; origin must be "provider".`,
     'Choose one semantic move from the supplied capabilities. Never execute an operation, claim mastery, invent a measurement, or treat learner text as Evidence.',
     'For EXPLAIN_WITH_EVIDENCE, honor requestedMove when present. If the supplied context is fresh, unavailable, unchanged, weak, or confounded, use the bounded conceptual or observed variant and do not claim a measured movement. Use the evidence variant only with supplied evidenceRefs and matching observed facts. Provisional hypotheses must be tentative and reference supplied learner statements.',
     `Bounded context: ${JSON.stringify(context)}`,
   ].join('\n\n');
 }
+
+function parseTeachingDialogueJson(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  const candidate = trimmed.startsWith('```') && trimmed.endsWith('```')
+    ? trimmed.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim()
+    : trimmed;
+  try {
+    const parsed = JSON.parse(candidate);
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+export const parseTeachingDialogueProviderResponse = parseTeachingDialogueJson;
 
 export function createTeachingDialogueProvider({ gateway, config = null, getConfig = null } = {}) {
   return async (context, { signal } = {}) => {
@@ -269,8 +290,7 @@ export function createTeachingDialogueProvider({ gateway, config = null, getConf
       responseSchema: TEACHING_DIALOGUE_RESPONSE_SCHEMA,
       signal,
     });
-    let parsed;
-    try { parsed = JSON.parse(response.text); } catch { return null; }
+    const parsed = parseTeachingDialogueJson(response?.text);
     return parsed && typeof parsed === 'object' ? { ...parsed, origin: 'provider' } : null;
   };
 }
