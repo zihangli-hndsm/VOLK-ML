@@ -9,6 +9,7 @@ import {
   createTeachingDialogueResponse,
   TEACHING_DIALOGUE_AUTHORED_CASES,
   createTeachingDialogueProvider,
+  teachingDialoguePrompt,
   parseTeachingDialogueProviderResponse,
   TEACHING_DIALOGUE_PROVIDER_TIMEOUT_MS,
   classifyTeachingDialogueFailure,
@@ -89,6 +90,9 @@ assert.ok(providerSignal, 'provider boundary receives a cancellation signal');
 assert.equal(providerResult.origin, 'provider');
 assert.equal(providerResult.fallbackReason, null, 'provider responses carry an explicit nullable fallback reason');
 assert.deepEqual(providerResult.content.params, {}, 'provider responses carry the strict empty params object');
+const compatibilityPrompt = teachingDialoguePrompt(context);
+assert.match(compatibilityPrompt, /Move\/content compatibility is strict/);
+assert.match(compatibilityPrompt, /A measured or summary claim is invalid without current evidence/);
 const incompatibleProvider = createTeachingDialogueProvider({ config: { apiKey: 'fixture', protocol: 'openai-compatible', model: 'fixture' }, gateway: { complete: async () => ({ text: JSON.stringify({ ...wireProviderResponse, move: 'OFFER_HINT', grounding: 'none', evidenceRefs: [], expectedReplyKind: 'none', content: { key: 'episode.one.teachingDialogue.evidence' } }) }) } });
 const incompatibleFallback = await decideTeachingDialogue({ context, session, provider: incompatibleProvider });
 assert.equal(incompatibleFallback.origin, 'fallback', 'cross-field provider responses are contained by the same local validator');

@@ -109,6 +109,10 @@ function contextForCase(item, revision, runNumber) {
       base.facts = base.facts.map((fact) => fact.id === 'evidence.observed.lineMovement' ? { ...fact, value: 'weak' } : fact);
     }
   }
+  const evidenceSummary = base.evidence?.[0]?.summary;
+  if (evidenceSummary && evidenceSummary !== 'insufficient') {
+    base.facts = base.facts.map((fact) => fact.id === 'evidence.status' ? { ...fact, value: evidenceSummary } : fact);
+  }
   return deepFreeze(base);
 }
 
@@ -121,9 +125,17 @@ function fixtureIntegrityErrors(context, fixture) {
   const evidenceIds = (context.evidence ?? []).map((item) => item?.evidenceId).filter(Boolean);
   if (new Set(evidenceIds).size !== evidenceIds.length) errors.push('duplicate-evidence-id');
   const status = context.evidence?.[0]?.summary ?? 'insufficient';
+  const statusFacts = (context.facts ?? []).filter((fact) => fact?.id === 'evidence.status');
   const outcome = String(context.activeComparison?.outcome ?? '').toLowerCase();
   const movement = String(lineMovementFacts[0]?.value ?? '').toLowerCase();
   if (!['insufficient', 'valid-weak', 'evidenced'].includes(status)) errors.push('unknown-evidence-status');
+  if (status === 'insufficient') {
+    if (statusFacts.some((fact) => fact.value !== status)) errors.push('status-fact-summary-mismatch');
+  } else if (statusFacts.length !== 1) {
+    errors.push('status-fact-missing-or-duplicate');
+  } else if (statusFacts[0].value !== status) {
+    errors.push('status-fact-summary-mismatch');
+  }
   if (status === 'insufficient') {
     if (context.activeComparison && fixture.qualityMode !== 'clarification') errors.push('comparison-without-evidence');
     if (!context.facts?.some((fact) => fact?.id === 'evidence.unavailable')) errors.push('missing-unavailable-fact');
