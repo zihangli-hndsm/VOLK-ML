@@ -75,6 +75,25 @@ free-exploration state is needed; use direct Episode 1 entry when testing the
 contract independently. These controls are development-only and are not part
 of the production learner surface.
 
+## T7 real-provider matrix driver
+
+The development build exposes a credential-safe test driver only while the
+page is running in Vite development mode. Configure the provider through the
+existing AI settings dialog; the key remains in volatile page memory. Then
+open the browser console and run:
+
+```js
+await globalThis.__VOLK_ML_T7_MATRIX__.run({ revision: 'ae5b0d0' })
+```
+
+The driver sends the twelve authored teaching-dialogue contexts through the
+same configured policy boundary twice (24 calls). It returns only case ID,
+run number, origin, selected move, localized content key, grounding, supplied
+reference IDs, bounded rubric scores, and safe failure categories. It never
+returns provider text, request bodies, credentials, or runtime state. A missing
+or failed provider produces local/fallback rows rather than retrying or
+changing the learner runtime. The global is absent from production builds.
+
 ## LUMI companion checks
 
 Inside any Explore playground, the small floating LUMI companion stays

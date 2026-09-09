@@ -478,6 +478,18 @@ function Workspace() {
   const aiConfigRef = useRef(config);
   aiConfigRef.current = config;
   const teachingDialoguePolicy = useMemo(() => createTeachingDialogueProvider({ gateway, getConfig: () => aiConfigRef.current }), [gateway]);
+  useEffect(() => {
+    if (import.meta.env.DEV !== true) return undefined;
+    let active = true;
+    import('./core/exploration/teachingDialogueT7Matrix.js').then(({ createTeachingDialogueT7BrowserDriver }) => {
+      if (!active) return;
+      globalThis.__VOLK_ML_T7_MATRIX__ = createTeachingDialogueT7BrowserDriver({ provider: teachingDialoguePolicy });
+    }).catch(() => {});
+    return () => {
+      active = false;
+      if (globalThis.__VOLK_ML_T7_MATRIX__) delete globalThis.__VOLK_ML_T7_MATRIX__;
+    };
+  }, [teachingDialoguePolicy]);
   const initialGraph = useMemo(() => makeDefaultGraph(), []);
   const initialBuildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth: window.innerWidth }), []);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialGraph.nodes);
