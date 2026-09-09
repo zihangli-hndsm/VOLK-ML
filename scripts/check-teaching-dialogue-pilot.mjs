@@ -10,6 +10,7 @@ import {
   TEACHING_DIALOGUE_AUTHORED_CASES,
   createTeachingDialogueProvider,
   parseTeachingDialogueProviderResponse,
+  TEACHING_DIALOGUE_PROVIDER_TIMEOUT_MS,
   decideTeachingDialogue,
   validateTeachingDialogueResponse,
   recordTeachingDialogueTurn,
@@ -72,15 +73,29 @@ assert.deepEqual(parseTeachingDialogueProviderResponse('```json\n{"ok":true}\n``
 assert.equal(parseTeachingDialogueProviderResponse('prefix {"ok":true}'), null, 'non-JSON provider prose is rejected');
 const providerFallback = await decideTeachingDialogue({ context, session, provider: async () => { throw new Error('offline'); } });
 assert.equal(providerFallback.origin, 'fallback', 'provider failure preserves authored local fallback origin');
+assert.equal(providerFallback.fallbackReason, 'transport', 'transport failure is classified without exposing provider details');
 assert.equal(providerFallback.move, local.move);
 const malformedFallback = await decideTeachingDialogue({ context, session, provider: async () => ({ version: 99 }) });
 assert.equal(malformedFallback.origin, 'fallback', 'malformed or unsupported provider output falls back');
+assert.equal(malformedFallback.fallbackReason, 'semantic', 'schema-validity failure is classified as semantic rejection');
+const unavailableFallback = await decideTeachingDialogue({ context, session, provider: async () => null });
+assert.equal(unavailableFallback.fallbackReason, 'unavailable', 'missing provider output is classified as unavailable');
+const malformedProvider = createTeachingDialogueProvider({ config: { apiKey: 'fixture', protocol: 'openai-compatible', model: 'fixture' }, gateway: { complete: async () => ({ text: 'not json' }) } });
+const malformedProviderFallback = await decideTeachingDialogue({ context, session, provider: malformedProvider });
+assert.equal(malformedProviderFallback.fallbackReason, 'malformed', 'invalid provider JSON is classified as malformed');
+assert.equal(TEACHING_DIALOGUE_PROVIDER_TIMEOUT_MS, 10000, 'live provider budget is explicitly bounded at ten seconds');
 const timeoutFallback = await decideTeachingDialogue({ context, session, timeoutMs: 1, provider: () => new Promise(() => {}) });
 assert.equal(timeoutFallback.origin, 'fallback', 'provider timeout preserves local fallback');
+assert.equal(timeoutFallback.fallbackReason, 'timeout', 'provider timeout is classified without raw error text');
+assert.deepEqual(validateTeachingDialogueResponse(timeoutFallback, { context }), timeoutFallback, 'bounded fallback diagnostics remain inside the validated response envelope');
 let timedAbort = false;
 const abortingProvider = createTeachingDialogueProvider({ config: { apiKey: 'fixture', protocol: 'openai-compatible', model: 'fixture' }, gateway: { complete: ({ signal }) => new Promise((resolve) => signal.addEventListener('abort', () => { timedAbort = true; resolve({ text: JSON.stringify(local) }); }, { once: true })) } });
 await decideTeachingDialogue({ context, session, provider: abortingProvider, timeoutMs: 1 });
 assert.equal(timedAbort, true, 'provider timeout aborts the underlying gateway request');
+const externalAbort = new AbortController();
+const abortedDecision = decideTeachingDialogue({ context, session, provider: () => new Promise(() => {}), signal: externalAbort.signal, timeoutMs: 10000 });
+externalAbort.abort();
+assert.equal((await abortedDecision).fallbackReason, 'aborted', 'external cancellation is classified as aborted');
 
 const withTurn = recordTeachingDialogueTurn(session, { kind: 'reason', text: 'The sample may vary.' });
 assert.equal(withTurn.contextRevision, 1);

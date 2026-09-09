@@ -14,6 +14,8 @@ export const TEACHING_DIALOGUE_MOVES = Object.freeze([
 ]);
 export const TEACHING_DIALOGUE_REPLY_KINDS = Object.freeze(['prediction', 'reason', 'teach-back', 'none']);
 export const TEACHING_DIALOGUE_ORIGINS = Object.freeze(['local', 'provider', 'fallback']);
+export const TEACHING_DIALOGUE_FAILURE_REASONS = Object.freeze(['unavailable', 'timeout', 'aborted', 'transport', 'malformed', 'semantic']);
+export const TEACHING_DIALOGUE_PROVIDER_TIMEOUT_MS = 10000;
 export const TEACHING_DIALOGUE_CONTENT_KEYS = Object.freeze([
   'episode.one.teachingDialogue.prediction',
   'episode.one.teachingDialogue.reason',
@@ -57,7 +59,11 @@ const MAX_HYPOTHESES = 2;
 const MAX_TEXT = 240;
 const MAX_CONTENT = 640;
 const MAX_CONTEXT_JSON = 12000;
-const ALLOWED_KEYS = new Set(['version', 'sessionId', 'contextRevision', 'move', 'questionRef', 'statementRefs', 'evidenceRefs', 'provisionalHypothesis', 'expectedReplyKind', 'content', 'grounding', 'origin']);
+const ALLOWED_KEYS = new Set(['version', 'sessionId', 'contextRevision', 'move', 'questionRef', 'statementRefs', 'evidenceRefs', 'provisionalHypothesis', 'expectedReplyKind', 'content', 'grounding', 'origin', 'fallbackReason']);
+const PROVIDER_FAILURE = Object.freeze({
+  unavailable: Object.freeze({ kind: 'provider-failure', reason: 'unavailable' }),
+  malformed: Object.freeze({ kind: 'provider-failure', reason: 'malformed' }),
+});
 
 const clone = (value) => structuredClone(value);
 const text = (value, max = MAX_TEXT) => {
@@ -91,6 +97,7 @@ export const TEACHING_DIALOGUE_RESPONSE_SCHEMA = Object.freeze({
       content: { type: 'object', additionalProperties: false, properties: { key: { type: 'string', enum: [...TEACHING_DIALOGUE_CONTENT_KEYS] }, params: { type: 'object', additionalProperties: false, maxProperties: 4 } }, required: ['key'] },
       grounding: { type: 'string', enum: ['none', 'conceptual', 'evidence'] },
       origin: { type: 'string', enum: [...TEACHING_DIALOGUE_ORIGINS] },
+      fallbackReason: { type: 'string', enum: [...TEACHING_DIALOGUE_FAILURE_REASONS] },
     },
     required: ['version', 'sessionId', 'contextRevision', 'move', 'questionRef', 'statementRefs', 'evidenceRefs', 'provisionalHypothesis', 'expectedReplyKind', 'content', 'grounding', 'origin'],
   },
@@ -226,22 +233,31 @@ export function localTeachingDialoguePolicy({ context, session = {}, preferredMo
   return createTeachingDialogueResponse({ context, move, contentKey: grounding === 'conceptual' ? 'episode.one.teachingDialogue.conceptual' : contentKeyFor(move), evidenceRefs, grounding, expectedReplyKind: expectedReplyFor(move), origin: 'local' });
 }
 
-export async function decideTeachingDialogue({ context, session = {}, provider = null, timeoutMs = 1200, preferredMove = null, signal = null } = {}) {
+export async function decideTeachingDialogue({ context, session = {}, provider = null, timeoutMs = TEACHING_DIALOGUE_PROVIDER_TIMEOUT_MS, preferredMove = null, signal = null } = {}) {
   const fallback = localTeachingDialoguePolicy({ context, session, preferredMove });
   if (typeof provider !== 'function') return fallback;
   const controller = typeof AbortController === 'function' ? new AbortController() : null;
   const forwardAbort = () => controller?.abort();
   const timeout = setTimeout(forwardAbort, Math.max(0, timeoutMs));
-  const abortPromise = signal ? (signal.aborted ? Promise.resolve(null) : new Promise((resolve) => signal.addEventListener('abort', () => resolve(null), { once: true }))) : null;
+  const abortPromise = signal ? (signal.aborted ? Promise.resolve({ kind: 'aborted' }) : new Promise((resolve) => signal.addEventListener('abort', () => resolve({ kind: 'aborted' }), { once: true }))) : null;
   if (signal?.aborted) controller?.abort();
   else signal?.addEventListener('abort', forwardAbort, { once: true });
   try {
-    const result = await Promise.race([Promise.resolve(provider(clone(context), { signal: controller?.signal })), new Promise((resolve) => setTimeout(() => resolve(null), Math.max(0, timeoutMs))), abortPromise].filter(Boolean));
-    const validated = validateTeachingDialogueResponse(result, { context });
+    const result = await Promise.race([
+      Promise.resolve(provider(clone(context), { signal: controller?.signal }))
+        .then((value) => ({ kind: 'response', value }), () => ({ kind: 'transport' })),
+      new Promise((resolve) => setTimeout(() => resolve({ kind: 'timeout' }), Math.max(0, timeoutMs))),
+      abortPromise,
+    ].filter(Boolean));
+    if (result?.kind === 'aborted') return { ...fallback, origin: 'fallback', fallbackReason: 'aborted' };
+    if (result?.kind === 'timeout') return { ...fallback, origin: 'fallback', fallbackReason: 'timeout' };
+    if (result?.kind === 'transport') return { ...fallback, origin: 'fallback', fallbackReason: 'transport' };
+    if (result?.kind === 'response' && result.value?.kind === 'provider-failure') return { ...fallback, origin: 'fallback', fallbackReason: result.value.reason };
+    const validated = validateTeachingDialogueResponse(result?.value, { context });
     if (validated && (!preferredMove || validated.move === preferredMove)) return { ...validated, origin: 'provider' };
-    return { ...fallback, origin: 'fallback' };
+    return { ...fallback, origin: 'fallback', fallbackReason: result?.kind === 'response' ? (result.value == null ? 'unavailable' : 'semantic') : 'malformed' };
   } catch {
-    return { ...fallback, origin: 'fallback' };
+    return { ...fallback, origin: 'fallback', fallbackReason: 'transport' };
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener?.('abort', forwardAbort);
@@ -281,7 +297,7 @@ export const parseTeachingDialogueProviderResponse = parseTeachingDialogueJson;
 export function createTeachingDialogueProvider({ gateway, config = null, getConfig = null } = {}) {
   return async (context, { signal } = {}) => {
     const resolvedConfig = typeof getConfig === 'function' ? getConfig() : config;
-    if (!gateway?.complete || !resolvedConfig?.apiKey?.trim()) return null;
+    if (!gateway?.complete || !resolvedConfig?.apiKey?.trim()) return PROVIDER_FAILURE.unavailable;
     const response = await gateway.complete({
       config: resolvedConfig,
       system: 'VOLK-ML local-first teaching dialogue policy. Runtime truth and learner agency remain authoritative.',
@@ -291,11 +307,11 @@ export function createTeachingDialogueProvider({ gateway, config = null, getConf
       signal,
     });
     const parsed = parseTeachingDialogueJson(response?.text);
-    return parsed && typeof parsed === 'object' ? { ...parsed, origin: 'provider' } : null;
+    return parsed && typeof parsed === 'object' ? { ...parsed, origin: 'provider' } : PROVIDER_FAILURE.malformed;
   };
 }
 
-export function createTeachingDialogueResponse({ context, move, contentKey = contentKeyFor(move), questionRef = null, statementRefs = [], evidenceRefs, provisionalHypothesis = null, expectedReplyKind = expectedReplyFor(move), grounding = null, origin = 'local' } = {}) {
+export function createTeachingDialogueResponse({ context, move, contentKey = contentKeyFor(move), questionRef = null, statementRefs = [], evidenceRefs, provisionalHypothesis = null, expectedReplyKind = expectedReplyFor(move), grounding = null, origin = 'local', fallbackReason = null } = {}) {
   const evidenceIds = context?.evidence?.map((item) => item.evidenceId) ?? [];
   const safeEvidenceRefs = list(evidenceRefs ?? evidenceIds, 8).filter((value) => evidenceIds.includes(value));
   const safeGrounding = groundingFor({ move, evidenceRefs: safeEvidenceRefs, grounding });
@@ -313,6 +329,7 @@ export function createTeachingDialogueResponse({ context, move, contentKey = con
     content: { key: TEACHING_DIALOGUE_CONTENT_KEYS.includes(safeContentKey) ? safeContentKey : TEACHING_DIALOGUE_CONTENT_KEYS[2] },
     grounding: safeGrounding,
     origin: TEACHING_DIALOGUE_ORIGINS.includes(origin) ? origin : 'local',
+    ...(origin === 'fallback' && TEACHING_DIALOGUE_FAILURE_REASONS.includes(fallbackReason) ? { fallbackReason } : {}),
   };
 }
 
@@ -337,6 +354,7 @@ export function validateTeachingDialogueResponse(value, { context } = {}) {
   } else if (value.grounding !== 'none') return null;
   if (value.provisionalHypothesis !== null && (!value.provisionalHypothesis || value.provisionalHypothesis.status !== 'tentative' || !text(value.provisionalHypothesis.text) || !id(value.provisionalHypothesis.id) || !Array.isArray(value.provisionalHypothesis.statementRefs) || value.provisionalHypothesis.statementRefs.some((ref) => !allowedStatements.has(ref)))) return null;
   if (!TEACHING_DIALOGUE_ORIGINS.includes(value.origin)) return null;
+  if (value.fallbackReason !== undefined && (!TEACHING_DIALOGUE_FAILURE_REASONS.includes(value.fallbackReason) || value.origin !== 'fallback')) return null;
   return clone(value);
 }
 
