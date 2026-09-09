@@ -48,6 +48,17 @@ const context = projectTeachingDialogueContext({
 const local = localTeachingDialoguePolicy({ context, session });
 assert.equal(local.move, 'REQUEST_TEACH_BACK');
 assert.deepEqual(validateTeachingDialogueResponse(local, { context }), local);
+const crossFieldBypass = {
+  ...local,
+  move: 'OFFER_HINT',
+  grounding: 'none',
+  evidenceRefs: [],
+  expectedReplyKind: 'none',
+  content: { key: 'episode.one.teachingDialogue.evidence', params: {} },
+};
+assert.equal(validateTeachingDialogueResponse(crossFieldBypass, { context }), null, 'an evidence content key cannot bypass its move and evidence preconditions');
+assert.equal(validateTeachingDialogueResponse({ ...local, move: 'ELICIT_PREDICTION', expectedReplyKind: 'none', content: { key: 'episode.one.teachingDialogue.prediction', params: {} } }, { context }), null, 'prediction move requires its prediction reply kind');
+assert.deepEqual(validateTeachingDialogueResponse(createTeachingDialogueResponse({ context, move: 'SUMMARIZE_AND_PAUSE' }), { context }).move, 'SUMMARIZE_AND_PAUSE', 'a current-evidence summary remains a legitimate bounded combination');
 assert.equal((await decideTeachingDialogue({ context, session, preferredMove: 'EXPLAIN_WITH_EVIDENCE' })).move, 'EXPLAIN_WITH_EVIDENCE', 'learner-selected direct explanation remains the selected move');
 const unavailableDirect = localTeachingDialoguePolicy({ context: { ...context, evidence: [], activeComparison: { enabled: false } }, session, preferredMove: 'EXPLAIN_WITH_EVIDENCE' });
 assert.equal(unavailableDirect.grounding, 'conceptual', 'direct explanation remains available as a conceptual response without evidence');
@@ -58,6 +69,7 @@ assert.equal(validateTeachingDialogueResponse({ ...local, move: 'EXPLAIN_WITH_EV
 assert.equal(validateTeachingDialogueResponse({ ...local, evidenceRefs: ['invented'] }, { context }), null, 'invented evidence refs are rejected');
 assert.equal(validateTeachingDialogueResponse({ ...local, extra: true }, { context }), null, 'schema injection is rejected');
 assert.equal(validateTeachingDialogueResponse({ ...local, contextRevision: 99 }, { context }), null, 'stale responses are rejected');
+assert.notEqual(localTeachingDialoguePolicy({ context, session, preferredMove: 'RUN' }).move, 'RUN', 'unsupported requested moves cannot become local actions');
 const directFresh = localTeachingDialoguePolicy({ context: { ...context, evidence: [], activeComparison: null }, session, preferredMove: 'EXPLAIN_WITH_EVIDENCE' });
 const directUnchanged = localTeachingDialoguePolicy({ context: { ...context, evidence: [{ evidenceId: 'e1', summary: 'valid-weak' }], activeComparison: { ...context.activeComparison, outcome: 'unchanged' }, facts: [...context.facts, { id: 'evidence.observed.lineMovement', kind: 'observation', value: 'unchanged' }] }, session, preferredMove: 'EXPLAIN_WITH_EVIDENCE' });
 const directMixed = localTeachingDialoguePolicy({ context: { ...context, evidence: [{ evidenceId: 'e1', summary: 'evidenced' }], activeComparison: { ...context.activeComparison, changed: ['sampling realization', 'noise'] } }, session, preferredMove: 'EXPLAIN_WITH_EVIDENCE' });
@@ -77,6 +89,10 @@ assert.ok(providerSignal, 'provider boundary receives a cancellation signal');
 assert.equal(providerResult.origin, 'provider');
 assert.equal(providerResult.fallbackReason, null, 'provider responses carry an explicit nullable fallback reason');
 assert.deepEqual(providerResult.content.params, {}, 'provider responses carry the strict empty params object');
+const incompatibleProvider = createTeachingDialogueProvider({ config: { apiKey: 'fixture', protocol: 'openai-compatible', model: 'fixture' }, gateway: { complete: async () => ({ text: JSON.stringify({ ...wireProviderResponse, move: 'OFFER_HINT', grounding: 'none', evidenceRefs: [], expectedReplyKind: 'none', content: { key: 'episode.one.teachingDialogue.evidence' } }) }) } });
+const incompatibleFallback = await decideTeachingDialogue({ context, session, provider: incompatibleProvider });
+assert.equal(incompatibleFallback.origin, 'fallback', 'cross-field provider responses are contained by the same local validator');
+assert.equal(incompatibleFallback.fallbackReason, 'semantic');
 let strictRequest = null;
 const strictGateway = createProviderGateway({ fetchImpl: async (_endpoint, options) => {
   strictRequest = JSON.parse(options.body);
@@ -199,7 +215,7 @@ TEACHING_DIALOGUE_AUTHORED_CASES.forEach((item) => {
   caseOutcomes.push({ id: item.id, status: evaluation.status, origin: evaluation.origin, callCount: evaluation.callCount, fallbackUsed: evaluation.fallbackUsed, repairUsed: evaluation.repairUsed, selectedMove: result.move, allowedMoves: item.allowedMoves, assertions: evaluation.assertions, scores: evaluation.scores, failureReasons: evaluation.failureReasons, evidenceRequirements: item.evidenceRequirements });
 });
 const wrongMoveEvaluation = evaluateAuthoredCase({ item: TEACHING_DIALOGUE_AUTHORED_CASES[0], context, session, policy: () => ({ ...local, move: 'SUMMARIZE_AND_PAUSE' }) });
-assert.deepEqual(wrongMoveEvaluation.failureReasons, ['move-not-allowed'], 'negative runner reports a deliberately wrong first move');
+assert.deepEqual(wrongMoveEvaluation.failureReasons, ['move-not-allowed', 'response-invalid-or-ungrounded'], 'negative runner reports a deliberately wrong and incompatible first move');
 const missingEvidenceEvaluation = evaluateAuthoredCase({ item: TEACHING_DIALOGUE_AUTHORED_CASES[4], context, session, policy: () => createTeachingDialogueResponse({ context, move: 'EXPLAIN_WITH_EVIDENCE', grounding: 'evidence', evidenceRefs: [] }) });
 assert.deepEqual(missingEvidenceEvaluation.failureReasons, ['response-invalid-or-ungrounded'], 'negative runner reports missing required evidence');
 const fabricatedMeasuredClaim = { ...unavailableDirect, grounding: 'evidence', content: { key: 'episode.one.teachingDialogue.evidence' }, evidenceRefs: ['invented'] };

@@ -7,6 +7,8 @@ import {
   TEACHING_DIALOGUE_T7_MAX_CASES,
   createTeachingDialogueT7BrowserDriver,
   createTeachingDialogueT7Context,
+  assertTeachingDialogueT7FixtureIntegrity,
+  validateTeachingDialogueT7FixtureContext,
   evaluateTeachingDialogueT7Result,
   runTeachingDialogueT7Matrix,
 } from '../src/core/exploration/teachingDialogueT7Matrix.js';
@@ -90,6 +92,15 @@ assert.equal(Object.prototype.hasOwnProperty.call(driver, 'config'), false, 'bro
 assert.equal(Object.prototype.hasOwnProperty.call(driver, 'gateway'), false, 'browser driver never exposes a gateway or credential store');
 
 assert.equal(Object.keys(TEACHING_DIALOGUE_T7_CASE_FIXTURES).length, 12, 'every authored case has a canonical fixture');
+assert.equal(assertTeachingDialogueT7FixtureIntegrity({ revision: 'fixture-integrity', run: 1 }), true, 'all authored contexts pass fixture integrity checks');
+const unchangedContext = createTeachingDialogueT7Context(TEACHING_DIALOGUE_AUTHORED_CASES.find((item) => item.id === 'unchanged'), 'fixture-integrity', 1);
+assert.equal(unchangedContext.facts.filter((fact) => fact.id === 'evidence.observed.lineMovement').length, 1, 'unchanged context contains exactly one line-movement fact');
+assert.deepEqual(createTeachingDialogueT7Context(TEACHING_DIALOGUE_AUTHORED_CASES.find((item) => item.id === 'unchanged'), 'fixture-integrity', 1), unchangedContext, 'fixture construction order is deterministic');
+const originalDuplicateFixture = { ...unchangedContext, facts: [...unchangedContext.facts.map((fact) => fact.id === 'evidence.observed.lineMovement' ? { ...fact, value: 'visible' } : fact), { id: 'evidence.observed.lineMovement', kind: 'observation', value: 'unchanged' }] };
+const duplicateValidation = validateTeachingDialogueT7FixtureContext(originalDuplicateFixture, { caseId: 'unchanged' });
+assert.equal(duplicateValidation.valid, false, 'the original append-style unchanged fixture is rejected');
+assert.ok(duplicateValidation.errors.includes('duplicate-line-movement'));
+assert.ok(duplicateValidation.errors.includes('line-movement-does-not-match-outcome'));
 assert.ok(TEACHING_DIALOGUE_T7_CASE_FIXTURES['chinese-misconception'].learnerStatements.length > 0, 'misconception fixture includes learner input');
 assert.ok(TEACHING_DIALOGUE_T7_CASE_FIXTURES['english-mixed-paraphrase'].learnerStatements[0].text.includes('Data'), 'mixed-language fixture includes its authored paraphrase');
 const chineseItem = TEACHING_DIALOGUE_AUTHORED_CASES.find((item) => item.id === 'chinese-misconception');

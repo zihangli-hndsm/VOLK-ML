@@ -28,6 +28,19 @@ export const TEACHING_DIALOGUE_CONTENT_KEYS = Object.freeze([
   'episode.one.teachingDialogue.summary',
 ]);
 
+// This is the bounded compatibility contract shared by local decisions and
+// provider responses. The JSON schema validates shape; this contract validates
+// the semantic relationship between the selected move, reply kind, grounding,
+// and content key before anything can be displayed.
+export const TEACHING_DIALOGUE_MOVE_CONTRACT = Object.freeze({
+  ELICIT_PREDICTION: Object.freeze({ expectedReplyKind: 'prediction', grounding: Object.freeze(['none']), contentKeys: Object.freeze(['episode.one.teachingDialogue.prediction']), evidence: 'none' }),
+  ASK_FOR_REASON: Object.freeze({ expectedReplyKind: 'reason', grounding: Object.freeze(['none']), contentKeys: Object.freeze(['episode.one.teachingDialogue.reason']), evidence: 'none' }),
+  OFFER_HINT: Object.freeze({ expectedReplyKind: 'none', grounding: Object.freeze(['none']), contentKeys: Object.freeze(['episode.one.teachingDialogue.hint']), evidence: 'none' }),
+  EXPLAIN_WITH_EVIDENCE: Object.freeze({ expectedReplyKind: 'none', grounding: Object.freeze(['conceptual', 'evidence']), contentKeys: Object.freeze(['episode.one.teachingDialogue.conceptual', 'episode.one.teachingDialogue.evidence', 'episode.one.teachingDialogue.observedUnchanged', 'episode.one.teachingDialogue.observedWeak']), evidence: 'explanation' }),
+  REQUEST_TEACH_BACK: Object.freeze({ expectedReplyKind: 'teach-back', grounding: Object.freeze(['none']), contentKeys: Object.freeze(['episode.one.teachingDialogue.teachBack']), evidence: 'none' }),
+  SUMMARIZE_AND_PAUSE: Object.freeze({ expectedReplyKind: 'none', grounding: Object.freeze(['none']), contentKeys: Object.freeze(['episode.one.teachingDialogue.summary']), evidence: 'summary' }),
+});
+
 const RUBRIC = (groundedness, moveRelevance, learnerChoice, uncertainty) => Object.freeze({
   groundedness: Object.freeze(groundedness),
   moveRelevance: Object.freeze(moveRelevance),
@@ -210,10 +223,19 @@ function groundingFor({ move, evidenceRefs = [], grounding = null } = {}) {
 }
 
 function contextAllowsMeasuredExplanation(context) {
-  const evidenceStatus = context?.evidence?.[0]?.summary ?? 'insufficient';
+  const evidenceItem = context?.evidence?.[0];
+  const evidenceStatus = evidenceItem?.summary ?? 'insufficient';
   const samplingFactors = new Set(['sampling realization', 'sample identity', 'training Data']);
-  const mixedFactors = (context?.activeComparison?.changed ?? []).some((factor) => !samplingFactors.has(factor));
-  return evidenceStatus !== 'insufficient' && !mixedFactors && Boolean(context?.activeComparison?.enabled);
+  const comparison = context?.activeComparison;
+  const changed = Array.isArray(comparison?.changed) ? comparison.changed : [];
+  const held = Array.isArray(comparison?.held) ? comparison.held : [];
+  const mixedFactors = changed.some((factor) => !samplingFactors.has(factor));
+  const fact = (context?.facts ?? []).find((item) => item?.id === 'evidence.observed.lineMovement');
+  const lineMovement = String(fact?.value ?? comparison?.outcome ?? '').toLowerCase();
+  const worldHeld = held.includes('World identity') || (context?.facts ?? []).some((item) => item?.id === 'evidence.structure.worldHeldConstant' && item.value === true);
+  const sampleChanged = changed.some((factor) => samplingFactors.has(factor)) || (context?.facts ?? []).some((item) => item?.id === 'evidence.structure.sampleIdentityChanged' && item.value === true);
+  const outcomeAvailable = ['visible', 'weak', 'unchanged', 'valid-weak'].includes(lineMovement);
+  return Boolean(evidenceItem?.evidenceId) && evidenceStatus !== 'insufficient' && !mixedFactors && Boolean(comparison?.enabled) && worldHeld && sampleChanged && outcomeAvailable;
 }
 
 function observedExplanationKey(context) {
@@ -224,6 +246,28 @@ function observedExplanationKey(context) {
   return 'episode.one.teachingDialogue.evidence';
 }
 
+function currentEvidenceRefs(context) {
+  return list(context?.evidence?.map((item) => item?.evidenceId), 8);
+}
+
+// Returns false for cross-field combinations that are syntactically valid but
+// semantically unsafe. This is intentionally used after the same structural
+// checks for both local and provider-originated responses.
+export function validateTeachingDialogueCompatibility(value, { context } = {}) {
+  const contract = TEACHING_DIALOGUE_MOVE_CONTRACT[value?.move];
+  if (!contract || value.expectedReplyKind !== contract.expectedReplyKind || !contract.grounding.includes(value.grounding) || !contract.contentKeys.includes(value.content?.key)) return false;
+  const refs = Array.isArray(value.evidenceRefs) ? value.evidenceRefs : [];
+  if (contract.evidence === 'none' && refs.length !== 0) return false;
+  if (contract.evidence === 'explanation') {
+    if (value.grounding === 'conceptual') return refs.length === 0 && value.content.key === 'episode.one.teachingDialogue.conceptual' && !contextAllowsMeasuredExplanation(context);
+    if (!contextAllowsMeasuredExplanation(context) || refs.length === 0 || value.content.key !== observedExplanationKey(context)) return false;
+  }
+  if (contract.evidence === 'summary') {
+    if (!contextAllowsMeasuredExplanation(context) || refs.length === 0 || refs.some((ref) => !currentEvidenceRefs(context).includes(ref))) return false;
+  }
+  return true;
+}
+
 export function localTeachingDialoguePolicy({ context, session = {}, preferredMove = null } = {}) {
   const evidenceStatus = context?.evidence?.[0]?.summary ?? 'insufficient';
   const hasPrediction = Boolean(context?.prediction?.expectation);
@@ -231,8 +275,9 @@ export function localTeachingDialoguePolicy({ context, session = {}, preferredMo
   const hasTeachBack = (session.turns ?? []).some((turn) => turn.role === 'learner' && turn.kind === 'teach-back');
   const samplingFactors = new Set(['sampling realization', 'sample identity', 'training Data']);
   const mixedFactors = (context?.activeComparison?.changed ?? []).some((factor) => !samplingFactors.has(factor));
-  let move = TEACHING_DIALOGUE_MOVES.includes(preferredMove) ? preferredMove : 'ELICIT_PREDICTION';
-  if (preferredMove) move = preferredMove;
+  const requestedMove = TEACHING_DIALOGUE_MOVES.includes(preferredMove) ? preferredMove : null;
+  let move = requestedMove ?? 'ELICIT_PREDICTION';
+  if (requestedMove) move = requestedMove;
   else if (mixedFactors) move = 'ASK_FOR_REASON';
   else if (evidenceStatus === 'evidenced' && (session.followUpsWithoutInformation ?? 0) >= 2) move = 'EXPLAIN_WITH_EVIDENCE';
   else if (evidenceStatus === 'evidenced' && !hasTeachBack) move = 'REQUEST_TEACH_BACK';
@@ -285,7 +330,7 @@ export function teachingDialoguePrompt(context) {
     'questionRef must be null or the supplied openQuestion. statementRefs and evidenceRefs must contain only IDs supplied in learnerStatements and evidence. provisionalHypothesis must use null id/text/status and an empty statementRefs array when no hypothesis is supplied; otherwise it must be tentative and reference supplied learner statement IDs.',
     `content.key must be one of ${JSON.stringify(TEACHING_DIALOGUE_CONTENT_KEYS)}. grounding must be one of ["none","conceptual","evidence"]; origin must be "provider". The runtime adapter supplies internal params and fallbackReason fields after validation.`,
     'Choose one semantic move from the supplied capabilities. Never execute an operation, claim mastery, invent a measurement, or treat learner text as Evidence.',
-    'For EXPLAIN_WITH_EVIDENCE, honor requestedMove when present. If the supplied context is fresh, unavailable, unchanged, weak, or confounded, use the bounded conceptual or observed variant and do not claim a measured movement. Use the evidence variant only with supplied evidenceRefs and matching observed facts. Provisional hypotheses must be tentative and reference supplied learner statements.',
+    'Move/content compatibility is strict: ELICIT_PREDICTION uses prediction, ASK_FOR_REASON uses reason, OFFER_HINT uses hint, REQUEST_TEACH_BACK uses teachBack, and SUMMARIZE_AND_PAUSE uses summary with current evidenceRefs. EXPLAIN_WITH_EVIDENCE uses conceptual only when measured evidence is unavailable, otherwise it must use the current observed variant and supplied evidenceRefs. A measured or summary claim is invalid without current evidence, World-held comparison, sampling-only changed factors, and an available line-movement outcome.',
     `Bounded context: ${JSON.stringify(context)}`,
   ].join('\n\n');
 }
@@ -338,7 +383,8 @@ export function createTeachingDialogueProvider({ gateway, config = null, getConf
 
 export function createTeachingDialogueResponse({ context, move, contentKey = contentKeyFor(move), questionRef = null, statementRefs = [], evidenceRefs, provisionalHypothesis = null, expectedReplyKind = expectedReplyFor(move), grounding = null, origin = 'local', fallbackReason = null } = {}) {
   const evidenceIds = context?.evidence?.map((item) => item.evidenceId) ?? [];
-  const safeEvidenceRefs = list(evidenceRefs ?? evidenceIds, 8).filter((value) => evidenceIds.includes(value));
+  const defaultEvidenceRefs = (move === 'EXPLAIN_WITH_EVIDENCE' || move === 'SUMMARIZE_AND_PAUSE') ? evidenceIds : [];
+  const safeEvidenceRefs = list(evidenceRefs ?? defaultEvidenceRefs, 8).filter((value) => evidenceIds.includes(value));
   const safeGrounding = groundingFor({ move, evidenceRefs: safeEvidenceRefs, grounding });
   const safeContentKey = safeGrounding === 'conceptual' ? 'episode.one.teachingDialogue.conceptual' : (move === 'EXPLAIN_WITH_EVIDENCE' ? observedExplanationKey(context) : contentKey);
   return {
@@ -371,13 +417,7 @@ export function validateTeachingDialogueResponse(value, { context } = {}) {
   if (value.questionRef !== null && !allowedQuestions.has(value.questionRef)) return null;
   if (!Array.isArray(value.statementRefs) || value.statementRefs.some((ref) => !allowedStatements.has(ref))) return null;
   if (!Array.isArray(value.evidenceRefs) || value.evidenceRefs.some((ref) => !allowedEvidence.has(ref))) return null;
-  if (value.move === 'EXPLAIN_WITH_EVIDENCE') {
-    const measuredExplanationAllowed = contextAllowsMeasuredExplanation(context);
-    if (!measuredExplanationAllowed && (value.grounding !== 'conceptual' || value.evidenceRefs.length !== 0)) return null;
-    if (measuredExplanationAllowed && (value.grounding !== 'evidence' || value.evidenceRefs.length === 0)) return null;
-    if (value.grounding === 'evidence' && (value.content.key !== observedExplanationKey(context) || value.evidenceRefs.length === 0)) return null;
-    if (value.grounding === 'conceptual' && (value.content.key !== 'episode.one.teachingDialogue.conceptual' || value.evidenceRefs.length !== 0)) return null;
-  } else if (value.grounding !== 'none') return null;
+  if (!validateTeachingDialogueCompatibility(value, { context })) return null;
   if (value.provisionalHypothesis !== null && (Object.keys(value.provisionalHypothesis).some((key) => !['id', 'text', 'statementRefs', 'status'].includes(key)) || !value.provisionalHypothesis || value.provisionalHypothesis.status !== 'tentative' || !text(value.provisionalHypothesis.text) || !id(value.provisionalHypothesis.id) || !Array.isArray(value.provisionalHypothesis.statementRefs) || value.provisionalHypothesis.statementRefs.some((ref) => !allowedStatements.has(ref)))) return null;
   if (!TEACHING_DIALOGUE_ORIGINS.includes(value.origin)) return null;
   if (!Object.prototype.hasOwnProperty.call(value, 'fallbackReason') || (value.fallbackReason !== null && (!TEACHING_DIALOGUE_FAILURE_REASONS.includes(value.fallbackReason) || value.origin !== 'fallback'))) return null;
