@@ -79,7 +79,7 @@ import { compareExploreEnvironment, createExploreEnvironmentIdentity } from './e
 import { getExplorationContract, getOrchestrationContract } from './exploration/inquiryContracts.js';
 import { deriveInquiryRuntimeState } from './exploration/inquiryRuntime.js';
 import { validateLumiAction, decideLumiAction, applyGuidanceBudget, guidanceStageState, staySilent, createCloudLumiPolicy } from './exploration/lumiPolicy.js';
-import { createTeachingDialogueSession, isTeachingDialoguePilotEnabled, projectTeachingDialogueContext, decideTeachingDialogue, validateTeachingDialogueResponse, recordTeachingDialogueTurn, storeTeachingHypothesis, reviseTeachingHypothesis, retractTeachingHypothesis, stopTeachingDialogue } from './exploration/teachingDialoguePilot.js';
+import { createTeachingDialogueSession, isTeachingDialoguePilotEnabled, buildTeachingDialogueContext, decideTeachingDialogue, validateTeachingDialogueResponse, recordTeachingDialogueTurn, storeTeachingHypothesis, reviseTeachingHypothesis, retractTeachingHypothesis, stopTeachingDialogue } from './exploration/teachingDialoguePilot.js';
 import { getEpisode } from '../episodes/registry.js';
 import { deriveOrchestrationState } from './orchestration/runtime.js';
 export { getPlaybackAction, getPlaybackDelay, createPlaybackScheduler } from './playground/playbackScheduler.js';
@@ -535,9 +535,11 @@ export function createPlaygroundHost({
   let conceptExposureIds = [];
   let lastCanonicalConceptSignalIds = [];
   let inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null, continuationId: null, interpretations: [] };
-  const teachingDialogueSessionId = `teaching-dialogue-${Date.now()}`;
-  let teachingDialogueSession = createTeachingDialogueSession({ id: teachingDialogueSessionId });
+  let teachingDialogueSessionSequence = 0;
+  const newTeachingDialogueSession = () => createTeachingDialogueSession({ id: `teaching-dialogue-${Date.now()}-${++teachingDialogueSessionSequence}` });
+  let teachingDialogueSession = newTeachingDialogueSession();
   let teachingDialogueRequestToken = 0;
+  let teachingDialogueAbortController = null;
   const pilotEnabled = () => teachingDialoguePilotEnabled === null ? isTeachingDialoguePilotEnabled() : Boolean(teachingDialoguePilotEnabled);
   const cloudLumiPolicy = createCloudLumiPolicy(cloudClient);
   const learnerAnnotationStore = createLearnerAnnotationStore();
@@ -545,6 +547,8 @@ export function createPlaygroundHost({
   const subscribers = new Set();
 
   const resetInquirySessionState = () => {
+    teachingDialogueAbortController?.abort();
+    teachingDialogueAbortController = null;
     semanticEventStore.reset();
     inquiryGuidanceHistory = [];
     inquiryPresentationContext = { conceptualDepth: null, conceptsPreviouslySurfaced: [] };
@@ -553,11 +557,34 @@ export function createPlaygroundHost({
     conceptExposureIds = [];
     lastCanonicalConceptSignalIds = [];
     inquirySessionState = { prediction: null, baselineExperimentId: null, currentQuestion: null, encounteredConcepts: [], currentDepth: 'PHENOMENON', guidanceHistory: [], conceptSurfacedSequence: null, reflection: null, continuationId: null, interpretations: [] };
-    teachingDialogueSession = createTeachingDialogueSession({ id: teachingDialogueSessionId });
+    teachingDialogueSession = newTeachingDialogueSession();
     teachingDialogueRequestToken += 1;
     learnerAnnotationStore.reset();
     learningConversationStore.reset();
     inquiryTrajectoryStore.reset();
+  };
+
+  const abortTeachingDialogueRequest = () => {
+    teachingDialogueAbortController?.abort();
+    teachingDialogueAbortController = null;
+    teachingDialogueRequestToken += 1;
+  };
+
+  const applyInquiryPrediction = ({ expectation, reasoning = '', skipped = false, actor = 'human' } = {}) => {
+    if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+    const contract = getOrchestrationContract(session.bigIdea?.orchestrationContractId);
+    if (!contract || contract.prediction.mode === 'disabled') return false;
+    const allowed = new Set(contract.prediction.choices);
+    const value = skipped ? 'skipped' : String(expectation ?? '');
+    if (!skipped && !allowed.has(value)) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'PREDICTION_RECORDED', reason: 'unsupported prediction' });
+    inquirySessionState.prediction = { expectation: value, reasoning: String(reasoning ?? '').slice(0, contract.prediction.maxReasoningLength), skipped: Boolean(skipped) };
+    teachingDialogueSession = { ...teachingDialogueSession, prediction: { ref: `${session.bigIdea?.id ?? 'episode-1'}:prediction`, expectation: value, reasoning: inquirySessionState.prediction.reasoning, source: 'episode.prediction' }, contextRevision: (teachingDialogueSession.contextRevision ?? 0) + 1 };
+    abortTeachingDialogueRequest();
+    semanticEventStore.append([{
+      type: 'prediction.recorded', actor: SEMANTIC_ACTION_ACTORS.has(actor) ? actor : 'human',
+      experimentIds: [session.experiment?.id].filter(Boolean), semanticFactors: [], operationTypes: [], reasonCode: skipped ? 'prediction-skipped' : `prediction-${value}`,
+    }]);
+    return true;
   };
 
   const deriveCuriosityCapabilities = (snapshot) => {
@@ -627,6 +654,11 @@ export function createPlaygroundHost({
     };
   };
 
+  const buildCurrentTeachingContext = (snapshot, { requestId = null, language = teachingDialogueSession.language, inquiryRuntime = null, preferredMove = null } = {}) => {
+    const runtime = inquiryRuntime ?? deriveInquiryProjection(snapshot).inquiryRuntime;
+    return buildTeachingDialogueContext({ snapshot: { ...snapshot, inquiryRuntime: runtime }, session: teachingDialogueSession, language, requestId, preferredMove });
+  };
+
   const present = (snapshot) => {
     if (!snapshot) return null;
     const { semanticEvents, learnerInquiry, inquiryRuntime, orchestrationRuntime, curiosity } = deriveInquiryProjection(snapshot);
@@ -653,7 +685,7 @@ export function createPlaygroundHost({
       inquiryTrajectory,
       conceptExposure: { version: 1, shownConceptIds: [...conceptExposureIds] },
       teachingDialogue: pilotEnabled() && snapshot?.bigIdea?.id === 'episode-1-sampling-variability'
-        ? { ...teachingDialogueSession, context: teachingDialogueSession.optedIn ? projectTeachingDialogueContext({ snapshot: { ...snapshot, inquiryRuntime }, session: teachingDialogueSession }) : null }
+        ? { ...teachingDialogueSession, context: teachingDialogueSession.optedIn ? buildCurrentTeachingContext(snapshot, { inquiryRuntime }) : null }
         : null,
     };
   };
@@ -1219,19 +1251,7 @@ export function createPlaygroundHost({
     },
 
     recordInquiryPrediction({ expectation, reasoning = '', skipped = false, actor = 'human' } = {}) {
-      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
-      const contract = getOrchestrationContract(session.bigIdea?.orchestrationContractId);
-      if (!contract || contract.prediction.mode === 'disabled') return present(derivePlaygroundSnapshot(session));
-      const allowed = new Set(contract.prediction.choices);
-      const value = skipped ? 'skipped' : String(expectation ?? '');
-      if (!skipped && !allowed.has(value)) throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'PREDICTION_RECORDED', reason: 'unsupported prediction' });
-      inquirySessionState.prediction = { expectation: value, reasoning: String(reasoning ?? '').slice(0, contract.prediction.maxReasoningLength), skipped: Boolean(skipped) };
-      teachingDialogueSession = { ...teachingDialogueSession, prediction: { ref: `${session.bigIdea?.id ?? 'episode-1'}:prediction`, expectation: value, reasoning: inquirySessionState.prediction.reasoning, source: 'episode.prediction' }, contextRevision: (teachingDialogueSession.contextRevision ?? 0) + 1 };
-      teachingDialogueRequestToken += 1;
-      semanticEventStore.append([{
-        type: 'prediction.recorded', actor: SEMANTIC_ACTION_ACTORS.has(actor) ? actor : 'human',
-        experimentIds: [session.experiment?.id].filter(Boolean), semanticFactors: [], operationTypes: [], reasonCode: skipped ? 'prediction-skipped' : `prediction-${value}`,
-      }]);
+      applyInquiryPrediction({ expectation, reasoning, skipped, actor });
       notify();
       return present(derivePlaygroundSnapshot(session));
     },
@@ -1239,13 +1259,13 @@ export function createPlaygroundHost({
     getTeachingDialogueContext({ requestId = null, language = 'en' } = {}) {
       if (!session || !pilotEnabled() || session.bigIdea?.id !== 'episode-1-sampling-variability' || !teachingDialogueSession.optedIn) return null;
       const snapshot = derivePlaygroundSnapshot(session);
-      return projectTeachingDialogueContext({ snapshot, session: teachingDialogueSession, language, requestId });
+      return buildCurrentTeachingContext(snapshot, { language, requestId });
     },
 
     optInTeachingDialogue({ language = 'en' } = {}) {
       if (!session || !pilotEnabled() || session.bigIdea?.id !== 'episode-1-sampling-variability') return null;
       teachingDialogueSession = { ...teachingDialogueSession, optedIn: true, stopped: false, language: language === 'zh' ? 'zh' : 'en' };
-      teachingDialogueRequestToken += 1;
+      abortTeachingDialogueRequest();
       notify();
       return present(derivePlaygroundSnapshot(session));
     },
@@ -1254,33 +1274,72 @@ export function createPlaygroundHost({
       if (!session || !pilotEnabled() || session.bigIdea?.id !== 'episode-1-sampling-variability' || !teachingDialogueSession.optedIn || teachingDialogueSession.stopped) return null;
       if (teachingDialogueSession.assistanceDisabled && !allowTransferHelp) return null;
       const snapshot = derivePlaygroundSnapshot(session);
-      const context = projectTeachingDialogueContext({ snapshot, session: teachingDialogueSession, language, requestId });
+      const context = buildCurrentTeachingContext(snapshot, { language, requestId, preferredMove });
       const requestToken = ++teachingDialogueRequestToken;
+      teachingDialogueAbortController?.abort();
+      const requestController = typeof AbortController === 'function' ? new AbortController() : null;
+      teachingDialogueAbortController = requestController;
       const contextFingerprint = JSON.stringify({ comparison: context.activeComparison, evidence: context.evidence, activeFit: context.activeFit, prediction: context.prediction, revision: context.contextRevision });
-      const response = await decideTeachingDialogue({ context, session: teachingDialogueSession, provider: teachingDialoguePolicy, preferredMove });
-      const currentSnapshot = derivePlaygroundSnapshot(session);
-      const currentContext = projectTeachingDialogueContext({ snapshot: currentSnapshot, session: teachingDialogueSession, language, requestId });
-      const currentFingerprint = JSON.stringify({ comparison: currentContext.activeComparison, evidence: currentContext.evidence, activeFit: currentContext.activeFit, prediction: currentContext.prediction, revision: currentContext.contextRevision });
-      if (requestToken !== teachingDialogueRequestToken || teachingDialogueSession.stopped || currentFingerprint !== contextFingerprint) return null;
-      const safe = validateTeachingDialogueResponse(response, { context });
-      if (!safe) return null;
-      teachingDialogueSession = { ...teachingDialogueSession, stage: safe.move, contextRevision: context.contextRevision, summaryVisible: safe.move === 'SUMMARIZE_AND_PAUSE', ...(allowTransferHelp ? { transferReady: false, assistanceDisabled: false } : {}), ...(safe.provisionalHypothesis ? { hypotheses: storeTeachingHypothesis(teachingDialogueSession, safe.provisionalHypothesis).hypotheses } : {}) };
-      notify();
-      return safe;
+      try {
+        const response = await decideTeachingDialogue({ context, session: teachingDialogueSession, provider: teachingDialoguePolicy, preferredMove, signal: requestController?.signal });
+        const currentSnapshot = derivePlaygroundSnapshot(session);
+        const currentContext = buildCurrentTeachingContext(currentSnapshot, { language, requestId, preferredMove });
+        const currentFingerprint = JSON.stringify({ comparison: currentContext.activeComparison, evidence: currentContext.evidence, activeFit: currentContext.activeFit, prediction: currentContext.prediction, revision: currentContext.contextRevision });
+        if (requestToken !== teachingDialogueRequestToken || teachingDialogueSession.stopped || currentFingerprint !== contextFingerprint) return null;
+        const safe = validateTeachingDialogueResponse(response, { context });
+        if (!safe) return null;
+        teachingDialogueSession = { ...teachingDialogueSession, stage: safe.move, contextRevision: context.contextRevision, summaryVisible: safe.move === 'SUMMARIZE_AND_PAUSE', ...(allowTransferHelp ? { transferReady: false, assistanceDisabled: false } : {}), ...(safe.provisionalHypothesis ? { hypotheses: storeTeachingHypothesis(teachingDialogueSession, safe.provisionalHypothesis).hypotheses } : {}) };
+        notify();
+        return safe;
+      } finally {
+        if (teachingDialogueAbortController === requestController) teachingDialogueAbortController = null;
+      }
     },
 
     recordTeachingDialogueTurn({ kind = 'statement', text: value = '' } = {}) {
       if (!session || !pilotEnabled() || !teachingDialogueSession.optedIn) return null;
+      abortTeachingDialogueRequest();
       teachingDialogueSession = recordTeachingDialogueTurn(teachingDialogueSession, { role: 'learner', kind, text: value });
-      teachingDialogueRequestToken += 1;
       notify();
       return present(derivePlaygroundSnapshot(session));
+    },
+
+    recordTeachingDialogueReply({ kind = 'statement', text: value = '', expectation = null } = {}) {
+      if (!session || !pilotEnabled() || !teachingDialogueSession.optedIn) return null;
+      abortTeachingDialogueRequest();
+      const safeValue = String(value ?? '').trim().slice(0, 240);
+      if (!safeValue) return null;
+      if (kind === 'prediction' && !inquirySessionState.prediction) {
+        const contract = getOrchestrationContract(session.bigIdea?.orchestrationContractId);
+        const allowed = new Set(contract?.prediction?.choices ?? ['same', 'different', 'unsure']);
+        const predicted = String(expectation ?? safeValue).trim().toLowerCase();
+        if (!allowed.has(predicted)) return null;
+        const reasoning = expectation && safeValue !== predicted ? safeValue : '';
+        applyInquiryPrediction({ expectation: predicted, reasoning, actor: 'human' });
+      }
+      teachingDialogueSession = recordTeachingDialogueTurn(teachingDialogueSession, { role: 'learner', kind, text: safeValue });
+      if (kind === 'teach-back') inquirySessionState.reflection = { text: safeValue, skipped: false };
+      if (kind === 'reason') inquirySessionState.interpretations = [...inquirySessionState.interpretations, { text: safeValue }].slice(-12);
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    skipTeachingDialogue() {
+      if (!session || !teachingDialogueSession.optedIn) return null;
+      abortTeachingDialogueRequest();
+      teachingDialogueSession = { ...teachingDialogueSession, stage: 'SKIPPED', contextRevision: teachingDialogueSession.contextRevision + 1 };
+      notify();
+      return present(derivePlaygroundSnapshot(session));
+    },
+
+    cancelTeachingDialogueRequest() {
+      abortTeachingDialogueRequest();
     },
 
     stopTeachingDialogue() {
       if (!session) return null;
       teachingDialogueSession = stopTeachingDialogue(teachingDialogueSession);
-      teachingDialogueRequestToken += 1;
+      abortTeachingDialogueRequest();
       notify();
       return present(derivePlaygroundSnapshot(session));
     },
@@ -1288,21 +1347,21 @@ export function createPlaygroundHost({
     beginTeachingTransfer() {
       if (!session || !pilotEnabled() || !teachingDialogueSession.optedIn) return null;
       teachingDialogueSession = { ...teachingDialogueSession, transferReady: true, assistanceDisabled: true, summaryVisible: false, contextRevision: teachingDialogueSession.contextRevision + 1 };
-      teachingDialogueRequestToken += 1;
+      abortTeachingDialogueRequest();
       notify();
       return present(derivePlaygroundSnapshot(session));
     },
 
     reviseTeachingHypothesis({ id, text, statementRefs = [] } = {}) {
       teachingDialogueSession = reviseTeachingHypothesis(teachingDialogueSession, { id, text, statementRefs });
-      teachingDialogueRequestToken += 1;
+      abortTeachingDialogueRequest();
       notify();
       return present(derivePlaygroundSnapshot(session));
     },
 
     retractTeachingHypothesis(id) {
       teachingDialogueSession = retractTeachingHypothesis(teachingDialogueSession, id);
-      teachingDialogueRequestToken += 1;
+      abortTeachingDialogueRequest();
       notify();
       return present(derivePlaygroundSnapshot(session));
     },

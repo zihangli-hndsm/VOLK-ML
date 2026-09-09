@@ -177,10 +177,11 @@ function responsesTextOptions(responseSchema) {
 
 const adapters = Object.freeze({
   'openai-responses': Object.freeze({
-    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseSchema }) {
+    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseSchema, signal }) {
       const response = await fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+        signal,
         body: JSON.stringify({
           model,
           instructions: system,
@@ -193,12 +194,13 @@ const adapters = Object.freeze({
     },
   }),
   'openai-compatible': Object.freeze({
-    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode, requestProfile }) {
+    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode, requestProfile, signal }) {
       const sampling = {};
       if (requestProfile?.temperature !== false) sampling.temperature = 0;
       const request = (includeJsonMode) => fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
+        signal,
         body: JSON.stringify({
           model,
           ...sampling,
@@ -220,10 +222,11 @@ const adapters = Object.freeze({
     },
   }),
   'anthropic-compatible': Object.freeze({
-    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, requestProfile }) {
+    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, requestProfile, signal }) {
       const response = await fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+        signal,
         body: JSON.stringify({ model, max_tokens: 1200, ...(requestProfile?.temperature !== false ? { temperature: 0 } : {}), system, messages }),
       });
       const payload = await readJson(response);
@@ -231,7 +234,7 @@ const adapters = Object.freeze({
     },
   }),
   'gemini-compatible': Object.freeze({
-    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode, requestProfile }) {
+    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseMode, requestProfile, signal }) {
       const generationConfig = {
         ...(requestProfile?.temperature !== false ? { temperature: 0 } : {}),
         ...(requestProfile?.topP !== false ? { topP: 1 } : {}),
@@ -241,6 +244,7 @@ const adapters = Object.freeze({
       const response = await fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-goog-api-key': apiKey },
+        signal,
         body: JSON.stringify({
           systemInstruction: { parts: [{ text: system }] },
           contents: messages.map((message) => ({
@@ -258,7 +262,7 @@ const adapters = Object.freeze({
 
 export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterRegistry = adapters, traceStore = createRequestTraceStore() } = {}) {
   return Object.freeze({
-    async complete({ config, system = '', messages = [], responseMode = 'text', responseSchema = null }) {
+    async complete({ config, system = '', messages = [], responseMode = 'text', responseSchema = null, signal = undefined }) {
       if (typeof fetchImpl !== 'function') throw providerError('AI_PROVIDER_UNAVAILABLE', 'No browser fetch implementation is available.');
       const resolved = requireConfig(config);
       const adapter = adapterRegistry[resolved.protocol.id];
@@ -277,6 +281,7 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
           responseMode,
           responseSchema,
           requestProfile: resolved.requestProfile,
+          signal,
         });
         traceStore.append({ id: requestId, stage: 'provider-response', protocol: resolved.protocol.id, model: resolved.model, status: 'received' });
         traceStore.append({ id: requestId, stage: 'parse', protocol: resolved.protocol.id, model: resolved.model, status: responseMode === 'json' ? 'structured' : 'text' });

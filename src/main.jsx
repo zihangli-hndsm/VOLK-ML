@@ -37,6 +37,7 @@ import {
 import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
+import { createTeachingDialogueProvider } from './core/exploration/teachingDialoguePilot.js';
 import { getBigIdeaEntrance } from './core/exploration/bigIdeaRegistry.js';
 import { compareExploreEnvironment, createBuildExploreBridge, createExploreEnvironmentIdentity, createExploreWorkspaceRecord, EXPLORE_WORKSPACE_LIFECYCLES } from './core/exploration/exploreWorkspace.js';
 import { UI_SURFACES } from './core/ui/uiArchitecture.js';
@@ -473,7 +474,10 @@ const isEditableCanvasTarget = (target) => {
 };
 function Workspace() {
   const { primary, secondary, setLanguages, t } = useVividTranslation();
-  const { openSettings } = useAiProvider();
+  const { openSettings, config, gateway } = useAiProvider();
+  const aiConfigRef = useRef(config);
+  aiConfigRef.current = config;
+  const teachingDialoguePolicy = useMemo(() => createTeachingDialogueProvider({ gateway, getConfig: () => aiConfigRef.current }), [gateway]);
   const initialGraph = useMemo(() => makeDefaultGraph(), []);
   const initialBuildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth: window.innerWidth }), []);
   const [nodes, setNodes, onNodesChange] = useNodesState(initialGraph.nodes);
@@ -562,7 +566,7 @@ function Workspace() {
   const getExploreWorkspace = useCallback((key, recipeId = null, datasetProvider = () => null, lifecycle = EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT) => {
     const existing = exploreWorkspacesRef.current.get(key);
     if (existing) return existing;
-    const host = createPlaygroundHost({ getDataset: datasetProvider, exploreRecipeId: recipeId, cloudClient: volkCloudClient });
+    const host = createPlaygroundHost({ getDataset: datasetProvider, exploreRecipeId: recipeId, cloudClient: volkCloudClient, teachingDialoguePolicy });
     const agent = createPlaygroundAgentApi(host);
     const workspace = {
       key,
@@ -572,7 +576,7 @@ function Workspace() {
     };
     exploreWorkspacesRef.current.set(key, workspace);
     return workspace;
-  }, []);
+  }, [teachingDialoguePolicy, volkCloudClient]);
   const disposeEphemeralExploreWorkspaces = useCallback((exceptKey = null) => {
     let disposedActive = false;
     for (const [key, workspace] of exploreWorkspacesRef.current.entries()) {
