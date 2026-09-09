@@ -29,8 +29,8 @@ assert.equal(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.additionalProperties, fals
 assert.equal(TEACHING_DIALOGUE_MOVES.length, 6);
 assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties)), 'OpenAI strict root schema requires every declared property');
 assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.content.required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.content.properties)), 'OpenAI strict content schema requires every declared property');
-assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.provisionalHypothesis.anyOf[0].required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.provisionalHypothesis.anyOf[0].properties)), 'OpenAI strict hypothesis schema requires every declared property');
-for (const unsupportedKeyword of ['minLength', 'maxLength', 'minItems', 'maxItems', 'minimum', 'maximum', 'maxProperties']) assert.equal(JSON.stringify(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema).includes(`"${unsupportedKeyword}"`), false, `teaching schema avoids provider strict keyword ${unsupportedKeyword}`);
+assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.provisionalHypothesis.required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.provisionalHypothesis.properties)), 'OpenAI strict hypothesis schema requires every declared property');
+for (const unsupportedKeyword of ['minLength', 'maxLength', 'minItems', 'maxItems', 'minimum', 'maximum', 'maxProperties', 'anyOf']) assert.equal(JSON.stringify(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema).includes(`"${unsupportedKeyword}"`), false, `teaching schema avoids provider strict keyword ${unsupportedKeyword}`);
 
 const session = createTeachingDialogueSession({ id: 'pilot-test', language: 'en' });
 const context = projectTeachingDialogueContext({
@@ -67,7 +67,9 @@ assert.equal(directUnchanged.content.key, 'episode.one.teachingDialogue.observed
 assert.equal(directMixed.content.key, 'episode.one.teachingDialogue.conceptual');
 assert.equal(directChanged.content.key, 'episode.one.teachingDialogue.evidence');
 let providerCalls = 0; let capturedProviderPrompt = ''; let providerSignal = null;
-const providerAdapter = createTeachingDialogueProvider({ config: { apiKey: 'fixture', protocol: 'openai-compatible', model: 'fixture' }, gateway: { complete: async ({ messages, responseSchema, signal }) => { providerCalls += 1; providerSignal = signal; capturedProviderPrompt = messages[0].content; assert.equal(responseSchema.name, 'volk_ml_teaching_dialogue_pilot_v1'); return { text: JSON.stringify({ ...local, origin: 'provider' }) }; } } });
+const { fallbackReason: _localFallbackReason, ...localWithoutFallback } = local;
+const wireProviderResponse = { ...localWithoutFallback, provisionalHypothesis: { id: null, text: null, statementRefs: [], status: null }, content: { key: local.content.key } };
+const providerAdapter = createTeachingDialogueProvider({ config: { apiKey: 'fixture', protocol: 'openai-compatible', model: 'fixture' }, gateway: { complete: async ({ messages, responseSchema, signal }) => { providerCalls += 1; providerSignal = signal; capturedProviderPrompt = messages[0].content; assert.equal(responseSchema.name, 'volk_ml_teaching_dialogue_pilot_v1'); return { text: JSON.stringify(wireProviderResponse) }; } } });
 const providerResult = await providerAdapter({ ...context, learnerStatements: [{ id: 's1', text: 'The learner wrote this.', kind: 'reason', source: 'learner' }] }, { signal: new AbortController().signal });
 assert.equal(providerCalls, 1, 'configured provider adapter makes one bounded call');
 assert.match(capturedProviderPrompt, /The learner wrote this/);
@@ -78,10 +80,12 @@ assert.deepEqual(providerResult.content.params, {}, 'provider responses carry th
 let strictRequest = null;
 const strictGateway = createProviderGateway({ fetchImpl: async (_endpoint, options) => {
   strictRequest = JSON.parse(options.body);
-  return { ok: true, status: 200, json: async () => ({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(providerResult) }] }] }) };
+  const schema = strictRequest.text.format.schema;
+  if (JSON.stringify(schema).includes('"anyOf"') || Object.prototype.hasOwnProperty.call(schema.properties, 'fallbackReason') || Object.prototype.hasOwnProperty.call(schema.properties.content.properties, 'params')) return { ok: false, status: 400, json: async () => ({ error: { message: 'strict teaching schema rejected' } }) };
+  return { ok: true, status: 200, json: async () => ({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(wireProviderResponse) }] }] }) };
 } });
 const strictResponse = await strictGateway.complete({ config: { protocol: 'openai-responses', apiKey: 'fixture', model: 'fixture' }, system: 'test', messages: [{ role: 'user', content: 'test' }], responseMode: 'json', responseSchema: TEACHING_DIALOGUE_RESPONSE_SCHEMA });
-assert.deepEqual(JSON.parse(strictResponse.text), providerResult, 'OpenAI Responses adapter returns a valid strict teaching response');
+assert.deepEqual(JSON.parse(strictResponse.text), wireProviderResponse, 'OpenAI Responses adapter returns a valid strict teaching response');
 assert.equal(strictRequest.text.format.strict, true);
 assert.deepEqual(new Set(strictRequest.text.format.schema.required), new Set(Object.keys(strictRequest.text.format.schema.properties)), 'serialized OpenAI teaching schema keeps root required parity');
 assert.match(capturedProviderPrompt, /must contain exactly these keys/);
@@ -95,6 +99,9 @@ assert.equal(providerFallback.move, local.move);
 assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_REQUEST_FAILED', details: { status: 422, providerMessage: 'secret provider text' } }), 'provider-4xx');
 assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_REQUEST_FAILED', details: { status: 503, providerMessage: 'secret provider text' } }), 'provider-5xx');
 assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_RESPONSE_FAILED', details: { status: 'failed', providerMessage: 'secret provider text' } }), 'provider-response');
+assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_REQUEST_FAILED', details: { status: 400, providerMessage: 'Invalid JSON schema for structured output' } }), 'provider-schema');
+assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_REQUEST_FAILED', details: { status: 400, providerMessage: 'context length exceeds token limit' } }), 'provider-context');
+assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_REQUEST_FAILED', details: { status: 422, providerMessage: 'invalid request unknown field' } }), 'provider-invalid-request');
 assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_UNAVAILABLE' }), 'transport');
 assert.equal(classifyTeachingDialogueFailure({ code: 'AI_PROVIDER_REQUEST_FAILED', details: { status: 422, providerMessage: 'secret provider text' } }).includes('secret'), false, 'failure classification never retains provider text');
 const rejectedProviderFallback = await decideTeachingDialogue({ context, session, provider: async () => { const error = new Error('provider rejected'); error.code = 'AI_PROVIDER_REQUEST_FAILED'; error.details = { status: 422, providerMessage: 'do not retain this' }; throw error; } });
