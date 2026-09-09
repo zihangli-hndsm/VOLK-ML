@@ -20,11 +20,15 @@ import {
   isTeachingDialoguePilotEnabled,
 } from '../src/core/exploration/teachingDialoguePilot.js';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
+import { createProviderGateway } from '../src/core/ai/providerRegistry.js';
 
 assert.equal(isTeachingDialoguePilotEnabled({}), false, 'pilot is disabled by default');
 assert.equal(isTeachingDialoguePilotEnabled({ VITE_VOLK_TEACHING_DIALOGUE_PILOT: '1' }), true, 'pilot flag accepts explicit enablement');
 assert.equal(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.additionalProperties, false);
 assert.equal(TEACHING_DIALOGUE_MOVES.length, 6);
+assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties)), 'OpenAI strict root schema requires every declared property');
+assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.content.required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.content.properties)), 'OpenAI strict content schema requires every declared property');
+assert.deepEqual(new Set(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.provisionalHypothesis.anyOf[0].required), new Set(Object.keys(TEACHING_DIALOGUE_RESPONSE_SCHEMA.schema.properties.provisionalHypothesis.anyOf[0].properties)), 'OpenAI strict hypothesis schema requires every declared property');
 
 const session = createTeachingDialogueSession({ id: 'pilot-test', language: 'en' });
 const context = projectTeachingDialogueContext({
@@ -67,6 +71,17 @@ assert.equal(providerCalls, 1, 'configured provider adapter makes one bounded ca
 assert.match(capturedProviderPrompt, /The learner wrote this/);
 assert.ok(providerSignal, 'provider boundary receives a cancellation signal');
 assert.equal(providerResult.origin, 'provider');
+assert.equal(providerResult.fallbackReason, null, 'provider responses carry an explicit nullable fallback reason');
+assert.deepEqual(providerResult.content.params, {}, 'provider responses carry the strict empty params object');
+let strictRequest = null;
+const strictGateway = createProviderGateway({ fetchImpl: async (_endpoint, options) => {
+  strictRequest = JSON.parse(options.body);
+  return { ok: true, status: 200, json: async () => ({ status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text: JSON.stringify(providerResult) }] }] }) };
+} });
+const strictResponse = await strictGateway.complete({ config: { protocol: 'openai-responses', apiKey: 'fixture', model: 'fixture' }, system: 'test', messages: [{ role: 'user', content: 'test' }], responseMode: 'json', responseSchema: TEACHING_DIALOGUE_RESPONSE_SCHEMA });
+assert.deepEqual(JSON.parse(strictResponse.text), providerResult, 'OpenAI Responses adapter returns a valid strict teaching response');
+assert.equal(strictRequest.text.format.strict, true);
+assert.deepEqual(new Set(strictRequest.text.format.schema.required), new Set(Object.keys(strictRequest.text.format.schema.properties)), 'serialized OpenAI teaching schema keeps root required parity');
 assert.match(capturedProviderPrompt, /must contain exactly these keys/);
 assert.match(capturedProviderPrompt, /statementRefs and evidenceRefs must contain only IDs supplied/);
 assert.deepEqual(parseTeachingDialogueProviderResponse('```json\n{"ok":true}\n```'), { ok: true }, 'a single JSON code fence is safely unwrapped');

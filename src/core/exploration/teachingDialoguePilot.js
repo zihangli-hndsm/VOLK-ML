@@ -94,12 +94,12 @@ export const TEACHING_DIALOGUE_RESPONSE_SCHEMA = Object.freeze({
       evidenceRefs: { type: 'array', maxItems: 8, items: { type: 'string', maxLength: 120 } },
       provisionalHypothesis: { anyOf: [{ type: 'object', additionalProperties: false, properties: { id: { type: 'string', maxLength: 120 }, text: { type: 'string', maxLength: MAX_TEXT }, statementRefs: { type: 'array', maxItems: MAX_STATEMENTS, items: { type: 'string', maxLength: 120 } }, status: { type: 'string', const: 'tentative' } }, required: ['id', 'text', 'statementRefs', 'status'] }, { type: 'null' }] },
       expectedReplyKind: { type: 'string', enum: [...TEACHING_DIALOGUE_REPLY_KINDS] },
-      content: { type: 'object', additionalProperties: false, properties: { key: { type: 'string', enum: [...TEACHING_DIALOGUE_CONTENT_KEYS] }, params: { type: 'object', additionalProperties: false, maxProperties: 4 } }, required: ['key'] },
+      content: { type: 'object', additionalProperties: false, properties: { key: { type: 'string', enum: [...TEACHING_DIALOGUE_CONTENT_KEYS] }, params: { type: 'object', additionalProperties: false, maxProperties: 0 } }, required: ['key', 'params'] },
       grounding: { type: 'string', enum: ['none', 'conceptual', 'evidence'] },
       origin: { type: 'string', enum: [...TEACHING_DIALOGUE_ORIGINS] },
-      fallbackReason: { type: 'string', enum: [...TEACHING_DIALOGUE_FAILURE_REASONS] },
+      fallbackReason: { anyOf: [{ type: 'string', enum: [...TEACHING_DIALOGUE_FAILURE_REASONS] }, { type: 'null' }] },
     },
-    required: ['version', 'sessionId', 'contextRevision', 'move', 'questionRef', 'statementRefs', 'evidenceRefs', 'provisionalHypothesis', 'expectedReplyKind', 'content', 'grounding', 'origin'],
+    required: ['version', 'sessionId', 'contextRevision', 'move', 'questionRef', 'statementRefs', 'evidenceRefs', 'provisionalHypothesis', 'expectedReplyKind', 'content', 'grounding', 'origin', 'fallbackReason'],
   },
 });
 
@@ -267,11 +267,11 @@ export async function decideTeachingDialogue({ context, session = {}, provider =
 export function teachingDialoguePrompt(context) {
   return [
     'Return one JSON object only. Do not use Markdown fences, commentary, or additional keys.',
-    'The object must contain exactly these keys: version, sessionId, contextRevision, move, questionRef, statementRefs, evidenceRefs, provisionalHypothesis, expectedReplyKind, content, grounding, origin.',
+    'The object must contain exactly these keys: version, sessionId, contextRevision, move, questionRef, statementRefs, evidenceRefs, provisionalHypothesis, expectedReplyKind, content, grounding, origin, fallbackReason.',
     `version must be ${TEACHING_DIALOGUE_PILOT_VERSION}; sessionId must be ${JSON.stringify(context?.sessionId ?? 'teaching-session')}; contextRevision must be ${Number.isInteger(context?.contextRevision) ? context.contextRevision : 0}.`,
     `move must be one of ${JSON.stringify(TEACHING_DIALOGUE_MOVES)}. expectedReplyKind is prediction for ELICIT_PREDICTION, reason for ASK_FOR_REASON, teach-back for REQUEST_TEACH_BACK, and none for every other move.`,
     'questionRef must be null or the supplied openQuestion. statementRefs and evidenceRefs must contain only IDs supplied in learnerStatements and evidence. provisionalHypothesis must be null unless it is tentative and references supplied learner statement IDs.',
-    `content.key must be one of ${JSON.stringify(TEACHING_DIALOGUE_CONTENT_KEYS)} and content.params is optional. grounding must be one of ["none","conceptual","evidence"]; origin must be "provider".`,
+    `content.key must be one of ${JSON.stringify(TEACHING_DIALOGUE_CONTENT_KEYS)} and content.params must be {}. grounding must be one of ["none","conceptual","evidence"]; origin must be "provider"; fallbackReason must be null.`,
     'Choose one semantic move from the supplied capabilities. Never execute an operation, claim mastery, invent a measurement, or treat learner text as Evidence.',
     'For EXPLAIN_WITH_EVIDENCE, honor requestedMove when present. If the supplied context is fresh, unavailable, unchanged, weak, or confounded, use the bounded conceptual or observed variant and do not claim a measured movement. Use the evidence variant only with supplied evidenceRefs and matching observed facts. Provisional hypotheses must be tentative and reference supplied learner statements.',
     `Bounded context: ${JSON.stringify(context)}`,
@@ -326,10 +326,10 @@ export function createTeachingDialogueResponse({ context, move, contentKey = con
     evidenceRefs: safeEvidenceRefs,
     provisionalHypothesis: provisionalHypothesis && text(provisionalHypothesis.text) && id(provisionalHypothesis.id) ? { id: id(provisionalHypothesis.id), text: text(provisionalHypothesis.text), statementRefs: list(provisionalHypothesis.statementRefs ?? statementRefs, MAX_STATEMENTS, refId), status: 'tentative' } : null,
     expectedReplyKind,
-    content: { key: TEACHING_DIALOGUE_CONTENT_KEYS.includes(safeContentKey) ? safeContentKey : TEACHING_DIALOGUE_CONTENT_KEYS[2] },
+    content: { key: TEACHING_DIALOGUE_CONTENT_KEYS.includes(safeContentKey) ? safeContentKey : TEACHING_DIALOGUE_CONTENT_KEYS[2], params: {} },
     grounding: safeGrounding,
     origin: TEACHING_DIALOGUE_ORIGINS.includes(origin) ? origin : 'local',
-    ...(origin === 'fallback' && TEACHING_DIALOGUE_FAILURE_REASONS.includes(fallbackReason) ? { fallbackReason } : {}),
+    fallbackReason: origin === 'fallback' && TEACHING_DIALOGUE_FAILURE_REASONS.includes(fallbackReason) ? fallbackReason : null,
   };
 }
 
@@ -338,6 +338,7 @@ export function validateTeachingDialogueResponse(value, { context } = {}) {
   if (value.version !== TEACHING_DIALOGUE_PILOT_VERSION || !TEACHING_DIALOGUE_MOVES.includes(value.move)) return null;
   if (id(value.sessionId) !== id(context?.sessionId) || value.contextRevision !== context?.contextRevision) return null;
   if (!TEACHING_DIALOGUE_REPLY_KINDS.includes(value.expectedReplyKind) || !TEACHING_DIALOGUE_CONTENT_KEYS.includes(value.content?.key)) return null;
+  if (!value.content || !value.content.params || Array.isArray(value.content.params) || typeof value.content.params !== 'object' || Object.keys(value.content.params).length !== 0) return null;
   if (!['none', 'conceptual', 'evidence'].includes(value.grounding)) return null;
   const allowedQuestions = new Set([context?.openQuestion].filter(Boolean));
   const allowedStatements = new Set(statementIds(context));
@@ -354,7 +355,7 @@ export function validateTeachingDialogueResponse(value, { context } = {}) {
   } else if (value.grounding !== 'none') return null;
   if (value.provisionalHypothesis !== null && (!value.provisionalHypothesis || value.provisionalHypothesis.status !== 'tentative' || !text(value.provisionalHypothesis.text) || !id(value.provisionalHypothesis.id) || !Array.isArray(value.provisionalHypothesis.statementRefs) || value.provisionalHypothesis.statementRefs.some((ref) => !allowedStatements.has(ref)))) return null;
   if (!TEACHING_DIALOGUE_ORIGINS.includes(value.origin)) return null;
-  if (value.fallbackReason !== undefined && (!TEACHING_DIALOGUE_FAILURE_REASONS.includes(value.fallbackReason) || value.origin !== 'fallback')) return null;
+  if (!Object.prototype.hasOwnProperty.call(value, 'fallbackReason') || (value.fallbackReason !== null && (!TEACHING_DIALOGUE_FAILURE_REASONS.includes(value.fallbackReason) || value.origin !== 'fallback'))) return null;
   return clone(value);
 }
 
