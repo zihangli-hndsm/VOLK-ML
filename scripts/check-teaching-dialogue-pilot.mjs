@@ -79,6 +79,7 @@ assert.equal(directFresh.content.key, 'episode.one.teachingDialogue.conceptual')
 assert.equal(directUnchanged.content.key, 'episode.one.teachingDialogue.observedUnchanged');
 assert.equal(directMixed.content.key, 'episode.one.teachingDialogue.conceptual');
 assert.equal(directChanged.content.key, 'episode.one.teachingDialogue.evidence');
+assert.equal(validateTeachingDialogueResponse({ ...directChanged, content: { key: 'episode.one.teachingDialogue.observedUnchanged', params: {} } }, { context: { ...context, evidence: [{ evidenceId: 'e1', summary: 'evidenced' }], activeComparison: { ...context.activeComparison, outcome: 'visible' }, facts: [...context.facts, { id: 'evidence.observed.lineMovement', kind: 'observation', value: 'visible' }] } }), null, 'visible evidence rejects the incompatible observedUnchanged content key');
 let providerCalls = 0; let capturedProviderPrompt = ''; let providerSignal = null;
 const { fallbackReason: _localFallbackReason, ...localWithoutFallback } = local;
 const wireProviderResponse = { ...localWithoutFallback, provisionalHypothesis: { id: null, text: null, statementRefs: [], status: null }, content: { key: local.content.key } };
@@ -93,6 +94,9 @@ assert.deepEqual(providerResult.content.params, {}, 'provider responses carry th
 const compatibilityPrompt = teachingDialoguePrompt(context);
 assert.match(compatibilityPrompt, /Move\/content compatibility is strict/);
 assert.match(compatibilityPrompt, /A measured or summary claim is invalid without current evidence/);
+assert.match(compatibilityPrompt, /EXPLAIN_WITH_EVIDENCE -> episode\.one\.teachingDialogue\.evidence/);
+assert.match(compatibilityPrompt, /observedUnchanged only when activeComparison\.outcome or the supplied line-movement fact is exactly unchanged/);
+assert.match(compatibilityPrompt, /Never use observedUnchanged for a visible context/);
 const incompatibleProvider = createTeachingDialogueProvider({ config: { apiKey: 'fixture', protocol: 'openai-compatible', model: 'fixture' }, gateway: { complete: async () => ({ text: JSON.stringify({ ...wireProviderResponse, move: 'OFFER_HINT', grounding: 'none', evidenceRefs: [], expectedReplyKind: 'none', content: { key: 'episode.one.teachingDialogue.evidence' } }) }) } });
 const incompatibleFallback = await decideTeachingDialogue({ context, session, provider: incompatibleProvider });
 assert.equal(incompatibleFallback.origin, 'fallback', 'cross-field provider responses are contained by the same local validator');

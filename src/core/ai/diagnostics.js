@@ -99,6 +99,7 @@ export function createRequestTraceStore(maxEntries = 8) {
         protocol: String(entry?.protocol ?? '').slice(0, 80) || null,
         model: String(entry?.model ?? '').slice(0, 120) || null,
         status: String(entry?.status ?? '').slice(0, 40) || null,
+        ...(entry?.usage ? { usage: sanitizeProviderUsageRecord(entry.usage, { requestId: entry?.id, protocol: entry?.protocol, model: entry?.model, status: entry?.status }) } : {}),
       };
       entries = [...entries, next].slice(-Math.max(1, Math.min(16, maxEntries)));
       return structuredClone(next);
@@ -129,3 +130,4 @@ export function diagnosticText(diagnostic) {
     `fallbackUsed=${diagnostic.fallbackUsed}`,
   ].filter(Boolean).join('\n');
 }
+import { sanitizeProviderUsageRecord } from './providerUsage.js';

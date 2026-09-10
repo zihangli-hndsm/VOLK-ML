@@ -34,10 +34,10 @@ const PRESETS = Object.freeze([
     protocolId: 'openai-compatible',
     endpoint: 'https://api.deepseek.com/v1/chat/completions',
     verifiedAt: PROVIDER_CATALOG_VERIFIED_AT,
-    capabilities: Object.freeze({ structuredOutput: 'fallback', temperature: true }),
+    capabilities: Object.freeze({ structuredOutput: 'fallback', temperature: true, thinking: 'disabled' }),
     models: Object.freeze([
-      model('deepseek-v4-flash', 'ai.model.deepseekV4Flash', 'fast', { structuredOutput: 'fallback' }),
-      model('deepseek-v4-pro', 'ai.model.deepseekV4Pro', 'frontier', { structuredOutput: 'fallback' }),
+      model('deepseek-v4-flash', 'ai.model.deepseekV4Flash', 'fast', { structuredOutput: 'fallback', thinking: 'disabled' }),
+      model('deepseek-v4-pro', 'ai.model.deepseekV4Pro', 'frontier', { structuredOutput: 'fallback', thinking: 'disabled' }),
     ]),
   }),
   Object.freeze({

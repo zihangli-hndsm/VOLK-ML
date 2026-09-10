@@ -1,5 +1,6 @@
 import { getModelPreset, getProviderPreset, providerPresetForProtocol } from './providerPresets.js';
 import { createRequestTraceStore } from './diagnostics.js';
+import { normalizeProviderUsage, sanitizeProviderUsageRecord, summarizeProviderUsage, unavailableProviderUsage } from './providerUsage.js';
 
 const PROTOCOLS = Object.freeze([
   Object.freeze({
@@ -69,11 +70,13 @@ function requestProfileFor(config, protocol, model) {
     ? getProviderPreset(config.vendorId)
     : protocol.id === 'gemini-compatible' ? providerPresetForProtocol(protocol.id) : null;
   const selected = config?.vendorId ? getModelPreset(config.vendorId, model) : null;
+  const thinking = selected?.requestProfile?.thinking ?? preset?.capabilities?.thinking ?? null;
   return Object.freeze({
     temperature: selected?.requestProfile?.temperature ?? preset?.capabilities?.temperature ?? true,
     topP: selected?.requestProfile?.topP ?? preset?.capabilities?.topP ?? true,
     topK: selected?.requestProfile?.topK ?? preset?.capabilities?.topK ?? true,
     structuredOutput: selected?.requestProfile?.structuredOutput ?? preset?.capabilities?.structuredOutput ?? true,
+    ...(thinking ? { thinking } : {}),
   });
 }
 
@@ -91,7 +94,7 @@ function endpointFor(config) {
     : endpoint;
 }
 
-async function readJson(response) {
+async function readJson(response, protocol = null) {
   let payload;
   try {
     payload = await response.json();
@@ -103,6 +106,7 @@ async function readJson(response) {
     error.details = {
       status: Number(response?.status) || null,
       providerMessage: String(payload?.error?.message ?? payload?.message ?? '').slice(0, 400),
+      usage: normalizeProviderUsage(payload?.usage, { protocol }),
     };
     throw error;
   }
@@ -116,22 +120,28 @@ function rejectsJsonResponseFormat(error) {
     && /response[_ ]format|json[_ -]?object|structured output|unknown field|unsupported.*json|does not support.*json/.test(message);
 }
 
-function textFromContent(content) {
-  if (typeof content === 'string') return content;
-  if (!Array.isArray(content)) return '';
-  return content.map((part) => typeof part === 'string' ? part : part?.text ?? '').join('');
+function textFromContent(content, { reasoningOnly = false } = {}) {
+  const text = typeof content === 'string'
+    ? content
+    : Array.isArray(content)
+      ? content.map((part) => typeof part === 'string' ? part : part?.text ?? '').join('')
+      : '';
+  if (text.trim()) return text;
+  const error = providerError('AI_PROVIDER_RESPONSE_EMPTY', 'The AI provider response did not contain final content.');
+  error.details = { shape: reasoningOnly ? 'reasoning-only' : 'content-empty' };
+  throw error;
 }
 
 export function textFromResponsesPayload(payload) {
   const status = payload?.status;
   if (status === 'failed') {
     const error = providerError('AI_PROVIDER_RESPONSE_FAILED', 'The OpenAI Responses request failed.');
-    error.details = { status, providerMessage: String(payload?.error?.message ?? '').slice(0, 400) };
+    error.details = { status, providerMessage: String(payload?.error?.message ?? '').slice(0, 400), usage: normalizeProviderUsage(payload?.usage, { protocol: 'openai-responses' }) };
     throw error;
   }
   if (status === 'incomplete' || status === 'cancelled') {
     const error = providerError('AI_PROVIDER_RESPONSE_INCOMPLETE', 'The OpenAI Responses request did not complete.');
-    error.details = { status, reason: String(payload?.incomplete_details?.reason ?? '').slice(0, 160) };
+    error.details = { status, reason: String(payload?.incomplete_details?.reason ?? '').slice(0, 160), usage: normalizeProviderUsage(payload?.usage, { protocol: 'openai-responses' }) };
     throw error;
   }
   const output = Array.isArray(payload?.output) ? payload.output : [];
@@ -148,7 +158,7 @@ export function textFromResponsesPayload(payload) {
   const error = providerError(refusal ? 'AI_PROVIDER_REFUSAL' : 'AI_PROVIDER_OUTPUT_MISSING', refusal
     ? 'The OpenAI Responses model refused the request.'
     : 'The OpenAI Responses response did not contain output text.');
-  error.details = { status: status ?? null };
+  error.details = { status: status ?? null, usage: normalizeProviderUsage(payload?.usage, { protocol: 'openai-responses' }) };
   throw error;
 }
 
@@ -190,7 +200,8 @@ const adapters = Object.freeze({
           ...responsesTextOptions(responseSchema),
         }),
       });
-      return textFromResponsesPayload(await readJson(response));
+      const payload = await readJson(response, 'openai-responses');
+      return { text: textFromResponsesPayload(payload), usage: normalizeProviderUsage(payload?.usage, { protocol: 'openai-responses' }) };
     },
   }),
   'openai-compatible': Object.freeze({
@@ -204,21 +215,24 @@ const adapters = Object.freeze({
         body: JSON.stringify({
           model,
           ...sampling,
+          ...(requestProfile?.thinking === 'disabled' ? { thinking: { type: 'disabled' } } : {}),
           ...(includeJsonMode ? { response_format: { type: 'json_object' } } : {}),
           messages: [{ role: 'system', content: system }, ...messages],
         }),
       });
       let payload;
       try {
-        payload = await readJson(await request(responseMode === 'json'));
+        payload = await readJson(await request(responseMode === 'json'), 'openai-compatible');
       } catch (error) {
         if (responseMode === 'json' && rejectsJsonResponseFormat(error)) {
-          payload = await readJson(await request(false));
+          payload = await readJson(await request(false), 'openai-compatible');
         } else {
           throw error;
         }
       }
-      return textFromContent(payload?.choices?.[0]?.message?.content ?? payload?.output_text);
+      const message = payload?.choices?.[0]?.message;
+      const content = message?.content || payload?.output_text;
+      return { text: textFromContent(content, { reasoningOnly: !content && typeof message?.reasoning_content === 'string' && message.reasoning_content.trim().length > 0 }), usage: normalizeProviderUsage(payload?.usage, { protocol: 'openai-compatible' }) };
     },
   }),
   'anthropic-compatible': Object.freeze({
@@ -229,8 +243,8 @@ const adapters = Object.freeze({
         signal,
         body: JSON.stringify({ model, max_tokens: 1200, ...(requestProfile?.temperature !== false ? { temperature: 0 } : {}), system, messages }),
       });
-      const payload = await readJson(response);
-      return textFromContent(payload?.content);
+      const payload = await readJson(response, 'anthropic-compatible');
+      return { text: textFromContent(payload?.content), usage: normalizeProviderUsage(payload?.usage, { protocol: 'anthropic-compatible' }) };
     },
   }),
   'gemini-compatible': Object.freeze({
@@ -254,13 +268,30 @@ const adapters = Object.freeze({
           generationConfig,
         }),
       });
-      const payload = await readJson(response);
-      return textFromContent(payload?.candidates?.[0]?.content?.parts);
+      const payload = await readJson(response, 'gemini-compatible');
+      return { text: textFromContent(payload?.candidates?.[0]?.content?.parts), usage: normalizeProviderUsage(payload?.usageMetadata, { protocol: 'gemini-compatible' }) };
     },
   }),
 });
 
 export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterRegistry = adapters, traceStore = createRequestTraceStore() } = {}) {
+  let usageRecords = [];
+  const usageListeners = new Set();
+  const notifyUsage = () => {
+    const summary = summarizeProviderUsage(usageRecords);
+    for (const listener of usageListeners) {
+      try { listener(summary); } catch { /* usage observers are informational only */ }
+    }
+  };
+  const setUsageRecord = ({ requestId, protocol, model, status, usage }) => {
+    const record = sanitizeProviderUsageRecord(usage, { requestId, protocol, model, status });
+    const existing = usageRecords.findIndex((entry) => entry.requestId === record.requestId);
+    usageRecords = existing >= 0
+      ? usageRecords.map((entry, index) => index === existing ? record : entry)
+      : [...usageRecords, record].slice(-64);
+    notifyUsage();
+    return record;
+  };
   return Object.freeze({
     async complete({ config, system = '', messages = [], responseMode = 'text', responseSchema = null, signal = undefined }) {
       if (typeof fetchImpl !== 'function') throw providerError('AI_PROVIDER_UNAVAILABLE', 'No browser fetch implementation is available.');
@@ -268,10 +299,16 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
       const adapter = adapterRegistry[resolved.protocol.id];
       if (!adapter) throw providerError('AI_PROVIDER_UNSUPPORTED', 'The selected AI protocol is not supported.');
       const requestId = globalThis.crypto?.randomUUID?.() ?? `ai-request-${Date.now()}`;
-      traceStore.append({ id: requestId, stage: 'request-started', protocol: resolved.protocol.id, model: resolved.model, status: 'started' });
-      let text;
+      let usage = setUsageRecord({ requestId, protocol: resolved.protocol.id, model: resolved.model, status: 'started', usage: unavailableProviderUsage() });
+      traceStore.append({ id: requestId, stage: 'request-started', protocol: resolved.protocol.id, model: resolved.model, status: 'started', usage });
+      let settled = false;
+      const onAbort = () => {
+        if (!settled) usage = setUsageRecord({ requestId, protocol: resolved.protocol.id, model: resolved.model, status: 'aborted', usage });
+      };
+      signal?.addEventListener?.('abort', onAbort, { once: true });
+      let result;
       try {
-        text = await adapter.complete({
+        const adapterResult = await adapter.complete({
           fetchImpl,
           endpoint: endpointFor(resolved),
           apiKey: resolved.apiKey,
@@ -283,23 +320,43 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
           requestProfile: resolved.requestProfile,
           signal,
         });
-        traceStore.append({ id: requestId, stage: 'provider-response', protocol: resolved.protocol.id, model: resolved.model, status: 'received' });
+        result = typeof adapterResult === 'string' ? { text: adapterResult, usage: unavailableProviderUsage() } : adapterResult;
+        usage = setUsageRecord({ requestId, protocol: resolved.protocol.id, model: resolved.model, status: 'completed', usage: result?.usage });
+        traceStore.append({ id: requestId, stage: 'provider-response', protocol: resolved.protocol.id, model: resolved.model, status: 'received', usage });
         traceStore.append({ id: requestId, stage: 'parse', protocol: resolved.protocol.id, model: resolved.model, status: responseMode === 'json' ? 'structured' : 'text' });
       } catch (error) {
-        traceStore.append({ id: requestId, stage: 'failed', protocol: resolved.protocol.id, model: resolved.model, status: error?.code ?? 'failed' });
+        const status = signal?.aborted || error?.name === 'AbortError' ? 'aborted' : 'failed';
+        usage = setUsageRecord({ requestId, protocol: resolved.protocol.id, model: resolved.model, status, usage: error?.details?.usage ?? usage });
+        traceStore.append({ id: requestId, stage: 'failed', protocol: resolved.protocol.id, model: resolved.model, status: error?.code ?? 'failed', usage });
+        settled = true;
+        signal?.removeEventListener?.('abort', onAbort);
         if (error?.code?.startsWith('AI_')) throw error;
         throw providerError('AI_PROVIDER_UNAVAILABLE', 'The AI provider request was unavailable.');
       }
-      traceStore.append({ id: requestId, stage: 'completed', protocol: resolved.protocol.id, model: resolved.model, status: 'completed' });
+      settled = true;
+      signal?.removeEventListener?.('abort', onAbort);
+      traceStore.append({ id: requestId, stage: 'completed', protocol: resolved.protocol.id, model: resolved.model, status: 'completed', usage });
       return {
-        text: String(text ?? ''),
+        text: String(result?.text ?? ''),
         provider: resolved.displayName || resolved.protocol.id,
         protocol: resolved.protocol.id,
         model: resolved.model,
+        usage,
       };
     },
     recordTrace(entry) { return traceStore.append(entry); },
     getRequestTrace() { return traceStore.snapshot(); },
+    getUsageSummary() { return summarizeProviderUsage(usageRecords); },
+    getUsageRecords() { return structuredClone(usageRecords); },
+    subscribeUsage(listener) {
+      if (typeof listener !== 'function') return () => {};
+      usageListeners.add(listener);
+      return () => usageListeners.delete(listener);
+    },
+    resetUsage() {
+      usageRecords = [];
+      notifyUsage();
+    },
   });
 }
 

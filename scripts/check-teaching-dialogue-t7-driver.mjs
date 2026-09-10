@@ -67,6 +67,11 @@ assert.equal(JSON.stringify(result).includes('Ignore the contract'), false, 'lea
 const frozenContext = createTeachingDialogueT7Context({ id: 'correct-reason', locale: 'en', allowedMoves: ['ELICIT_PREDICTION', 'ASK_FOR_REASON'] }, 'ae5b0d0', 1);
 assert.equal(Object.isFrozen(frozenContext), true, 'driver contexts are frozen before policy execution');
 assert.equal(Object.isFrozen(frozenContext.activeComparison), true, 'nested driver context is frozen before policy execution');
+assert.deepEqual(frozenContext.capabilities.moves, ['ELICIT_PREDICTION', 'ASK_FOR_REASON'], 'correct-reason projects its authored move allowlist into the provider context');
+const isolatedContext = createTeachingDialogueT7Context({ id: 'correct-no-reason', locale: 'en', allowedMoves: ['ELICIT_PREDICTION', 'OFFER_HINT'] }, 'ae5b0d0', 1);
+assert.deepEqual(isolatedContext.capabilities.moves, ['ELICIT_PREDICTION', 'OFFER_HINT'], 'each authored case receives its own move allowlist');
+assert.deepEqual(frozenContext.capabilities.moves, ['ELICIT_PREDICTION', 'ASK_FOR_REASON'], 'constructing another case cannot mutate the correct-reason allowlist');
+assert.notEqual(frozenContext.capabilities.moves, isolatedContext.capabilities.moves, 'case capability arrays are not shared');
 assert.equal(frozenContext.apiKey, undefined);
 assert.equal(frozenContext.inquiryRuntime, undefined, 'driver does not retain a second runtime or experiment copy');
 

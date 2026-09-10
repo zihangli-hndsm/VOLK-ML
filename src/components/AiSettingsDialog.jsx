@@ -8,7 +8,7 @@ import { useAiProvider } from './ai/AiProviderContext.jsx';
 import AiDiagnosticPanel from './ai/AiDiagnosticPanel.jsx';
 
 export default function AiSettingsDialog({ t }) {
-  const { config, gateway, settingsOpen, closeSettings, setConfig, clearKey, clearConfig } = useAiProvider();
+  const { config, gateway, usageSummary, settingsOpen, closeSettings, setConfig, clearKey, clearConfig } = useAiProvider();
   const [draft, setDraft] = useState(defaultAiConfig());
   const [advanced, setAdvanced] = useState(false);
   const [customModel, setCustomModel] = useState(false);
@@ -71,6 +71,7 @@ export default function AiSettingsDialog({ t }) {
     }
   };
   const failedDiagnostic = diagnostic?.stages?.find((item) => item.status === 'failed')?.diagnostic ?? null;
+  const usageValue = (value) => Number.isInteger(value) ? value.toLocaleString() : t('ai.usage.unavailable');
 
   return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/60 p-4" onMouseDown={closeSettings}>
     <section className="w-full max-w-xl rounded-3xl bg-white p-6 shadow-2xl" onMouseDown={(event) => event.stopPropagation()}>
@@ -118,6 +119,18 @@ export default function AiSettingsDialog({ t }) {
         <div className="mt-2 grid gap-1 sm:grid-cols-2">{diagnostic.stages.map((item) => <div key={item.id} className="flex items-center justify-between gap-2"><span>{t(`ai.stage.${item.id}`)}</span><span className="font-black">{t(`ai.stage.${item.status}`)}</span></div>)}</div>
         {diagnostic.status !== 'ready' && <AiDiagnosticPanel diagnostic={failedDiagnostic} trace={diagnostic.requestTrace} t={t} />}
       </section>}
+      <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3" data-ai-usage="true" aria-live="polite">
+        <div className="flex items-start justify-between gap-3"><div><h3 className="text-xs font-black text-slate-800">{t('ai.usage.title')}</h3><p className="mt-1 text-[11px] leading-4 text-slate-500">{t('ai.usage.description')}</p></div><span className="rounded-full bg-white px-2 py-1 text-[10px] font-bold text-slate-500">{t('ai.usage.session')}</span></div>
+        <dl className="mt-3 grid grid-cols-2 gap-2 text-[11px] sm:grid-cols-3">
+          <div className="rounded-xl bg-white p-2"><dt className="font-bold text-slate-500">{t('ai.usage.requests')}</dt><dd className="mt-1 text-sm font-black text-slate-900">{usageValue(usageSummary?.requestCount ?? 0)}</dd></div>
+          <div className="rounded-xl bg-white p-2"><dt className="font-bold text-slate-500">{t('ai.usage.input')}</dt><dd className="mt-1 text-sm font-black text-slate-900">{usageValue(usageSummary?.inputTokens)}</dd></div>
+          <div className="rounded-xl bg-white p-2"><dt className="font-bold text-slate-500">{t('ai.usage.output')}</dt><dd className="mt-1 text-sm font-black text-slate-900">{usageValue(usageSummary?.outputTokens)}</dd></div>
+          <div className="rounded-xl bg-white p-2"><dt className="font-bold text-slate-500">{t('ai.usage.total')}</dt><dd className="mt-1 text-sm font-black text-slate-900">{usageValue(usageSummary?.totalTokens)}</dd></div>
+          <div className="rounded-xl bg-white p-2"><dt className="font-bold text-slate-500">{t('ai.usage.cached')}</dt><dd className="mt-1 text-sm font-black text-slate-900">{usageValue(usageSummary?.cachedTokens)}</dd></div>
+          <div className="rounded-xl bg-white p-2"><dt className="font-bold text-slate-500">{t('ai.usage.reasoning')}</dt><dd className="mt-1 text-sm font-black text-slate-900">{usageValue(usageSummary?.reasoningTokens)}</dd></div>
+        </dl>
+        <p className="mt-2 text-[11px] text-slate-500">{usageSummary?.callsWithoutUsage ? t('ai.usage.notReported', { count: usageSummary.callsWithoutUsage }) : t('ai.usage.authoritative')}</p>
+      </section>
       <p className="mt-4 rounded-2xl bg-slate-100 p-3 text-xs leading-5 text-slate-600">{t('ai.memoryBoundary')}</p>
       <div className="mt-5 flex flex-wrap items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">

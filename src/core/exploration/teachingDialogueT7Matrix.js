@@ -79,6 +79,11 @@ function contextForCase(item, revision, runNumber) {
     sessionId: `t7-${revision}-${item.id}-${runNumber}`,
     contextRevision: 0,
     language: fixture.locale ?? item.locale ?? 'en',
+    capabilities: {
+      moves: [...item.allowedMoves],
+      canSuggestExperiment: false,
+      canMutateRuntime: false,
+    },
     prediction: fixture.prediction ?? null,
     learnerStatements: clone(fixture.learnerStatements ?? []),
     requestedMove: fixture.requestedMove ?? null,

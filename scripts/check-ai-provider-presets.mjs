@@ -27,6 +27,39 @@ const geminiConfig = {
   model: 'gemini-3.7-flash',
   apiKey: 'configured-secret',
 };
+const deepseekBodies = [];
+const deepseekGateway = createProviderGateway({
+  fetchImpl: async (_url, options) => {
+    deepseekBodies.push(JSON.parse(options.body));
+    return { ok: true, status: 200, async json() { return { choices: [{ message: { content: 'OK' } }], usage: { prompt_tokens: 13, completion_tokens: 5, total_tokens: 18 } }; } };
+  },
+});
+const deepseekConfig = {
+  vendorId: 'deepseek',
+  protocol: 'openai-compatible',
+  endpoint: 'https://api.deepseek.com/v1/chat/completions',
+  model: 'deepseek-v4-flash',
+  apiKey: 'configured-secret',
+};
+assert.equal(resolveProviderRequestProfile(deepseekConfig).thinking, 'disabled');
+const deepseekResult = await deepseekGateway.complete({ config: deepseekConfig, system: 'Return OK.', messages: [{ role: 'user', content: 'OK' }] });
+assert.deepEqual(deepseekBodies[0].thinking, { type: 'disabled' }, 'DeepSeek requests explicitly disable hidden thinking for the constrained live policy');
+assert.deepEqual(deepseekResult.usage.totalTokens, 18, 'DeepSeek OpenAI-compatible usage is normalized from provider metadata');
+await deepseekGateway.complete({ config: { ...deepseekConfig, vendorId: null }, system: 'Return OK.', messages: [{ role: 'user', content: 'OK' }] });
+assert.equal(deepseekBodies[1].thinking, undefined, 'custom OpenAI-compatible requests do not inherit DeepSeek controls');
+let rejectedThinkingCalls = 0;
+const rejectingDeepseekGateway = createProviderGateway({
+  fetchImpl: async (_url, options) => {
+    rejectedThinkingCalls += 1;
+    assert.deepEqual(JSON.parse(options.body).thinking, { type: 'disabled' });
+    return { ok: false, status: 422, async json() { return { error: { message: 'thinking control unsupported' } }; } };
+  },
+});
+await assert.rejects(
+  rejectingDeepseekGateway.complete({ config: deepseekConfig, system: 'Return JSON.', messages: [{ role: 'user', content: 'OK' }], responseMode: 'json' }),
+  (error) => error.code === 'AI_PROVIDER_REQUEST_FAILED',
+);
+assert.equal(rejectedThinkingCalls, 1, 'unsupported optional thinking control fails safely without retry or repair');
 assert.deepEqual(resolveProviderRequestProfile(geminiConfig), {
   structuredOutput: 'json-mime', temperature: false, topP: false, topK: false,
 });

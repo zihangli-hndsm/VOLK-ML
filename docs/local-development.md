@@ -131,6 +131,62 @@ Episode 0 is frontend-shipped and runs through the same Explore host. Use
 `npm run check:episode-0` to verify its registry, stage derivation, fallback,
 out-of-order progress, and generic-runtime reuse fixture.
 
+## Provider test entry points
+
+The provider checks are deterministic by default and safe to run without
+credentials or a network. They exercise the same teaching adapter, request
+projection, response validator, and local fallback used by the application:
+
+```text
+npm run test:provider:contract
+npm run test:teaching:integration
+npm run test:teaching:e2e
+npm run test:provider:live -- --mode=smoke --allow-live
+```
+
+The first command checks the provider contract with fixture-only transport. The
+second drives a clean Episode 1 session through the real playground host and
+adapter; it is the host-integration check used by `npm run check`. The browser
+E2E entry is intentionally separate. In this environment no safe browser
+runner is available, so `npm run test:teaching:e2e` prints structured
+`NOT VERIFIED` and exits nonzero rather than reporting a false green result.
+The first two commands make zero external requests. The live command is opt-in: without
+`--allow-live`, or without a provider key, it exits `NOT VERIFIED` and makes no
+network calls. Smoke mode runs the bounded first three authored cases; the
+default full mode runs the 12-case matrix twice with a hard cap of 24 initial
+calls, a bounded 20-second live policy budget per case, and no script-level
+retries or repair passes. This live-test budget is separate from the 10-second
+production learner policy timeout.
+
+For a live run, supply configuration only through the current process
+environment (never command-line arguments, source files, Vite-exposed values,
+or report files):
+
+```text
+VOLK_PROVIDER_API_KEY=...        # or VOLK_AI_API_KEY
+VOLK_PROVIDER_PROTOCOL=...
+VOLK_PROVIDER_ENDPOINT=...
+VOLK_PROVIDER_MODEL=...
+VOLK_PROVIDER_VENDOR=...
+```
+
+The live runner reuses the application provider gateway and writes only a
+sanitized summary to `.test-artifacts/provider-live-report.json` (ignored by
+Git). Reports include requested/executed/skipped and failed case IDs, bounded
+provider/network/fallback/repair counts, safe failure categories, run/revision,
+repository HEAD/dirty state, fixture version, and explicit engineering/live/
+quality-review statuses, plus `tokenUsage` totals sourced only from provider-
+reported metadata and a count of calls without reported usage. They never
+include prompts, provider output, headers, endpoints, or credential material.
+The browser E2E report names `npm run test:teaching:integration` as the
+deterministic host fallback. It does not execute a provider, mutate the
+playground, or claim browser coverage.
+
+The AI Settings dialog shows the same session-local `tokenUsage` counters. A
+missing provider usage object is rendered as `Not reported`; counts are never
+estimated from prompt or response text and are reset when the in-memory
+provider configuration lifecycle resets.
+
 ## Future extraction
 
 The disposable `dev/backend/server.py` should be replaced by the private
