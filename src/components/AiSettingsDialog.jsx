@@ -8,7 +8,7 @@ import { useAiProvider } from './ai/AiProviderContext.jsx';
 import AiDiagnosticPanel from './ai/AiDiagnosticPanel.jsx';
 
 export default function AiSettingsDialog({ t }) {
-  const { config, gateway, usageSummary, settingsOpen, closeSettings, setConfig, clearKey, clearConfig } = useAiProvider();
+  const { config, gateway, usageSummary, settingsOpen, closeSettings, setConfig, clearKey, clearConfig, fundingMode, setFundingMode, canUseCloudAi, cloudWallet } = useAiProvider();
   const [draft, setDraft] = useState(defaultAiConfig());
   const [advanced, setAdvanced] = useState(false);
   const [customModel, setCustomModel] = useState(false);
@@ -79,6 +79,15 @@ export default function AiSettingsDialog({ t }) {
         <div><h2 className="text-2xl font-black">{t('ai.settingsTitle')}</h2><p className="mt-1 text-sm leading-6 text-slate-600">{t('ai.settingsDescription')}</p></div>
         <button aria-label={t('common.close')} onClick={closeSettings} className="rounded-full bg-slate-100 px-3 py-2 font-bold">×</button>
       </div>
+      <section className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-3" data-ai-funding="true">
+        <h3 className="text-xs font-black text-emerald-900">{t('ai.funding.title')}</h3>
+        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+          <button type="button" onClick={() => setFundingMode('byok')} className={`rounded-xl border px-3 py-2 text-left text-xs font-bold ${fundingMode === 'byok' ? 'border-blue-500 bg-white text-blue-800' : 'border-transparent bg-emerald-100 text-emerald-900'}`}>{t('ai.funding.byok')}</button>
+          <button type="button" disabled={!canUseCloudAi} onClick={() => setFundingMode('cloud')} className={`rounded-xl border px-3 py-2 text-left text-xs font-bold disabled:cursor-not-allowed disabled:opacity-50 ${fundingMode === 'cloud' ? 'border-blue-500 bg-white text-blue-800' : 'border-transparent bg-emerald-100 text-emerald-900'}`}>{t('ai.funding.cloud')}</button>
+        </div>
+        <p className="mt-2 text-[11px] leading-4 text-emerald-900">{canUseCloudAi ? t('ai.funding.cloudActive') : t('ai.funding.cloudUnavailable')}</p>
+        {fundingMode === 'cloud' && cloudWallet && <p className="mt-1 text-[11px] font-bold text-emerald-900">{t('account.availableCredits')}: {cloudWallet.availableCredits ?? '—'}</p>}
+      </section>
       <div className="mt-5 grid gap-3 sm:grid-cols-2">
         <label className="text-xs font-bold text-slate-600">{t('ai.vendor')}
           <select value={draft.vendorId ?? '__custom__'} onChange={(event) => selectPreset(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm">

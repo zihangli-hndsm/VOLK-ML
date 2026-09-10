@@ -1,0 +1,45 @@
+import assert from 'node:assert/strict';
+import { createVolkCloudClient } from '../src/services/volkCloud/client.js';
+import { createCloudAiGateway } from '../src/services/volkCloud/aiGateway.js';
+
+const calls = [];
+const fetchImpl = async (url, init) => {
+  calls.push({ url, init });
+  const path = new URL(url).pathname;
+  const body = path === '/v1/auth/register' || path === '/v1/auth/login'
+    ? { accessToken: 'opaque-session', tokenType: 'bearer', account: { id: 'acct-1', email: 'learner@example.com', role: 'user', createdAt: '2026-01-01T00:00:00Z' } }
+    : path === '/v1/auth/me'
+      ? { id: 'acct-1', email: 'learner@example.com', role: 'user', createdAt: '2026-01-01T00:00:00Z' }
+      : path === '/v1/me/wallet'
+        ? { availableCredits: 90, reservedCredits: 10, spentCredits: 1 }
+        : path === '/v1/me/entitlements' || path === '/v1/me/redemptions'
+          ? []
+          : path === '/v1/redemptions'
+            ? { id: 'red-1', creditsGranted: 100, createdAt: '2026-01-01T00:00:00Z', wallet: { availableCredits: 190, reservedCredits: 0, spentCredits: 1 } }
+            : path === '/v1/ai/operations'
+              ? { id: 'op-1', status: 'SUCCEEDED', reservedCredits: 10, settledCredits: 1, result: { text: 'safe', usage: { inputTokens: 2, outputTokens: 3, totalTokens: 5 } }, errorCode: null }
+              : { ok: true };
+  return { ok: true, status: 200, json: async () => body };
+};
+
+const client = createVolkCloudClient({ baseUrl: 'http://cloud.test', fetchImpl });
+const registered = await client.register({ email: 'new@example.com', password: 'at-least-12-characters' });
+assert.equal(registered.tokenType, 'bearer');
+const login = await client.login({ email: 'learner@example.com', password: 'at-least-12-characters' });
+assert.equal(login.tokenType, 'bearer');
+const snapshot = await client.getAccountSnapshot({ accessToken: login.accessToken });
+assert.equal(snapshot.wallet.availableCredits, 90);
+const redemption = await client.redeemLumiKey({ accessToken: login.accessToken, code: 'VOLK-FIX-TEST', requestId: 'redemption-1' });
+assert.equal(redemption.wallet.availableCredits, 190);
+const operation = await client.createAiOperation({ accessToken: login.accessToken, requestId: 'operation-1', operation: { operationType: 'lumi-dialogue', input: { prompt: 'bounded semantic prompt' } } });
+assert.equal(operation.status, 'SUCCEEDED');
+const operationCall = calls.find((call) => call.url.endsWith('/v1/ai/operations'));
+const operationBody = JSON.parse(operationCall.init.body);
+assert.deepEqual(Object.keys(operationBody).sort(), ['idempotencyKey', 'input', 'operationType']);
+assert.equal(operationBody.input.prompt, 'bounded semantic prompt');
+
+const gateway = createCloudAiGateway({ client, getAccessToken: () => login.accessToken });
+const completion = await gateway.complete({ messages: [{ role: 'user', content: 'hello' }] });
+assert.equal(completion.text, 'safe');
+
+console.log('Auth v1 client contract checks passed.');

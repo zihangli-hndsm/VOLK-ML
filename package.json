@@ -28,6 +28,7 @@
     "check:compiler": "node scripts/check-compiler-syntax.mjs",
     "check:workspace-isolation": "node scripts/check-workspace-isolation.mjs",
     "check:volk-cloud": "node scripts/check-volk-cloud.mjs",
+    "check:auth-v1": "node scripts/check-auth-v1.mjs",
     "check:local-backend": "node scripts/check-local-backend-integration.mjs",
     "test:provider:contract": "node scripts/test-provider-contract.mjs",
     "test:provider:live": "node scripts/test-provider-live.mjs",
