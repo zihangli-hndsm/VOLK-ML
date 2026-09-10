@@ -17,7 +17,7 @@ import { assessConnection } from './core/connections';
 import { estimateExecutionPlan, executionTiers } from './core/runtimeTiers';
 import { stageForManifest, stageStyles, visualKindForManifest } from './core/visualLanguage';
 import { resolvePlatformServices } from './platform/services';
-import { CLOUD_AVAILABILITY, checkVolkCloudHealth, createVolkCloudClientForConfig, resolveVolkCloudConfig } from './services/volkCloud/index.js';
+import { CLOUD_AVAILABILITY } from './services/volkCloud/index.js';
 import {
   CanvasAgentError,
   canvasExecutionInputSignature,
@@ -52,10 +52,12 @@ import { resolveLanguagePreference } from './core/languagePolicy.js';
 import PlaygroundDialog from './components/playgrounds/PlaygroundDialog';
 import VisualGlyph from './components/VisualGlyph';
 import AiSettingsDialog from './components/AiSettingsDialog.jsx';
+import AccountDialog from './components/AccountDialog.jsx';
 import ExploreHome from './components/ExploreHome.jsx';
 import DirectorPrototype from './components/DirectorPrototype.jsx';
 import BuildToolbar from './components/BuildToolbar.jsx';
 import { AiProvider, useAiProvider } from './components/ai/AiProviderContext.jsx';
+import { VolkCloudProvider, useVolkCloud } from './services/volkCloud/VolkCloudContext.jsx';
 
 const TutorialDialog = lazy(() => import('./components/TutorialDialog'));
 const ExplanationDialog = lazy(() => import('./components/ExplanationDialog'));
@@ -475,6 +477,7 @@ const isEditableCanvasTarget = (target) => {
 function Workspace() {
   const { primary, secondary, setLanguages, t } = useVividTranslation();
   const { openSettings, config, gateway } = useAiProvider();
+  const { client: volkCloudClient, cloudStatus } = useVolkCloud();
   const aiConfigRef = useRef(config);
   aiConfigRef.current = config;
   const teachingDialoguePolicy = useMemo(() => createTeachingDialogueProvider({ gateway, getConfig: () => aiConfigRef.current }), [gateway]);
@@ -522,6 +525,7 @@ function Workspace() {
   const [exploreRecovery, setExploreRecovery] = useState(null);
   const [surface, setSurface] = useState(UI_SURFACES.EXPLORE);
   const [globalMoreOpen, setGlobalMoreOpen] = useState(false);
+  const [accountOpen, setAccountOpen] = useState(false);
   const [tutorialManifest, setTutorialManifest] = useState(null);
   const [projectName, setProjectName] = useState(() => t('project.sampleName'));
   const [customComponents, setCustomComponents] = useState([]);
@@ -535,17 +539,6 @@ function Workspace() {
   const [pendingConnection, setPendingConnection] = useState(null);
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [notice, setNotice] = useState('');
-  const volkCloudConfig = useMemo(() => resolveVolkCloudConfig(), []);
-  const volkCloudClient = useMemo(() => createVolkCloudClientForConfig(volkCloudConfig), [volkCloudConfig]);
-  const [cloudStatus, setCloudStatus] = useState({ status: volkCloudClient ? CLOUD_AVAILABILITY.CHECKING : CLOUD_AVAILABILITY.NOT_CONFIGURED });
-  useEffect(() => {
-    if (!volkCloudClient) return undefined;
-    let active = true;
-    checkVolkCloudHealth(volkCloudClient).then((next) => {
-      if (active) setCloudStatus(next);
-    });
-    return () => { active = false; };
-  }, [volkCloudClient]);
   const buildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth, leftOpen, rightOpen, rightWidth }), [viewportWidth, leftOpen, rightOpen, rightWidth]);
   const toggleLeftPanel = useCallback(() => {
     const next = toggleBuildPanel(buildPresentation, 'left');
@@ -1599,7 +1592,7 @@ function Workspace() {
         <button type="button" aria-pressed={surface === UI_SURFACES.BUILD} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.BUILD ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setSurface(UI_SURFACES.BUILD)}>{t('ui.surface.build')}</button>
         <div className="relative">
           <button type="button" aria-expanded={globalMoreOpen} aria-controls="global-more-actions" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setGlobalMoreOpen((value) => !value)}>⋯ <span className="hidden sm:inline">{t('surface.more')}</span></button>
-          {globalMoreOpen && <div id="global-more-actions" className="absolute right-0 top-full z-50 mt-2 grid min-w-52 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"><button type="button" className="flex items-center gap-3 rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { openSettings(); setGlobalMoreOpen(false); }}><span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-indigo-100 text-sm font-black text-indigo-700">⚙</span><span>{t('nav.aiSettings')}</span></button><button type="button" className="flex items-center gap-3 rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { setLanguageOpen(true); setGlobalMoreOpen(false); }}><span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-slate-200 text-sm font-black text-slate-800">文</span><span>{t('language.title')}</span></button></div>}
+          {globalMoreOpen && <div id="global-more-actions" className="absolute right-0 top-full z-50 mt-2 grid min-w-52 gap-1 rounded-2xl border border-slate-200 bg-white p-2 shadow-2xl"><button type="button" className="flex items-center gap-3 rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { openSettings(); setGlobalMoreOpen(false); }}><span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-indigo-100 text-sm font-black text-indigo-700">⚙</span><span>{t('nav.aiSettings')}</span></button><button type="button" className="flex items-center gap-3 rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { setAccountOpen(true); setGlobalMoreOpen(false); }}><span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-emerald-100 text-sm font-black text-emerald-700">◎</span><span>{t('account.title')}</span></button><button type="button" className="flex items-center gap-3 rounded-xl px-3 py-2 text-left font-bold hover:bg-slate-100" onClick={() => { setLanguageOpen(true); setGlobalMoreOpen(false); }}><span aria-hidden="true" className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-slate-200 text-sm font-black text-slate-800">文</span><span>{t('language.title')}</span></button></div>}
         </div>
       </nav>
     </header>
@@ -1641,6 +1634,7 @@ function Workspace() {
     <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project, { languagePolicy: 'preserve-current' }); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
     <AiSettingsDialog t={t} />
+    <AccountDialog t={t} open={accountOpen} onClose={() => setAccountOpen(false)} />
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => openExplorePlayground(id)} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} developmentMatrixDriver={developmentMatrixDriver} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
@@ -1648,5 +1642,5 @@ function Workspace() {
   </div>;
 }
 
-createRoot(document.getElementById('root')).render(<LanguageProvider><AiProvider><Workspace /></AiProvider></LanguageProvider>);
+createRoot(document.getElementById('root')).render(<LanguageProvider><VolkCloudProvider><AiProvider><Workspace /></AiProvider></VolkCloudProvider></LanguageProvider>);
 
