@@ -36,11 +36,11 @@ export function VolkCloudProvider({ children }) {
     }
   };
 
-  const login = async ({ email, password }) => {
+  const login = async ({ username, password }) => {
     if (!client) throw Object.assign(new Error('VOLK_CLOUD_UNAVAILABLE'), { code: 'VOLK_CLOUD_UNAVAILABLE' });
     setAccountStatus('loading');
     try {
-      const result = await client.login({ email, password });
+      const result = await client.login({ username, password });
       setSession({ accessToken: result.accessToken, tokenType: result.tokenType, account: result.account });
       await refreshAccount(result.accessToken);
       return result;
@@ -49,17 +49,29 @@ export function VolkCloudProvider({ children }) {
     }
   };
 
-  const register = async ({ email, password }) => {
+  const register = async ({ username, password }) => {
     if (!client) throw Object.assign(new Error('VOLK_CLOUD_UNAVAILABLE'), { code: 'VOLK_CLOUD_UNAVAILABLE' });
     setAccountStatus('loading');
     try {
-      const result = await client.register({ email, password });
+      const result = await client.register({ username, password });
       setSession({ accessToken: result.accessToken, tokenType: result.tokenType, account: result.account });
       await refreshAccount(result.accessToken);
       return result;
     } catch (error) {
       setAccountError(error); setAccountStatus('error'); throw error;
     }
+  };
+
+  const reissueRecoveryCode = async ({ currentPassword }) => {
+    if (!client || !session?.accessToken) throw Object.assign(new Error('VOLK_CLOUD_AUTH_REQUIRED'), { code: 'VOLK_CLOUD_AUTH_REQUIRED' });
+    return client.reissueRecoveryCode({ accessToken: session.accessToken, currentPassword });
+  };
+
+  const resetPassword = async ({ username, recoveryCode, newPassword }) => {
+    if (!client) throw Object.assign(new Error('VOLK_CLOUD_UNAVAILABLE'), { code: 'VOLK_CLOUD_UNAVAILABLE' });
+    const result = await client.resetPassword({ username, recoveryCode, newPassword });
+    setSession(null); setAccountSnapshot(null); setAccountError(null); setAccountStatus(config.configured && client ? 'signed-out' : 'unconfigured');
+    return result;
   };
 
   const logout = async () => {
@@ -82,7 +94,7 @@ export function VolkCloudProvider({ children }) {
     session, accountStatus, accountError, accountSnapshot, account: accountSnapshot?.account ?? session?.account ?? null,
     entitlements: accountSnapshot?.entitlements ?? [], redemptions: accountSnapshot?.redemptions ?? [], wallet,
     canUseCloudAi: cloudStatus.status === CLOUD_AVAILABILITY.AVAILABLE && accountStatus === 'authenticated' && Number(wallet?.availableCredits) > 0,
-    login, register, logout, refreshAccount, redeemLumiKey, cloudAiGateway,
+    login, register, reissueRecoveryCode, resetPassword, logout, refreshAccount, redeemLumiKey, cloudAiGateway,
   }), [config, client, cloudStatus, session, accountStatus, accountError, accountSnapshot, wallet, cloudAiGateway]);
   return <VolkCloudContext.Provider value={value}>{children}</VolkCloudContext.Provider>;
 }
