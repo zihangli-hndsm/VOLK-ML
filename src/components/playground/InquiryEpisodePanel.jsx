@@ -1,19 +1,42 @@
-import { lazy, Suspense, useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import TeachingDialoguePanel from './TeachingDialoguePanel.jsx';
 
 const TeachingDialogueT7MatrixPanel = import.meta.env.DEV === true
   ? lazy(() => import('./TeachingDialogueT7MatrixPanel.jsx'))
   : null;
 
-export default function InquiryEpisodePanel({ snapshot, host, onDispatch, t, developmentMatrixDriver = null }) {
+export default function InquiryEpisodePanel({ snapshot, host, onDispatch, onRequestLifecycle, guidanceTarget = null, targetRegistry = null, t, developmentMatrixDriver = null }) {
   const [expectation, setExpectation] = useState('');
   const [reasoning, setReasoning] = useState('');
   const [saved, setSaved] = useState(false);
   const [reflectionText, setReflectionText] = useState('');
   const [reflectionSaved, setReflectionSaved] = useState(false);
+  const fitARef = useRef(null);
+  const sampleRef = useRef(null);
+  const fitBRef = useRef(null);
+  const compareRef = useRef(null);
   const runtime = snapshot?.inquiryRuntime;
   useEffect(() => { if (runtime?.prediction) setSaved(true); }, [runtime?.prediction]);
   useEffect(() => { if (runtime?.reflection) { setReflectionText(runtime.reflection.text ?? ''); setReflectionSaved(true); } }, [runtime?.reflection]);
+  useEffect(() => {
+    if (!targetRegistry || !runtime) return undefined;
+    const registrations = [
+      ['model.fit', 'episode-fit-a', fitARef, runtime.stage === 'baseline-fit', true],
+      ['world.sample', 'episode-sample', sampleRef, runtime.stage === 'resample', true],
+      ['model.fit', 'episode-fit-b', fitBRef, runtime.stage !== 'baseline-fit', true],
+      ['experiment.compare', 'episode-compare', compareRef, runtime.stage === 'evidence', Boolean(snapshot?.experimentWorkspace?.comparison?.againstExperimentId)],
+    ];
+    registrations.forEach(([key, controlId, ref, current, enabled]) => targetRegistry.register(key, {
+      ref,
+      controlId,
+      courseId: runtime.contractId ?? 'episode-1-sampling-variability',
+      current,
+      enabled,
+      visible: true,
+      reveal: { type: 'scroll', learnerInitiated: true },
+    }));
+    return () => registrations.forEach(([key, controlId]) => targetRegistry.unregister(key, controlId));
+  }, [targetRegistry, runtime?.contractId, runtime?.stage, snapshot?.experimentWorkspace?.comparison?.againstExperimentId]);
   if (!runtime) return null;
   const evidence = runtime.evidence;
   const compare = runtime.comparison;
@@ -34,6 +57,7 @@ export default function InquiryEpisodePanel({ snapshot, host, onDispatch, t, dev
     }
     await onDispatch(action);
   };
+  const guidanceClass = (target, branch = null) => guidanceTarget === target && (!branch || (branch === 'a' ? runtime.stage === 'baseline-fit' : runtime.stage !== 'baseline-fit')) ? ' ring-2 ring-cyan-400 ring-offset-1' : '';
   const savePrediction = async (skipped = false) => {
     await host.recordInquiryPrediction({ expectation: skipped ? undefined : expectation, reasoning, skipped });
     setSaved(true);
@@ -49,10 +73,10 @@ export default function InquiryEpisodePanel({ snapshot, host, onDispatch, t, dev
     </div>}
     {!saved && <div className="mt-3 rounded-xl border border-indigo-100 bg-white/70 p-3 text-xs text-slate-600"><p className="font-black text-indigo-700">{t('episode.one.onboarding.title')}</p><p className="mt-1">{t('episode.one.onboarding.body')}</p><p className="mt-1 text-slate-500">{t('episode.one.onboarding.invitation')}</p></div>}
     <div className="mt-3 grid gap-2 sm:grid-cols-4">
-      <button type="button" onClick={() => dispatch({ type: 'RUN' })} className="rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm">{t('episode.one.fitA')}</button>
-      <button type="button" onClick={() => dispatch({ type: 'SAMPLE_SAME_WORLD' })} className="rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm">{t('episode.one.sample')}</button>
-      <button type="button" onClick={() => dispatch({ type: 'RUN' })} className="rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm">{t('episode.one.fitB')}</button>
-      <button type="button" disabled={!snapshot?.experimentWorkspace?.comparison?.againstExperimentId} onClick={() => dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: snapshot.experimentWorkspace.comparison.againstExperimentId })} className="rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm disabled:opacity-40">{t('episode.one.compare')}</button>
+      <button ref={fitARef} type="button" data-lumi-course-control="model.fit" data-lumi-control-id="episode-fit-a" onClick={() => dispatch({ type: 'RUN' })} className={`rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm${guidanceClass('model.fit', 'a')}`}>{t('episode.one.fitA')}</button>
+      <button ref={sampleRef} type="button" data-lumi-course-control="world.sample" data-lumi-control-id="episode-sample" onClick={() => dispatch({ type: 'SAMPLE_SAME_WORLD' })} className={`rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm${guidanceClass('world.sample')}`}>{t('episode.one.sample')}</button>
+      <button ref={fitBRef} type="button" data-lumi-course-control="model.fit" data-lumi-control-id="episode-fit-b" onClick={() => dispatch({ type: 'RUN' })} className={`rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm${guidanceClass('model.fit', 'b')}`}>{t('episode.one.fitB')}</button>
+      <button ref={compareRef} type="button" data-lumi-course-control="experiment.compare" data-lumi-control-id="episode-compare" disabled={!snapshot?.experimentWorkspace?.comparison?.againstExperimentId} onClick={() => dispatch({ type: 'SET_COMPARE', enabled: true, againstExperimentId: snapshot.experimentWorkspace.comparison.againstExperimentId })} className={`rounded-xl bg-white px-2 py-2 text-xs font-black shadow-sm disabled:opacity-40${guidanceClass('experiment.compare')}`}>{t('episode.one.compare')}</button>
     </div>
     {compare?.enabled && evidence?.status !== 'insufficient' && <div className="mt-3 grid gap-2 sm:grid-cols-3">
       <div className="rounded-xl bg-white p-2"><p className="text-[10px] font-black uppercase text-emerald-700">{t('episode.one.changed')}</p><p className="mt-1 text-xs">{evidence.evidence?.changed?.join(' · ')}</p></div>
@@ -64,7 +88,7 @@ export default function InquiryEpisodePanel({ snapshot, host, onDispatch, t, dev
     {runtime.candidateConcepts.includes('SAMPLING_VARIABILITY') && <div className="mt-3 rounded-xl border border-indigo-200 bg-white p-3"><div className="flex flex-wrap items-center justify-between gap-2"><p className="font-black">{t('playground.inquiry.samplingVariability.title')}</p><span className="rounded-full bg-indigo-100 px-2 py-1 text-[10px] font-black uppercase text-indigo-700">{t('episode.one.concept.evidenced')}</span></div><p className="mt-1 text-xs">{t('playground.inquiry.samplingVariability.definition')}</p><p className="mt-1 text-xs text-slate-600">{t('playground.inquiry.samplingVariability.summary')}</p><p data-concept-relationship="world-sampling-data-learning-model" className="mt-2 rounded-lg border border-indigo-100 bg-indigo-50 px-2 py-1 text-xs font-black text-indigo-950">{t('playground.concept.samplingRelationship')}</p><p className="mt-2 text-[11px] text-slate-500">{t('episode.one.concept.encountered')}</p></div>}
     {runtime.candidateConcepts.includes('SAMPLING_VARIABILITY') && !reflectionSaved && <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3"><p className="font-black">{t('episode.one.reflection.title')}</p><p className="mt-1 text-xs text-slate-600">{t('episode.one.reflection.body')}</p><textarea value={reflectionText} maxLength={240} onChange={(event) => setReflectionText(event.target.value)} className="mt-2 w-full rounded-xl border border-slate-200 p-2 text-xs" placeholder={t('episode.one.reflection.placeholder')} /><div className="mt-2 flex gap-2"><button type="button" disabled={!reflectionText.trim()} onClick={async () => { await host.recordInquiryReflection({ text: reflectionText }); setReflectionSaved(true); }} className="rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-black text-white disabled:opacity-40">{t('episode.one.reflection.save')}</button><button type="button" onClick={async () => { await host.recordInquiryReflection({ skipped: true }); setReflectionSaved(true); }} className="rounded-xl border border-slate-300 px-3 py-1.5 text-xs font-bold">{t('episode.one.reflection.skip')}</button></div></div>}
     {runtime.continuations?.length > 0 && runtime.candidateConcepts.includes('SAMPLING_VARIABILITY') && <div className="mt-3 flex flex-wrap gap-2">{runtime.continuations.map((item) => <button key={item.id} type="button" onClick={() => host.recordInquiryContinuation?.(item.id)} className="rounded-xl border border-indigo-200 bg-white px-2.5 py-1.5 text-xs font-bold">{t(item.questionKey)}</button>)}</div>}
-    <TeachingDialoguePanel snapshot={snapshot} host={host} t={t} />
+    <TeachingDialoguePanel snapshot={snapshot} host={host} onRequestLifecycle={onRequestLifecycle} t={t} />
     {TeachingDialogueT7MatrixPanel && developmentMatrixDriver && <Suspense fallback={null}><TeachingDialogueT7MatrixPanel driver={developmentMatrixDriver} t={t} /></Suspense>}
   </section>;
 }

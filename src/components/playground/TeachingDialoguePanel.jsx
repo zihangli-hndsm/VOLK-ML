@@ -1,12 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { isTeachingDialoguePilotEnabled } from '../../core/exploration/teachingDialoguePilot.js';
 
-export default function TeachingDialoguePanel({ snapshot, host, t, language = 'en' }) {
+export default function TeachingDialoguePanel({ snapshot, host, onRequestLifecycle, t, language = 'en' }) {
   const [busy, setBusy] = useState(false);
   const [reply, setReply] = useState('');
   const [predictionChoice, setPredictionChoice] = useState('');
   const [response, setResponse] = useState(null);
   const requestSequence = useRef(0);
+  const activeRequestId = useRef(null);
   const wasOptedIn = useRef(false);
   const preserveNextRequest = useRef(false);
   const pilot = snapshot?.teachingDialogue;
@@ -30,13 +31,22 @@ export default function TeachingDialoguePanel({ snapshot, host, t, language = 'e
     if (busy) return;
     const sequence = requestSequence.current + 1;
     requestSequence.current = sequence;
+    const requestId = `teaching-${Date.now()}-${sequence}`;
+    activeRequestId.current = requestId;
     setBusy(true);
+    onRequestLifecycle?.({ phase: 'start', source: 'teaching-dialogue', requestId });
     try {
-      const nextResponse = await host.requestTeachingDialogue?.({ requestId: `ui-${Date.now()}`, language, preferredMove, allowTransferHelp });
+      const nextResponse = await host.requestTeachingDialogue?.({ requestId, language, preferredMove, allowTransferHelp });
       if (sequence === requestSequence.current) setResponse(nextResponse);
+      onRequestLifecycle?.({ phase: 'success', source: 'teaching-dialogue', requestId, feedbackEvent: { id: `teaching:${requestId}`, kind: 'teaching-response', source: 'teaching-dialogue', target: 'model.fit' } });
       return nextResponse;
+    } catch (error) {
+      onRequestLifecycle?.({ phase: 'error', source: 'teaching-dialogue', requestId });
+      throw error;
     } finally {
       if (sequence === requestSequence.current) setBusy(false);
+      onRequestLifecycle?.({ phase: 'finish', source: 'teaching-dialogue', requestId });
+      activeRequestId.current = null;
     }
   };
   const submitReply = async () => {
@@ -52,9 +62,11 @@ export default function TeachingDialoguePanel({ snapshot, host, t, language = 'e
     await ask();
   };
   const optIn = async () => { host.optInTeachingDialogue?.({ language }); await ask(); };
-  const stop = () => { requestSequence.current += 1; host.stopTeachingDialogue?.(); setBusy(false); setResponse(null); };
-  const tryAlone = () => { requestSequence.current += 1; host.beginTeachingTransfer?.(); setBusy(false); setResponse(null); };
-  const skip = () => { requestSequence.current += 1; host.skipTeachingDialogue?.(); setBusy(false); setResponse(null); };
+  const cancelActiveRequest = () => { if (activeRequestId.current) onRequestLifecycle?.({ phase: 'cancel', source: 'teaching-dialogue', requestId: activeRequestId.current }); activeRequestId.current = null; };
+  const stop = () => { requestSequence.current += 1; cancelActiveRequest(); host.stopTeachingDialogue?.(); setBusy(false); setResponse(null); };
+  const tryAlone = () => { requestSequence.current += 1; cancelActiveRequest(); host.beginTeachingTransfer?.(); setBusy(false); setResponse(null); };
+  const skip = () => { requestSequence.current += 1; cancelActiveRequest(); host.skipTeachingDialogue?.(); setBusy(false); setResponse(null); };
+  useEffect(() => () => cancelActiveRequest(), [onRequestLifecycle]);
   if (!pilot?.optedIn) return <section data-teaching-dialogue-pilot className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50/60 p-3">
     <p className="text-[10px] font-black uppercase tracking-wide text-cyan-700">{t('episode.one.teachingDialogue.title')}</p>
     <p className="mt-1 text-xs text-cyan-950">{t('episode.one.teachingDialogue.intro')}</p>

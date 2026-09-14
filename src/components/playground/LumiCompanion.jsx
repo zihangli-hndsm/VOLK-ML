@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { resolveLumiCompanionState, LUMI_COMPANION_STATES, normalizeLumiSemanticTarget } from '../../core/ui/lumiCompanion.js';
 import Lumi from './Lumi.jsx';
+import { deriveLumiPresentationState, lumiFeedbackDuration, LUMI_PRESENTATION_STATES } from '../../core/ui/lumiPresentationRuntime.js';
+import { REDUCED_MOTION_QUERY } from './motion.js';
 
 const continuationKeys = Object.freeze({
   'collect-more-data': 'playground.lumi.continuation.moreData',
@@ -15,8 +17,10 @@ function contextKey(state, hasConcept, meaningfulResult) {
   return null;
 }
 
-export default function LumiCompanion({ snapshot, attention, compact = false, onOpenGuidance, onOpenEvidence, onOpenIdeas, onOpenSettings, onSelectContinuation, isConfigured, configureLabel = null, askBusy = false, semanticAction = null, semanticTarget = null, recentConceptEvent = null, meaningfulResult = false, t }) {
+export default function LumiCompanion({ snapshot, attention, compact = false, onOpenGuidance, onOpenEvidence, onOpenIdeas, onOpenSettings, onSelectContinuation, isConfigured, configureLabel = null, askBusy = false, semanticAction = null, semanticTarget = null, recentConceptEvent = null, meaningfulResult = false, presentation = null, resolvedTarget = null, onPresentationFeedbackConsumed, t }) {
   const [open, setOpen] = useState(false);
+  const consumeFeedbackRef = useRef(onPresentationFeedbackConsumed);
+  useEffect(() => { consumeFeedbackRef.current = onPresentationFeedbackConsumed; }, [onPresentationFeedbackConsumed]);
   useEffect(() => {
     if (!open) return undefined;
     const onKeyDown = (event) => {
@@ -29,14 +33,25 @@ export default function LumiCompanion({ snapshot, attention, compact = false, on
   const runtime = snapshot?.inquiryRuntime;
   const hasConcept = runtime?.evidence?.status === 'evidenced'
     && (runtime?.candidateConcepts ?? []).includes('SAMPLING_VARIABILITY');
-  const state = resolveLumiCompanionState({
+  const fallbackState = resolveLumiCompanionState({
     askBusy,
     semanticAction,
     semanticTarget: normalizeLumiSemanticTarget(semanticTarget ?? attention?.semanticTarget),
-    recentConceptEvent: recentConceptEvent ?? (hasConcept ? { type: 'concept.evidenced', conceptId: 'SAMPLING_VARIABILITY' } : null),
+    recentConceptEvent: null,
     meaningfulResult,
     guidanceAvailable: Boolean(runtime?.stage && runtime.stage !== 'QUESTION') || Boolean(snapshot?.learnerInquiry?.candidates?.length),
   });
+  const presentationState = deriveLumiPresentationState({ presentation, guideAvailable: fallbackState === LUMI_COMPANION_STATES.GUIDE });
+  const state = presentationState === LUMI_PRESENTATION_STATES.THINK ? LUMI_COMPANION_STATES.THINK
+    : presentationState === LUMI_PRESENTATION_STATES.ILLUMINATE ? LUMI_COMPANION_STATES.ILLUMINATE
+      : presentationState === LUMI_PRESENTATION_STATES.GUIDE ? LUMI_COMPANION_STATES.GUIDE : fallbackState;
+  useEffect(() => {
+    const feedback = presentation?.feedbackEvent;
+    if (!feedback?.id || feedback.consumed) return undefined;
+    const reducedMotion = typeof window !== 'undefined' && window.matchMedia?.(REDUCED_MOTION_QUERY)?.matches;
+    const timer = window.setTimeout(() => consumeFeedbackRef.current?.(feedback.id), lumiFeedbackDuration({ reducedMotion }));
+    return () => window.clearTimeout(timer);
+  }, [presentation?.feedbackEvent?.id, presentation?.feedbackEvent?.consumed]);
   const mode = state === LUMI_COMPANION_STATES.ILLUMINATE ? 'illuminate'
     : state === LUMI_COMPANION_STATES.OBSERVE || state === LUMI_COMPANION_STATES.NOTICE ? 'observe'
       : state === LUMI_COMPANION_STATES.GUIDE ? 'guide'
@@ -44,10 +59,11 @@ export default function LumiCompanion({ snapshot, attention, compact = false, on
   const question = runtime?.currentQuestion ? t(runtime.currentQuestion) : t('playground.lumi.companion.prompt');
   const continuations = (runtime?.continuations ?? []).slice(0, 3);
   const hasNotification = Boolean(hasConcept || meaningfulResult || attention?.evidenceTarget || continuations.length);
+  const companionTarget = resolvedTarget ?? null;
   const contextualKey = contextKey(state, hasConcept, meaningfulResult);
   const showContext = !open && Boolean(contextualKey) && !askBusy;
 
-  return <aside data-lumi-companion="true" data-lumi-ambient="true" data-lumi-body-state={state} data-lumi-companion-open={open ? 'true' : 'false'} className={`lumi-companion ${compact ? 'lumi-companion-compact' : ''}${open ? ' lumi-companion-open' : ''}`} aria-label={t('playground.lumi.companion.ariaLabel')}>
+  return <aside data-lumi-companion="true" data-lumi-ambient="true" data-lumi-body-state={state} data-lumi-presentation-state={presentationState} data-lumi-target-status={companionTarget?.status ?? 'none'} data-lumi-target-control={companionTarget?.target?.controlId ?? undefined} data-lumi-companion-open={open ? 'true' : 'false'} className={`lumi-companion ${compact ? 'lumi-companion-compact' : ''}${open ? ' lumi-companion-open' : ''}`} aria-label={t('playground.lumi.companion.ariaLabel')}>
     <div className="lumi-companion-body">
       <Lumi presence="ambient" mode={mode} onClick={() => setOpen((value) => !value)} expanded={open} label={open ? t('playground.lumi.companion.close') : t('playground.lumi.companion.open')} />
       {hasNotification && <span data-lumi-notification="true" className="lumi-notification" aria-label={t('playground.lumi.companion.notification')} />}

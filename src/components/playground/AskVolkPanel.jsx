@@ -11,7 +11,7 @@ function initialSelectionFor(value) {
   return { messageId: value.messageId ?? value.anchor.messageId ?? null, anchor: value.anchor, quote: value.quote };
 }
 
-export default function AskVolkPanel({ agent, presentation, initialSelection = null, question, onQuestionChange, submitToken = 0, onBusyChange, onOpenAiSettings, onTryExperiment, t }) {
+export default function AskVolkPanel({ agent, presentation, initialSelection = null, question, onQuestionChange, submitToken = 0, onBusyChange, onRequestLifecycle, onOpenAiSettings, onTryExperiment, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const assistant = useMemo(() => createLearningAssistant({ gateway }), [gateway]);
   const [answer, setAnswer] = useState(null);
@@ -20,6 +20,7 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
   const [diagnostic, setDiagnostic] = useState(null);
   const [annotationMessage, setAnnotationMessage] = useState('');
   const handledSubmitToken = useRef(0);
+  const activeRequestId = useRef(null);
 
   useEffect(() => {
     setSelection(initialSelectionFor(initialSelection));
@@ -42,8 +43,11 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
       setDiagnostic(createAiDiagnostic({ error: { code: 'AI_CONFIG_MISSING', message: 'Configure a provider to use Ask VOLK.' }, config, stage: 'configuration' }));
       return;
     }
+    const requestId = `ask-${Date.now()}-${handledSubmitToken.current}`;
+    activeRequestId.current = requestId;
     setBusy(true);
     onBusyChange?.(true);
+    onRequestLifecycle?.({ phase: 'start', source: 'ask', requestId });
     setDiagnostic(null);
     setAnnotationMessage('');
     try {
@@ -57,13 +61,21 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
       const assistantTurn = agent.recordLearningTurn({ role: 'assistant', text: nextAnswer.answer });
       setAnswer({ ...nextAnswer, messageId: assistantTurn?.id ?? null });
       setSelection(null);
+      onRequestLifecycle?.({ phase: 'success', source: 'ask', requestId, feedbackEvent: { id: `ask:${assistantTurn?.id ?? requestId}`, kind: 'answer', source: 'ask', target: 'ideas.map' } });
     } catch (error) {
       setDiagnostic(createAiDiagnostic({ error, config, stage: 'failed' }));
+      onRequestLifecycle?.({ phase: 'error', source: 'ask', requestId });
     } finally {
       setBusy(false);
       onBusyChange?.(false);
+      onRequestLifecycle?.({ phase: 'finish', source: 'ask', requestId });
+      activeRequestId.current = null;
     }
   };
+
+  useEffect(() => () => {
+    if (activeRequestId.current) onRequestLifecycle?.({ phase: 'cancel', source: 'ask', requestId: activeRequestId.current });
+  }, [onRequestLifecycle]);
 
   useEffect(() => {
     if (!submitToken || submitToken === handledSubmitToken.current) return;

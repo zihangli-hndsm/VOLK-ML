@@ -72,7 +72,7 @@ function compactProposal(proposal, t) {
   } : null;
 }
 
-export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, initialSelection = null, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, onBusyChange, t }) {
+export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, initialSelection = null, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, onBusyChange, onRequestLifecycle, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
   const aiInterpreter = useMemo(() => createExplorationAiInterpreter({ gateway }), [gateway]);
   const [request, setRequest] = useState('');
@@ -354,7 +354,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitRequest(); }} placeholder={t(mode === 'ask' ? 'ai.askPlaceholder' : mode === 'world' ? 'playground.agentGuide.worldPlaceholder' : 'playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
       <button type="button" disabled={!request.trim() || busy || (mode === 'world' && (!worldRecipeSupported || !isConfigured))} onClick={submitRequest} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t(mode === 'world' ? 'playground.agentGuide.proposeWorld' : 'playground.agentGuide.ask')}</button>
     </div>
-    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(suggestion) => { const safeTask = createExperimentDesignRequest(suggestion) ?? createExperimentSuggestionTask(suggestion); if (!safeTask || safeTask.kind !== 'experiment-design-request') return; setPendingExperimentTask(safeTask); setRequest(safeTask.learnerQuestion); selectMode('experiment'); }} t={t} />}
+    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onRequestLifecycle={onRequestLifecycle} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(suggestion) => { const safeTask = createExperimentDesignRequest(suggestion) ?? createExperimentSuggestionTask(suggestion); if (!safeTask || safeTask.kind !== 'experiment-design-request') return; setPendingExperimentTask(safeTask); setRequest(safeTask.learnerQuestion); selectMode('experiment'); }} t={t} />}
     <div className={mode === 'ask' ? 'hidden' : ''}>
     {mode === 'world' && <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3">
       <p className="text-xs font-black text-cyan-950">{t('playground.agentGuide.worldPresets')}</p>

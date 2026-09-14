@@ -24,6 +24,10 @@ malformed Cloud policy falls back to the deterministic local policy. Guidance
 budgeting, cooldown and dismissal history are presentation context; they
 cannot mutate experiment truth.
 
+The visible request/feedback lifecycle and explicit course-control target
+boundary are documented in
+[`lumi-visible-guidance.md`](./lumi-visible-guidance.md).
+
 The optional Episode 1 teaching-dialogue pilot is documented in
 [`teaching-dialogue-pilot.md`](./teaching-dialogue-pilot.md). It projects
 read-only runtime facts into a strict, bounded response envelope and keeps
