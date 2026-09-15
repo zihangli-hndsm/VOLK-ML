@@ -19,8 +19,15 @@ export function beginLumiRequest(state = createLumiPresentationState(), { source
 
 export function finishLumiRequest(state, { requestId, status = 'success', feedbackEvent = null } = {}) {
   if (!state?.activeRequest || state.activeRequest.requestId !== requestId) return state;
+  // Only deterministic concept events may enter the ILLUMINATE state. A
+  // completed Ask/teaching request is a neutral response and must return to
+  // the ambient/guide state instead of pretending that a concept was found.
+  const conceptFeedback = feedbackEvent?.kind === 'concept'
+    && feedbackEvent?.source === 'runtime'
+    && typeof feedbackEvent?.evidenceId === 'string'
+    && feedbackEvent.evidenceId.trim();
   const nextFeedback = status === 'success'
-    ? (feedbackEvent?.id ? Object.freeze({ ...feedbackEvent, id: bounded(feedbackEvent.id), consumed: false }) : state.feedbackEvent)
+    ? (conceptFeedback && feedbackEvent?.id ? Object.freeze({ ...feedbackEvent, id: bounded(feedbackEvent.id), consumed: false }) : null)
     : null;
   return Object.freeze({ ...state, revision: state.revision + 1, activeRequest: null, feedbackEvent: nextFeedback });
 }
@@ -38,6 +45,7 @@ export function consumeLumiFeedback(state, eventId) {
 
 export function surfaceLumiFeedback(state, feedbackEvent) {
   const id = bounded(feedbackEvent?.id);
+  if (feedbackEvent?.kind === 'concept' && (feedbackEvent.source !== 'runtime' || !bounded(feedbackEvent.evidenceId))) return state;
   if (!id || state?.feedbackEvent?.id === id || (state?.consumedFeedbackIds ?? []).includes(id)) return state;
   return Object.freeze({ ...state, revision: state.revision + 1, feedbackEvent: Object.freeze({ ...feedbackEvent, id, consumed: false }) });
 }

@@ -16,15 +16,28 @@ export default function InquiryEpisodePanel({ snapshot, host, onDispatch, onRequ
   const fitBRef = useRef(null);
   const compareRef = useRef(null);
   const runtime = snapshot?.inquiryRuntime;
+  const baselineId = runtime?.baseline?.experimentId ?? null;
+  const activeId = snapshot?.experimentWorkspace?.activeExperimentId ?? null;
+  const hasBaselineFit = Boolean(runtime?.baseline?.fit?.fitId);
+  const hasActiveFit = Boolean(runtime?.activeFit?.fitId && runtime.activeFit.experimentId === activeId);
+  const hasSecondBranch = Boolean(activeId && baselineId && activeId !== baselineId);
+  const comparison = runtime?.comparison ?? snapshot?.experimentWorkspace?.comparison ?? null;
   useEffect(() => { if (runtime?.prediction) setSaved(true); }, [runtime?.prediction]);
   useEffect(() => { if (runtime?.reflection) { setReflectionText(runtime.reflection.text ?? ''); setReflectionSaved(true); } }, [runtime?.reflection]);
   useEffect(() => {
     if (!targetRegistry || !runtime) return undefined;
+    const baselineId = runtime.baseline?.experimentId ?? null;
+    const activeId = snapshot?.experimentWorkspace?.activeExperimentId ?? null;
+    const hasBaselineFit = Boolean(runtime.baseline?.fit?.fitId);
+    const hasActiveFit = Boolean(runtime.activeFit?.fitId && runtime.activeFit.experimentId === activeId);
+    const hasSecondBranch = Boolean(activeId && baselineId && activeId !== baselineId);
+    const comparison = runtime.comparison ?? snapshot?.experimentWorkspace?.comparison ?? null;
+    const weakEvidence = runtime.evidence?.status === 'valid-weak';
     const registrations = [
-      ['model.fit', 'episode-fit-a', fitARef, runtime.stage === 'baseline-fit', true],
-      ['world.sample', 'episode-sample', sampleRef, runtime.stage === 'resample', true],
-      ['model.fit', 'episode-fit-b', fitBRef, runtime.stage !== 'baseline-fit', true],
-      ['experiment.compare', 'episode-compare', compareRef, runtime.stage === 'evidence', Boolean(snapshot?.experimentWorkspace?.comparison?.againstExperimentId)],
+      ['model.fit', 'episode-fit-a', fitARef, !hasBaselineFit, true],
+      ['world.sample', 'episode-sample', sampleRef, weakEvidence || (hasBaselineFit && !hasSecondBranch && !comparison?.enabled), true],
+      ['model.fit', 'episode-fit-b', fitBRef, hasSecondBranch && !hasActiveFit && !comparison?.enabled, true],
+      ['experiment.compare', 'episode-compare', compareRef, hasSecondBranch && hasActiveFit && !comparison?.enabled, Boolean(comparison?.againstExperimentId)],
     ];
     registrations.forEach(([key, controlId, ref, current, enabled]) => targetRegistry.register(key, {
       ref,
@@ -57,7 +70,14 @@ export default function InquiryEpisodePanel({ snapshot, host, onDispatch, onRequ
     }
     await onDispatch(action);
   };
-  const guidanceClass = (target, branch = null) => guidanceTarget === target && (!branch || (branch === 'a' ? runtime.stage === 'baseline-fit' : runtime.stage !== 'baseline-fit')) ? ' ring-2 ring-cyan-400 ring-offset-1' : '';
+  const guidanceClass = (target, branch = null) => {
+    if (guidanceTarget !== target) return '';
+    if (target === 'model.fit' && branch === 'a' && hasBaselineFit) return '';
+    if (target === 'model.fit' && branch === 'b' && (!hasSecondBranch || hasActiveFit)) return '';
+    if (target === 'world.sample' && (runtime.evidence?.status !== 'valid-weak' && (!hasBaselineFit || hasSecondBranch || comparison?.enabled))) return '';
+    if (target === 'experiment.compare' && (!hasSecondBranch || !hasActiveFit || comparison?.enabled)) return '';
+    return ' ring-2 ring-cyan-400 ring-offset-1';
+  };
   const savePrediction = async (skipped = false) => {
     await host.recordInquiryPrediction({ expectation: skipped ? undefined : expectation, reasoning, skipped });
     setSaved(true);

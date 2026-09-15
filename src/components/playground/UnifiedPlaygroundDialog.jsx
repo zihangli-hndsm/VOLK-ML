@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { getPlayground } from '../../core/playgrounds/registry.js';
 import { getBigIdeaEntrance } from '../../core/exploration/bigIdeaRegistry.js';
 import PresentationMode from './PresentationMode.jsx';
@@ -102,6 +102,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const [interventionPulseKey, setInterventionPulseKey] = useState(null);
   const [lumiPresentation, setLumiPresentation] = useState(() => createLumiPresentationState({ contextId: playgroundId ?? 'explore' }));
   const [lumiGuidanceTarget, setLumiGuidanceTarget] = useState(null);
+  const [lumiGuidanceDismissedKey, setLumiGuidanceDismissedKey] = useState(null);
   const [resolvedLumiTarget, setResolvedLumiTarget] = useState(null);
   const sessionSequenceRef = useRef(0);
   const readySessionRef = useRef(null);
@@ -168,6 +169,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       setInterventionPulseKey(null);
       setLumiPresentation(createLumiPresentationState({ contextId: playgroundId }));
       setLumiGuidanceTarget(null);
+      setLumiGuidanceDismissedKey(null);
       setResolvedLumiTarget(null);
       lumiTargetRegistryRef.current.clear();
       autoIlluminationRef.current = null;
@@ -194,7 +196,10 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     };
   }, [open, playgroundId, host, preserveSession, strictOpen]);
 
-  const handleLumiRequestLifecycle = (event) => {
+  // This callback is a presentation boundary. Keeping its identity stable is
+  // important: child request effects use it in their cleanup, and a normal
+  // parent render must never look like a request was truly unmounted.
+  const handleLumiRequestLifecycle = useCallback((event) => {
     if (!event?.requestId) return;
     setLumiPresentation((current) => {
       if (event.phase === 'start') return beginLumiRequest(current, event);
@@ -203,7 +208,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       if (event.phase === 'finish') return finishLumiRequest(current, { requestId: event.requestId, status: 'success' });
       return current;
     });
-  };
+  }, []);
 
   useEffect(() => {
     const cancel = () => setLumiPresentation((current) => cancelLumiRequest(current));
@@ -276,6 +281,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     const requestId = `lumi-policy-${++lumiPolicyRequestSequenceRef.current}`;
     lumiPolicyRequestRef.current = requestIdentity.key;
     setLumiGuidanceTarget(null);
+    setLumiGuidanceDismissedKey(null);
     setLumiIntervention(null);
     host.decideLumiAction().then((action) => {
       const currentSnapshot = latestSnapshotRef.current;
@@ -285,7 +291,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       setLumiGuidanceTarget(nextGuidance?.targetKey ?? null);
       if (nextGuidance?.targetKey) {
         const target = createLumiTarget('experiment', currentSnapshot?.experimentWorkspace?.activeExperimentId ?? currentSnapshot?.experiment?.id);
-        if (target) setLumiIntervention((current) => ({ target, controlKey: nextGuidance.targetKey, sequence: (current?.sequence ?? 0) + 1 }));
+        if (target) setLumiIntervention((current) => ({ target, controlKey: nextGuidance.targetKey, source: 'policy', sequence: (current?.sequence ?? 0) + 1 }));
       }
     }).catch(() => {
       const currentIdentity = createLumiPolicyRequestIdentity(latestSnapshotRef.current);
@@ -302,6 +308,14 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
     };
   }, [open, snapshot?.inquiryRuntime?.contractId, snapshot?.inquiryRuntime?.stage, snapshot?.semanticEvents?.events?.at(-1)?.sequence, host]);
 
+  const dismissLumiGuidance = useCallback(() => {
+    const identity = createLumiPolicyRequestIdentity(latestSnapshotRef.current);
+    setLumiGuidanceDismissedKey(identity.key);
+    setLumiGuidanceTarget(null);
+    setLumiIntervention(null);
+    host?.dismissLumiGuidance?.();
+  }, [host]);
+
   // Concept eligibility is deterministic runtime evidence. The companion may
   // illuminate that eligible concept once as a presentation notification;
   // this never appends semantic events or changes experiment truth.
@@ -314,7 +328,7 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
       && (runtime?.candidateConcepts ?? []).includes('SAMPLING_VARIABILITY');
     if (!eligible || !evidenceId || autoIlluminationRef.current === evidenceId) return;
     autoIlluminationRef.current = evidenceId;
-    setLumiPresentation((current) => surfaceLumiFeedback(current, { id: `concept:${evidenceId}`, kind: 'concept', source: 'runtime', target: 'ideas.map' }));
+    setLumiPresentation((current) => surfaceLumiFeedback(current, { id: `concept:${evidenceId}`, kind: 'concept', source: 'runtime', evidenceId, target: 'ideas.map' }));
     illuminateConcept('SAMPLING_VARIABILITY');
     setLearningPathIlluminatedIds((current) => current.includes('sampling-variation') ? current : [...current, 'sampling-variation'].slice(-8));
     const target = createLumiTarget('concept', 'SAMPLING_VARIABILITY');
@@ -672,8 +686,9 @@ export default function UnifiedPlaygroundDialog({ open, playgroundId, host, agen
   const phenomenonFirst = derivePhenomenonCapabilities(snapshot).available;
   const contextBar = <ExploreContextBar playground={playground} snapshot={snapshot} phenomenon={phenomenonFirst} onDispatch={dispatchAction} onPresent={() => setPresentationMode(true)} onClose={onClose} t={t} highlightedAffordances={guidance?.affordances ?? []} />;
   const worldRegion = <ExploreWorldRegion snapshot={snapshot} bigIdea={bigIdea} activeTab={activeTab} onTabChange={setActiveTab} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} fullWorldToolsOpen={fullWorldToolsOpen} onFullWorldToolsChange={setFullWorldToolsOpen} onOpenFullWorldTools={openFullWorldWorkspaceFromTune} />;
-  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} onRequestLifecycle={handleLumiRequestLifecycle} t={t} intervention={lumiIntervention}><PhaseAOnboardingPanel snapshot={snapshot} host={host} onDispatch={dispatchAction} onOpenWorldTools={openFullWorldWorkspaceFromTune} t={t} /><InquiryEpisodePanel snapshot={snapshot} host={host} onDispatch={dispatchAction} onRequestLifecycle={handleLumiRequestLifecycle} guidanceTarget={resolvedLumiTarget?.status === 'ready' ? resolvedLumiTarget.target?.key : null} targetRegistry={lumiTargetRegistryRef.current} t={t} developmentMatrixDriver={developmentMatrixDriver} /><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} interventionPulseKey={lumiIntervention?.sequence ?? null} interventionTarget={lumiIntervention?.target ?? null} /></ExploreExperimentRegion>;
-  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} journeyIlluminationEvents={journeySession.illuminationEvents} onIlluminateConcept={illuminateConcept} learningPathIlluminatedIds={learningPathIlluminatedIds} onIlluminateLearningPath={illuminateLearningPath} hypotheses={hypothesisSession.hypotheses} evidenceInstances={evidenceInstances} onCreateHypothesis={createLearnerHypothesis} onSetHypothesisStatus={updateHypothesisStatus} onAttachHypothesisEvidence={attachHypothesisEvidence} onOpenHypothesisEvidence={() => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} testDesigns={testDesignSession.designs} testDesignResults={testDesignResults} testDesignCapabilities={testDesignCapabilities} onSaveTestDesign={saveLearnerTestDesign} onRunTestDesign={runLearnerTestDesign} hypothesisGroups={hypothesisGroupSession.groups} discriminationPlans={discriminationPlanSession.plans} onCreateHypothesisGroup={createLearnerHypothesisGroup} onCreateDiscriminationPlan={createDiscriminationPlan} interpretations={interpretationSession.interpretations} revisions={revisionSession.revisions} onCreateInterpretation={createLearnerInterpretation} onCreateRevision={createLearnerRevision} counterfactualQuestions={counterfactualSession.questions} onCreateCounterfactual={createLearnerCounterfactual} onConvertCounterfactual={convertLearnerCounterfactual} counterfactualConditionFingerprint={currentConditionFingerprint} onAcceptLumiSuggestion={acceptLumiSuggestion} onRequestLifecycle={handleLumiRequestLifecycle} presentation={lumiPresentation} onPresentationFeedbackConsumed={(id) => setLumiPresentation((current) => consumeLumiFeedback(current, id))} t={t} intervention={lumiIntervention} />;
+  const presentableIntervention = lumiIntervention?.source === 'policy' && lumiIntervention?.resolvedTarget?.status !== 'ready' ? null : lumiIntervention;
+  const experimentRegion = <ExploreExperimentRegion playground={modelPlayground} snapshot={snapshot} inquiryCard={activeInquiryCard} onDismissInquiryCard={dismissInquiryCard} onOpenInquiryEvidence={openInquiryEvidence} onAskAboutSelection={openAskAboutSelection} agent={agent} onDispatch={dispatchAction} onRequestLifecycle={handleLumiRequestLifecycle} t={t} intervention={presentableIntervention}><PhaseAOnboardingPanel snapshot={snapshot} host={host} onDispatch={dispatchAction} onOpenWorldTools={openFullWorldWorkspaceFromTune} t={t} /><InquiryEpisodePanel snapshot={snapshot} host={host} onDispatch={dispatchAction} onRequestLifecycle={handleLumiRequestLifecycle} guidanceTarget={resolvedLumiTarget?.status === 'ready' ? resolvedLumiTarget.target?.key : null} targetRegistry={lumiTargetRegistryRef.current} t={t} developmentMatrixDriver={developmentMatrixDriver} /><ExperimentBar snapshot={snapshot} onDispatch={dispatchAction} t={t} highlightedAffordances={guidance?.affordances ?? []} interventionPulseKey={presentableIntervention?.sequence ?? null} interventionTarget={presentableIntervention?.target ?? null} /></ExploreExperimentRegion>;
+  const detailsRegion = <ExploreDetailsRegion snapshot={snapshot} modelPlayground={modelPlayground} bigIdea={bigIdea} agent={agent} host={host} activeDepth={activeDepth} onDepthChange={changeDepth} agentOpen={agentOpen} onAgentOpen={openAgent} onAgentClose={() => { setAgentOpen(false); setPendingLearningSelection(null); }} onDispatch={dispatchAction} onGuidanceChange={setGuidance} formulaPrimitive={formulaPrimitive} onOpenWorldTools={openFullWorldWorkspaceFromTune} initialSelection={pendingLearningSelection} onAskAboutSelection={openAskAboutSelection} illuminatedConceptIds={illuminatedConceptIds} journeyIlluminationEvents={journeySession.illuminationEvents} onIlluminateConcept={illuminateConcept} learningPathIlluminatedIds={learningPathIlluminatedIds} onIlluminateLearningPath={illuminateLearningPath} hypotheses={hypothesisSession.hypotheses} evidenceInstances={evidenceInstances} onCreateHypothesis={createLearnerHypothesis} onSetHypothesisStatus={updateHypothesisStatus} onAttachHypothesisEvidence={attachHypothesisEvidence} onOpenHypothesisEvidence={() => changeDepth(CONCEPTUAL_DEPTHS.EVIDENCE)} testDesigns={testDesignSession.designs} testDesignResults={testDesignResults} testDesignCapabilities={testDesignCapabilities} onSaveTestDesign={saveLearnerTestDesign} onRunTestDesign={runLearnerTestDesign} hypothesisGroups={hypothesisGroupSession.groups} discriminationPlans={discriminationPlanSession.plans} onCreateHypothesisGroup={createLearnerHypothesisGroup} onCreateDiscriminationPlan={createDiscriminationPlan} interpretations={interpretationSession.interpretations} revisions={revisionSession.revisions} onCreateInterpretation={createLearnerInterpretation} onCreateRevision={createLearnerRevision} counterfactualQuestions={counterfactualSession.questions} onCreateCounterfactual={createLearnerCounterfactual} onConvertCounterfactual={convertLearnerCounterfactual} counterfactualConditionFingerprint={currentConditionFingerprint} onAcceptLumiSuggestion={acceptLumiSuggestion} onRequestLifecycle={handleLumiRequestLifecycle} presentation={lumiPresentation} onPresentationFeedbackConsumed={(id) => setLumiPresentation((current) => consumeLumiFeedback(current, id))} t={t} intervention={lumiIntervention} lumiGuidanceDismissed={lumiGuidanceDismissedKey === createLumiPolicyRequestIdentity(snapshot).key} onDismissLumiGuidance={dismissLumiGuidance} />;
   return <div className="fixed inset-0 z-[75] grid place-items-center overflow-hidden overscroll-y-contain bg-slate-950/55 p-0 sm:p-5" onMouseDown={onClose}>
     <PlaygroundPresentationBoundary
       snapshot={snapshot}

@@ -21,6 +21,16 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
   const [annotationMessage, setAnnotationMessage] = useState('');
   const handledSubmitToken = useRef(0);
   const activeRequestId = useRef(null);
+  const requestSequence = useRef(0);
+  const mounted = useRef(false);
+  const lifecycleRef = useRef(onRequestLifecycle);
+
+  useEffect(() => { lifecycleRef.current = onRequestLifecycle; }, [onRequestLifecycle]);
+
+  useEffect(() => {
+    mounted.current = true;
+    return () => { mounted.current = false; };
+  }, []);
 
   useEffect(() => {
     setSelection(initialSelectionFor(initialSelection));
@@ -43,7 +53,8 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
       setDiagnostic(createAiDiagnostic({ error: { code: 'AI_CONFIG_MISSING', message: 'Configure a provider to use Ask VOLK.' }, config, stage: 'configuration' }));
       return;
     }
-    const requestId = `ask-${Date.now()}-${handledSubmitToken.current}`;
+    const sequence = ++requestSequence.current;
+    const requestId = `ask-${Date.now()}-${handledSubmitToken.current}-${sequence}`;
     activeRequestId.current = requestId;
     setBusy(true);
     onBusyChange?.(true);
@@ -57,25 +68,33 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
         selectedQuote: selection?.quote ?? null,
       });
       const nextAnswer = await assistant.ask({ question, config, context });
+      const current = mounted.current && activeRequestId.current === requestId && requestSequence.current === sequence;
+      if (!current) return null;
       agent.recordLearningTurn({ role: 'user', text: question });
       const assistantTurn = agent.recordLearningTurn({ role: 'assistant', text: nextAnswer.answer });
       setAnswer({ ...nextAnswer, messageId: assistantTurn?.id ?? null });
       setSelection(null);
       onRequestLifecycle?.({ phase: 'success', source: 'ask', requestId, feedbackEvent: { id: `ask:${assistantTurn?.id ?? requestId}`, kind: 'answer', source: 'ask', target: 'ideas.map' } });
     } catch (error) {
-      setDiagnostic(createAiDiagnostic({ error, config, stage: 'failed' }));
-      onRequestLifecycle?.({ phase: 'error', source: 'ask', requestId });
+      if (mounted.current && activeRequestId.current === requestId && requestSequence.current === sequence) {
+        setDiagnostic(createAiDiagnostic({ error, config, stage: 'failed' }));
+        onRequestLifecycle?.({ phase: 'error', source: 'ask', requestId });
+      }
     } finally {
-      setBusy(false);
-      onBusyChange?.(false);
-      onRequestLifecycle?.({ phase: 'finish', source: 'ask', requestId });
-      activeRequestId.current = null;
+      if (mounted.current && activeRequestId.current === requestId && requestSequence.current === sequence) {
+        setBusy(false);
+        onBusyChange?.(false);
+        onRequestLifecycle?.({ phase: 'finish', source: 'ask', requestId });
+        activeRequestId.current = null;
+      }
     }
   };
 
   useEffect(() => () => {
-    if (activeRequestId.current) onRequestLifecycle?.({ phase: 'cancel', source: 'ask', requestId: activeRequestId.current });
-  }, [onRequestLifecycle]);
+    requestSequence.current += 1;
+    if (activeRequestId.current) lifecycleRef.current?.({ phase: 'cancel', source: 'ask', requestId: activeRequestId.current });
+    activeRequestId.current = null;
+  }, []);
 
   useEffect(() => {
     if (!submitToken || submitToken === handledSubmitToken.current) return;

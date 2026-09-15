@@ -17,18 +17,28 @@ export function deriveInquiryRuntimeState({ snapshot, semanticEvents, learnerInq
   const ids = Object.keys(entries);
   const baselineEntry = sessionState.baselineExperimentId ? entries[sessionState.baselineExperimentId] : entries[ids[0]];
   const activeEntry = workspace?.activeExperimentId ? entries[workspace.activeExperimentId] : null;
+  const eventList = semanticEvents?.events ?? [];
+  const hasCurrentFit = (experimentId) => {
+    if (!experimentId) return false;
+    const related = eventList.filter((event) => (event?.experimentIds ?? []).includes(experimentId));
+    const sampledAt = related.filter((event) => event.type === 'observation.sampled').reduce((max, event) => Math.max(max, Number(event.sequence) || 0), 0);
+    const fittedAt = related.filter((event) => event.type === 'model.fit-completed').reduce((max, event) => Math.max(max, Number(event.sequence) || 0), 0);
+    return sampledAt <= fittedAt;
+  };
   // The active branch is authoritative at the top level immediately after a
   // committed RUN; historical records are materialized on the next branch
   // transition. Prefer that live result so Fit A is visible in the same
   // snapshot that emitted `model.fit-completed`.
-  const activeFit = fitIdentity(activeEntry) ?? (
+  const activeFitCandidate = fitIdentity(activeEntry) ?? (
     workspace?.activeExperimentId === snapshot?.experiment?.id
       ? fitIdentity({ id: workspace.activeExperimentId, state: { experiment: snapshot.experiment } })
       : null
   );
-  const baselineFit = fitIdentity(baselineEntry) ?? (
+  const activeFit = activeFitCandidate && hasCurrentFit(activeFitCandidate.experimentId) ? activeFitCandidate : null;
+  const baselineFitCandidate = fitIdentity(baselineEntry) ?? (
     baselineEntry?.id === workspace?.activeExperimentId ? activeFit : null
   );
+  const baselineFit = baselineFitCandidate && hasCurrentFit(baselineFitCandidate.experimentId) ? baselineFitCandidate : null;
   const evidence = detectSamplingVariability({ snapshot });
   const stage = evidence.status === 'evidenced' ? 'concept' : workspace?.comparison?.enabled ? 'evidence' : baselineEntry && activeEntry && baselineEntry.id !== activeEntry.id ? 'resample' : 'baseline-fit';
   const eligibleConcepts = evidence.status === 'evidenced' ? ['SAMPLING_VARIABILITY'] : [];

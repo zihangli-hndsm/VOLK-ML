@@ -63,7 +63,8 @@ export function deriveLumiInteraction({ snapshot, intervention = null, activeCon
     LUMI_TARGET_TYPES.EXPERIMENT,
     snapshot?.experimentWorkspace?.activeExperimentId ?? snapshot?.experiment?.id,
   );
-  const interventionTarget = normalizeLumiTarget(intervention?.target) ?? null;
+  const policyTargetReady = intervention?.source !== 'policy' || intervention?.resolvedTarget?.status === 'ready';
+  const interventionTarget = policyTargetReady ? normalizeLumiTarget(intervention?.target) ?? null : null;
   const connection = evidenceTarget && conceptTarget
     ? Object.freeze({ from: evidenceTarget, to: conceptTarget })
     : null;

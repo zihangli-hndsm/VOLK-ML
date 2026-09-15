@@ -17,7 +17,7 @@ function contextKey(state, hasConcept, meaningfulResult) {
   return null;
 }
 
-export default function LumiCompanion({ snapshot, attention, compact = false, onOpenGuidance, onOpenEvidence, onOpenIdeas, onOpenSettings, onSelectContinuation, isConfigured, configureLabel = null, askBusy = false, semanticAction = null, semanticTarget = null, recentConceptEvent = null, meaningfulResult = false, presentation = null, resolvedTarget = null, onPresentationFeedbackConsumed, t }) {
+export default function LumiCompanion({ snapshot, attention, compact = false, onOpenGuidance, onOpenEvidence, onOpenIdeas, onOpenSettings, onSelectContinuation, isConfigured, configureLabel = null, askBusy = false, semanticAction = null, semanticTarget = null, recentConceptEvent = null, meaningfulResult = false, presentation = null, resolvedTarget = null, guidanceDismissed = false, onDismissGuidance, onPresentationFeedbackConsumed, t }) {
   const [open, setOpen] = useState(false);
   const consumeFeedbackRef = useRef(onPresentationFeedbackConsumed);
   useEffect(() => { consumeFeedbackRef.current = onPresentationFeedbackConsumed; }, [onPresentationFeedbackConsumed]);
@@ -33,13 +33,17 @@ export default function LumiCompanion({ snapshot, attention, compact = false, on
   const runtime = snapshot?.inquiryRuntime;
   const hasConcept = runtime?.evidence?.status === 'evidenced'
     && (runtime?.candidateConcepts ?? []).includes('SAMPLING_VARIABILITY');
+  const companionTarget = resolvedTarget ?? null;
+  const targetReady = companionTarget?.status === 'ready';
   const fallbackState = resolveLumiCompanionState({
     askBusy,
-    semanticAction,
-    semanticTarget: normalizeLumiSemanticTarget(semanticTarget ?? attention?.semanticTarget),
+    // A semantic target alone is not permission to guide. The owning
+    // registry must resolve one current, enabled, visible control first.
+    semanticAction: targetReady ? semanticAction : semanticAction === 'OBSERVE' ? 'OBSERVE' : null,
+    semanticTarget: targetReady ? normalizeLumiSemanticTarget(semanticTarget ?? attention?.semanticTarget) : null,
     recentConceptEvent: null,
     meaningfulResult,
-    guidanceAvailable: Boolean(runtime?.stage && runtime.stage !== 'QUESTION') || Boolean(snapshot?.learnerInquiry?.candidates?.length),
+    guidanceAvailable: targetReady && semanticAction === 'GUIDE',
   });
   const presentationState = deriveLumiPresentationState({ presentation, guideAvailable: fallbackState === LUMI_COMPANION_STATES.GUIDE });
   const state = presentationState === LUMI_PRESENTATION_STATES.THINK ? LUMI_COMPANION_STATES.THINK
@@ -59,9 +63,8 @@ export default function LumiCompanion({ snapshot, attention, compact = false, on
   const question = runtime?.currentQuestion ? t(runtime.currentQuestion) : t('playground.lumi.companion.prompt');
   const continuations = (runtime?.continuations ?? []).slice(0, 3);
   const hasNotification = Boolean(hasConcept || meaningfulResult || attention?.evidenceTarget || continuations.length);
-  const companionTarget = resolvedTarget ?? null;
   const contextualKey = contextKey(state, hasConcept, meaningfulResult);
-  const showContext = !open && Boolean(contextualKey) && !askBusy;
+  const showContext = !open && Boolean(contextualKey) && !askBusy && !guidanceDismissed;
 
   return <aside data-lumi-companion="true" data-lumi-ambient="true" data-lumi-body-state={state} data-lumi-presentation-state={presentationState} data-lumi-target-status={companionTarget?.status ?? 'none'} data-lumi-target-control={companionTarget?.target?.controlId ?? undefined} data-lumi-companion-open={open ? 'true' : 'false'} className={`lumi-companion ${compact ? 'lumi-companion-compact' : ''}${open ? ' lumi-companion-open' : ''}`} aria-label={t('playground.lumi.companion.ariaLabel')}>
     <div className="lumi-companion-body">
@@ -69,7 +72,7 @@ export default function LumiCompanion({ snapshot, attention, compact = false, on
       {hasNotification && <span data-lumi-notification="true" className="lumi-notification" aria-label={t('playground.lumi.companion.notification')} />}
       <span className="sr-only">{t('playground.agentGuide.entry')}</span>
     </div>
-    {showContext && <div data-lumi-context-bubble="true" role="status" className="lumi-context-bubble"><span>{t(contextualKey)}</span></div>}
+    {showContext && <div data-lumi-context-bubble="true" role="status" className="lumi-context-bubble"><span>{t(contextualKey)}</span><button type="button" aria-label={t('playground.inquiry.card.dismiss')} onClick={onDismissGuidance} className="ml-2 rounded px-1 text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500">×</button></div>}
     {open && <div data-lumi-companion-panel="true" role="dialog" aria-label={t('playground.lumi.companion.panelLabel')} className={`lumi-companion-panel ${compact ? 'lumi-companion-panel-compact' : ''}`}>
       <div className="lumi-companion-panel-header">
         <div>
