@@ -52,10 +52,12 @@ export default function LumiCompanion({ snapshot, attention, compact = false, on
     guidanceAvailable: targetReady && semanticAction === 'GUIDE',
   });
   const feedbackConsumed = Boolean(presentation?.feedbackEvent?.id && presentation.feedbackEvent.consumed);
-  const presentationState = deriveLumiPresentationState({ presentation, guideAvailable: fallbackState === LUMI_COMPANION_STATES.GUIDE && !feedbackConsumed && !teachingStopped });
+  const ambientOverride = teachingStopped || feedbackConsumed || actionIsSilent || guidanceDismissed;
+  const presentationState = deriveLumiPresentationState({ presentation, guideAvailable: fallbackState === LUMI_COMPANION_STATES.GUIDE && !ambientOverride });
   const state = presentationState === LUMI_PRESENTATION_STATES.THINK ? LUMI_COMPANION_STATES.THINK
     : presentationState === LUMI_PRESENTATION_STATES.ILLUMINATE ? LUMI_COMPANION_STATES.ILLUMINATE
-      : presentationState === LUMI_PRESENTATION_STATES.GUIDE ? LUMI_COMPANION_STATES.GUIDE : fallbackState;
+      : presentationState === LUMI_PRESENTATION_STATES.GUIDE ? LUMI_COMPANION_STATES.GUIDE
+        : ambientOverride ? LUMI_COMPANION_STATES.AMBIENT : fallbackState;
   useEffect(() => {
     const feedback = presentation?.feedbackEvent;
     if (!feedback?.id || feedback.consumed) return undefined;

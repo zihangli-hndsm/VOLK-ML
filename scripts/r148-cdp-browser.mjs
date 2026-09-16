@@ -192,13 +192,16 @@ async function assertText(cdp, text) {
   throw new Error(`Expected visible text not found: ${text}; diagnostic=${JSON.stringify(diagnostic)}`);
 }
 
-async function assertLumi(cdp, { presentation, bubble = null, targetStatus = null } = {}) {
+async function assertLumi(cdp, { presentation, bubble = null, targetStatus = null, bodyState = null, mode = null } = {}) {
   const state = await evaluate(cdp, `(() => {
     const node = document.querySelector('[data-lumi-presentation-state]');
     const target = document.querySelector('[data-lumi-companion]');
-    return { presentation: node?.getAttribute('data-lumi-presentation-state') ?? null, bubble: Boolean(document.querySelector('[data-lumi-context-bubble]')), targetStatus: target?.getAttribute('data-lumi-target-status') ?? null };
+    const visual = target?.querySelector('[data-lumi-mode]');
+    return { presentation: node?.getAttribute('data-lumi-presentation-state') ?? null, bodyState: target?.getAttribute('data-lumi-body-state') ?? null, mode: visual?.getAttribute('data-lumi-mode') ?? null, presence: visual?.getAttribute('data-lumi-presence') ?? null, bubble: Boolean(document.querySelector('[data-lumi-context-bubble]')), targetStatus: target?.getAttribute('data-lumi-target-status') ?? null };
   })()`);
   if (presentation && state.presentation !== presentation) throw new Error(`Unexpected LUMI presentation state: ${JSON.stringify(state)}`);
+  if (bodyState && state.bodyState !== bodyState) throw new Error(`Unexpected LUMI body state: ${JSON.stringify(state)}`);
+  if (mode && state.mode !== mode) throw new Error(`Unexpected LUMI visual mode: ${JSON.stringify(state)}`);
   if (bubble !== null && state.bubble !== bubble) throw new Error(`Unexpected LUMI context bubble state: ${JSON.stringify(state)}`);
   if (targetStatus && state.targetStatus !== targetStatus) throw new Error(`Unexpected LUMI target status: ${JSON.stringify(state)}`);
   return state;
@@ -282,12 +285,12 @@ async function runLifecycle(cdp) {
     if (callsAfterRerender !== 1) throw new Error(`Parent rerender duplicated Ask provider call: ${callsAfterRerender}`);
     await clickButton(cdp, 'Resolve Ask');
     await sleep(650);
-    await assertLumi(cdp, { presentation: 'GUIDE', bubble: true, targetStatus: 'ready' });
+    await assertLumi(cdp, { presentation: 'GUIDE', bubble: true, bodyState: 'GUIDE', mode: 'guide', targetStatus: 'ready' });
     await sleep(4500);
-    await assertLumi(cdp, { presentation: 'GUIDE', bubble: false, targetStatus: 'ready' });
+    await assertLumi(cdp, { presentation: 'GUIDE', bubble: false, bodyState: 'GUIDE', mode: 'guide', targetStatus: 'ready' });
     await clickButton(cdp, 'Parent rerender');
     await sleep(350);
-    await assertLumi(cdp, { presentation: 'GUIDE', bubble: false, targetStatus: 'ready' });
+    await assertLumi(cdp, { presentation: 'GUIDE', bubble: false, bodyState: 'GUIDE', mode: 'guide', targetStatus: 'ready' });
     await clickButton(cdp, 'Start Ask');
     await sleep(250);
     await clickButton(cdp, 'Reject Ask');
@@ -307,13 +310,16 @@ async function runLifecycle(cdp) {
     await sleep(250);
     await clickButton(cdp, 'episode.one.teachingDialogue.stop');
     await sleep(350);
-    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, bodyState: 'AMBIENT', mode: 'idle', targetStatus: 'ready' });
+    await clickButton(cdp, 'Parent rerender');
+    await sleep(350);
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, bodyState: 'AMBIENT', mode: 'idle', targetStatus: 'ready' });
     await clickButton(cdp, 'Resolve Teaching oldest');
     await sleep(350);
-    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, bodyState: 'AMBIENT', mode: 'idle', targetStatus: 'ready' });
     await clickButton(cdp, 'Reset trace');
     await sleep(650);
-    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, bodyState: 'AMBIENT', mode: 'idle', targetStatus: 'ready' });
     await clickButton(cdp, 'Restore GUIDE');
     await clickButton(cdp, 'episode.one.teachingDialogue.hintAction');
     await sleep(250);
@@ -335,14 +341,17 @@ async function runLifecycle(cdp) {
     await assertLumi(cdp, { presentation: 'ILLUMINATE', bubble: true, targetStatus: 'ready' });
     await clickButton(cdp, 'Consume concept');
     await sleep(350);
-    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, bodyState: 'AMBIENT', mode: 'idle', targetStatus: 'ready' });
+    await clickButton(cdp, 'Parent rerender');
+    await sleep(350);
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, bodyState: 'AMBIENT', mode: 'idle', targetStatus: 'ready' });
     await clickButton(cdp, 'STAY_SILENT');
     await sleep(350);
-    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, bodyState: 'AMBIENT', mode: 'idle', targetStatus: 'ready' });
     await clickButton(cdp, 'Restore GUIDE');
     await clickButton(cdp, 'Withdraw target');
     await sleep(350);
-    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'missing' });
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, bodyState: 'AMBIENT', mode: 'idle', targetStatus: 'missing' });
     await clickButton(cdp, 'Restore target');
     await clickButton(cdp, 'Start Ask');
     await sleep(250);
@@ -358,7 +367,7 @@ async function runLifecycle(cdp) {
     await assertLumi(cdp, { presentation: 'THINK', bubble: false, targetStatus: 'ready' });
     await clickButton(cdp, 'Unmount children');
     await sleep(650);
-    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, bodyState: 'AMBIENT', mode: 'idle', targetStatus: 'ready' });
   };
   await recordCurrentPage(cdp, 'lumi-lifecycle.webm', flow);
   const trace = await evaluate(cdp, 'document.querySelector("#r148-trace")?.innerText || ""');

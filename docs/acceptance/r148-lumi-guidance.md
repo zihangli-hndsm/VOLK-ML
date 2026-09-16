@@ -66,11 +66,12 @@ Episode entry -> prediction skipped -> Fit A -> Sample same World
 Ask harness: start -> parent rerender -> success -> finish
 Teaching harness: start -> parent rerender -> success -> finish
 Natural bubble expiry -> parent rerender -> bubble remains absent
-Teaching Stop -> cancel -> stale completion ignored
+Teaching Stop -> AMBIENT/idle -> parent rerender remains AMBIENT/idle
+-> cancel -> stale completion ignored
 Reset -> ambient/no bubble -> stale completion ignored
 Teaching context change -> cancel -> stale completion ignored
 Ask rejection: error -> finish
-Concept surface -> consume -> STAY_SILENT/ambient
+Concept surface -> consume -> STAY_SILENT/ambient; parent rerender remains idle
 Target withdrawal -> missing/ambient
 Ask unmount: cancel
 ```
@@ -107,7 +108,7 @@ The run completed with exit code `0` and recorded these checkpoints in
 | V4 目标 — PASS | `episode-normal.webm`; `npm run check:lumi-visible-guidance`; the production Episode registers `model.fit`, `world.sample`, and `experiment.compare` targets and withdraws unavailable/stale targets. `normal-02-fit-a.png` through `normal-05-concept.png` show the real controls. |
 | V5 课程 — PASS | `episode-normal.webm`; `npm run check:episode-1`; real UI sequence is entry → optional prediction skip → Fit A → same-World sample → Fit B → Compare → deterministic evidence → concept/continuations. |
 | V6 反馈 — PASS | `episode-normal.webm`, `normal-05-concept.png`, `normal-06-recovered.png`; `npm run check:lumi-visible-guidance`; ordinary completion stays neutral, while the deterministic concept event illuminates once and returns to the appropriate state. |
-| V7 仲裁 — PASS | `npm run check:lumi-visible-guidance`, `npm run check:lumi-embodied`, `npm run test:teaching:integration`; cooldown, stop, dismissal, stale requests, and competing THINK/feedback precedence are asserted. |
+| V7 仲裁 — PASS | `lumi-lifecycle.webm`; the executable flow asserts actual presentation state plus body-state and `data-lumi-mode` for Stop, consumed feedback, STAY_SILENT, target withdrawal, and unmount; parent rerenders after Stop and feedback consumption remain `AMBIENT/idle` with no bubble. Focused checks cover cooldown, dismissal, stale requests, and competing THINK/feedback precedence. |
 | V8 可访问性 — PASS | Fixed command reports Chinese narrow `390x844`, no horizontal overflow, keyboard focus, and English+Chinese parallel labels; evidence: `zh-narrow.png`, `parallel-entry.png`, reduced-motion `reduced-06-recovered.png`. |
 | V9 权限回归 — PASS | `npm run check:lumi-visible-guidance`, `npm run check:episode-1`, `npm run check`; Cloud is off for the browser run, and presentation/debug controls remain detached from semantic World/Experiment/Evidence state. |
 | V10 工程 — PASS | `npm run check`, `npm run build`, the static `npm run check:lumi-mounted-lifecycle` wiring check, fixed browser command, and `git diff --check` all pass on the current worktree. |
@@ -116,23 +117,23 @@ All PNGs are bounded to the 1280×720 viewport except the explicitly labelled
 390×844 Chinese narrow check. The current artifact sizes are:
 
 ```text
-normal-01-entry.png       67754 bytes
-normal-02-fit-a.png       85464 bytes
-normal-03-resample.png    70147 bytes
-normal-04-fit-b.png       76147 bytes
-normal-05-concept.png     71473 bytes
-normal-06-recovered.png   69003 bytes
+normal-01-entry.png       67618 bytes
+normal-02-fit-a.png       85439 bytes
+normal-03-resample.png    70109 bytes
+normal-04-fit-b.png       72274 bytes
+normal-05-concept.png     71612 bytes
+normal-06-recovered.png   67872 bytes
 reduced-01-entry.png      67726 bytes
 reduced-02-fit-a.png      85968 bytes
 reduced-03-resample.png   70251 bytes
 reduced-04-fit-b.png      72256 bytes
-reduced-05-concept.png    69003 bytes
-reduced-06-recovered.png  69003 bytes
+reduced-05-concept.png    68168 bytes
+reduced-06-recovered.png  68168 bytes
 zh-narrow.png             56286 bytes
 parallel-entry.png        129156 bytes
-mounted-lifecycle.png     88582 bytes
-episode-normal.webm       170166 bytes (WebM/VP8)
-lumi-lifecycle.webm       846180 bytes (WebM/VP8)
+mounted-lifecycle.png     88537 bytes
+episode-normal.webm       225370 bytes (WebM/VP8)
+lumi-lifecycle.webm       844199 bytes (WebM/VP8)
 ```
 
 The fixed run's detailed semantic result is in `r148-trace.json`. Remote PR or
