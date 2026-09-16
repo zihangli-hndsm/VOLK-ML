@@ -16,8 +16,10 @@ assert.match(teaching, /if \(activeRequestId\.current\) lifecycleRef\.current\?\
 assert.match(teaching, /\}, \[\]\);/);
 assert.match(harness, /AskVolkPanel/);
 assert.match(harness, /TeachingDialoguePanel/);
+assert.match(harness, /LumiCompanion/);
+assert.match(harness, /createLumiPresentationState/);
 assert.match(harness, /new Promise\(\(resolve, reject\)/, 'harness uses delayed deterministic adapters');
 for (const action of ['ask-start', 'ask-resolve', 'ask-resolve-oldest', 'ask-reject', 'parent-rerender', 'context-change', 'unmount', 'reset', 'teaching-resolve', 'teaching-resolve-oldest', 'teaching-reject']) assert.match(harness, new RegExp(`data-action="${action}"`));
 assert.match(harnessPage, /r148LifecycleHarness\.jsx/);
 
-console.log('Mounted LUMI lifecycle checks passed: real Ask/Teaching components, stable parent callback, mounted request guards, delayed fixture controls, and browser harness wiring.');
+console.log('Mounted LUMI lifecycle wiring checks passed (static source assertions only); executable mounted coverage is provided by scripts/run-r148-browser.ps1.');

@@ -192,6 +192,42 @@ async function assertText(cdp, text) {
   throw new Error(`Expected visible text not found: ${text}; diagnostic=${JSON.stringify(diagnostic)}`);
 }
 
+async function assertLumi(cdp, { presentation, bubble = null, targetStatus = null } = {}) {
+  const state = await evaluate(cdp, `(() => {
+    const node = document.querySelector('[data-lumi-presentation-state]');
+    const target = document.querySelector('[data-lumi-companion]');
+    return { presentation: node?.getAttribute('data-lumi-presentation-state') ?? null, bubble: Boolean(document.querySelector('[data-lumi-context-bubble]')), targetStatus: target?.getAttribute('data-lumi-target-status') ?? null };
+  })()`);
+  if (presentation && state.presentation !== presentation) throw new Error(`Unexpected LUMI presentation state: ${JSON.stringify(state)}`);
+  if (bubble !== null && state.bubble !== bubble) throw new Error(`Unexpected LUMI context bubble state: ${JSON.stringify(state)}`);
+  if (targetStatus && state.targetStatus !== targetStatus) throw new Error(`Unexpected LUMI target status: ${JSON.stringify(state)}`);
+  return state;
+}
+
+async function assertEpisodeTarget(cdp, { key, controlId, inactive = [] } = {}) {
+  await evaluate(cdp, `document.querySelector('[data-lumi-course-control="${key}"][data-lumi-control-id="${controlId}"]')?.scrollIntoView?.({ block: 'center', inline: 'nearest' })`);
+  const read = () => evaluate(cdp, `(() => {
+    const target = document.querySelector('[data-lumi-course-control="${key}"][data-lumi-control-id="${controlId}"]');
+    const inactive = ${JSON.stringify(inactive)}.map(([targetKey, id]) => document.querySelector('[data-lumi-course-control="' + targetKey + '"][data-lumi-control-id="' + id + '"]'));
+    return {
+      targetExists: Boolean(target),
+      targetDisabled: Boolean(target?.disabled),
+      targetHighlighted: Boolean(target?.className?.includes('ring-cyan-400')),
+      inactiveHighlighted: inactive.some((item) => item?.className?.includes('ring-cyan-400')),
+    };
+  })()`);
+  let result = await read();
+  for (let attempt = 0; attempt < 12 && (!result.targetExists || result.targetDisabled || !result.targetHighlighted || result.inactiveHighlighted); attempt += 1) {
+    await sleep(250);
+    result = await read();
+  }
+  if (!result.targetExists || result.targetDisabled || !result.targetHighlighted || result.inactiveHighlighted) {
+    const diagnostic = await evaluate(cdp, "({ guidance: document.querySelector('[data-lumi-guidance-target]')?.getAttribute('data-lumi-guidance-target') ?? null, resolved: document.querySelector('[data-lumi-resolved-target-status]')?.getAttribute('data-lumi-resolved-target-status') ?? null, companion: document.querySelector('[data-lumi-companion]')?.outerHTML.slice(0, 800) ?? null, controls: [...document.querySelectorAll('[data-lumi-course-control]')].map((item) => ({ id: item.getAttribute('data-lumi-control-id'), className: item.className, disabled: item.disabled })) })");
+    throw new Error(`Episode target assertion failed for ${key}/${controlId}: ${JSON.stringify({ result, diagnostic })}`);
+  }
+  await assertLumi(cdp, { targetStatus: 'ready' });
+}
+
 async function open(pageUrl, cdp) {
   await cdp.send('Page.navigate', { url: pageUrl });
   await sleep(1300);
@@ -205,18 +241,24 @@ async function runEpisode(cdp, { reducedMotion = false, prefix, recordingFilenam
   await assertText(cdp, 'If the World stays the same, will a learned model stay the same?');
   const flow = async () => {
     await capture(cdp, `${prefix}-01-entry.png`);
+    await assertEpisodeTarget(cdp, { key: 'model.fit', controlId: 'episode-fit-a', inactive: [['world.sample', 'episode-sample'], ['model.fit', 'episode-fit-b'], ['experiment.compare', 'episode-compare']] });
     await clickButton(cdp, 'Skip prediction');
     await clickButton(cdp, 'Fit A');
     await capture(cdp, `${prefix}-02-fit-a.png`);
+    await assertEpisodeTarget(cdp, { key: 'world.sample', controlId: 'episode-sample', inactive: [['model.fit', 'episode-fit-a'], ['model.fit', 'episode-fit-b'], ['experiment.compare', 'episode-compare']] });
     await clickButton(cdp, 'Sample same World');
     await capture(cdp, `${prefix}-03-resample.png`);
+    await assertEpisodeTarget(cdp, { key: 'model.fit', controlId: 'episode-fit-b', inactive: [['model.fit', 'episode-fit-a'], ['world.sample', 'episode-sample'], ['experiment.compare', 'episode-compare']] });
     await clickButton(cdp, 'Fit B');
     await capture(cdp, `${prefix}-04-fit-b.png`);
+    await assertEpisodeTarget(cdp, { key: 'experiment.compare', controlId: 'episode-compare', inactive: [['model.fit', 'episode-fit-a'], ['world.sample', 'episode-sample'], ['model.fit', 'episode-fit-b']] });
     await clickButton(cdp, 'Compare A / B');
     await assertText(cdp, 'Sampling variability');
     await assertText(cdp, 'EVIDENCED');
     await assertText(cdp, 'CHANGED');
     await assertText(cdp, 'HELD CONSTANT');
+    const staleCompare = await evaluate(cdp, "document.querySelector('[data-lumi-course-control=\\\"experiment.compare\\\"][data-lumi-control-id=\\\"episode-compare\\\"]')?.className?.includes('ring-cyan-400') ?? false");
+    if (staleCompare) throw new Error('Compare target remained highlighted after comparison completed.');
     await capture(cdp, `${prefix}-05-concept.png`);
     await sleep(1200);
     await capture(cdp, `${prefix}-06-recovered.png`);
@@ -227,30 +269,102 @@ async function runEpisode(cdp, { reducedMotion = false, prefix, recordingFilenam
 }
 
 async function runLifecycle(cdp) {
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
   await open(`${baseUrl}/r148-lifecycle-harness.html`, cdp);
   const flow = async () => {
     await clickButton(cdp, 'Start Ask');
     await sleep(650);
+    await assertLumi(cdp, { presentation: 'THINK', bubble: false, targetStatus: 'ready' });
     await clickButton(cdp, 'Parent rerender');
     await sleep(650);
+    await assertLumi(cdp, { presentation: 'THINK', bubble: false, targetStatus: 'ready' });
+    const callsAfterRerender = await evaluate(cdp, "Number(document.querySelector('[data-harness-calls]')?.textContent.match(/ask calls (\\d+)/)?.[1] ?? -1)");
+    if (callsAfterRerender !== 1) throw new Error(`Parent rerender duplicated Ask provider call: ${callsAfterRerender}`);
     await clickButton(cdp, 'Resolve Ask');
     await sleep(650);
+    await assertLumi(cdp, { presentation: 'GUIDE', bubble: true, targetStatus: 'ready' });
+    await sleep(4500);
+    await assertLumi(cdp, { presentation: 'GUIDE', bubble: false, targetStatus: 'ready' });
+    await clickButton(cdp, 'Parent rerender');
+    await sleep(350);
+    await assertLumi(cdp, { presentation: 'GUIDE', bubble: false, targetStatus: 'ready' });
+    await clickButton(cdp, 'Start Ask');
+    await sleep(250);
+    await clickButton(cdp, 'Reject Ask');
+    await sleep(350);
     await clickButton(cdp, 'episode.one.teachingDialogue.hintAction');
     await sleep(650);
+    await assertLumi(cdp, { presentation: 'THINK', bubble: false, targetStatus: 'ready' });
     await clickButton(cdp, 'Parent rerender');
     await sleep(650);
+    await assertLumi(cdp, { presentation: 'THINK', bubble: false, targetStatus: 'ready' });
+    const teachingCallsAfterRerender = await evaluate(cdp, "Number(document.querySelector('[data-harness-calls]')?.textContent.match(/teaching calls (\\d+)/)?.[1] ?? -1)");
+    if (teachingCallsAfterRerender !== 1) throw new Error(`Parent rerender duplicated Teaching provider call: ${teachingCallsAfterRerender}`);
     await clickButton(cdp, 'Resolve Teaching');
     await sleep(650);
+    await assertLumi(cdp, { presentation: 'GUIDE', bubble: true, targetStatus: 'ready' });
+    await clickButton(cdp, 'episode.one.teachingDialogue.hintAction');
+    await sleep(250);
+    await clickButton(cdp, 'episode.one.teachingDialogue.stop');
+    await sleep(350);
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await clickButton(cdp, 'Resolve Teaching oldest');
+    await sleep(350);
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await clickButton(cdp, 'Reset trace');
+    await sleep(650);
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await clickButton(cdp, 'Restore GUIDE');
+    await clickButton(cdp, 'episode.one.teachingDialogue.hintAction');
+    await sleep(250);
+    const staleTeachingSuccessBefore = await evaluate(cdp, "(document.querySelector('#r148-trace')?.innerText.match(/\\\"source\\\": \\\"teaching-dialogue\\\",\\s*\\\"phase\\\": \\\"success\\\"/g) || []).length");
+    await clickButton(cdp, 'Teaching context change');
+    await sleep(450);
+    await clickButton(cdp, 'Resolve Teaching oldest');
+    await sleep(450);
+    const staleTeachingSuccessAfter = await evaluate(cdp, "(document.querySelector('#r148-trace')?.innerText.match(/\\\"source\\\": \\\"teaching-dialogue\\\",\\s*\\\"phase\\\": \\\"success\\\"/g) || []).length");
+    if (staleTeachingSuccessAfter !== staleTeachingSuccessBefore) throw new Error(`Stale Teaching completion changed the trace: ${staleTeachingSuccessBefore} -> ${staleTeachingSuccessAfter}`);
+    await assertLumi(cdp, { presentation: 'GUIDE', targetStatus: 'ready' });
+    await clickButton(cdp, 'episode.one.teachingDialogue.hintAction');
+    await sleep(250);
+    await clickButton(cdp, 'Resolve Teaching');
+    await sleep(650);
+    await assertLumi(cdp, { presentation: 'GUIDE', bubble: true, targetStatus: 'ready' });
+    await clickButton(cdp, 'Surface concept');
+    await sleep(350);
+    await assertLumi(cdp, { presentation: 'ILLUMINATE', bubble: true, targetStatus: 'ready' });
+    await clickButton(cdp, 'Consume concept');
+    await sleep(350);
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await clickButton(cdp, 'STAY_SILENT');
+    await sleep(350);
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
+    await clickButton(cdp, 'Restore GUIDE');
+    await clickButton(cdp, 'Withdraw target');
+    await sleep(350);
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'missing' });
+    await clickButton(cdp, 'Restore target');
+    await clickButton(cdp, 'Start Ask');
+    await sleep(250);
+    await clickButton(cdp, 'Resolve Ask');
+    await sleep(650);
+    await assertLumi(cdp, { presentation: 'GUIDE', targetStatus: 'ready' });
+    await clickButton(cdp, 'Start Ask');
+    await sleep(250);
+    await clickButton(cdp, 'Reject Ask');
+    await sleep(350);
     await clickButton(cdp, 'Start Ask');
     await sleep(650);
+    await assertLumi(cdp, { presentation: 'THINK', bubble: false, targetStatus: 'ready' });
     await clickButton(cdp, 'Unmount children');
     await sleep(650);
+    await assertLumi(cdp, { presentation: 'AMBIENT', bubble: false, targetStatus: 'ready' });
   };
   await recordCurrentPage(cdp, 'lumi-lifecycle.webm', flow);
   const trace = await evaluate(cdp, 'document.querySelector("#r148-trace")?.innerText || ""');
-  if (!trace.includes('"phase": "success"') || !trace.includes('"phase": "cancel"')) throw new Error('Mounted lifecycle trace did not contain success and cancel.');
+  if (!trace.includes('"phase": "success"') || !trace.includes('"phase": "cancel"') || !trace.includes('"phase": "error"')) throw new Error('Mounted lifecycle trace did not contain success, error, and cancel.');
   await capture(cdp, 'mounted-lifecycle.png');
-  return { result: 'PASS', checkpoints: ['Ask success/finish', 'Teaching success/finish', 'parent rerender', 'Ask unmount/cancel'] };
+  return { result: 'PASS', checkpoints: ['Ask success/finish', 'natural bubble expiry + rerender', 'Ask rejection/error', 'Teaching success/finish', 'Teaching stop + stale completion', 'reset arbitration', 'context-switch stale completion', 'concept consume + STAY_SILENT', 'target withdrawal', 'Ask unmount/cancel'] };
 }
 
 async function runAccessibility(cdp) {

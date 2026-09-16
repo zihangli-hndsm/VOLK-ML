@@ -24,8 +24,14 @@
     "result": "PASS",
     "checkpoints": [
       "Ask success/finish",
+      "natural bubble expiry + rerender",
+      "Ask rejection/error",
       "Teaching success/finish",
-      "parent rerender",
+      "Teaching stop + stale completion",
+      "reset arbitration",
+      "context-switch stale completion",
+      "concept consume + STAY_SILENT",
+      "target withdrawal",
       "Ask unmount/cancel"
     ]
   },

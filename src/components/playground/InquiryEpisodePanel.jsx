@@ -49,7 +49,21 @@ export default function InquiryEpisodePanel({ snapshot, host, onDispatch, onRequ
       reveal: { type: 'scroll', learnerInitiated: true },
     }));
     return () => registrations.forEach(([key, controlId]) => targetRegistry.unregister(key, controlId));
-  }, [targetRegistry, runtime?.contractId, runtime?.stage, snapshot?.experimentWorkspace?.comparison?.againstExperimentId]);
+  }, [
+    targetRegistry,
+    runtime?.contractId,
+    runtime?.stage,
+    runtime?.baseline?.experimentId,
+    runtime?.baseline?.fit?.fitId,
+    runtime?.activeFit?.experimentId,
+    runtime?.activeFit?.fitId,
+    runtime?.evidence?.status,
+    runtime?.comparison?.enabled,
+    runtime?.comparison?.againstExperimentId,
+    snapshot?.experimentWorkspace?.activeExperimentId,
+    snapshot?.experimentWorkspace?.comparison?.enabled,
+    snapshot?.experimentWorkspace?.comparison?.againstExperimentId,
+  ]);
   if (!runtime) return null;
   const evidence = runtime.evidence;
   const compare = runtime.comparison;

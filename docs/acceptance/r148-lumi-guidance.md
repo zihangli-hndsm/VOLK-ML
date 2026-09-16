@@ -29,16 +29,20 @@ The mounted lifecycle harness is available at:
 http://127.0.0.1:5174/r148-lifecycle-harness.html
 ```
 
-It mounts the real `AskVolkPanel` and `TeachingDialoguePanel` with delayed
-fixture adapters. The captured trace covered Ask success/error/cancel,
-Teaching success/cancel, parent rerenders while requests were pending, and
-child unmount cancellation. The harness is development-only and is not part of
-the production bundle.
+It mounts the real `LumiCompanion`, `AskVolkPanel`, and
+`TeachingDialoguePanel` with delayed fixture adapters. The captured trace
+covers Ask success/error/cancel, Teaching success/cancel, natural context-bubble
+expiry, parent rerenders while requests are pending, Teaching Stop, reset,
+context-switch cancellation followed by stale completion, concept feedback
+consumption, target withdrawal, and child unmount cancellation. The production
+panels intentionally suppress overlapping submissions; the executable flow
+therefore validates the real context-switch/reset stale-request boundary rather
+than claiming an artificial overlapping A/B request.
 
 ## Verified locally
 
 - `npm run check:lumi-visible-guidance`
-- `npm run check:lumi-mounted-lifecycle`
+- `npm run check:lumi-mounted-lifecycle` (static wiring assertions only)
 - `npm run check:lumi-embodied`
 - `npm run check:episode-1`
 - `npm run check:teaching-dialogue-pilot`
@@ -61,9 +65,14 @@ Episode entry -> prediction skipped -> Fit A -> Sample same World
 -> Concept Card: Sampling variability -> continuation candidates visible
 Ask harness: start -> parent rerender -> success -> finish
 Teaching harness: start -> parent rerender -> success -> finish
-Teaching context change: cancel
-Ask unmount: cancel
+Natural bubble expiry -> parent rerender -> bubble remains absent
+Teaching Stop -> cancel -> stale completion ignored
+Reset -> ambient/no bubble -> stale completion ignored
+Teaching context change -> cancel -> stale completion ignored
 Ask rejection: error -> finish
+Concept surface -> consume -> STAY_SILENT/ambient
+Target withdrawal -> missing/ambient
+Ask unmount: cancel
 ```
 
 ## Fixed browser evidence workflow
@@ -93,37 +102,37 @@ The run completed with exit code `0` and recorded these checkpoints in
 | Checkpoint | Evidence |
 | --- | --- |
 | V1 动效 — PASS | `episode-normal.webm`, `lumi-lifecycle.webm`; normal-mode UI recording covers idle, delayed THINK, parent rerender, target-step movement, valid feedback, and recovery. `normal-06-recovered.png` is the final recovery checkpoint. |
-| V2 请求 — PASS | `lumi-lifecycle.webm`; `npm run check:lumi-mounted-lifecycle`; `npm run test:teaching:integration`; trace records Ask/Teaching start, busy, success/error, finish, and cancellation without duplicate provider calls. |
-| V3 竞争 — PASS | `npm run check:lumi-visible-guidance`; `npm run test:teaching:integration`; deterministic checks cover stale completion, timeout, stop, reset/context invalidation, rejection, and mounted unmount cancellation. Harness controls also expose A/B, oldest/latest, reject, reset, and unmount paths. |
+| V2 请求 — PASS | `lumi-lifecycle.webm`; the fixed browser run is the executable mounted-component check. `npm run check:lumi-mounted-lifecycle` is retained as a static wiring assertion only; `npm run test:teaching:integration` and the browser trace record Ask/Teaching start, busy, success/error, finish, and cancellation without duplicate provider calls. |
+| V3 竞争 — PASS | `lumi-lifecycle.webm`; the fixed browser run executes natural expiry, Teaching Stop, reset, context-switch cancellation, and resolution of canceled pending fixtures; stale completions do not change the trace or presentation. The real panels suppress overlapping submissions, so no artificial A/B overlap is claimed. Deterministic checks cover timeout, stop, reset/context invalidation, rejection, and unmount cancellation. |
 | V4 目标 — PASS | `episode-normal.webm`; `npm run check:lumi-visible-guidance`; the production Episode registers `model.fit`, `world.sample`, and `experiment.compare` targets and withdraws unavailable/stale targets. `normal-02-fit-a.png` through `normal-05-concept.png` show the real controls. |
 | V5 课程 — PASS | `episode-normal.webm`; `npm run check:episode-1`; real UI sequence is entry → optional prediction skip → Fit A → same-World sample → Fit B → Compare → deterministic evidence → concept/continuations. |
 | V6 反馈 — PASS | `episode-normal.webm`, `normal-05-concept.png`, `normal-06-recovered.png`; `npm run check:lumi-visible-guidance`; ordinary completion stays neutral, while the deterministic concept event illuminates once and returns to the appropriate state. |
 | V7 仲裁 — PASS | `npm run check:lumi-visible-guidance`, `npm run check:lumi-embodied`, `npm run test:teaching:integration`; cooldown, stop, dismissal, stale requests, and competing THINK/feedback precedence are asserted. |
 | V8 可访问性 — PASS | Fixed command reports Chinese narrow `390x844`, no horizontal overflow, keyboard focus, and English+Chinese parallel labels; evidence: `zh-narrow.png`, `parallel-entry.png`, reduced-motion `reduced-06-recovered.png`. |
 | V9 权限回归 — PASS | `npm run check:lumi-visible-guidance`, `npm run check:episode-1`, `npm run check`; Cloud is off for the browser run, and presentation/debug controls remain detached from semantic World/Experiment/Evidence state. |
-| V10 工程 — PASS | `npm run check`, `npm run build`, `npm run check:lumi-mounted-lifecycle`, fixed browser command, and `git diff --check` all pass on the current worktree. |
+| V10 工程 — PASS | `npm run check`, `npm run build`, the static `npm run check:lumi-mounted-lifecycle` wiring check, fixed browser command, and `git diff --check` all pass on the current worktree. |
 
 All PNGs are bounded to the 1280×720 viewport except the explicitly labelled
 390×844 Chinese narrow check. The current artifact sizes are:
 
 ```text
-normal-01-entry.png       67640 bytes
-normal-02-fit-a.png       72667 bytes
-normal-03-resample.png    70114 bytes
-normal-04-fit-b.png       75630 bytes
-normal-05-concept.png     80085 bytes
-normal-06-recovered.png   77417 bytes
+normal-01-entry.png       67754 bytes
+normal-02-fit-a.png       85464 bytes
+normal-03-resample.png    70147 bytes
+normal-04-fit-b.png       76147 bytes
+normal-05-concept.png     71473 bytes
+normal-06-recovered.png   69003 bytes
 reduced-01-entry.png      67726 bytes
-reduced-02-fit-a.png      72736 bytes
-reduced-03-resample.png   70222 bytes
-reduced-04-fit-b.png      75764 bytes
-reduced-05-concept.png    77392 bytes
-reduced-06-recovered.png  77421 bytes
-zh-narrow.png             56365 bytes
+reduced-02-fit-a.png      85968 bytes
+reduced-03-resample.png   70251 bytes
+reduced-04-fit-b.png      72256 bytes
+reduced-05-concept.png    69003 bytes
+reduced-06-recovered.png  69003 bytes
+zh-narrow.png             56286 bytes
 parallel-entry.png        129156 bytes
-mounted-lifecycle.png     25829 bytes
-episode-normal.webm       94936 bytes (WebM/VP8)
-lumi-lifecycle.webm       262943 bytes (WebM/VP8)
+mounted-lifecycle.png     88582 bytes
+episode-normal.webm       170166 bytes (WebM/VP8)
+lumi-lifecycle.webm       846180 bytes (WebM/VP8)
 ```
 
 The fixed run's detailed semantic result is in `r148-trace.json`. Remote PR or
