@@ -3,7 +3,7 @@ import { clearAiKey, isAiConfigured, normalizeAiConfig } from '../../core/ai/aiS
 import { createProviderGateway } from '../../core/ai/providerRegistry.js';
 import { useVolkCloudOptional } from '../../services/volkCloud/VolkCloudContext.jsx';
 
-const AiProviderContext = createContext(null);
+export const AiProviderContext = createContext(null);
 
 export function AiProvider({ children }) {
   const cloud = useVolkCloudOptional() ?? { canUseCloudAi: false, cloudAiGateway: null, cloudStatus: { status: 'not-configured' }, accountStatus: 'unconfigured', wallet: null };

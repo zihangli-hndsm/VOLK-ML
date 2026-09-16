@@ -9,6 +9,10 @@ import {
   normalizeCloudAiOperationResponse,
   normalizeCloudLoginResponse,
   normalizeCloudRedemptionResponse,
+  normalizeCloudRecoveryResponse,
+  normalizeCloudPasswordResetResponse,
+  isValidUsername,
+  WIPE_NOTICE_VERSION,
 } from './authContract.js';
 
 function cloudError(code, details = {}) {
@@ -97,18 +101,30 @@ export function createVolkCloudClient({ baseUrl, fetchImpl = globalThis.fetch, t
         if (timer) clearTimeout(timer);
       }
     },
-    async register({ email, password } = {}) {
-      if (!String(email ?? '').trim() || !String(password ?? '')) throw cloudError('VOLK_CLOUD_LOGIN_REQUIRED');
+    async register({ username, password } = {}) {
+      const canonical = String(username ?? '').trim().toLowerCase();
+      if (!isValidUsername(canonical) || !String(password ?? '')) throw cloudError('VOLK_CLOUD_LOGIN_REQUIRED');
       return normalizeCloudLoginResponse(await requestJson(CLOUD_AUTH_ENDPOINTS.register, {
         method: 'POST',
-        body: { email: String(email).trim().slice(0, 240), password: String(password).slice(0, 512) },
+        body: { username: canonical, password: String(password).slice(0, 512), wipeNoticeVersion: WIPE_NOTICE_VERSION },
+      }), { recovery: true });
+    },
+    async login({ username, password } = {}) {
+      const canonical = String(username ?? '').trim().toLowerCase();
+      if (!isValidUsername(canonical) || !String(password ?? '')) throw cloudError('VOLK_CLOUD_LOGIN_REQUIRED');
+      return normalizeCloudLoginResponse(await requestJson(CLOUD_AUTH_ENDPOINTS.login, {
+        method: 'POST', body: { username: canonical, password: String(password).slice(0, 512) },
       }));
     },
-    async login({ email, password } = {}) {
-      if (!String(email ?? '').trim() || !String(password ?? '')) throw cloudError('VOLK_CLOUD_LOGIN_REQUIRED');
-      return normalizeCloudLoginResponse(await requestJson(CLOUD_AUTH_ENDPOINTS.login, {
-        method: 'POST', body: { email: String(email).trim().slice(0, 240), password: String(password).slice(0, 512) },
-      }));
+    async reissueRecoveryCode({ accessToken, currentPassword } = {}) {
+      if (!accessToken) throw cloudError('VOLK_CLOUD_AUTH_REQUIRED');
+      if (!String(currentPassword ?? '')) throw cloudError('VOLK_CLOUD_LOGIN_REQUIRED');
+      return normalizeCloudRecoveryResponse(await requestJson(CLOUD_AUTH_ENDPOINTS.recoveryReissue, { method: 'POST', token: accessToken, body: { currentPassword: String(currentPassword).slice(0, 512) } }));
+    },
+    async resetPassword({ username, recoveryCode, newPassword } = {}) {
+      const canonical = String(username ?? '').trim().toLowerCase();
+      if (!isValidUsername(canonical) || !String(recoveryCode ?? '').trim() || !String(newPassword ?? '')) throw cloudError('VOLK_CLOUD_PASSWORD_RESET_REQUIRED');
+      return normalizeCloudPasswordResetResponse(await requestJson(CLOUD_AUTH_ENDPOINTS.passwordReset, { method: 'POST', body: { username: canonical, recoveryCode: String(recoveryCode).trim().slice(0, 256), newPassword: String(newPassword).slice(0, 512) } }));
     },
     async logout({ accessToken } = {}) {
       if (!accessToken) return { apiVersion: CLOUD_AUTH_API_VERSION, status: 'signed-out' };

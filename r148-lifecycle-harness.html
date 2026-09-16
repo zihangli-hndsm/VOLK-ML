@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>R148 lifecycle harness</title>
+    <style>
+      body { margin: 0; padding: 24px; font: 14px/1.45 system-ui, sans-serif; background: #f8fafc; color: #0f172a; }
+      main { max-width: 1100px; margin: auto; }
+      section { margin: 16px 0; padding: 16px; background: white; border: 1px solid #cbd5e1; border-radius: 16px; }
+      button { margin: 4px; padding: 8px 12px; border: 1px solid #94a3b8; border-radius: 9px; background: white; font-weight: 700; cursor: pointer; }
+      pre { max-height: 260px; overflow: auto; padding: 12px; background: #0f172a; color: #dbeafe; border-radius: 12px; white-space: pre-wrap; }
+      [data-harness-status] { font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main id="root"></main>
+    <script type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import R148LifecycleHarness from '/src/dev/r148LifecycleHarness.jsx';
+      createRoot(document.getElementById('root')).render(React.createElement(R148LifecycleHarness));
+    </script>
+  </body>
+</html>

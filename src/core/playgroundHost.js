@@ -79,6 +79,7 @@ import { compareExploreEnvironment, createExploreEnvironmentIdentity } from './e
 import { getExplorationContract, getOrchestrationContract } from './exploration/inquiryContracts.js';
 import { deriveInquiryRuntimeState } from './exploration/inquiryRuntime.js';
 import { validateLumiAction, decideLumiAction, applyGuidanceBudget, guidanceStageState, staySilent, createCloudLumiPolicy } from './exploration/lumiPolicy.js';
+import { deriveEpisode1GuidanceStage, deriveEpisode1NextOperation } from './ui/lumiEpisodeGuidance.js';
 import { createTeachingDialogueSession, isTeachingDialoguePilotEnabled, buildTeachingDialogueContext, decideTeachingDialogue, validateTeachingDialogueResponse, recordTeachingDialogueTurn, storeTeachingHypothesis, reviseTeachingHypothesis, retractTeachingHypothesis, stopTeachingDialogue } from './exploration/teachingDialoguePilot.js';
 import { getEpisode } from '../episodes/registry.js';
 import { deriveOrchestrationState } from './orchestration/runtime.js';
@@ -1439,13 +1440,27 @@ export function createPlaygroundHost({
         ? Math.max(0, 3 - (latestSequence - inquirySessionState.conceptSurfacedSequence))
         : 0;
       const stage = snapshot?.inquiryRuntime?.stage;
-      const stageState = guidanceStageState(inquirySessionState.guidanceHistory, stage);
-      const action = await decideLumiAction({ context: { inquiryRuntime: snapshot?.inquiryRuntime, evidence: snapshot?.inquiryRuntime?.evidence, stage, guidance: { cooldownRemaining, staySilent: stageState.dismissed || stageState.hinted } }, cloudPolicy });
+      const nextOperation = deriveEpisode1NextOperation(snapshot);
+      const guidanceStage = deriveEpisode1GuidanceStage(snapshot) ? `episode-1:${deriveEpisode1GuidanceStage(snapshot)}` : stage;
+      const stageState = guidanceStageState(inquirySessionState.guidanceHistory, guidanceStage);
+      const action = await decideLumiAction({ context: { inquiryRuntime: snapshot?.inquiryRuntime, evidence: snapshot?.inquiryRuntime?.evidence, stage, nextOperation, guidance: { cooldownRemaining, staySilent: stageState.dismissed || stageState.hinted } }, cloudPolicy });
       const validated = validateLumiAction(action);
       const canonical = validated.valid ? validated.action : staySilent();
-      inquirySessionState.guidanceHistory = applyGuidanceBudget(inquirySessionState.guidanceHistory, canonical, { stage: snapshot?.inquiryRuntime?.stage });
+      inquirySessionState.guidanceHistory = applyGuidanceBudget(inquirySessionState.guidanceHistory, canonical, { stage: guidanceStage });
       notify();
       return canonical;
+    },
+
+    dismissLumiGuidance() {
+      if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const snapshot = currentPresentedSnapshot();
+      const stage = deriveEpisode1GuidanceStage(snapshot) ? `episode-1:${deriveEpisode1GuidanceStage(snapshot)}` : snapshot?.inquiryRuntime?.stage;
+      const history = inquirySessionState.guidanceHistory ?? [];
+      const index = [...history].map((entry, position) => ({ entry, position })).reverse().find(({ entry }) => entry?.stage === stage)?.position;
+      if (index === undefined) return present(derivePlaygroundSnapshot(session));
+      inquirySessionState.guidanceHistory = history.map((entry, position) => position === index ? { ...entry, dismissed: true } : entry);
+      notify();
+      return present(derivePlaygroundSnapshot(session));
     },
 
     recordInquiryContinuation(continuationId) {

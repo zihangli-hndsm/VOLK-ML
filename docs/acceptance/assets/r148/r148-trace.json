@@ -1,0 +1,63 @@
+{
+  "schema": "r148-cdp-browser-evidence-v1",
+  "command": "powershell -ExecutionPolicy Bypass -File scripts/run-r148-browser.ps1",
+  "browser": "Google Chrome headless via Chrome DevTools Protocol",
+  "viewport": "1280x720",
+  "cloud": "off",
+  "normal": {
+    "result": "PASS",
+    "reducedMotion": false,
+    "viewport": "1280x720",
+    "cloud": "off",
+    "frames": 6,
+    "recording": "episode-normal.webm"
+  },
+  "reduced": {
+    "result": "PASS",
+    "reducedMotion": true,
+    "viewport": "1280x720",
+    "cloud": "off",
+    "frames": 6,
+    "recording": null
+  },
+  "mountedLifecycle": {
+    "result": "PASS",
+    "checkpoints": [
+      "Ask success/finish",
+      "natural bubble expiry + rerender",
+      "Ask rejection/error",
+      "Teaching success/finish",
+      "Teaching stop + stale completion",
+      "reset arbitration",
+      "context-switch stale completion",
+      "concept consume + STAY_SILENT",
+      "target withdrawal",
+      "Ask unmount/cancel"
+    ]
+  },
+  "accessibility": {
+    "result": "PASS",
+    "narrowViewport": "390x844",
+    "language": "zh",
+    "parallel": "en+zh",
+    "keyboardFocus": true,
+    "overflow": false
+  },
+  "artifacts": [
+    "episode-normal.webm",
+    "lumi-lifecycle.webm",
+    "normal-slideshow.html",
+    "reduced-slideshow.html",
+    "normal-01-entry.png",
+    "normal-02-fit-a.png",
+    "normal-03-resample.png",
+    "normal-04-fit-b.png",
+    "normal-05-concept.png",
+    "normal-06-recovered.png",
+    "reduced-05-concept.png",
+    "reduced-06-recovered.png",
+    "zh-narrow.png",
+    "parallel-entry.png",
+    "mounted-lifecycle.png"
+  ]
+}
