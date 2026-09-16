@@ -44,6 +44,11 @@ The first declarative local-first inquiry episode is documented in
 state and deterministic evidence over the existing Playground host without
 creating a second experiment reducer.
 
+Agent requests share the versioned, semantic boundary documented in
+[`ai-provider.md`](./ai-provider.md). Ask, Experiment Design, and World Edit
+carry explicit task modes and output sets through the same provider adapter;
+provider suggestions remain proposals and never become runtime truth.
+
 The same document also describes the Director prototype and its clean Explore
 handoff. Director presentation state is replayable and semantically inert;
 Episode 1 remains the single source of inquiry truth.

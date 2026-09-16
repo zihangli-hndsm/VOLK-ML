@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react';
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
+import { AGENT_TASK_MODES } from '../../core/ai/agentRequestContract.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 
 function changeLabel(change, t) {
@@ -77,7 +78,7 @@ export default function ExplorationAgentPanel({ agent, snapshot, presentation = 
       setAiNotice(null);
       if (!intent && aiMode === 'ai' && isConfigured) {
         try {
-          const interpreted = await interpreter.interpret({ request, context: agent.inspectContext({ presentation }), config });
+          const interpreted = await interpreter.interpret({ request, context: agent.inspectContext({ presentation }), config, taskMode: AGENT_TASK_MODES.EXPERIMENT_DESIGN, requestId: `experiment-design-${Date.now()}` });
           next = interpreted.kind === 'world-design'
             ? await agent.proposeExploration({ request, worldDesign: { ...interpreted.design, requestedHolds: interpreted.requestedHolds ?? [] } })
             : await agent.proposeExploration({ request, intent: interpreted.intent });

@@ -6,6 +6,7 @@ import { pedagogicalExperimentSchema, validateExplorationDesign, pedagogicalGoal
 import { canonicalizePedagogicalObservation } from './pedagogicalObservation.js';
 import { projectCuriosityContext } from './curiosity.js';
 import { normalizeRequestedHolds, requestedHoldsJsonSchema } from './requestedHolds.js';
+import { AGENT_TASK_MODES, runBoundedTask } from '../ai/agentRequestContract.js';
 
 const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
@@ -13,13 +14,14 @@ const GUIDANCE_KINDS = Object.freeze(['explanation', 'navigation', 'experiment',
 
 const nullableStringSchema = () => ({ anyOf: [{ type: 'string' }, { type: 'null' }] });
 
-export function explorationGuidanceResponseSchema({ availableDepths = [] } = {}) {
+export function explorationGuidanceResponseSchema({ availableDepths = [], taskMode = null } = {}) {
   const depths = availableDepths.length ? availableDepths : ['unavailable'];
+  const kinds = taskMode === AGENT_TASK_MODES.WORLD_EDIT ? ['world-design'] : taskMode === AGENT_TASK_MODES.EXPERIMENT_DESIGN ? ['explanation', 'navigation', 'experiment', 'clarification'] : GUIDANCE_KINDS;
   return {
     type: 'object',
     additionalProperties: false,
     properties: {
-      kind: { type: 'string', enum: GUIDANCE_KINDS },
+      kind: { type: 'string', enum: kinds },
       topic: { anyOf: [{ type: 'string', enum: EXPLANATION_TOPICS }, { type: 'null' }] },
       explanation: nullableStringSchema(),
       depth: { anyOf: [{ type: 'string', enum: depths }, { type: 'null' }] },
@@ -75,17 +77,25 @@ function parseJsonText(text) {
           if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('shape');
           return value;
         } catch {
-          throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
+          const error = interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
+          error.details = { stage: 'parse', responseLength: raw.length, truncated: raw.length > 20_000 };
+          throw error;
         }
       }
     }
   }
-  throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
+  const error = interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
+  error.details = { stage: 'parse', responseLength: raw.length, truncated: raw.length > 20_000 };
+  throw error;
 }
 
-function validateInterpretation(value, context) {
+function validateInterpretation(value, context, taskMode = null) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
+  }
+  const allowedKeys = new Set(['kind', 'topic', 'explanation', 'depth', 'intent', 'requestedChange', 'requestedHolds', 'design', 'experimentDesign', 'reason', 'ambiguity']);
+  if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
+    throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an unsupported field.');
   }
   if (value.kind === 'explanation') {
     if (!EXPLANATION_TOPICS.includes(value.topic)) {
@@ -110,6 +120,9 @@ function validateInterpretation(value, context) {
     return { kind: 'clarification', reason: reason || 'unsupported-request', ambiguity: value.ambiguity ?? null };
   }
   if (value.kind === 'world-design') {
+    if (taskMode && taskMode !== AGENT_TASK_MODES.WORLD_EDIT) {
+      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'A World edit response is not valid for this task mode.');
+    }
     const design = value.design;
     if (!design || !['create', 'edit'].includes(design.mode)) {
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid World design mode.');
@@ -134,6 +147,9 @@ function validateInterpretation(value, context) {
     }
   }
   if (value.kind === 'experiment' || (!value.kind && value.intent)) {
+    if (taskMode === AGENT_TASK_MODES.WORLD_EDIT) {
+      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'An experiment response is not valid for the World edit task mode.');
+    }
     if (value.experimentDesign === null || value.experimentDesign === undefined) {
       if (!INTENTS.includes(value.intent)) {
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter selected an unsupported exploration intent.');
@@ -305,31 +321,48 @@ function promptFor({ request, context }) {
 export function createExplorationAiInterpreter({ gateway, fetchImpl = globalThis.fetch } = {}) {
   const providerGateway = gateway ?? createProviderGateway({ fetchImpl });
   return Object.freeze({
-    async interpret({ request, context, config, providerId = 'openai-compatible', apiKey, model, endpoint }) {
+    async interpret({ request, context, config, providerId = 'openai-compatible', apiKey, model, endpoint, taskMode = null, requestId = null, signal = undefined }) {
       const resolvedConfig = normalizeAiConfig(config ?? { protocol: providerId, apiKey, model, endpoint });
       if (!resolvedConfig) throw interpreterError('AI_PROVIDER_UNSUPPORTED', 'The selected AI protocol is not supported.');
-      try {
-        const response = await providerGateway.complete({
-          config: resolvedConfig,
-          system: 'You are VOLK-ML\'s high-level exploration intent interpreter. Deterministic code remains authoritative.',
-          messages: [{ role: 'user', content: promptFor({ request, context }) }],
-          responseMode: 'json',
-          responseSchema: {
-            name: 'volk_ml_exploration_guidance',
-            schema: explorationGuidanceResponseSchema({
-              availableDepths: context?.presentation?.availableDepths ?? [],
-            }),
-          },
-        });
-        const parsed = parseJsonText(response.text);
-        const validated = validateInterpretation(parsed, context);
-        providerGateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'passed' });
-        return { ...validated, providerId: response.protocol };
-      } catch (error) {
-        providerGateway.recordTrace?.({ stage: 'interpreter-validation', status: 'failed' });
-        if (error?.code?.startsWith('AI_')) throw error;
-        throw interpreterError('AI_PROVIDER_UNAVAILABLE', 'The exploration AI interpreter is unavailable.');
-      }
+      const logicalRequestId = String(requestId ?? `exploration-${Date.now()}`).slice(0, 96);
+      const result = await runBoundedTask({
+        taskMode,
+        requestId: logicalRequestId,
+        signal,
+        repairInput: { task: 'interpretation-validation', instruction: 'Correct only the typed guidance shape. Do not emit operations, evidence, or hidden state.' },
+        execute: async ({ attempt }) => {
+          try {
+            const response = await providerGateway.complete({
+              config: resolvedConfig,
+              system: 'You are VOLK-ML\'s high-level exploration intent interpreter. Deterministic code remains authoritative.',
+              messages: [{ role: 'user', content: promptFor({ request, context }) }, ...(attempt ? [{ role: 'user', content: 'Repair the previous response to match the task contract exactly. Return JSON only.' }] : [])],
+              responseMode: 'json',
+              responseSchema: {
+                name: 'volk_ml_exploration_guidance',
+                schema: explorationGuidanceResponseSchema({
+                  availableDepths: context?.presentation?.availableDepths ?? [],
+                  taskMode,
+                }),
+              },
+              taskMode,
+              taskContext: context,
+              taskInput: { question: String(request ?? '').trim().slice(0, 240) },
+              requestId: logicalRequestId,
+              signal,
+            });
+            const parsed = parseJsonText(response.text);
+            const validated = validateInterpretation(parsed, context, taskMode);
+            providerGateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'passed' });
+            return { ...validated, providerId: response.protocol };
+          } catch (error) {
+            error.details = { ...(error.details ?? {}), stage: error.details?.stage ?? 'interpreter-validation', fieldPath: error.details?.fieldPath ?? 'guidance' };
+            providerGateway.recordTrace?.({ stage: 'interpreter-validation', status: 'failed' });
+            if (error?.code?.startsWith('AI_')) throw error;
+            throw interpreterError('AI_PROVIDER_UNAVAILABLE', 'The exploration AI interpreter is unavailable.');
+          }
+        },
+      });
+      return result.value;
     },
   });
 }

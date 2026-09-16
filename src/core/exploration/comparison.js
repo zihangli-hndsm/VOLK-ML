@@ -219,6 +219,20 @@ export function comparisonFactorCount(diff) {
   return Array.isArray(diff?.changedFactors) ? [...new Set(diff.changedFactors)].length : 0;
 }
 
+// A comparison is a partition of semantic dimensions. Compatibility aliases
+// may broaden the changed vocabulary, but they must never leak into the held
+// vocabulary. Keep this invariant at the comparison boundary so every
+// scenario consumer receives truthful CHANGED/HELD CONSTANT lists.
+export function assertComparisonDimensionsDisjoint(diff) {
+  const changed = new Set(Array.isArray(diff?.changed) ? diff.changed : []);
+  const overlap = (Array.isArray(diff?.unchanged) ? diff.unchanged : [])
+    .filter((factor) => changed.has(factor));
+  if (overlap.length) {
+    throw new Error(`COMPARISON_DIMENSIONS_OVERLAP:${[...new Set(overlap)].join(',')}`);
+  }
+  return true;
+}
+
 export function semanticFactors(experiment, { sharedObservationIds = null } = {}) {
   const value = validateExperiment(experiment);
   const modelControls = Object.fromEntries(
@@ -278,11 +292,18 @@ export function compareExperiments(left, right) {
     && !onlySampleCountChanged
     ? ['world']
     : factorChanged;
-  return {
+  // `changed[]` is the compatibility vocabulary used by older presentation
+  // surfaces (where a generator edit was called a World change), while the
+  // factor map above remains the canonical semantic classification. Never
+  // let that compatibility alias leak into the held set: a factor cannot be
+  // both CHANGED and HELD CONSTANT in one comparison.
+  const legacyChangedSet = new Set(legacyChanged);
+  const legacyUnchanged = FACTORS.filter((factor) => !legacyChangedSet.has(factor));
+  const comparison = {
     identical: factorChanged.length === 0,
     changed: legacyChanged,
     changedFactors: factorChanged,
-    unchanged: FACTORS.filter((factor) => !factors[factor].changed),
+    unchanged: legacyUnchanged,
     factors,
     semanticChangedPaths: semanticPaths,
     semanticFactorPaths,
@@ -291,6 +312,8 @@ export function compareExperiments(left, right) {
     details,
     clarity: semanticFactorPaths.length === 0 ? 'identical' : semanticFactorPaths.length === 1 ? 'high' : 'mixed',
   };
+  assertComparisonDimensionsDisjoint(comparison);
+  return comparison;
 }
 
 export function semanticFingerprint(experiment) {

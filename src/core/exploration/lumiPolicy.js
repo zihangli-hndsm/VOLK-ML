@@ -101,7 +101,13 @@ export function adaptCloudLumiResponse(response, { requestId, context } = {}) {
   if (response.action === 'SUGGEST_EXPERIMENT' && (!bounded(payload.recipeId, 128) || !bounded(payload.description, 2000))) return { valid: false, error: 'invalid-experiment-proposal' };
   if (response.action === 'OFFER_DEPTH' && !['evidence', 'mechanism', 'representation', 'math', 'builder'].includes(payload.target)) return { valid: false, error: 'unsupported-depth' };
   if (response.action === 'HIGHLIGHT_EVIDENCE') {
-    const available = new Set((context?.inquiryRuntime?.observations ?? []).map((item) => item?.id).filter(Boolean));
+    const runtimeEvidence = context?.inquiryRuntime?.evidence;
+    const evidenceItems = Array.isArray(runtimeEvidence) ? runtimeEvidence : runtimeEvidence && typeof runtimeEvidence === 'object' ? Object.values(runtimeEvidence) : [];
+    const available = new Set([
+      ...(context?.inquiryRuntime?.observations ?? []).map((item) => item?.id),
+      ...evidenceItems.map((item) => item?.id ?? item?.evidenceId),
+      ...(context?.evidence?.ids ?? []),
+    ].filter(Boolean));
     const ids = boundedIds(payload.evidenceIds);
     if (!ids.length || ids.some((id) => !available.has(id))) return { valid: false, error: 'evidence-reference-out-of-scope' };
   }
@@ -120,7 +126,7 @@ export function createCloudLumiPolicy(client) {
   if (!client || typeof client.lumiRespond !== 'function') return null;
   return {
     async decide(context) {
-      const requestId = `lumi-${crypto.randomUUID()}`;
+      const requestId = `lumi-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
       const response = await client.lumiRespond(projectLumiCloudRequest(context, requestId));
       const adapted = adaptCloudLumiResponse(response, { requestId, context });
       if (!adapted.valid) throw new Error(adapted.error);

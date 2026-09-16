@@ -1,6 +1,7 @@
 import { getModelPreset, getProviderPreset, providerPresetForProtocol } from './providerPresets.js';
 import { createRequestTraceStore } from './diagnostics.js';
 import { normalizeProviderUsage, sanitizeProviderUsageRecord, summarizeProviderUsage, unavailableProviderUsage } from './providerUsage.js';
+import { createAgentRequest, taskContractPrompt } from './agentRequestContract.js';
 
 const PROTOCOLS = Object.freeze([
   Object.freeze({
@@ -71,13 +72,29 @@ function requestProfileFor(config, protocol, model) {
     : protocol.id === 'gemini-compatible' ? providerPresetForProtocol(protocol.id) : null;
   const selected = config?.vendorId ? getModelPreset(config.vendorId, model) : null;
   const thinking = selected?.requestProfile?.thinking ?? preset?.capabilities?.thinking ?? null;
-  return Object.freeze({
+  const structuredOutput = selected?.requestProfile?.structuredOutput ?? preset?.capabilities?.structuredOutput ?? true;
+  const configuredEndpoint = String(config?.endpoint ?? '').trim();
+  const endpointKnown = !configuredEndpoint
+    || configuredEndpoint === protocol.defaultEndpoint
+    || configuredEndpoint === preset?.endpoint;
+  const structuredOutputMode = structuredOutput === true
+    ? (protocol.id === 'openai-responses' && endpointKnown ? 'schema' : 'json-only')
+    : structuredOutput === 'fallback' ? 'json-only-fallback'
+      : structuredOutput === 'prompt-json' ? 'prompt-json'
+        : structuredOutput === 'json-mime' ? 'json-mime'
+          : structuredOutput === false ? 'none' : 'json-only';
+  const profile = {
     temperature: selected?.requestProfile?.temperature ?? preset?.capabilities?.temperature ?? true,
     topP: selected?.requestProfile?.topP ?? preset?.capabilities?.topP ?? true,
     topK: selected?.requestProfile?.topK ?? preset?.capabilities?.topK ?? true,
-    structuredOutput: selected?.requestProfile?.structuredOutput ?? preset?.capabilities?.structuredOutput ?? true,
+    structuredOutput,
+    structuredOutputMode,
     ...(thinking ? { thinking } : {}),
-  });
+  };
+  // Keep the historic enumerable profile shape stable while exposing the
+  // normalized capability to adapters and contract tests.
+  Object.defineProperty(profile, 'structuredOutputMode', { value: structuredOutputMode, enumerable: false });
+  return Object.freeze(profile);
 }
 
 export function resolveProviderRequestProfile(config) {
@@ -99,7 +116,9 @@ async function readJson(response, protocol = null) {
   try {
     payload = await response.json();
   } catch {
-    throw providerError('AI_PROVIDER_RESPONSE_INVALID', 'The AI provider returned invalid JSON.');
+    const error = providerError('AI_PROVIDER_RESPONSE_INVALID', 'The AI provider returned invalid JSON.');
+    error.details = { cause: 'response-json-parse', status: Number(response?.status) || null };
+    throw error;
   }
   if (!response?.ok) {
     const error = providerError('AI_PROVIDER_REQUEST_FAILED', `The AI provider request failed (HTTP ${response?.status ?? 'unknown'}).`);
@@ -107,6 +126,7 @@ async function readJson(response, protocol = null) {
       status: Number(response?.status) || null,
       providerMessage: String(payload?.error?.message ?? payload?.message ?? '').slice(0, 400),
       usage: normalizeProviderUsage(payload?.usage, { protocol }),
+      finishReason: String(payload?.choices?.[0]?.finish_reason ?? payload?.stop_reason ?? payload?.status ?? '').slice(0, 80) || null,
     };
     throw error;
   }
@@ -169,8 +189,8 @@ function responsesInput(messages) {
   }));
 }
 
-function responsesTextOptions(responseSchema) {
-  if (!responseSchema) return {};
+function responsesTextOptions(responseSchema, requestProfile) {
+  if (!responseSchema || requestProfile?.structuredOutputMode === 'none' || (requestProfile && requestProfile.structuredOutputMode !== 'schema')) return {};
   const schema = responseSchema.schema ?? responseSchema;
   const name = responseSchema.name ?? 'volk_ml_structured_output';
   return {
@@ -187,7 +207,7 @@ function responsesTextOptions(responseSchema) {
 
 const adapters = Object.freeze({
   'openai-responses': Object.freeze({
-    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseSchema, signal }) {
+    async complete({ fetchImpl, endpoint, apiKey, model, system, messages, responseSchema, requestProfile, signal }) {
       const response = await fetchImpl(endpoint, {
         method: 'POST',
         headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
@@ -197,7 +217,7 @@ const adapters = Object.freeze({
           instructions: system,
           input: responsesInput(messages),
           store: false,
-          ...responsesTextOptions(responseSchema),
+          ...responsesTextOptions(responseSchema, requestProfile),
         }),
       });
       const payload = await readJson(response, 'openai-responses');
@@ -222,7 +242,7 @@ const adapters = Object.freeze({
       });
       let payload;
       try {
-        payload = await readJson(await request(responseMode === 'json'), 'openai-compatible');
+        payload = await readJson(await request(responseMode === 'json' && requestProfile?.structuredOutputMode !== 'none'), 'openai-compatible');
       } catch (error) {
         if (responseMode === 'json' && rejectsJsonResponseFormat(error)) {
           payload = await readJson(await request(false), 'openai-compatible');
@@ -253,7 +273,7 @@ const adapters = Object.freeze({
         ...(requestProfile?.temperature !== false ? { temperature: 0 } : {}),
         ...(requestProfile?.topP !== false ? { topP: 1 } : {}),
         ...(requestProfile?.topK !== false ? { topK: 1 } : {}),
-        ...(responseMode === 'json' ? { responseMimeType: 'application/json' } : {}),
+        ...(responseMode === 'json' && requestProfile?.structuredOutputMode === 'json-mime' ? { responseMimeType: 'application/json' } : {}),
       };
       const response = await fetchImpl(endpoint, {
         method: 'POST',
@@ -293,12 +313,23 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
     return record;
   };
   return Object.freeze({
-    async complete({ config, system = '', messages = [], responseMode = 'text', responseSchema = null, signal = undefined }) {
+    async complete({ config, system = '', messages = [], responseMode = 'text', responseSchema = null, signal = undefined, taskMode = null, taskContext = null, taskInput = null, taskContract = null, requestId: requestedRequestId = null }) {
       if (typeof fetchImpl !== 'function') throw providerError('AI_PROVIDER_UNAVAILABLE', 'No browser fetch implementation is available.');
       const resolved = requireConfig(config);
       const adapter = adapterRegistry[resolved.protocol.id];
       if (!adapter) throw providerError('AI_PROVIDER_UNSUPPORTED', 'The selected AI protocol is not supported.');
-      const requestId = globalThis.crypto?.randomUUID?.() ?? `ai-request-${Date.now()}`;
+      const requestId = String(requestedRequestId ?? (globalThis.crypto?.randomUUID?.() ?? `ai-request-${Date.now()}`)).slice(0, 96);
+      let effectiveSystem = String(system ?? '');
+      if (taskMode) {
+        const contractRequest = createAgentRequest({
+          taskMode,
+          requestId,
+          context: taskContext ?? {},
+          input: taskInput,
+          contract: taskContract,
+        });
+        effectiveSystem = [effectiveSystem, taskContractPrompt(contractRequest)].filter(Boolean).join('\n\n').slice(0, 40_000);
+      }
       let usage = setUsageRecord({ requestId, protocol: resolved.protocol.id, model: resolved.model, status: 'started', usage: unavailableProviderUsage() });
       traceStore.append({ id: requestId, stage: 'request-started', protocol: resolved.protocol.id, model: resolved.model, status: 'started', usage });
       let settled = false;
@@ -313,7 +344,7 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
           endpoint: endpointFor(resolved),
           apiKey: resolved.apiKey,
           model: resolved.model,
-          system: String(system ?? ''),
+          system: effectiveSystem,
           messages: messages.map((message) => ({ role: message.role, content: String(message.content ?? '') })),
           responseMode,
           responseSchema,
@@ -330,6 +361,14 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
         traceStore.append({ id: requestId, stage: 'failed', protocol: resolved.protocol.id, model: resolved.model, status: error?.code ?? 'failed', usage });
         settled = true;
         signal?.removeEventListener?.('abort', onAbort);
+        if (status === 'aborted') {
+          const cancellation = providerError('AI_REQUEST_CANCELLED', 'The AI provider request was cancelled.');
+          cancellation.details = {
+            cause: 'request-aborted',
+            originalCode: String(error?.code ?? '').slice(0, 80) || null,
+          };
+          throw cancellation;
+        }
         if (error?.code?.startsWith('AI_')) throw error;
         throw providerError('AI_PROVIDER_UNAVAILABLE', 'The AI provider request was unavailable.');
       }
@@ -358,6 +397,10 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
       notifyUsage();
     },
   });
+}
+
+export function providerStructuredOutputCapability(config) {
+  return resolveProviderRequestProfile(config)?.structuredOutputMode ?? 'none';
 }
 
 export { adapters as providerAdapters };

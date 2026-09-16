@@ -268,7 +268,7 @@ function isProviderFailure(error) {
 export function createLlmGoalInterpreter({ gateway, fetchImpl = globalThis.fetch } = {}) {
   const providerGateway = gateway ?? createProviderGateway({ fetchImpl });
   return Object.freeze({
-    async interpret({ request, context, config, providerId = 'openai-compatible', apiKey, model, endpoint }) {
+    async interpret({ request, context, config, providerId = 'openai-compatible', apiKey, model, endpoint, taskMode = null, requestId = null, signal = undefined }) {
       const resolvedConfig = normalizeAiConfig(config ?? { protocol: providerId, apiKey, model, endpoint });
       if (!resolvedConfig) throw sanitizedError('AI_PROVIDER_UNSUPPORTED', 'The selected AI protocol is not supported.', { stage: 'provider' });
       const boundedContext = buildTeachingInterpretationContext(context);
@@ -285,6 +285,7 @@ export function createLlmGoalInterpreter({ gateway, fetchImpl = globalThis.fetch
               name: 'volk_ml_teaching_goal',
               schema: teachingGoalResponseSchema({ allowedControls: boundedContext.allowedControls }),
             },
+            ...(taskMode ? { taskMode, taskContext: boundedContext, taskInput: { question: String(request ?? '').trim().slice(0, 240) }, requestId, signal } : {}),
           });
           const parsed = parseJsonText(response.text);
           let candidate;

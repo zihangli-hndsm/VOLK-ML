@@ -1,3 +1,5 @@
+import { createAgentRequest, taskContractPrompt } from '../../core/ai/agentRequestContract.js';
+
 const MAX_MESSAGES = 20;
 const MAX_MESSAGE_TEXT = 12_000;
 
@@ -26,13 +28,20 @@ export function createCloudAiGateway({ client, getAccessToken, onSettled } = {})
     throw error;
   };
   return Object.freeze({
-    async complete({ system = '', messages = [], responseMode = 'text', responseSchema = null } = {}) {
+    kind: 'volk-cloud',
+    async complete({ system = '', messages = [], responseMode = 'text', responseSchema = null, taskMode = null, taskContext = null, taskInput = null, taskContract = null, requestId: requestedRequestId = null } = {}) {
       if (!client?.createAiOperation || typeof getAccessToken !== 'function') return unavailable();
       const boundedMessages = (Array.isArray(messages) ? messages : []).slice(-MAX_MESSAGES).map((message) => `${message?.role === 'assistant' ? 'Assistant' : 'Learner'}: ${boundedMessage(message?.content)}`);
       const schema = safeSchema(responseSchema);
-      const prompt = [boundedMessage(system), ...boundedMessages, responseMode === 'json' && schema ? `Return JSON matching this schema: ${JSON.stringify(schema)}` : ''].filter(Boolean).join('\n').slice(0, 40_000);
+      const operationRequestId = String(requestedRequestId ?? requestId()).slice(0, 96);
+      let contractPrompt = '';
+      if (taskMode) {
+        const taskRequest = createAgentRequest({ taskMode, requestId: operationRequestId, context: taskContext ?? {}, input: taskInput, contract: taskContract });
+        contractPrompt = taskContractPrompt(taskRequest);
+      }
+      const prompt = [boundedMessage(system), contractPrompt, ...boundedMessages, responseMode === 'json' && schema ? `Return JSON matching this schema: ${JSON.stringify(schema)}` : ''].filter(Boolean).join('\n').slice(0, 40_000);
       const operation = { operationType: 'lumi-dialogue', input: { prompt } };
-      const result = await client.createAiOperation({ accessToken: getAccessToken(), requestId: requestId(), operation });
+      const result = await client.createAiOperation({ accessToken: getAccessToken(), requestId: operationRequestId, operation });
       if (result.status === 'pending' || result.status === 'unknown') {
         const error = new Error('VOLK_CLOUD_OPERATION_PENDING');
         error.code = 'VOLK_CLOUD_OPERATION_PENDING';

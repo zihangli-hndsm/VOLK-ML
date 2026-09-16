@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { applyWorldTransaction } from '../src/core/exploration/operations.js';
-import { compareExperiments } from '../src/core/exploration/comparison.js';
+import { assertComparisonDimensionsDisjoint, compareExperiments } from '../src/core/exploration/comparison.js';
 import { createExperiment } from '../src/core/exploration/experiment.js';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { createWorld, deriveWorldGeneratorFacts } from '../src/core/exploration/world.js';
@@ -365,6 +365,23 @@ assert.equal(frozen.mode, 'sample');
 const makeExperiment = (id, world) => createExperiment({ id, world, adapterId: 'linear-regression', model: { adapterId: 'linear-regression', controls: {} }, learning: { controls: {} }, evaluation: { controls: {} } });
 const recipeDiff = compareExperiments(makeExperiment('recipe-a', generated), makeExperiment('recipe-b', regenerated));
 assert.ok(recipeDiff.details.worldRecipe.changedPaths.some((path) => path.includes('class-a')));
+assert.equal(assertComparisonDimensionsDisjoint(recipeDiff), true, 'Recipe comparison changed/held dimensions are disjoint');
+
+// A real SET_NOISE edit is a World intervention: it changes the latent
+// generating conditions, so World must not also appear in HELD CONSTANT.
+const noisePatch = { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.2 }] };
+const noisyConfigured = applyWorldTransaction(generated, {
+  id: 'recipe-noise-patch', actor: 'human', intent: 'world-design',
+  operations: [{ type: 'PATCH_WORLD_RECIPE', patch: noisePatch }],
+}).world;
+const noisyRegenerated = applyWorldTransaction(noisyConfigured, {
+  id: 'recipe-noise-regenerate', actor: 'human', intent: 'regenerate-world',
+  operations: [{ type: 'REGENERATE_WORLD' }],
+}).world;
+const noiseDiff = compareExperiments(makeExperiment('recipe-noise-a', generated), makeExperiment('recipe-noise-b', noisyRegenerated));
+assert.ok(noiseDiff.changed.includes('world'), 'SET_NOISE changes the World compatibility dimension');
+assert.equal(noiseDiff.unchanged.includes('world'), false, 'SET_NOISE World change is not reported as held');
+assert.equal(assertComparisonDimensionsDisjoint(noiseDiff), true, 'SET_NOISE changed/held dimensions are disjoint');
 
 const splitPatch = { version: 1, changes: [{ type: 'TRANSLATE_GROUP', groupId: 'class-b', split: 'test', delta: [0.7, 0] }] };
 const splitRecipe = applyWorldRecipePatch(base, splitPatch);
