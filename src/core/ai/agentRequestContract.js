@@ -7,6 +7,7 @@
  */
 
 export const AGENT_REQUEST_CONTRACT_VERSION = 1;
+export const AGENT_LOGICAL_TIMEOUT_MS = 15_000;
 
 export const AGENT_TASK_MODES = Object.freeze({
   ASK: 'ask',
@@ -129,7 +130,8 @@ export function taskContractFor(taskMode) {
 
 export function createAgentRequest({ taskMode, requestId, context = {}, input = null, contract = null } = {}) {
   const task = contract ?? taskContractFor(taskMode);
-  if (!task || task.version !== AGENT_REQUEST_CONTRACT_VERSION || !AGENT_TASK_MODE_VALUES.includes(task.mode) || !OUTPUT_SET_VALUES.has(task.outputSet)) {
+  if (!task || task.version !== AGENT_REQUEST_CONTRACT_VERSION || !AGENT_TASK_MODE_VALUES.includes(task.mode)
+    || !OUTPUT_SET_VALUES.has(task.outputSet) || task.outputSet !== AGENT_OUTPUT_SETS[task.mode]) {
     const error = new Error('AI_TASK_CONTRACT_INVALID');
     error.code = 'AI_TASK_CONTRACT_INVALID';
     error.details = { field: 'task' };
@@ -160,7 +162,8 @@ export function validateAgentRequest(value) {
   if (!asId(value.requestId)) errors.push('requestId');
   if (value.task && typeof value.task === 'object') for (const key of Object.keys(value.task)) if (!['version', 'mode', 'outputSet'].includes(key)) errors.push(`unknown:task.${key}`);
   if (!value.task || value.task.version !== AGENT_REQUEST_CONTRACT_VERSION || !AGENT_TASK_MODE_VALUES.includes(value.task.mode)) errors.push('task');
-  if (value.task && !OUTPUT_SET_VALUES.has(value.task.outputSet)) errors.push('outputSet');
+  if (value.task && (!OUTPUT_SET_VALUES.has(value.task.outputSet)
+    || value.task.outputSet !== AGENT_OUTPUT_SETS[value.task.mode])) errors.push('outputSet');
   if (!value.context || typeof value.context !== 'object' || Array.isArray(value.context)) errors.push('context');
   if (value.input !== undefined && (!value.input || typeof value.input !== 'object' || Array.isArray(value.input))) errors.push('input');
   if (value.input && typeof value.input === 'object') for (const key of Object.keys(value.input)) if (!['question', 'expectation', 'reasoning', 'goal', 'requestedChange', 'mode', 'recipeVersion', 'patchVersion'].includes(key)) errors.push(`unknown:input.${key}`);
@@ -225,6 +228,9 @@ export function safeTaskFailure(error, { taskMode = null, stage = null, requestI
     finishReason: asText(details.finishReason, 80),
     truncated: typeof details.truncated === 'boolean' ? details.truncated : null,
     responseLength: Number.isFinite(details.responseLength) ? Math.max(0, Math.min(100_000, details.responseLength)) : null,
+    elapsedMs: Number.isFinite(details.elapsedMs) ? Math.max(0, Math.min(120_000, Math.floor(details.elapsedMs))) : null,
+    attemptCount: Number.isFinite(details.attempts) ? Math.max(1, Math.min(2, Math.floor(details.attempts))) : null,
+    repairCount: Number.isFinite(details.repairCount) ? Math.max(0, Math.min(1, Math.floor(details.repairCount))) : null,
   });
 }
 
@@ -244,38 +250,148 @@ export function createLogicalRequestController({ requestId, onState } = {}) {
   });
 }
 
+function requestAbortError({ kind, requestId, startedAt, stage = 'logical-request' } = {}) {
+  const timeout = kind === 'timeout';
+  const error = new Error(timeout ? 'AI_REQUEST_TIMEOUT' : 'AI_REQUEST_CANCELLED');
+  error.name = timeout ? 'TimeoutError' : 'AbortError';
+  error.code = timeout ? 'AI_REQUEST_TIMEOUT' : 'AI_REQUEST_CANCELLED';
+  error.details = {
+    reason: timeout ? 'logical-deadline' : 'learner-cancelled',
+    cause: timeout ? 'logical-deadline' : 'request-aborted',
+    stage,
+    elapsedMs: Math.max(0, Date.now() - startedAt),
+    requestId: asId(requestId),
+  };
+  return error;
+}
+
+function boundedTimeoutMs(value) {
+  if (!Number.isFinite(Number(value))) return AGENT_LOGICAL_TIMEOUT_MS;
+  return Math.max(1, Math.min(120_000, Math.floor(Number(value))));
+}
+
 /**
  * One logical request may make an initial call and one validation repair. The
  * repair is never attempted for transport, auth, rate-limit, timeout, or
  * cancellation failures.
  */
-export async function runBoundedTask({ execute, validate, repairInput = null, fallback = null, taskMode = null, requestId = null, signal = null } = {}) {
-  let firstFailure = null;
-  for (let attempt = 0; attempt < 2; attempt += 1) {
-    if (signal?.aborted) {
-      const error = new Error('AI_REQUEST_CANCELLED');
-      error.code = 'AI_REQUEST_CANCELLED';
-      throw error;
+export async function runBoundedTask({ execute, validate, repairInput = null, fallback = null, taskMode = null, requestId = null, signal = null, timeoutMs = AGENT_LOGICAL_TIMEOUT_MS, onAttempt = null } = {}) {
+  const startedAt = Date.now();
+  const deadlineMs = boundedTimeoutMs(timeoutMs);
+  const deadlineController = typeof AbortController === 'function' ? new AbortController() : null;
+  const effectiveSignal = deadlineController?.signal ?? signal;
+  let abortKind = null;
+  let abortStage = 'logical-request';
+  let deadlineTimer = null;
+  let signalListener = null;
+  const attemptTrace = [];
+  const attemptBudget = { max: 2, used: 0 };
+  const abort = (kind, stage = 'logical-request') => {
+    if (abortKind) return;
+    abortKind = kind;
+    abortStage = stage;
+    if (deadlineController && !deadlineController.signal.aborted) {
+      deadlineController.abort({ code: kind === 'timeout' ? 'AI_REQUEST_TIMEOUT' : 'AI_REQUEST_CANCELLED', stage });
     }
-    try {
-      const raw = await execute({ attempt, repairInput: attempt ? repairInput : null, signal });
-      return { value: validate ? validate(raw) : raw, attempts: attempt + 1, firstFailure: firstFailure ? safeTaskFailure(firstFailure, { taskMode, requestId }) : null };
-    } catch (error) {
-      const failureClass = classifyAgentFailure(error);
-      if (!firstFailure) firstFailure = error;
-      if (attempt === 1 || !['parse', 'answer-validation'].includes(failureClass)) {
-        if (fallback) return { value: await fallback({ error, firstFailure, attempts: attempt + 1 }), attempts: attempt + 1, firstFailure: safeTaskFailure(firstFailure, { taskMode, requestId }) };
-        if (attempt > 0 && error && typeof error === 'object') {
-          error.details = {
-            ...(error.details ?? {}),
-            firstFailureCode: String(firstFailure?.code ?? '').slice(0, 80) || null,
-            firstFailureClass: classifyAgentFailure(firstFailure),
-            attempts: attempt + 1,
-          };
+  };
+  if (signal?.aborted) abort('cancel', 'logical-request');
+  else if (signal?.addEventListener) {
+    signalListener = () => abort('cancel', 'logical-request');
+    signal.addEventListener('abort', signalListener, { once: true });
+  }
+  deadlineTimer = setTimeout(() => abort('timeout', 'logical-deadline'), deadlineMs);
+  const emitAttempt = (entry) => {
+    const record = { version: 1, requestId: asId(requestId), elapsedMs: Math.max(0, Date.now() - startedAt), ...entry };
+    attemptTrace.push(record);
+    try { onAttempt?.(structuredClone(record)); } catch { /* tracing is observational */ }
+  };
+  const awaitWithAbort = async (promise, { stage }) => {
+    if (abortKind) throw requestAbortError({ kind: abortKind, requestId, startedAt, stage: abortStage || stage });
+    if (!effectiveSignal?.addEventListener) {
+      const remaining = Math.max(1, deadlineMs - (Date.now() - startedAt));
+      let localTimer;
+      const deadlinePromise = new Promise((_, reject) => {
+        localTimer = setTimeout(() => { abort('timeout', 'logical-deadline'); reject(requestAbortError({ kind: 'timeout', requestId, startedAt, stage: 'logical-deadline' })); }, remaining);
+      });
+      const safePromise = Promise.resolve(promise);
+      safePromise.catch(() => {});
+      try { return await Promise.race([safePromise, deadlinePromise]); }
+      finally { if (localTimer) clearTimeout(localTimer); }
+    }
+    let abortListener;
+    const abortPromise = new Promise((_, reject) => {
+      abortListener = () => reject(requestAbortError({ kind: abortKind ?? 'cancel', requestId, startedAt, stage: abortStage || stage }));
+      effectiveSignal.addEventListener('abort', abortListener, { once: true });
+    });
+    const safePromise = Promise.resolve(promise);
+    // An abort-ignoring provider may settle later; consume that result/rejection
+    // after the logical request has already returned to local fallback.
+    safePromise.catch(() => {});
+    try { return await Promise.race([safePromise, abortPromise]); }
+    finally { effectiveSignal.removeEventListener?.('abort', abortListener); }
+  };
+  let firstFailure = null;
+  try {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      if (abortKind) throw requestAbortError({ kind: abortKind, requestId, startedAt, stage: abortStage });
+      const stage = attempt ? 'repair' : 'initial';
+      try {
+        const raw = await awaitWithAbort(execute({ attempt, repairInput: attempt ? repairInput : null, signal: effectiveSignal, attemptBudget }), { stage });
+        const value = validate ? validate(raw) : raw;
+        if (abortKind) throw requestAbortError({ kind: abortKind, requestId, startedAt, stage: abortStage });
+        emitAttempt({ attempt: attempt + 1, stage, status: 'succeeded', usage: raw?.usage ?? value?.usage ?? null });
+        return {
+          value,
+          attempts: attempt + 1,
+          repairCount: attempt,
+          finalSource: 'provider',
+          attemptTrace: structuredClone(attemptTrace),
+          firstFailure: firstFailure ? safeTaskFailure(firstFailure, { taskMode, stage: 'initial', requestId }) : null,
+        };
+      } catch (error) {
+        const normalizedAbort = abortKind
+          ? requestAbortError({ kind: abortKind, requestId, startedAt, stage: abortStage || stage })
+          : error;
+        const failureClass = classifyAgentFailure(normalizedAbort, { stage });
+        if (!firstFailure) firstFailure = normalizedAbort;
+        emitAttempt({
+          attempt: attempt + 1,
+          stage,
+          status: failureClass === 'timeout' ? 'timeout' : failureClass === 'cancel' ? 'cancelled' : 'failed',
+          failure: safeTaskFailure(normalizedAbort, { taskMode, stage, requestId }),
+          usage: normalizedAbort?.details?.usage ?? null,
+        });
+        if (abortKind || attempt === 1 || !['parse', 'answer-validation'].includes(failureClass)) {
+          if (fallback) {
+            const value = await fallback({ error: normalizedAbort, firstFailure, attempts: attempt + 1 });
+            return {
+              value,
+              attempts: attempt + 1,
+              repairCount: attempt,
+              finalSource: 'fallback',
+              attemptTrace: structuredClone(attemptTrace),
+              firstFailure: safeTaskFailure(firstFailure, { taskMode, stage: 'initial', requestId }),
+            };
+          }
+          if (normalizedAbort && typeof normalizedAbort === 'object') {
+            normalizedAbort.details = {
+              ...(normalizedAbort.details ?? {}),
+              firstFailureCode: String(firstFailure?.code ?? '').slice(0, 80) || null,
+              firstFailureClass: classifyAgentFailure(firstFailure),
+              attempts: attempt + 1,
+              repairCount: attempt,
+              elapsedMs: Math.max(0, Date.now() - startedAt),
+              requestId: asId(requestId),
+              attemptTrace: structuredClone(attemptTrace),
+            };
+          }
+          throw normalizedAbort;
         }
-        throw error;
       }
     }
+    throw firstFailure ?? new Error('AI_TASK_FAILED');
+  } finally {
+    if (deadlineTimer) clearTimeout(deadlineTimer);
+    if (signal && signalListener) signal.removeEventListener?.('abort', signalListener);
   }
-  throw firstFailure ?? new Error('AI_TASK_FAILED');
 }

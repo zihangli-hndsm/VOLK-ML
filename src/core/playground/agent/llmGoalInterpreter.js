@@ -1,6 +1,7 @@
 import { planTeachingGoal } from './teachingPlanner.js';
 import { normalizeAiConfig } from '../../ai/aiSettings.js';
 import { createProviderGateway, listProviderProtocols } from '../../ai/providerRegistry.js';
+import { AGENT_TASK_MODES, runBoundedTask } from '../../ai/agentRequestContract.js';
 
 export const LLM_PROVIDERS = Object.freeze(listProviderProtocols().map((protocol) => Object.freeze({
   ...protocol,
@@ -265,68 +266,73 @@ function isProviderFailure(error) {
     || error?.code === 'AI_PROVIDER_UNAVAILABLE';
 }
 
-export function createLlmGoalInterpreter({ gateway, fetchImpl = globalThis.fetch } = {}) {
+export function createLlmGoalInterpreter({ gateway, fetchImpl = globalThis.fetch, timeoutMs } = {}) {
   const providerGateway = gateway ?? createProviderGateway({ fetchImpl });
   return Object.freeze({
-    async interpret({ request, context, config, providerId = 'openai-compatible', apiKey, model, endpoint, taskMode = null, requestId = null, signal = undefined }) {
+    async interpret({ request, context, config, providerId = 'openai-compatible', apiKey, model, endpoint, taskMode = null, requestId = null, signal = undefined, timeoutMs: requestTimeoutMs } = {}) {
       const resolvedConfig = normalizeAiConfig(config ?? { protocol: providerId, apiKey, model, endpoint });
       if (!resolvedConfig) throw sanitizedError('AI_PROVIDER_UNSUPPORTED', 'The selected AI protocol is not supported.', { stage: 'provider' });
       const boundedContext = buildTeachingInterpretationContext(context);
       let repairProblem = '';
       let repairCandidate = null;
-      for (let attempt = 0; attempt < 2; attempt += 1) {
-        try {
-          const response = await providerGateway.complete({
-            config: resolvedConfig,
-            system: 'You are VOLK-ML\'s temporary semantic goal interpreter. Deterministic VOLK-ML code remains authoritative.',
-            messages: [{ role: 'user', content: promptFor({ request, context: boundedContext, repairProblem, repairCandidate }) }],
-            responseMode: 'json',
-            responseSchema: {
-              name: 'volk_ml_teaching_goal',
-              schema: teachingGoalResponseSchema({ allowedControls: boundedContext.allowedControls }),
-            },
-            ...(taskMode ? { taskMode, taskContext: boundedContext, taskInput: { question: String(request ?? '').trim().slice(0, 240) }, requestId, signal } : {}),
+      try {
+        const result = await runBoundedTask({
+          taskMode: taskMode ?? AGENT_TASK_MODES.ASK,
+          requestId: requestId ?? `goal-${Date.now()}`,
+          signal,
+          timeoutMs: requestTimeoutMs ?? timeoutMs,
+          repairInput: { task: 'goal-validation', instruction: 'Correct only the typed TeachingGoal shape; preserve the user intent and do not emit operations.' },
+          onAttempt: (entry) => providerGateway.recordTrace?.({ id: requestId ?? `goal-${Date.now()}`, stage: 'interpreter-validation', status: entry.status, usage: entry.usage }),
+          execute: async ({ attempt, signal: effectiveSignal, attemptBudget }) => {
+            const response = await providerGateway.complete({
+              config: resolvedConfig,
+              system: 'You are VOLK-ML\'s temporary semantic goal interpreter. Deterministic VOLK-ML code remains authoritative.',
+              messages: [{ role: 'user', content: promptFor({ request, context: boundedContext, repairProblem, repairCandidate }) }, ...(attempt ? [{ role: 'user', content: 'Repair the previous response to match the typed TeachingGoal contract exactly. Return JSON only.' }] : [])],
+              responseMode: 'json',
+              responseSchema: {
+                name: 'volk_ml_teaching_goal',
+                schema: teachingGoalResponseSchema({ allowedControls: boundedContext.allowedControls }),
+              },
+              ...(taskMode ? { taskMode, taskContext: boundedContext, taskInput: { question: String(request ?? '').trim().slice(0, 240) }, requestId, signal: effectiveSignal, attemptBudget } : { signal: effectiveSignal, attemptBudget }),
+            });
+            return response;
+          },
+          validate: (response) => {
+            const parsed = parseJsonText(response.text);
+            try {
+              let candidate = canonicalizeTeachingGoal(parsed);
+              candidate = requestAwareCandidate({ request, candidate, context });
+              return { goal: validateCandidate(candidate, context), providerId: response.protocol };
+            } catch (error) {
+              repairProblem = error?.details?.problem ?? error?.message ?? error?.code ?? 'goal structure could not be canonicalized unambiguously';
+              repairCandidate = error?.details?.candidate ?? safeCandidateSummary(parsed);
+              if (error?.code === 'AI_INVALID_GOAL' && error?.details?.candidate) throw error;
+              throw sanitizedError(error?.code ?? 'AI_INVALID_GOAL', error?.message ?? 'The AI interpreter returned an invalid goal shape.', {
+                ...diagnosticDetails(error),
+                stage: error?.details?.stage ?? 'canonicalize',
+                candidate: repairCandidate,
+                problem: repairProblem,
+              });
+            }
+          },
+        });
+        return { ...result.value, attempts: result.attempts, repairCount: result.repairCount, firstFailure: result.firstFailure, finalSource: result.finalSource };
+      } catch (error) {
+        if (isProviderFailure(error)) {
+          throw sanitizeInterpreterError(error, {
+            stage: error?.details?.stage ?? 'provider',
+            attempt: error?.details?.attempts ?? 1,
+            protocol: resolvedConfig.protocol,
+            model: resolvedConfig.model,
           });
-          const parsed = parseJsonText(response.text);
-          let candidate;
-          try {
-            candidate = canonicalizeTeachingGoal(parsed);
-          } catch (error) {
-            throw sanitizedError(error?.code ?? 'AI_INVALID_GOAL', error?.message ?? 'The AI interpreter returned an invalid goal shape.', {
-              ...diagnosticDetails(error),
-              stage: 'canonicalize',
-              candidate: safeCandidateSummary(parsed),
-              problem: error?.details?.problem ?? 'goal structure could not be canonicalized unambiguously',
-            });
-          }
-          candidate = requestAwareCandidate({ request, candidate, context });
-          return {
-            goal: validateCandidate(candidate, context),
-            attempts: attempt + 1,
-            providerId: response.protocol,
-          };
-        } catch (error) {
-          if (isProviderFailure(error)) {
-            throw sanitizeInterpreterError(error, {
-              stage: 'provider',
-              attempt: attempt + 1,
-              protocol: resolvedConfig.protocol,
-              model: resolvedConfig.model,
-            });
-          }
-          if (attempt === 1) {
-            throw sanitizeInterpreterError(error, {
-              stage: error?.details?.stage ?? 'validate',
-              attempt: attempt + 1,
-              protocol: resolvedConfig.protocol,
-              model: resolvedConfig.model,
-            });
-          }
-          repairProblem = error?.details?.problem ?? error?.message ?? error?.code ?? 'invalid goal';
-          repairCandidate = error?.details?.candidate ?? null;
         }
+        throw sanitizeInterpreterError(error, {
+          stage: error?.details?.stage ?? 'validate',
+          attempt: error?.details?.attempts ?? 1,
+          protocol: resolvedConfig.protocol,
+          model: resolvedConfig.model,
+        });
       }
-      throw sanitizedError('AI_INTERPRETATION_FAILED', 'The AI interpreter request failed.', { stage: 'validate' });
     },
   });
 }

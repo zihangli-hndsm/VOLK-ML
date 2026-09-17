@@ -225,7 +225,7 @@ export function projectExplorationAiContext(context = {}) {
   };
 }
 
-function promptFor({ request, context }) {
+function promptFor({ request, context, taskMode = null, repairProblem = '', repairCandidate = null }) {
   const availableDepths = Array.isArray(context?.presentation?.availableDepths)
     ? context.presentation.availableDepths
     : [];
@@ -244,10 +244,26 @@ function promptFor({ request, context }) {
     ambiguity: null,
     ...overrides,
   })}`;
+  const allowedKinds = taskMode === AGENT_TASK_MODES.WORLD_EDIT
+    ? ['world-design']
+    : taskMode === AGENT_TASK_MODES.EXPERIMENT_DESIGN
+      ? ['explanation', 'navigation', 'experiment', 'clarification']
+      : GUIDANCE_KINDS;
+  const examples = [];
+  if (allowedKinds.includes('explanation')) examples.push(responseExample('explanation', { kind: 'explanation', topic: 'comparison', explanation: 'short conceptual explanation' }));
+  if (allowedKinds.includes('navigation')) examples.push(responseExample('navigation', { kind: 'navigation', depth: exampleDepth }));
+  if (allowedKinds.includes('experiment')) {
+    examples.push(responseExample('experiment-hold-realized-world', { kind: 'experiment', intent: 'learning-rate-increase', requestedChange: 'increase the learning rate', requestedHolds: ['world'] }));
+    examples.push(responseExample('experiment-hold-world-process', { kind: 'experiment', intent: 'more-data', requestedChange: 'increase same-distribution training data', requestedHolds: ['world-generating-process'] }));
+    examples.push(responseExample('pedagogical-experiment', { kind: 'experiment', experimentDesign: { version: 1, kind: 'exploration-design', goal: 'more-same-distribution-data', intervention: 'increase-same-distribution-sample-size', evidence: 'outcome-and-stability', prediction: null } }));
+  }
+  if (allowedKinds.includes('world-design')) examples.push(responseExample('world-design', { kind: 'world-design', design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } } }));
+  if (allowedKinds.includes('clarification')) examples.push(responseExample('clarification', { kind: 'clarification', reason: 'short bounded reason', ambiguity: 'short bounded ambiguity' }));
   return [
     'Interpret the learner request into one bounded high-level VOLK-ML guidance outcome.',
     'Return JSON only. Never return runtime operations, operation IDs, control IDs, observable IDs, code, or a ScenarioSpec.',
-    `Allowed outcome kinds: ${GUIDANCE_KINDS.join(', ')}`,
+    `Task mode: ${taskMode ?? 'general-exploration'}`,
+    `Allowed outcome kinds for this task: ${allowedKinds.join(', ')}`,
     `Allowed exploration intents: ${INTENTS.join(', ')}`,
     'When the learner asks a testable curiosity question, prefer experimentDesign with one supported goal over a lecture or arbitrary World.',
     'For requests about classes overlapping, use the truthful class-separation goal: move one class closer and observe the outcome; do not claim that geometric overlap was measured.',
@@ -270,72 +286,38 @@ function promptFor({ request, context }) {
     `Allowed explanation topics: ${EXPLANATION_TOPICS.join(', ')}`,
     'The deterministic planner and capability registry will choose all executable operations after this response.',
     `Bounded semantic context: ${JSON.stringify(projectExplorationAiContext(context))}`,
-    responseExample('explanation', { kind: 'explanation', topic: 'comparison', explanation: 'short conceptual explanation' }),
-    responseExample('navigation', { kind: 'navigation', depth: exampleDepth }),
-    responseExample('experiment-hold-realized-world', {
-      kind: 'experiment',
-      intent: 'learning-rate-increase',
-      requestedChange: 'increase the learning rate',
-      requestedHolds: ['world'],
-    }),
-    responseExample('experiment-hold-world-process', {
-      kind: 'experiment',
-      intent: 'more-data',
-      requestedChange: 'increase same-distribution training data',
-      requestedHolds: ['world-generating-process'],
-    }),
-    responseExample('pedagogical-experiment', {
-      kind: 'experiment',
-      experimentDesign: {
-        version: 1,
-        kind: 'exploration-design',
-        goal: 'more-same-distribution-data',
-        intervention: 'increase-same-distribution-sample-size',
-        evidence: 'outcome-and-stability',
-        prediction: null,
-      },
-    }),
-    responseExample('world-design', {
-      kind: 'world-design',
-      design: {
-        mode: 'edit',
-        recipe: null,
-        patch: {
-          version: 1,
-          changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }],
-        },
-      },
-    }),
-    responseExample('clarification', {
-      kind: 'clarification',
-      reason: 'short bounded reason',
-      ambiguity: 'short bounded ambiguity',
-    }),
+    ...examples,
     'requestedHolds semantics: ["world"] means hold the current realized World identity/state. ["world-generating-process"] means hold the generating relation/process; it is distinct from the realized World and must not be substituted for it.',
     'Invalid requestedHolds examples (reject rather than emit): ["constructor"] (unknown ID), ["keep everything else unchanged"] (prose), ["world","noise"] (contradictory broad realized-World hold plus a noise change), and ["world","world-generating-process"] (ambiguous broad and specific World holds).',
     'requestedHolds may be null or omitted to mean no additional model-supplied hold. Use only canonical IDs: world, world-generating-process, latent-relation, noise, model-configuration, learning-configuration, evaluation-configuration, existing-train-test-setup, train-distribution, test-distribution, train-sample-count, train-world, test-world, randomness-policy. Exact compatibility aliases may be normalized at the compatibility boundary; do not prefer aliases in new output. Unknown, prose, contradictory, and over-limit holds are invalid.',
+    repairCandidate ? `Previous candidate (safe summary): ${JSON.stringify(repairCandidate)}` : '',
+    repairProblem ? `Previous validation feedback (sanitized): ${repairProblem}` : '',
     `Learner request: ${String(request ?? '').trim()}`,
   ].join('\n\n');
 }
 
-export function createExplorationAiInterpreter({ gateway, fetchImpl = globalThis.fetch } = {}) {
+export function createExplorationAiInterpreter({ gateway, fetchImpl = globalThis.fetch, timeoutMs } = {}) {
   const providerGateway = gateway ?? createProviderGateway({ fetchImpl });
   return Object.freeze({
-    async interpret({ request, context, config, providerId = 'openai-compatible', apiKey, model, endpoint, taskMode = null, requestId = null, signal = undefined }) {
+    async interpret({ request, context, config, providerId = 'openai-compatible', apiKey, model, endpoint, taskMode = null, requestId = null, signal = undefined, timeoutMs: requestTimeoutMs } = {}) {
       const resolvedConfig = normalizeAiConfig(config ?? { protocol: providerId, apiKey, model, endpoint });
       if (!resolvedConfig) throw interpreterError('AI_PROVIDER_UNSUPPORTED', 'The selected AI protocol is not supported.');
       const logicalRequestId = String(requestId ?? `exploration-${Date.now()}`).slice(0, 96);
+      let repairProblem = '';
+      let repairCandidate = null;
       const result = await runBoundedTask({
         taskMode,
         requestId: logicalRequestId,
         signal,
+        timeoutMs: requestTimeoutMs ?? timeoutMs,
         repairInput: { task: 'interpretation-validation', instruction: 'Correct only the typed guidance shape. Do not emit operations, evidence, or hidden state.' },
-        execute: async ({ attempt }) => {
+        onAttempt: (entry) => providerGateway.recordTrace?.({ id: logicalRequestId, stage: 'interpreter-validation', status: entry.status, usage: entry.usage }),
+        execute: async ({ attempt, attemptBudget, signal: effectiveSignal }) => {
           try {
             const response = await providerGateway.complete({
               config: resolvedConfig,
               system: 'You are VOLK-ML\'s high-level exploration intent interpreter. Deterministic code remains authoritative.',
-              messages: [{ role: 'user', content: promptFor({ request, context }) }, ...(attempt ? [{ role: 'user', content: 'Repair the previous response to match the task contract exactly. Return JSON only.' }] : [])],
+              messages: [{ role: 'user', content: promptFor({ request, context, taskMode, repairProblem, repairCandidate }) }, ...(attempt ? [{ role: 'user', content: 'Repair the previous response to match the task contract exactly. Return JSON only.' }] : [])],
               responseMode: 'json',
               responseSchema: {
                 name: 'volk_ml_exploration_guidance',
@@ -348,13 +330,18 @@ export function createExplorationAiInterpreter({ gateway, fetchImpl = globalThis
               taskContext: context,
               taskInput: { question: String(request ?? '').trim().slice(0, 240) },
               requestId: logicalRequestId,
-              signal,
+              signal: effectiveSignal,
+              attemptBudget,
             });
             const parsed = parseJsonText(response.text);
             const validated = validateInterpretation(parsed, context, taskMode);
             providerGateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'passed' });
             return { ...validated, providerId: response.protocol };
           } catch (error) {
+            if (!error?.code?.startsWith('AI_PROVIDER_')) {
+              repairProblem = String(error?.details?.reason ?? error?.details?.fieldPath ?? error?.code ?? 'invalid guidance').slice(0, 180);
+              repairCandidate = null;
+            }
             error.details = { ...(error.details ?? {}), stage: error.details?.stage ?? 'interpreter-validation', fieldPath: error.details?.fieldPath ?? 'guidance' };
             providerGateway.recordTrace?.({ stage: 'interpreter-validation', status: 'failed' });
             if (error?.code?.startsWith('AI_')) throw error;

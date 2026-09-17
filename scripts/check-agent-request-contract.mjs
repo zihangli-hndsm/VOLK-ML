@@ -10,9 +10,9 @@ import {
   classifyAgentFailure,
   runBoundedTask,
 } from '../src/core/ai/agentRequestContract.js';
-import { providerStructuredOutputCapability, createProviderGateway } from '../src/core/ai/providerRegistry.js';
+import { providerStructuredOutputCapability, createProviderGateway, normalizeStrictJsonSchema } from '../src/core/ai/providerRegistry.js';
 import { classifyAiError, createAiDiagnostic } from '../src/core/ai/diagnostics.js';
-import { validateLearningAnswer } from '../src/core/exploration/learningAssistant.js';
+import { LEARNING_ANSWER_SCHEMA, validateLearningAnswer, createLearningAssistant } from '../src/core/exploration/learningAssistant.js';
 import { createExplorationAiInterpreter, explorationGuidanceResponseSchema } from '../src/core/exploration/explorationAiInterpreter.js';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { getWorldRecipePreset } from '../src/core/exploration/worldRecipePresets.js';
@@ -35,6 +35,24 @@ function providerPayload(protocol, text) {
   return protocol === 'openai-responses'
     ? { status: 'completed', output: [{ type: 'message', content: [{ type: 'output_text', text }] }] }
     : { choices: [{ message: { content: text } }] };
+}
+
+function assertEveryStrictObjectPropertyIsRequired(schema, path = '$') {
+  if (Array.isArray(schema)) {
+    schema.forEach((value, index) => assertEveryStrictObjectPropertyIsRequired(value, `${path}[${index}]`));
+    return;
+  }
+  if (!schema || typeof schema !== 'object') return;
+  if (schema.properties && typeof schema.properties === 'object' && !Array.isArray(schema.properties)) {
+    const required = new Set(Array.isArray(schema.required) ? schema.required : []);
+    for (const [key, value] of Object.entries(schema.properties)) {
+      assert.ok(required.has(key), `${path}.properties.${key} is required by the strict schema`);
+      assertEveryStrictObjectPropertyIsRequired(value, `${path}.properties.${key}`);
+    }
+  }
+  for (const [key, value] of Object.entries(schema)) {
+    if (key !== 'properties') assertEveryStrictObjectPropertyIsRequired(value, `${path}.${key}`);
+  }
 }
 
 async function callActualProvider({ protocol, taskMode, taskInput, text, responseSchema }) {
@@ -72,6 +90,7 @@ for (const taskMode of Object.values(AGENT_TASK_MODES)) {
 }
 assert.equal(validateAgentRequest({ ...createAgentRequest({ taskMode: AGENT_TASK_MODES.ASK, requestId: 'strict', context: {} }), opaque: true }).valid, false, 'unknown contract fields are rejected');
 assert.equal(projectAgentSemanticContext(semantic).world.recipeVersion, 1, 'World edit context carries recipe version only');
+assert.equal(validateAgentRequest({ ...createAgentRequest({ taskMode: AGENT_TASK_MODES.ASK, requestId: 'cross-output', context: {} }), task: { version: 1, mode: AGENT_TASK_MODES.ASK, outputSet: AGENT_OUTPUT_SETS[AGENT_TASK_MODES.WORLD_EDIT] } }).valid, false, 'cross-mode output sets are rejected');
 
 assert.equal(providerStructuredOutputCapability({ protocol: 'openai-responses', model: 'm', apiKey: 'k' }), 'schema');
 assert.equal(providerStructuredOutputCapability({ protocol: 'openai-compatible', model: 'm', apiKey: 'k' }), 'json-only');
@@ -102,7 +121,7 @@ const providerModeFixtures = {
   [AGENT_TASK_MODES.ASK]: {
     input: { question: 'Explain the evidence.' },
     text: JSON.stringify({ answer: 'The bounded fixture answer.', tryExperiment: null, depth: null }),
-    schema: { name: 'ask-fixture', schema: { type: 'object', additionalProperties: false, properties: { answer: { type: 'string' }, tryExperiment: { type: ['object', 'null'] }, depth: { type: ['string', 'null'] } }, required: ['answer'] } },
+    schema: LEARNING_ANSWER_SCHEMA,
   },
   [AGENT_TASK_MODES.EXPERIMENT_DESIGN]: {
     input: { question: 'What comparison should I make?' },
@@ -127,7 +146,8 @@ for (const protocol of ['openai-compatible', 'openai-responses']) {
     if (protocol === 'openai-responses') {
       assert.equal(actual.body.text?.format?.type, 'json_schema', `${taskMode} uses native strict schema on the known schema-capable path`);
       assert.equal(actual.body.text?.format?.strict, true);
-      assert.deepEqual(actual.body.text.format.schema, fixture.schema.schema);
+      assert.deepEqual(actual.body.text.format.schema, normalizeStrictJsonSchema(fixture.schema.schema));
+      assertEveryStrictObjectPropertyIsRequired(actual.body.text.format.schema, `${taskMode}.strictSchema`);
     } else {
       assert.deepEqual(actual.body.response_format, { type: 'json_object' }, `${taskMode} uses JSON mode on the JSON-only path`);
     }
@@ -150,6 +170,58 @@ await unknownEndpointGateway.complete({
 });
 assert.equal(unknownEndpointBody.text, undefined, 'unknown endpoint is not forced into native strict schema mode');
 assert.match(unknownEndpointBody.instructions, /Valid output example:/);
+
+const nativeResponseGateway = createProviderGateway({ fetchImpl: async () => new Response(JSON.stringify(providerPayload('openai-responses', providerModeFixtures[AGENT_TASK_MODES.ASK].text)), { status: 200, headers: { 'content-type': 'application/json' } }) });
+const nativeResponseResult = await nativeResponseGateway.complete({
+  config: { protocol: 'openai-responses', model: 'fixture', apiKey: 'fixture-secret' },
+  taskMode: AGENT_TASK_MODES.ASK,
+  taskContext: semantic,
+  taskInput: { question: 'native response' },
+  requestId: 'native-response',
+  responseMode: 'json',
+  responseSchema: providerModeFixtures[AGENT_TASK_MODES.ASK].schema,
+});
+assert.equal(nativeResponseResult.text, providerModeFixtures[AGENT_TASK_MODES.ASK].text, 'native Fetch Response remains usable through the attempt facade');
+
+let fallbackUsageCalls = 0;
+const publishedUsageSummaries = [];
+const fallbackUsageGateway = createProviderGateway({ fetchImpl: async (_url, options) => {
+  fallbackUsageCalls += 1;
+  const request = JSON.parse(options.body);
+  if (fallbackUsageCalls === 1) {
+    assert.deepEqual(request.response_format, { type: 'json_object' }, 'first physical request uses JSON mode before compatibility fallback');
+    return jsonResponse({
+      error: { message: 'response_format json_object is not supported' },
+      usage: { prompt_tokens: 3, completion_tokens: 1, total_tokens: 4 },
+    }, 400);
+  }
+  assert.equal(request.response_format, undefined, 'fallback physical request omits unsupported JSON mode');
+  return jsonResponse({
+    choices: [{ message: { content: providerModeFixtures[AGENT_TASK_MODES.ASK].text } }],
+    usage: { prompt_tokens: 5, completion_tokens: 2, total_tokens: 7 },
+  });
+} });
+const stopUsageSubscription = fallbackUsageGateway.subscribeUsage((summary) => publishedUsageSummaries.push(summary));
+await fallbackUsageGateway.complete({
+  config: { protocol: 'openai-compatible', endpoint: 'https://fixture.invalid/v1/chat/completions', model: 'fixture', apiKey: 'fixture-secret' },
+  taskMode: AGENT_TASK_MODES.ASK,
+  taskContext: semantic,
+  taskInput: { question: 'Account for the JSON fallback.' },
+  requestId: 'usage-fallback',
+  responseMode: 'json',
+  responseSchema: LEARNING_ANSWER_SCHEMA,
+});
+stopUsageSubscription();
+const fallbackUsageSummary = fallbackUsageGateway.getUsageSummary();
+assert.equal(fallbackUsageCalls, 2, 'compatibility fallback uses two physical provider requests');
+assert.equal(fallbackUsageSummary.requestCount, 1, 'usage UI retains one logical learner request');
+assert.equal(fallbackUsageGateway.getAttemptUsageRecords().length, 2, 'physical attempt accounting remains separately inspectable');
+assert.equal(fallbackUsageSummary.reportedUsageCalls, 2, 'usage UI counts both physical provider reports');
+assert.equal(fallbackUsageSummary.inputTokens, 8, 'usage UI aggregates physical input token reports');
+assert.equal(fallbackUsageSummary.outputTokens, 3, 'usage UI aggregates physical output token reports');
+assert.equal(fallbackUsageSummary.totalTokens, 11, 'usage UI aggregates physical total token reports');
+assert.equal(publishedUsageSummaries.at(-1)?.totalTokens, 11, 'usage subscriptions receive physical-attempt totals');
+assert.equal(publishedUsageSummaries.at(-1)?.requestCount, 1, 'usage subscriptions retain the logical request count');
 
 const malformedAnswer = validateLearningAnswer({ answer: 'valid body', tryExperiment: { design: { goal: 'unknown' } }, depth: null });
 assert.equal(malformedAnswer.tryExperiment, null, 'invalid optional suggestion is unavailable, not executable');
@@ -280,6 +352,8 @@ for (const item of experimentCases) {
   assert.equal(calls.length, item.expected === 'rejected' ? 2 : 1, `${item.id} uses only the bounded validation-repair budget`);
   assert.equal(calls[0].taskMode, AGENT_TASK_MODES.EXPERIMENT_DESIGN);
   assert.equal(calls[0].taskInput.question, item.request);
+  assert.match(calls[0].messages[0].content, /Allowed outcome kinds for this task: explanation, navigation, experiment, clarification/);
+  assert.equal(/Valid output example:.*world-design/s.test(calls[0].messages[0].content), false, 'experiment production prompts do not advertise world-edit outcomes');
   if (item.expected === 'experiment') {
     const host = createPlaygroundHost({ getDataset: () => null });
     await host.open({ playgroundId: 'linear-regression', seed: 7101 });
@@ -316,6 +390,8 @@ for (const item of worldCases) {
   }
   assert.equal(calls.length, item.expected === 'rejected' ? 2 : 1, `${item.id} uses only the bounded validation-repair budget`);
   assert.equal(calls[0].taskMode, AGENT_TASK_MODES.WORLD_EDIT);
+  assert.match(calls[0].messages[0].content, /Allowed outcome kinds for this task: world-design/);
+  assert.equal(/Valid output example:.*kind":"experiment/s.test(calls[0].messages[0].content), false, 'world production prompts do not advertise experiment outcomes');
 }
 
 const worldHost = createPlaygroundHost({ getDataset: () => null });
@@ -338,6 +414,48 @@ const proposal = host.proposeExploration({ taskMode: AGENT_TASK_MODES.EXPERIMENT
 assert.ok(proposal.kind === 'proposal' || proposal.kind === 'clarification');
 assert.deepEqual(host.getState().experiment, before.experiment, 'proposal cannot mutate Experiment state');
 await host.close();
+
+const providerConfig = { protocol: 'openai-compatible', endpoint: 'https://fixture.invalid/v1/chat/completions', model: 'fixture', apiKey: 'fixture-secret' };
+let neverSignal = null;
+const neverGateway = { complete: async ({ signal }) => { neverSignal = signal; return new Promise(() => {}); } };
+const neverStarted = Date.now();
+await assert.rejects(
+  () => createLearningAssistant({ gateway: neverGateway, timeoutMs: 30 }).ask({ question: 'deadline', config: providerConfig, context: {} }),
+  (error) => error.code === 'AI_REQUEST_TIMEOUT' && error.details?.reason === 'logical-deadline' && Number.isFinite(error.details?.elapsedMs),
+);
+assert.ok(Date.now() - neverStarted < 500, 'never-resolving provider is contained by the logical deadline');
+assert.equal(neverSignal?.aborted, true, 'logical deadline aborts the provider signal');
+
+let bodySignal = null;
+const bodyStallGateway = createProviderGateway({ fetchImpl: async (_url, options) => {
+  bodySignal = options.signal;
+  return { ok: true, status: 200, async json() { return new Promise(() => {}); } };
+} });
+await assert.rejects(
+  () => createLearningAssistant({ gateway: bodyStallGateway, timeoutMs: 30 }).ask({ question: 'body deadline', config: providerConfig, context: {} }),
+  (error) => error.code === 'AI_REQUEST_TIMEOUT',
+);
+assert.equal(bodySignal?.aborted, true, 'body stall receives the logical abort signal');
+
+let ignoredCalls = 0;
+const abortIgnoringGateway = { complete: async () => { ignoredCalls += 1; await new Promise((resolve) => setTimeout(resolve, 80)); return { protocol: 'fixture', text: '{"answer":"late"}' }; } };
+await assert.rejects(
+  () => createLearningAssistant({ gateway: abortIgnoringGateway, timeoutMs: 20 }).ask({ question: 'ignore abort', config: providerConfig, context: {} }),
+  (error) => error.code === 'AI_REQUEST_TIMEOUT',
+);
+assert.equal(ignoredCalls, 1, 'abort-ignoring provider cannot produce a late success or repair');
+
+let repairStallCalls = 0;
+const repairStallGateway = { complete: async () => {
+  repairStallCalls += 1;
+  if (repairStallCalls === 1) return { protocol: 'fixture', text: '{"answer":"bad","tryExperiment":{"operation":"RUN"}}' };
+  return new Promise(() => {});
+} };
+await assert.rejects(
+  () => createLearningAssistant({ gateway: repairStallGateway, timeoutMs: 35 }).ask({ question: 'repair deadline', config: providerConfig, context: {} }),
+  (error) => error.code === 'AI_REQUEST_TIMEOUT' && error.details?.attempts === 2,
+);
+assert.equal(repairStallCalls, 2, 'repair shares the original logical deadline and attempt budget');
 
 const surfaceSource = readFileSync(new URL('../src/components/playground/ExploreAgentSurface.jsx', import.meta.url), 'utf8');
 assert.match(surfaceSource, /pendingExperimentTaskRef/);

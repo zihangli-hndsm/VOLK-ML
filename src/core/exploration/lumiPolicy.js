@@ -67,7 +67,6 @@ export function projectLumiCloudRequest(context = {}, requestId = `lumi-${Date.n
     recentLumiActions: (runtime.guidanceHistory ?? []).slice(-12).map((entry) => entry?.action?.type).filter((type) => CLOUD_ACTIONS.has(type)).map((action) => ({ action })),
     policy: { autonomyLevel: 'suggestion-only', proactiveAllowed: true },
   };
-  if (!Object.keys(request.inquiry).length) delete request.inquiry;
   return request;
 }
 
@@ -76,12 +75,23 @@ export function validateLumiCloudRequestV0(request) {
   const topKeys = new Set(['apiVersion', 'requestId', 'inquiry', 'prediction', 'experiment', 'recentEvents', 'evidence', 'candidateConcepts', 'conceptsEncountered', 'conceptsEvidenced', 'recentLumiActions', 'policy']);
   for (const key of Object.keys(request ?? {})) if (!topKeys.has(key)) errors.push(`unknown:${key}`);
   if (request?.apiVersion !== '0' || typeof request?.requestId !== 'string' || !request.requestId) errors.push('identity');
-  if (!request?.inquiry || typeof request.inquiry !== 'object') errors.push('inquiry');
-  for (const event of request?.recentEvents ?? []) if (!event || typeof event.eventType !== 'string') errors.push('recentEvents');
-  for (const item of request?.evidence ?? []) if (!item || typeof item.evidenceId !== 'string' || typeof item.evidenceType !== 'string' || !Array.isArray(item.facts ?? [])) errors.push('evidence');
-  for (const item of request?.candidateConcepts ?? []) if (!item || typeof item.conceptId !== 'string' || typeof item.label !== 'string') errors.push('candidateConcepts');
-  for (const item of request?.recentLumiActions ?? []) if (!item || !CLOUD_ACTIONS.has(item.action)) errors.push('recentLumiActions');
-  if (request?.policy && (typeof request.policy.proactiveAllowed !== 'boolean' || typeof request.policy.autonomyLevel !== 'string')) errors.push('policy');
+  if (!request?.inquiry || typeof request.inquiry !== 'object' || Array.isArray(request.inquiry)) errors.push('inquiry');
+  if (request?.inquiry && Object.keys(request.inquiry).some((key) => !['inquiryId', 'orchestrationId', 'currentQuestion', 'currentDepth'].includes(key))) errors.push('inquiry-fields');
+  if (request?.prediction !== undefined && (!request.prediction || typeof request.prediction !== 'object' || Array.isArray(request.prediction) || typeof request.prediction.expectation !== 'string' || Object.keys(request.prediction).some((key) => !['expectation', 'reasoning'].includes(key)))) errors.push('prediction');
+  if (request?.experiment !== undefined && (!request.experiment || typeof request.experiment !== 'object' || Array.isArray(request.experiment) || Object.keys(request.experiment).some((key) => !['worldIdentity', 'baseline', 'activeComparison'].includes(key)) || Object.values(request.experiment).some((value) => value !== undefined && value !== null && typeof value !== 'string'))) errors.push('experiment');
+  for (const [field, allowed] of [['recentEvents', ['eventId', 'eventType', 'summary']], ['evidence', ['evidenceId', 'evidenceType', 'summary', 'facts']], ['candidateConcepts', ['conceptId', 'label', 'confidence']], ['recentLumiActions', ['action', 'reasonCode']]]) {
+    if (request?.[field] !== undefined && !Array.isArray(request[field])) errors.push(field);
+    for (const item of Array.isArray(request?.[field]) ? request[field] : []) {
+      if (!item || Object.keys(item).some((key) => !allowed.includes(key))) errors.push(field);
+      if (field === 'recentEvents' && typeof item?.eventType !== 'string') errors.push(field);
+      if (field === 'evidence' && (typeof item?.evidenceId !== 'string' || typeof item?.evidenceType !== 'string' || !Array.isArray(item?.facts ?? []))) errors.push(field);
+      if (field === 'candidateConcepts' && (typeof item?.conceptId !== 'string' || typeof item?.label !== 'string')) errors.push(field);
+      if (field === 'recentLumiActions' && !CLOUD_ACTIONS.has(item?.action)) errors.push(field);
+    }
+  }
+  for (const field of ['conceptsEncountered', 'conceptsEvidenced']) if (request?.[field] !== undefined && (!Array.isArray(request[field]) || request[field].some((item) => typeof item !== 'string'))) errors.push(field);
+  if (request?.policy && (typeof request.policy !== 'object' || Array.isArray(request.policy) || (request.policy.proactiveAllowed !== undefined && typeof request.policy.proactiveAllowed !== 'boolean') || (request.policy.autonomyLevel !== undefined && request.policy.autonomyLevel !== null && typeof request.policy.autonomyLevel !== 'string'))) errors.push('policy');
+  if (request?.policy && Object.keys(request.policy).some((key) => !['autonomyLevel', 'proactiveAllowed'].includes(key))) errors.push('policy-fields');
   return { valid: errors.length === 0, errors };
 }
 
@@ -89,6 +99,7 @@ export const validateLumiCloudRequest = validateLumiCloudRequestV0;
 
 export function adaptCloudLumiResponse(response, { requestId, context } = {}) {
   if (!response || response.apiVersion !== '0' || response.requestId !== requestId || !CLOUD_ACTIONS.has(response.action)) return { valid: false, error: 'unsupported-cloud-response' };
+  if (Object.keys(response).some((key) => !['apiVersion', 'requestId', 'action', 'payload', 'message', 'reasonCode', 'requiresLearnerConfirmation'].includes(key))) return { valid: false, error: 'unknown-response-field' };
   if (!response.payload || typeof response.payload !== 'object' || Array.isArray(response.payload)) return { valid: false, error: 'invalid-payload' };
   const requires = response.requiresLearnerConfirmation;
   if (typeof requires !== 'boolean') return { valid: false, error: 'invalid-confirmation' };
@@ -96,11 +107,18 @@ export function adaptCloudLumiResponse(response, { requestId, context } = {}) {
   const proposal = PROPOSALS.has(response.action);
   if (proposal && !requires) return { valid: false, error: 'proposal-confirmation-required' };
   const payload = response.payload;
-  if (response.action === 'ASK' && !bounded(payload.question, 2000)) return { valid: false, error: 'invalid-ask-payload' };
-  if (['PROPOSE_HYPOTHESIS', 'PROPOSE_COUNTEREXAMPLE', 'NAME_CONNECTION', 'REFLECT_PATH'].includes(response.action) && !bounded(payload.text, 2000)) return { valid: false, error: 'invalid-text-payload' };
-  if (response.action === 'SUGGEST_EXPERIMENT' && (!bounded(payload.recipeId, 128) || !bounded(payload.description, 2000))) return { valid: false, error: 'invalid-experiment-proposal' };
+  const payloadKeys = Object.keys(payload);
+  const exactPayload = (allowed) => payloadKeys.every((key) => allowed.includes(key));
+  if (response.action === 'STAY_SILENT' || response.action === 'OFFER_COMPARISON') {
+    if (payloadKeys.length) return { valid: false, error: 'invalid-empty-payload' };
+  }
+  if (response.action === 'ASK' && (!exactPayload(['question']) || !bounded(payload.question, 2000))) return { valid: false, error: 'invalid-ask-payload' };
+  if (['PROPOSE_HYPOTHESIS', 'PROPOSE_COUNTEREXAMPLE', 'NAME_CONNECTION', 'REFLECT_PATH'].includes(response.action) && (!exactPayload(['text']) || !bounded(payload.text, 2000))) return { valid: false, error: 'invalid-text-payload' };
+  if (response.action === 'SUGGEST_EXPERIMENT' && (!exactPayload(['recipeId', 'description']) || !bounded(payload.recipeId, 128) || !bounded(payload.description, 2000))) return { valid: false, error: 'invalid-experiment-proposal' };
   if (response.action === 'OFFER_DEPTH' && !['evidence', 'mechanism', 'representation', 'math', 'builder'].includes(payload.target)) return { valid: false, error: 'unsupported-depth' };
+  if (response.action === 'OFFER_DEPTH' && !exactPayload(['target'])) return { valid: false, error: 'invalid-depth-payload' };
   if (response.action === 'HIGHLIGHT_EVIDENCE') {
+    if (!exactPayload(['evidenceIds', 'facts'])) return { valid: false, error: 'invalid-evidence-payload' };
     const runtimeEvidence = context?.inquiryRuntime?.evidence;
     const evidenceItems = Array.isArray(runtimeEvidence) ? runtimeEvidence : runtimeEvidence && typeof runtimeEvidence === 'object' ? Object.values(runtimeEvidence) : [];
     const available = new Set([
@@ -125,9 +143,9 @@ export function adaptCloudLumiResponse(response, { requestId, context } = {}) {
 export function createCloudLumiPolicy(client) {
   if (!client || typeof client.lumiRespond !== 'function') return null;
   return {
-    async decide(context) {
+    async decide(context, { signal = null } = {}) {
       const requestId = `lumi-${globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`}`;
-      const response = await client.lumiRespond(projectLumiCloudRequest(context, requestId));
+      const response = await client.lumiRespond(projectLumiCloudRequest(context, requestId), { signal });
       const adapted = adaptCloudLumiResponse(response, { requestId, context });
       if (!adapted.valid) throw new Error(adapted.error);
       return adapted.action;
@@ -149,17 +167,30 @@ export function localFallbackPolicy(context = {}) {
   return staySilent();
 }
 
-export async function decideLumiAction({ context, cloudPolicy } = {}) {
+export async function decideLumiAction({ context, cloudPolicy, signal = null, timeoutMs = 1500 } = {}) {
   if (!cloudPolicy || typeof cloudPolicy.decide !== 'function') return localFallbackPolicy(context);
+  const controller = typeof AbortController === 'function' ? new AbortController() : null;
+  let timedOut = false;
+  let externalListener;
+  if (signal?.addEventListener && controller) {
+    externalListener = () => controller.abort(signal.reason ?? { reason: 'caller-aborted' });
+    signal.addEventListener('abort', externalListener, { once: true });
+  }
+  if (signal?.aborted && controller) controller.abort(signal.reason ?? { reason: 'caller-aborted' });
+  const timer = setTimeout(() => { timedOut = true; controller?.abort({ reason: 'policy-timeout' }); }, Math.max(1, Math.min(15_000, Number(timeoutMs) || 1500)));
+  const effectiveSignal = controller?.signal ?? signal;
   try {
     const result = await Promise.race([
-      Promise.resolve().then(() => cloudPolicy.decide(context)),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 1500)),
+      Promise.resolve().then(() => cloudPolicy.decide(context, { signal: effectiveSignal })),
+      new Promise((_, reject) => setTimeout(() => reject(new Error(timedOut ? 'timeout' : 'policy-aborted')), Math.max(1, Math.min(15_000, Number(timeoutMs) || 1500)))),
     ]);
     const validated = validateLumiAction(result);
     return validated.valid ? validated.action : localFallbackPolicy(context);
   } catch {
     return localFallbackPolicy(context);
+  } finally {
+    clearTimeout(timer);
+    if (externalListener) signal.removeEventListener?.('abort', externalListener);
   }
 }
 

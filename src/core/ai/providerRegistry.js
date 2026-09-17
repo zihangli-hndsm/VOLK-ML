@@ -97,6 +97,58 @@ function requestProfileFor(config, protocol, model) {
   return Object.freeze(profile);
 }
 
+function claimProviderAttempt(attemptBudget) {
+  if (!attemptBudget || typeof attemptBudget !== 'object') return null;
+  const max = Number.isFinite(Number(attemptBudget.max)) ? Math.max(1, Math.floor(Number(attemptBudget.max))) : 2;
+  const used = Number.isFinite(Number(attemptBudget.used)) ? Math.max(0, Math.floor(Number(attemptBudget.used))) : 0;
+  if (used >= max) {
+    const error = providerError('AI_PROVIDER_ATTEMPT_BUDGET_EXHAUSTED', 'The logical provider request attempt budget was exhausted.');
+    error.details = { stage: 'provider', reason: 'logical-attempt-budget', attempts: used, maxAttempts: max };
+    throw error;
+  }
+  const record = { attempt: used + 1, status: 'started', usage: unavailableProviderUsage() };
+  attemptBudget.max = max;
+  attemptBudget.used = used + 1;
+  attemptBudget.records = Array.isArray(attemptBudget.records) ? attemptBudget.records : [];
+  attemptBudget.records.push(record);
+  return record;
+}
+
+function trackProviderFetch(fetchImpl, attemptBudget, protocol) {
+  return async (url, options = {}) => {
+    const record = claimProviderAttempt(attemptBudget);
+    try {
+      const response = await fetchImpl(url, options);
+      if (!record || !response || typeof response.json !== 'function') return response;
+      const originalJson = response.json.bind(response);
+      // Do not wrap a native Response with Object.create(response): Response
+      // accessors use private slots and can throw when invoked on a facade.
+      // A plain receiver-preserving facade is sufficient for the adapter
+      // boundary and keeps the original json() receiver intact.
+      const wrapped = {
+        ok: Boolean(response.ok),
+        status: Number(response.status) || 0,
+        headers: response.headers ?? null,
+        json: async () => {
+        try {
+          const payload = await originalJson();
+          record.status = response.ok ? 'received' : 'failed';
+          record.usage = normalizeProviderUsage(payload?.usage ?? payload?.usageMetadata, { protocol });
+          return payload;
+        } catch (error) {
+          record.status = 'failed';
+          throw error;
+        }
+        },
+      };
+      return wrapped;
+    } catch (error) {
+      if (record) record.status = options?.signal?.aborted ? 'aborted' : 'failed';
+      throw error;
+    }
+  };
+}
+
 export function resolveProviderRequestProfile(config) {
   const protocol = getProviderProtocol(config?.protocol ?? config?.providerId);
   if (!protocol) return null;
@@ -189,9 +241,37 @@ function responsesInput(messages) {
   }));
 }
 
+function schemaHasNull(schema) {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) return false;
+  if (Array.isArray(schema.type) && schema.type.includes('null')) return true;
+  return Array.isArray(schema.anyOf) && schema.anyOf.some((item) => item?.type === 'null' || (Array.isArray(item?.type) && item.type.includes('null')));
+}
+
+function strictifySchema(schema) {
+  if (Array.isArray(schema)) return schema.map(strictifySchema);
+  if (!schema || typeof schema !== 'object') return schema;
+  const next = Object.fromEntries(Object.entries(schema).map(([key, value]) => [key, strictifySchema(value)]));
+  if (next.type === 'object' || next.properties) {
+    const properties = next.properties && typeof next.properties === 'object' && !Array.isArray(next.properties) ? next.properties : {};
+    const originalRequired = new Set(Array.isArray(schema.required) ? schema.required : []);
+    next.properties = Object.fromEntries(Object.entries(properties).map(([key, value]) => [
+      key,
+      originalRequired.has(key) || schemaHasNull(value) ? value : { anyOf: [value, { type: 'null' }] },
+    ]));
+    next.required = Object.keys(next.properties);
+    next.additionalProperties = false;
+  }
+  return next;
+}
+
+export function normalizeStrictJsonSchema(responseSchema) {
+  const schema = responseSchema?.schema ?? responseSchema;
+  return strictifySchema(schema);
+}
+
 function responsesTextOptions(responseSchema, requestProfile) {
   if (!responseSchema || requestProfile?.structuredOutputMode === 'none' || (requestProfile && requestProfile.structuredOutputMode !== 'schema')) return {};
-  const schema = responseSchema.schema ?? responseSchema;
+  const schema = normalizeStrictJsonSchema(responseSchema);
   const name = responseSchema.name ?? 'volk_ml_structured_output';
   return {
     text: {
@@ -296,9 +376,26 @@ const adapters = Object.freeze({
 
 export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterRegistry = adapters, traceStore = createRequestTraceStore() } = {}) {
   let usageRecords = [];
+  let attemptUsageRecords = [];
   const usageListeners = new Set();
+  const usageSummary = () => {
+    const logical = summarizeProviderUsage(usageRecords);
+    // Provider token metadata is charged per physical request. A single
+    // logical task can produce more than one physical attempt (for example,
+    // the JSON-mode compatibility retry), so never derive totals from the
+    // final logical record when physical records are available.
+    const physical = summarizeProviderUsage(attemptUsageRecords);
+    const accounting = attemptUsageRecords.length ? physical : logical;
+    return Object.freeze({
+      ...accounting,
+      // The existing UI calls this "requests". Preserve that useful logical
+      // task count; physical attempt records remain separately inspectable
+      // through getAttemptUsageRecords().
+      requestCount: logical.requestCount,
+    });
+  };
   const notifyUsage = () => {
-    const summary = summarizeProviderUsage(usageRecords);
+    const summary = usageSummary();
     for (const listener of usageListeners) {
       try { listener(summary); } catch { /* usage observers are informational only */ }
     }
@@ -313,7 +410,7 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
     return record;
   };
   return Object.freeze({
-    async complete({ config, system = '', messages = [], responseMode = 'text', responseSchema = null, signal = undefined, taskMode = null, taskContext = null, taskInput = null, taskContract = null, requestId: requestedRequestId = null }) {
+    async complete({ config, system = '', messages = [], responseMode = 'text', responseSchema = null, signal = undefined, taskMode = null, taskContext = null, taskInput = null, taskContract = null, requestId: requestedRequestId = null, attemptBudget: requestedAttemptBudget = null }) {
       if (typeof fetchImpl !== 'function') throw providerError('AI_PROVIDER_UNAVAILABLE', 'No browser fetch implementation is available.');
       const resolved = requireConfig(config);
       const adapter = adapterRegistry[resolved.protocol.id];
@@ -338,9 +435,12 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
       };
       signal?.addEventListener?.('abort', onAbort, { once: true });
       let result;
+      const attemptBudget = requestedAttemptBudget ?? { max: 2, used: 0, records: [] };
+      const attemptRecordsStart = Array.isArray(attemptBudget.records) ? attemptBudget.records.length : 0;
+      const trackedFetch = trackProviderFetch(fetchImpl, attemptBudget, resolved.protocol.id);
       try {
         const adapterResult = await adapter.complete({
-          fetchImpl,
+          fetchImpl: trackedFetch,
           endpoint: endpointFor(resolved),
           apiKey: resolved.apiKey,
           model: resolved.model,
@@ -352,19 +452,42 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
           signal,
         });
         result = typeof adapterResult === 'string' ? { text: adapterResult, usage: unavailableProviderUsage() } : adapterResult;
+        const attempts = (attemptBudget.records ?? []).slice(attemptRecordsStart).map((attempt) => ({
+          requestId,
+          protocol: resolved.protocol.id,
+          model: resolved.model,
+          attempt: attempt.attempt,
+          status: attempt.status,
+          usage: attempt.usage,
+        }));
+        if (attempts.length) attemptUsageRecords = [...attemptUsageRecords, ...attempts].slice(-128);
         usage = setUsageRecord({ requestId, protocol: resolved.protocol.id, model: resolved.model, status: 'completed', usage: result?.usage });
         traceStore.append({ id: requestId, stage: 'provider-response', protocol: resolved.protocol.id, model: resolved.model, status: 'received', usage });
         traceStore.append({ id: requestId, stage: 'parse', protocol: resolved.protocol.id, model: resolved.model, status: responseMode === 'json' ? 'structured' : 'text' });
       } catch (error) {
-        const status = signal?.aborted || error?.name === 'AbortError' ? 'aborted' : 'failed';
+        const attempts = (attemptBudget.records ?? []).slice(attemptRecordsStart).map((attempt) => ({
+          requestId,
+          protocol: resolved.protocol.id,
+          model: resolved.model,
+          attempt: attempt.attempt,
+          status: attempt.status,
+          usage: attempt.usage,
+        }));
+        if (attempts.length) attemptUsageRecords = [...attemptUsageRecords, ...attempts].slice(-128);
+        const timedOut = signal?.reason?.code === 'AI_REQUEST_TIMEOUT' || signal?.reason?.reason === 'logical-deadline';
+        const status = timedOut ? 'timeout' : signal?.aborted || error?.name === 'AbortError' ? 'aborted' : 'failed';
         usage = setUsageRecord({ requestId, protocol: resolved.protocol.id, model: resolved.model, status, usage: error?.details?.usage ?? usage });
         traceStore.append({ id: requestId, stage: 'failed', protocol: resolved.protocol.id, model: resolved.model, status: error?.code ?? 'failed', usage });
         settled = true;
         signal?.removeEventListener?.('abort', onAbort);
-        if (status === 'aborted') {
-          const cancellation = providerError('AI_REQUEST_CANCELLED', 'The AI provider request was cancelled.');
+        if (status === 'timeout' || status === 'aborted') {
+          const cancellation = providerError(status === 'timeout' ? 'AI_REQUEST_TIMEOUT' : 'AI_REQUEST_CANCELLED', status === 'timeout' ? 'The AI provider request exceeded its logical deadline.' : 'The AI provider request was cancelled.');
+          cancellation.name = status === 'timeout' ? 'TimeoutError' : 'AbortError';
           cancellation.details = {
-            cause: 'request-aborted',
+            cause: status === 'timeout' ? 'logical-deadline' : 'request-aborted',
+            reason: status === 'timeout' ? 'logical-deadline' : 'learner-cancelled',
+            stage: signal?.reason?.stage ?? 'provider',
+            requestId,
             originalCode: String(error?.code ?? '').slice(0, 80) || null,
           };
           throw cancellation;
@@ -385,8 +508,9 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
     },
     recordTrace(entry) { return traceStore.append(entry); },
     getRequestTrace() { return traceStore.snapshot(); },
-    getUsageSummary() { return summarizeProviderUsage(usageRecords); },
+    getUsageSummary() { return usageSummary(); },
     getUsageRecords() { return structuredClone(usageRecords); },
+    getAttemptUsageRecords() { return structuredClone(attemptUsageRecords); },
     subscribeUsage(listener) {
       if (typeof listener !== 'function') return () => {};
       usageListeners.add(listener);
@@ -394,6 +518,7 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
     },
     resetUsage() {
       usageRecords = [];
+      attemptUsageRecords = [];
       notifyUsage();
     },
   });

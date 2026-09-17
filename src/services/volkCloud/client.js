@@ -34,28 +34,71 @@ function mapCloudFailure(status, body, fallbackCode = 'VOLK_CLOUD_REQUEST_FAILED
   return cloudError(code, { status: Number(status) || null });
 }
 
+async function awaitAbortable(promise, signal) {
+  if (!signal?.addEventListener) return promise;
+  if (signal.aborted) {
+    const error = new Error('aborted');
+    error.name = 'AbortError';
+    throw error;
+  }
+  let listener;
+  const abortPromise = new Promise((_, reject) => {
+    listener = () => {
+      const error = new Error('aborted');
+      error.name = 'AbortError';
+      reject(error);
+    };
+    signal.addEventListener('abort', listener, { once: true });
+  });
+  const safePromise = Promise.resolve(promise);
+  safePromise.catch(() => {});
+  try { return await Promise.race([safePromise, abortPromise]); }
+  finally { signal.removeEventListener?.('abort', listener); }
+}
+
 export function createVolkCloudClient({ baseUrl, fetchImpl = globalThis.fetch, timeoutMs = 3000 } = {}) {
   const apiUrl = normalizeVolkApiUrl(baseUrl);
   if (typeof fetchImpl !== 'function') throw cloudError('VOLK_CLOUD_FETCH_UNAVAILABLE');
-  async function requestJson(path, { method = 'GET', token = null, body = undefined, idempotencyKey = null } = {}) {
+  async function requestJson(path, { method = 'GET', token = null, body = undefined, idempotencyKey = null, signal: externalSignal = null, failureCode = 'VOLK_CLOUD_REQUEST_FAILED' } = {}) {
     const controller = typeof AbortController === 'function' ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+    let timedOut = false;
+    let externallyAborted = Boolean(externalSignal?.aborted);
+    const timer = controller ? setTimeout(() => {
+      timedOut = true;
+      controller.abort({ code: 'VOLK_CLOUD_REQUEST_TIMEOUT', reason: 'client-timeout' });
+    }, timeoutMs) : null;
+    const externalListener = externalSignal?.addEventListener && controller
+      ? () => {
+        externallyAborted = true;
+        controller.abort(externalSignal.reason ?? { code: 'VOLK_CLOUD_REQUEST_CANCELLED', reason: 'caller-aborted' });
+      }
+      : null;
+    if (externalListener) externalSignal.addEventListener('abort', externalListener, { once: true });
+    if (externallyAborted && controller && !controller.signal.aborted) {
+      controller.abort(externalSignal.reason ?? { code: 'VOLK_CLOUD_REQUEST_CANCELLED', reason: 'caller-aborted' });
+    }
+    const requestSignal = controller?.signal ?? externalSignal ?? undefined;
     try {
       const headers = { Accept: 'application/json' };
       if (body !== undefined) headers['Content-Type'] = 'application/json';
       if (token) headers.Authorization = `Bearer ${token}`;
       if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
-      const response = await fetchImpl(`${apiUrl}${path}`, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: controller?.signal });
+      const response = await awaitAbortable(fetchImpl(`${apiUrl}${path}`, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: requestSignal }), requestSignal);
       let payload = null;
-      try { payload = await response.json(); } catch { payload = null; }
-      if (!response.ok) throw mapCloudFailure(response.status, payload);
+      try { payload = await awaitAbortable(response.json(), requestSignal); } catch (error) {
+        if (error?.name === 'AbortError') throw error;
+        payload = null;
+      }
+      if (!response.ok) throw mapCloudFailure(response.status, payload, failureCode);
       return payload;
     } catch (error) {
+      if (externallyAborted || externalSignal?.aborted) throw cloudError('VOLK_CLOUD_REQUEST_CANCELLED', { reason: 'caller-aborted' });
+      if (timedOut || error?.name === 'AbortError') throw cloudError('VOLK_CLOUD_REQUEST_TIMEOUT', { reason: 'client-timeout' });
       if (error?.code) throw error;
-      if (error?.name === 'AbortError') throw cloudError('VOLK_CLOUD_REQUEST_TIMEOUT');
       throw cloudError('VOLK_CLOUD_UNREACHABLE');
     } finally {
       if (timer) clearTimeout(timer);
+      if (externalListener) externalSignal.removeEventListener?.('abort', externalListener);
     }
   }
   return Object.freeze({
@@ -64,13 +107,13 @@ export function createVolkCloudClient({ baseUrl, fetchImpl = globalThis.fetch, t
       const controller = typeof AbortController === 'function' ? new AbortController() : null;
       const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
       try {
-        const response = await fetchImpl(`${apiUrl}/health`, {
+        const response = await awaitAbortable(fetchImpl(`${apiUrl}/health`, {
           method: 'GET',
           headers: { Accept: 'application/json' },
           signal: controller?.signal,
-        });
+        }), controller?.signal);
         let body = null;
-        try { body = await response.json(); } catch { body = null; }
+        try { body = await awaitAbortable(response.json(), controller?.signal); } catch { body = null; }
         if (!response.ok) throw cloudError('VOLK_CLOUD_HEALTH_FAILED', { status: response.status });
         return body;
       } catch (error) {
@@ -80,26 +123,13 @@ export function createVolkCloudClient({ baseUrl, fetchImpl = globalThis.fetch, t
         if (timer) clearTimeout(timer);
       }
     },
-    async lumiRespond(request) {
-      const controller = typeof AbortController === 'function' ? new AbortController() : null;
-      const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
-      try {
-        const response = await fetchImpl(`${apiUrl}/v0/lumi/respond`, {
-          method: 'POST',
-          headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-          body: JSON.stringify(request),
-          signal: controller?.signal,
-        });
-        let body = null;
-        try { body = await response.json(); } catch { body = null; }
-        if (!response.ok) throw cloudError('VOLK_CLOUD_LUMI_FAILED', { status: response.status });
-        return body;
-      } catch (error) {
-        if (error?.code) throw error;
-        throw cloudError('VOLK_CLOUD_LUMI_UNREACHABLE');
-      } finally {
-        if (timer) clearTimeout(timer);
-      }
+    async lumiRespond(request, { signal = null } = {}) {
+      return requestJson('/v0/lumi/respond', {
+        method: 'POST',
+        body: request,
+        signal,
+        failureCode: 'VOLK_CLOUD_LUMI_FAILED',
+      });
     },
     async register({ username, password } = {}) {
       const canonical = String(username ?? '').trim().toLowerCase();
@@ -161,7 +191,7 @@ export function createVolkCloudClient({ baseUrl, fetchImpl = globalThis.fetch, t
         body: { code: String(code).trim().slice(0, 240), idempotencyKey: String(requestId).slice(0, 120) },
       }));
     },
-    async createAiOperation({ accessToken, requestId, operation } = {}) {
+    async createAiOperation({ accessToken, requestId, operation, signal = null } = {}) {
       if (!accessToken) throw cloudError('VOLK_CLOUD_AUTH_REQUIRED');
       if (!String(requestId ?? '').trim() || !operation || typeof operation !== 'object') throw cloudError('VOLK_CLOUD_OPERATION_REQUIRED');
       const operationType = operation.operationType ?? 'lumi-dialogue';
@@ -170,6 +200,7 @@ export function createVolkCloudClient({ baseUrl, fetchImpl = globalThis.fetch, t
       return normalizeCloudAiOperationResponse(await requestJson(CLOUD_AUTH_ENDPOINTS.aiOperation, {
         method: 'POST', token: accessToken, idempotencyKey: String(requestId).slice(0, 120),
         body: { idempotencyKey: String(requestId).slice(0, 120), operationType, input: { prompt } },
+        signal,
       }));
     },
   });

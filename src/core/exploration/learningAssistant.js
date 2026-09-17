@@ -295,9 +295,9 @@ export function createLearningConversationStore() {
   });
 }
 
-export function createLearningAssistant({ gateway } = {}) {
+export function createLearningAssistant({ gateway, timeoutMs } = {}) {
   return Object.freeze({
-    async ask({ question, config, context, taskMode = AGENT_TASK_MODES.ASK, requestId = null, signal = undefined } = {}) {
+    async ask({ question, config, context, taskMode = AGENT_TASK_MODES.ASK, requestId = null, signal = undefined, timeoutMs: requestTimeoutMs } = {}) {
       if (!config?.apiKey?.trim() && gateway?.kind !== 'volk-cloud') {
         const error = new Error('Configure a provider to use Ask VOLK.');
         error.code = 'AI_CONFIG_MISSING';
@@ -308,8 +308,9 @@ export function createLearningAssistant({ gateway } = {}) {
         taskMode,
         requestId: logicalRequestId,
         signal,
+        timeoutMs: requestTimeoutMs ?? timeoutMs,
         repairInput: { task: 'answer-validation', instruction: 'Correct only the previous answer shape; preserve truthful runtime facts and do not add actions.' },
-        execute: async ({ attempt }) => {
+        execute: async ({ attempt, attemptBudget, signal: effectiveSignal }) => {
           const response = await gateway.complete({
             config,
             system: 'Deterministic runtime code remains authoritative. You provide bounded conceptual language only.',
@@ -320,7 +321,8 @@ export function createLearningAssistant({ gateway } = {}) {
             taskContext: context,
             taskInput: { question: String(question ?? '').trim().slice(0, 240) },
             requestId: logicalRequestId,
-            signal,
+            signal: effectiveSignal,
+            attemptBudget,
           });
           let parsed;
           try { parsed = JSON.parse(response.text); } catch {
