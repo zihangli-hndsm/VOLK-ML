@@ -1,10 +1,11 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { CONCEPTUAL_DEPTHS } from '../../core/ui/uiArchitecture.js';
 import { classifyAgentGuideRequest, deriveAgentComparisonExplanation, deriveAgentSemanticExplanation, routeAgentAiInterpretation, AGENT_GUIDANCE_OUTCOMES } from '../../core/ui/agentGuide.js';
 import { deriveCleanerComparisonProposal } from '../../core/exploration/cleanerComparison.js';
 import { createExplorationAiInterpreter } from '../../core/exploration/explorationAiInterpreter.js';
 import { createExperimentDesignRequest, createExperimentSuggestionTask } from '../../core/exploration/learningAssistant.js';
 import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
+import { AGENT_TASK_MODES } from '../../core/ai/agentRequestContract.js';
 import { getWorldRecipePreset, WORLD_RECIPE_PRESET_IDS } from '../../core/exploration/worldRecipePresets.js';
 import { deriveConceptState } from '../../core/ui/lumiSemantics.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
@@ -90,6 +91,15 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
   const [cleanerOptions, setCleanerOptions] = useState(null);
   const [cleanerUnavailable, setCleanerUnavailable] = useState(false);
   const [pendingExperimentTask, setPendingExperimentTask] = useState(null);
+  const requestSequence = useRef(0);
+  const activeRequest = useRef(null);
+  const pendingExperimentTaskRef = useRef(null);
+  const mounted = useRef(true);
+  useEffect(() => () => {
+    mounted.current = false;
+    activeRequest.current?.controller?.abort();
+    requestSequence.current += 1;
+  }, []);
   useEffect(() => {
     onBusyChange?.(busy);
     return () => onBusyChange?.(false);
@@ -124,43 +134,75 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     setAiDiagnostic(null);
   };
 
+  const queueExperimentTask = (task) => {
+    const pending = {
+      id: `experiment-task-${Date.now()}-${++requestSequence.current}`,
+      task,
+    };
+    pendingExperimentTaskRef.current = pending;
+    setPendingExperimentTask(pending);
+    return pending;
+  };
+
   const selectMode = (nextMode) => {
+    activeRequest.current?.controller?.abort();
+    activeRequest.current = null;
+    requestSequence.current += 1;
+    setBusy(false);
     setMode(nextMode);
     clearResponse();
   };
 
-  const loadProposal = async (nextOutcome, proposalRequest = request, taskOverride = pendingExperimentTask) => {
+  const loadProposal = async (nextOutcome, proposalRequest = request, taskOverride = pendingExperimentTask?.task, pendingTaskId = pendingExperimentTask?.id) => {
+    const requestId = `proposal-${Date.now()}-${++requestSequence.current}`;
+    activeRequest.current?.controller?.abort();
+    activeRequest.current = { requestId, controller: null };
     setOutcome(nextOutcome);
     setProposal(null);
     setResult(null);
     setConceptCard(null);
     setError(null);
     setBusy(true);
+    const isCurrent = () => mounted.current && activeRequest.current?.requestId === requestId;
+    const consumePendingTask = () => {
+      if (pendingTaskId && pendingExperimentTaskRef.current?.id === pendingTaskId) {
+        pendingExperimentTaskRef.current = null;
+        setPendingExperimentTask(null);
+      }
+    };
     try {
       const nextProposal = await agent.proposeExploration({
         request: proposalRequest,
+        taskMode: nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.WORLD_DESIGN_PROPOSAL ? AGENT_TASK_MODES.WORLD_EDIT : AGENT_TASK_MODES.EXPERIMENT_DESIGN,
+        requestContextId: snapshot?.experiment?.id ?? snapshot?.experimentWorkspace?.activeExperimentId ?? null,
         ...(taskOverride ? { task: taskOverride } : {}),
         ...(nextOutcome.intent ? { intent: nextOutcome.intent } : {}),
         ...(nextOutcome.design ? { design: nextOutcome.design } : {}),
         ...(Array.isArray(nextOutcome.requestedHolds) ? { requestedHolds: nextOutcome.requestedHolds } : {}),
-        ...(nextOutcome.worldDesign ? { worldDesign: { ...nextOutcome.worldDesign, requestedHolds: nextOutcome.requestedHolds ?? [] } } : {}),
+          ...(nextOutcome.worldDesign ? { worldDesign: { ...nextOutcome.worldDesign, requestedHolds: nextOutcome.requestedHolds ?? [] } } : {}),
       });
+      if (!isCurrent()) return;
       setProposal(nextProposal);
-      setPendingExperimentTask(null);
+      consumePendingTask();
       if (nextProposal?.kind === 'clarification') setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: nextProposal.interpretation?.messageKey ?? nextProposal.interpretation?.ambiguity ?? nextProposal.reason ?? 'world-composer-unavailable' });
     } catch (caught) {
+      if (!isCurrent()) return;
+      consumePendingTask();
       setError(caught);
     } finally {
-      setBusy(false);
+      if (isCurrent()) setBusy(false);
     }
   };
 
   useEffect(() => {
     if (mode !== 'experiment' || !pendingExperimentTask || busy || proposal) return;
+    if (pendingExperimentTaskRef.current?.id !== pendingExperimentTask.id || pendingExperimentTaskRef.current?.consumed) return;
+    pendingExperimentTaskRef.current = { ...pendingExperimentTask, consumed: true };
     loadProposal(
       { kind: AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL },
-      pendingExperimentTask.learnerQuestion,
-      pendingExperimentTask,
+      pendingExperimentTask.task.learnerQuestion,
+      pendingExperimentTask.task,
+      pendingExperimentTask.id,
     );
   }, [mode, pendingExperimentTask, busy, proposal]);
 
@@ -172,6 +214,10 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
     setCleanerUnavailable(false);
     let nextOutcome = classifyAgentGuideRequest({ request, capabilities, snapshot });
     if (isConfigured && (nextOutcome.useAi || nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION)) {
+      const requestId = `experiment-design-${Date.now()}-${++requestSequence.current}`;
+      activeRequest.current?.controller?.abort();
+      const controller = typeof AbortController === 'function' ? new AbortController() : null;
+      activeRequest.current = { requestId, controller };
       setBusy(true);
       try {
         const interpretation = await aiInterpreter.interpret({
@@ -181,14 +227,19 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
             pedagogicalObservation: result?.pedagogicalObservation ?? null,
           },
           config,
+          taskMode: AGENT_TASK_MODES.EXPERIMENT_DESIGN,
+          requestId,
+          signal: controller?.signal,
         });
+        if (!mounted.current || activeRequest.current?.requestId !== requestId) return;
         nextOutcome = routeAgentAiInterpretation({ interpretation, request, snapshot, capabilities }) ?? nextOutcome;
       } catch (caught) {
+        if (!mounted.current || activeRequest.current?.requestId !== requestId) return;
         setAiFallback(true);
         gateway.recordTrace?.({ stage: 'fallback', status: 'used' });
-        setAiDiagnostic(createAiDiagnostic({ error: caught, config, stage: 'interpreter', fallbackUsed: true }));
+        setAiDiagnostic(createAiDiagnostic({ error: caught, config, stage: 'interpreter', fallbackUsed: true, fallbackSource: 'local-deterministic', requestId }));
       } finally {
-        setBusy(false);
+        if (mounted.current && activeRequest.current?.requestId === requestId) setBusy(false);
       }
     }
     if (nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.EXPERIMENT_PROPOSAL || nextOutcome.kind === AGENT_GUIDANCE_OUTCOMES.WORLD_DESIGN_PROPOSAL) {
@@ -203,6 +254,10 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
 
   const askWorld = async () => {
     if (!request.trim() || busy || !worldRecipeSupported || !isConfigured) return;
+    const requestId = `world-edit-${Date.now()}-${++requestSequence.current}`;
+    activeRequest.current?.controller?.abort();
+    const controller = typeof AbortController === 'function' ? new AbortController() : null;
+    activeRequest.current = { requestId, controller };
     setBusy(true);
     setError(null);
     setAiDiagnostic(null);
@@ -211,7 +266,11 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         request,
         context: agent.inspectContext({ presentation }),
         config,
+        taskMode: AGENT_TASK_MODES.WORLD_EDIT,
+        requestId,
+        signal: controller?.signal,
       });
+      if (!mounted.current || activeRequest.current?.requestId !== requestId) return;
       if (interpretation.kind !== 'world-design') {
         setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'playground.agentGuide.worldClarification' });
         setProposal(null);
@@ -223,10 +282,12 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
         requestedHolds: interpretation.requestedHolds ?? [],
       });
     } catch (caught) {
-      setAiDiagnostic(createAiDiagnostic({ error: caught, config, stage: 'interpreter', fallbackUsed: false }));
-      setError(caught);
+      if (mounted.current && activeRequest.current?.requestId === requestId) {
+        setAiDiagnostic(createAiDiagnostic({ error: caught, config, stage: 'interpreter', fallbackUsed: false, requestId }));
+        setError(caught);
+      }
     } finally {
-      setBusy(false);
+      if (mounted.current && activeRequest.current?.requestId === requestId) setBusy(false);
     }
   };
 
@@ -354,7 +415,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitRequest(); }} placeholder={t(mode === 'ask' ? 'ai.askPlaceholder' : mode === 'world' ? 'playground.agentGuide.worldPlaceholder' : 'playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
       <button type="button" disabled={!request.trim() || busy || (mode === 'world' && (!worldRecipeSupported || !isConfigured))} onClick={submitRequest} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t(mode === 'world' ? 'playground.agentGuide.proposeWorld' : 'playground.agentGuide.ask')}</button>
     </div>
-    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onRequestLifecycle={onRequestLifecycle} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(suggestion) => { const safeTask = createExperimentDesignRequest(suggestion) ?? createExperimentSuggestionTask(suggestion); if (!safeTask || safeTask.kind !== 'experiment-design-request') return; setPendingExperimentTask(safeTask); setRequest(safeTask.learnerQuestion); selectMode('experiment'); }} t={t} />}
+    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onRequestLifecycle={onRequestLifecycle} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(suggestion) => { const safeTask = createExperimentDesignRequest(suggestion) ?? createExperimentSuggestionTask(suggestion); if (!safeTask || safeTask.kind !== 'experiment-design-request') return; queueExperimentTask(safeTask); setRequest(safeTask.learnerQuestion); selectMode('experiment'); }} t={t} />}
     <div className={mode === 'ask' ? 'hidden' : ''}>
     {mode === 'world' && <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3">
       <p className="text-xs font-black text-cyan-950">{t('playground.agentGuide.worldPresets')}</p>

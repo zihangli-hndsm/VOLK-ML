@@ -84,7 +84,8 @@ async function main() {
     },
   });
   await retryGateway.complete({ config: { ...CONFIG, model: 'retry-model' }, system: 'bounded', messages: [{ role: 'user', content: 'hello' }], responseMode: 'json' });
-  assert.deepEqual(retryGateway.getUsageSummary(), { version: 1, requestCount: 1, reportedUsageCalls: 1, callsWithoutUsage: 0, inputTokens: 9, outputTokens: 2, cachedTokens: null, reasoningTokens: null, totalTokens: 11 }, 'JSON-mode fallback counts only the final logical request usage');
+  assert.deepEqual(retryGateway.getUsageSummary(), { version: 1, requestCount: 1, reportedUsageCalls: 2, callsWithoutUsage: 0, inputTokens: 12, outputTokens: 2, cachedTokens: null, reasoningTokens: null, totalTokens: 14 }, 'JSON-mode fallback retains one logical request while accounting for both physical provider attempts');
+  assert.equal(retryGateway.getAttemptUsageRecords().length, 2, 'fallback retains both physical provider attempt records');
 
   const cancelledGateway = createProviderGateway({
     fetchImpl: async (_endpoint, { signal }) => new Promise((resolve, reject) => signal?.addEventListener('abort', () => { const error = new Error('aborted'); error.name = 'AbortError'; reject(error); }, { once: true })),

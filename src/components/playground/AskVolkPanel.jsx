@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { createAiDiagnostic } from '../../core/ai/diagnostics.js';
 import { createLearningAssistant } from '../../core/exploration/learningAssistant.js';
+import { AGENT_TASK_MODES } from '../../core/ai/agentRequestContract.js';
 import { useAiProvider } from '../ai/AiProviderContext.jsx';
 import AiDiagnosticPanel from '../ai/AiDiagnosticPanel.jsx';
 import LearningContextDisclosure from './LearningContextDisclosure.jsx';
@@ -19,8 +20,11 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
   const [busy, setBusy] = useState(false);
   const [diagnostic, setDiagnostic] = useState(null);
   const [annotationMessage, setAnnotationMessage] = useState('');
-  const handledSubmitToken = useRef(0);
+  // A remounted Ask panel must not replay a token that was already consumed
+  // before the learner switched Agent modes.
+  const handledSubmitToken = useRef(submitToken);
   const activeRequestId = useRef(null);
+  const abortController = useRef(null);
   const requestSequence = useRef(0);
   const mounted = useRef(false);
   const lifecycleRef = useRef(onRequestLifecycle);
@@ -56,6 +60,8 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
     const sequence = ++requestSequence.current;
     const requestId = `ask-${Date.now()}-${handledSubmitToken.current}-${sequence}`;
     activeRequestId.current = requestId;
+    abortController.current?.abort();
+    abortController.current = typeof AbortController === 'function' ? new AbortController() : null;
     setBusy(true);
     onBusyChange?.(true);
     onRequestLifecycle?.({ phase: 'start', source: 'ask', requestId });
@@ -67,7 +73,7 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
         selectedAnchor: selection?.anchor ?? null,
         selectedQuote: selection?.quote ?? null,
       });
-      const nextAnswer = await assistant.ask({ question, config, context });
+      const nextAnswer = await assistant.ask({ question, config, context, taskMode: AGENT_TASK_MODES.ASK, requestId, signal: abortController.current?.signal });
       const current = mounted.current && activeRequestId.current === requestId && requestSequence.current === sequence;
       if (!current) return null;
       agent.recordLearningTurn({ role: 'user', text: question });
@@ -77,7 +83,7 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
       onRequestLifecycle?.({ phase: 'success', source: 'ask', requestId, feedbackEvent: { id: `ask:${assistantTurn?.id ?? requestId}`, kind: 'answer', source: 'ask', target: 'ideas.map' } });
     } catch (error) {
       if (mounted.current && activeRequestId.current === requestId && requestSequence.current === sequence) {
-        setDiagnostic(createAiDiagnostic({ error, config, stage: 'failed' }));
+        setDiagnostic(createAiDiagnostic({ error, config, stage: 'failed', requestId }));
         onRequestLifecycle?.({ phase: 'error', source: 'ask', requestId });
       }
     } finally {
@@ -92,6 +98,7 @@ export default function AskVolkPanel({ agent, presentation, initialSelection = n
 
   useEffect(() => () => {
     requestSequence.current += 1;
+    abortController.current?.abort();
     if (activeRequestId.current) lifecycleRef.current?.({ phase: 'cancel', source: 'ask', requestId: activeRequestId.current });
     activeRequestId.current = null;
   }, []);

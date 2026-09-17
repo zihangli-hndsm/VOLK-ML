@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Agent request contract harness</title>
+    <style>body{margin:0;padding:24px;font:14px/1.45 system-ui,sans-serif;background:#f8fafc;color:#0f172a}main{max-width:760px;margin:auto}button{margin:4px;padding:8px 12px;border:1px solid #94a3b8;border-radius:9px;background:#fff;font-weight:700;cursor:pointer}</style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module">
+      import React from 'react';
+      import { createRoot } from 'react-dom/client';
+      import AgentRequestContractHarness from '/src/dev/agentRequestContractHarness.jsx';
+      createRoot(document.getElementById('root')).render(React.createElement(AgentRequestContractHarness));
+    </script>
+  </body>
+</html>

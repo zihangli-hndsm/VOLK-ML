@@ -1,9 +1,12 @@
+import { classifyAgentFailure } from './agentRequestContract.js';
+
 export const AI_DIAGNOSTIC_CODES = Object.freeze([
   'AI_CONFIG_MISSING',
   'AI_ENDPOINT_INVALID',
   'AI_AUTH_FAILED',
   'AI_MODEL_NOT_FOUND',
   'AI_RATE_LIMITED',
+  'AI_HTTP_FAILED',
   'AI_NETWORK_OR_CORS',
   'AI_TIMEOUT',
   'AI_RESPONSE_INVALID',
@@ -12,6 +15,9 @@ export const AI_DIAGNOSTIC_CODES = Object.freeze([
   'AI_INTERPRETER_INVALID',
   'AI_PLANNER_FAILED',
   'AI_FIDELITY_FAILED',
+  'AI_ANSWER_INVALID',
+  'AI_CANCELLED',
+  'AI_UNKNOWN_FAILURE',
 ]);
 
 const DIAGNOSTIC_STAGES = new Set([
@@ -56,34 +62,50 @@ export function classifyAiError(error) {
   if (status === 404 || /model.*(not found|does not exist|unavailable)/.test(providerMessage)) return 'AI_MODEL_NOT_FOUND';
   if (status === 429) return 'AI_RATE_LIMITED';
   if (error?.code === 'AI_PROVIDER_RESPONSE_INVALID') return 'AI_RESPONSE_INVALID';
+  if (error?.code === 'AI_PROVIDER_RESPONSE_EMPTY') return 'AI_OUTPUT_MISSING';
   if (error?.code === 'AI_PROVIDER_OUTPUT_MISSING') return 'AI_OUTPUT_MISSING';
   if (error?.code === 'AI_PROVIDER_REFUSAL') return 'AI_OUTPUT_MISSING';
   if (error?.code === 'AI_PROVIDER_RESPONSE_INCOMPLETE') return 'AI_TIMEOUT';
-  if (error?.code === 'AI_INVALID_EXPLORATION_INTERPRETATION' || error?.code === 'AI_INVALID_REQUESTED_HOLDS') return 'AI_INTERPRETER_INVALID';
+  if (error?.code === 'AI_REQUEST_CANCELLED' || error?.name === 'AbortError') return 'AI_CANCELLED';
+  if (error?.code === 'AI_LEARNING_ANSWER_INVALID') return 'AI_ANSWER_INVALID';
+  if (error?.code === 'AI_INVALID_EXPLORATION_INTERPRETATION'
+    || error?.code === 'AI_INVALID_REQUESTED_HOLDS'
+    || error?.code === 'AI_INVALID_GOAL'
+    || error?.code === 'AI_INTERPRETER_INVALID') return 'AI_INTERPRETER_INVALID';
   if (/structured|response[_ -]?format|json[_ -]?object/.test(providerMessage)) return 'AI_STRUCTURED_OUTPUT_UNSUPPORTED';
+  if (status >= 400 && status < 600) return 'AI_HTTP_FAILED';
   if (error?.code === 'AI_PROVIDER_REQUEST_FAILED') return 'AI_NETWORK_OR_CORS';
   if (error?.code === 'AI_PROVIDER_UNAVAILABLE' || error?.code === 'AI_PROVIDER_UNSUPPORTED') return 'AI_NETWORK_OR_CORS';
-  return AI_DIAGNOSTIC_CODES.includes(error?.code) ? error.code : 'AI_NETWORK_OR_CORS';
+  return AI_DIAGNOSTIC_CODES.includes(error?.code) ? error.code : 'AI_UNKNOWN_FAILURE';
 }
 
-export function createAiDiagnostic({ error, config = {}, stage = 'failed', fallbackUsed = false, latencyMs = null, requestId = null } = {}) {
+export function createAiDiagnostic({ error, config = {}, stage = 'failed', fallbackUsed = false, fallbackSource = null, latencyMs = null, requestId = null } = {}) {
   const normalizedStage = DIAGNOSTIC_STAGES.has(stage) ? stage : 'failed';
   return Object.freeze({
     version: 1,
     stage: normalizedStage,
     errorCode: classifyAiError(error),
+    failureClass: classifyAgentFailure(error, { stage }),
     internalCode: String(error?.code ?? '').slice(0, 80) || null,
     field: String(error?.details?.field ?? '').slice(0, 80) || null,
     reason: String(error?.details?.reason ?? '').slice(0, 120) || null,
+    fieldPath: String(error?.details?.fieldPath ?? error?.details?.field ?? '').slice(0, 120) || null,
+    cause: String(error?.details?.cause ?? '').slice(0, 160) || null,
     protocol: String(config?.protocol ?? '').slice(0, 80) || null,
     vendor: String(config?.vendorId ?? config?.displayName ?? '').slice(0, 80) || null,
     model: String(config?.model ?? '').slice(0, 120) || null,
     endpoint: sanitizeEndpoint(config?.endpoint),
     httpStatus: Number(error?.details?.status) || null,
-    providerMessage: boundedText(error?.details?.providerMessage ?? error?.message, 280, config?.apiKey),
+    // Only provider-supplied diagnostic text is retained. Error messages may
+    // contain the learner's original prompt or an entire response.
+    providerMessage: boundedText(error?.details?.providerMessage ?? '', 280, config?.apiKey),
     fallbackUsed: Boolean(fallbackUsed),
+    fallbackSource: String(fallbackSource ?? '').slice(0, 80) || null,
     latencyMs: Number.isFinite(latencyMs) ? Math.max(0, Math.round(latencyMs)) : null,
     requestId: requestId ? String(requestId).slice(0, 80) : null,
+    finishReason: String(error?.details?.finishReason ?? '').slice(0, 80) || null,
+    truncated: typeof error?.details?.truncated === 'boolean' ? error.details.truncated : null,
+    responseLength: Number.isFinite(error?.details?.responseLength) ? Math.max(0, Math.min(100_000, error.details.responseLength)) : null,
   });
 }
 
@@ -121,6 +143,9 @@ export function diagnosticText(diagnostic) {
     diagnostic.internalCode ? `internalCode=${diagnostic.internalCode}` : null,
     diagnostic.field ? `field=${diagnostic.field}` : null,
     diagnostic.reason ? `reason=${diagnostic.reason}` : null,
+    diagnostic.failureClass ? `failureClass=${diagnostic.failureClass}` : null,
+    diagnostic.fieldPath ? `fieldPath=${diagnostic.fieldPath}` : null,
+    diagnostic.cause ? `cause=${diagnostic.cause}` : null,
     diagnostic.protocol ? `protocol=${diagnostic.protocol}` : null,
     diagnostic.vendor ? `vendor=${diagnostic.vendor}` : null,
     diagnostic.model ? `model=${diagnostic.model}` : null,
@@ -128,6 +153,7 @@ export function diagnosticText(diagnostic) {
     diagnostic.httpStatus ? `httpStatus=${diagnostic.httpStatus}` : null,
     diagnostic.providerMessage ? `message=${diagnostic.providerMessage}` : null,
     `fallbackUsed=${diagnostic.fallbackUsed}`,
+    diagnostic.fallbackSource ? `fallbackSource=${diagnostic.fallbackSource}` : null,
   ].filter(Boolean).join('\n');
 }
 import { sanitizeProviderUsageRecord } from './providerUsage.js';
