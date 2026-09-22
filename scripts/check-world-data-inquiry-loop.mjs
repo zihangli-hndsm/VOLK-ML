@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
 import { applyWorldTransaction } from '../src/core/exploration/operations.js';
-import { compareExperiments } from '../src/core/exploration/comparison.js';
+import { assertComparisonDimensionsDisjoint, compareExperiments } from '../src/core/exploration/comparison.js';
 import { createExperiment } from '../src/core/exploration/experiment.js';
 import { createWorld } from '../src/core/exploration/world.js';
 import { normalizeGeneratorSpec } from '../src/core/exploration/generator.js';
@@ -49,6 +49,7 @@ assert.equal(resampleDiff.factors.world.changed, false, 'resampling does not cha
 assert.equal(resampleDiff.factors.observationProcess.changed, true, 'resampling changes observation-process factor');
 assert.deepEqual(resampleDiff.changedFactors, ['observationProcess'], 'resampling is a one-factor observation comparison');
 assert.equal(resampleDiff.details.observationProcess.changed, true);
+assert.equal(assertComparisonDimensionsDisjoint(resampleDiff), true, 'resampling changed/held dimensions are disjoint');
 
 const relationChanged = applyWorldTransaction(generated, {
   id: 'world-change', actor: 'human', intent: 'world-generator',
@@ -60,6 +61,7 @@ const worldDiff = compareExperiments(
 );
 assert.equal(worldDiff.factors.world.changed, true, 'latent relation change is a World change');
 assert.equal(worldDiff.factors.observationProcess.changed, false, 'latent relation change leaves the sampling process held');
+assert.equal(assertComparisonDimensionsDisjoint(worldDiff), true, 'World intervention changed/held dimensions are disjoint');
 
 const modelHost = createPlaygroundHost({ getDataset: () => null });
 await modelHost.open({ playgroundId: 'mlp-classification', seed: 7 });

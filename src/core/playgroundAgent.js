@@ -37,6 +37,20 @@ export {
   projectLearningAssistantContext,
   validateLearningAnswer,
 } from './exploration/learningAssistant.js';
+export {
+  AGENT_REQUEST_CONTRACT_VERSION,
+  AGENT_TASK_MODES,
+  AGENT_TASK_MODE_VALUES,
+  AGENT_OUTPUT_SETS,
+  taskContractFor,
+  createAgentRequest,
+  validateAgentRequest,
+  projectAgentSemanticContext,
+  classifyAgentFailure,
+  safeTaskFailure,
+  createLogicalRequestController,
+  runBoundedTask,
+} from './ai/agentRequestContract.js';
 
 const copy = (value) => structuredClone(value);
 

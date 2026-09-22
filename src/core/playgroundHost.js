@@ -80,6 +80,7 @@ import { getExplorationContract, getOrchestrationContract } from './exploration/
 import { deriveInquiryRuntimeState } from './exploration/inquiryRuntime.js';
 import { validateLumiAction, decideLumiAction, applyGuidanceBudget, guidanceStageState, staySilent, createCloudLumiPolicy } from './exploration/lumiPolicy.js';
 import { deriveEpisode1GuidanceStage, deriveEpisode1NextOperation } from './ui/lumiEpisodeGuidance.js';
+import { AGENT_TASK_MODES } from './ai/agentRequestContract.js';
 import { createTeachingDialogueSession, isTeachingDialoguePilotEnabled, buildTeachingDialogueContext, decideTeachingDialogue, validateTeachingDialogueResponse, recordTeachingDialogueTurn, storeTeachingHypothesis, reviseTeachingHypothesis, retractTeachingHypothesis, stopTeachingDialogue } from './exploration/teachingDialoguePilot.js';
 import { getEpisode } from '../episodes/registry.js';
 import { deriveOrchestrationState } from './orchestration/runtime.js';
@@ -1503,6 +1504,20 @@ export function createPlaygroundHost({
 
     proposeExploration({ request, intent, worldDesign, design, task } = {}) {
       if (!session) throw playgroundError('PLAYGROUND_NOT_OPEN');
+      const taskMode = arguments[0]?.taskMode ?? null;
+      const requestContextId = arguments[0]?.requestContextId ?? null;
+      if (taskMode && !Object.values(AGENT_TASK_MODES).includes(taskMode)) {
+        throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'AGENT_TASK', reason: 'unsupported task mode' });
+      }
+      if (taskMode === AGENT_TASK_MODES.WORLD_EDIT && !worldDesign) {
+        throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'AGENT_TASK', reason: 'world-edit requires a World design' });
+      }
+      if (taskMode === AGENT_TASK_MODES.EXPERIMENT_DESIGN && worldDesign) {
+        throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'AGENT_TASK', reason: 'experiment-design cannot switch to World edit' });
+      }
+      if (requestContextId && String(requestContextId) !== String(session.experiment?.id ?? '')) {
+        throw playgroundError('INVALID_PLAYGROUND_ACTION', { type: 'AGENT_TASK', reason: 'stale task context' });
+      }
       const context = this.inspectContext();
       const requestedHolds = arguments[0]?.requestedHolds;
       const structuredTask = task?.kind === 'experiment-design-request'
@@ -1539,7 +1554,7 @@ export function createPlaygroundHost({
             request: request ?? 'Design a controlled experiment',
             interpretation: {
               ambiguity: error.details?.reason ?? 'requested-hold-conflict',
-              messageKey: 'playground.pedagogical.unsupported',
+              messageKey: worldDesign ? 'playground.agentGuide.worldHoldConflict' : 'playground.pedagogical.unsupported',
               choices: [],
               details: { requestedHolds: error.details?.requestedHolds ?? [], changedFactors: error.details?.changedFactors ?? [] },
             },

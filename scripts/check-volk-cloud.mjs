@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
-import { CLOUD_AVAILABILITY, checkVolkCloudHealth, createVolkCloudClient, createVolkCloudClientForConfig, normalizeVolkApiUrl, resolveVolkCloudConfig } from '../src/services/volkCloud/index.js';
+import { CLOUD_AVAILABILITY, checkVolkCloudHealth, createVolkCloudClient, createVolkCloudClientForConfig, normalizeVolkApiUrl, resolveVolkCloudConfig, createCloudAiGateway } from '../src/services/volkCloud/index.js';
 import { adaptCloudLumiResponse, createCloudLumiPolicy, projectLumiCloudRequest, validateLumiCloudRequestV0 } from '../src/core/exploration/lumiPolicy.js';
 
 assert.equal(normalizeVolkApiUrl('http://localhost:8000///'), 'http://localhost:8000', 'Cloud URL normalization removes only trailing slashes');
@@ -57,6 +57,24 @@ assert.equal(adaptCloudLumiResponse({ apiVersion: '0', requestId: 'request-1', a
 assert.equal(projected.inquiry.evidence, undefined);
 assert.deepEqual(Object.keys(projected).sort(), ['apiVersion', 'candidateConcepts', 'conceptsEncountered', 'conceptsEvidenced', 'evidence', 'inquiry', 'policy', 'recentEvents', 'recentLumiActions', 'requestId'].sort());
 assert.equal(validateLumiCloudRequestV0({ ...projected, inquiry: { ...projected.inquiry }, invalid: true }).valid, false);
+
+const cancellationClient = createVolkCloudClient({ baseUrl: 'http://127.0.0.1:8010', fetchImpl: async (_url, options) => new Promise((_, reject) => options.signal?.addEventListener('abort', () => { const error = new Error('cancelled'); error.name = 'AbortError'; reject(error); }, { once: true })) });
+const cancellationController = new AbortController();
+const cancellationRequest = cancellationClient.lumiRespond(projected, { signal: cancellationController.signal });
+cancellationController.abort();
+await assert.rejects(cancellationRequest, (error) => error.code === 'VOLK_CLOUD_REQUEST_CANCELLED');
+const bodyStallClient = createVolkCloudClient({ baseUrl: 'http://127.0.0.1:8010', timeoutMs: 20, fetchImpl: async () => ({ ok: true, status: 200, async json() { return new Promise(() => {}); } }) });
+await assert.rejects(bodyStallClient.lumiRespond(projected), (error) => error.code === 'VOLK_CLOUD_REQUEST_TIMEOUT');
+
+const cloudAttemptIds = [];
+const cloudGateway = createCloudAiGateway({
+  client: { createAiOperation: async ({ requestId }) => { cloudAttemptIds.push(requestId); return { status: 'SUCCEEDED', result: { text: 'cloud result', usage: { totalTokens: 3 } } }; } },
+  getAccessToken: () => 'token',
+});
+const cloudBudget = { max: 2, used: 0, records: [] };
+await cloudGateway.complete({ requestId: 'logical-correlation', system: 'bounded', attemptBudget: cloudBudget });
+assert.equal(cloudAttemptIds[0], 'logical-correlation:attempt-1', 'Cloud attempts use derived idempotency keys');
+assert.equal(cloudBudget.used, 1);
 
 const unavailable = await checkVolkCloudHealth(createVolkCloudClient({
   baseUrl: 'http://127.0.0.1:65534',

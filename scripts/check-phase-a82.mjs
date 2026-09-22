@@ -52,7 +52,7 @@ const promptExamples = capturedPrompt
   .split('\n')
   .filter((line) => line.startsWith('Response example ('))
   .map((line) => JSON.parse(line.slice(line.indexOf(': ') + 2)));
-assert.equal(promptExamples.length, 7, 'provider prompt contains one complete response example per guidance kind/hold case');
+assert.equal(promptExamples.length, 8, 'provider prompt contains complete response examples for guidance kinds, hold cases, and both bounded World design modes');
 const requiredResponseKeys = Object.keys(schema.properties).sort();
 const promptSemanticHost = createPlaygroundHost({ getDataset: () => null });
 await promptSemanticHost.open({ playgroundId: 'linear-regression', seed: 8199 });
@@ -80,6 +80,8 @@ for (const [index, example] of promptExamples.entries()) {
 }
 assert.ok(promptExamples.some((example) => example.requestedHolds?.includes('world')), 'prompt includes realized World hold example');
 assert.ok(promptExamples.some((example) => example.requestedHolds?.includes('world-generating-process')), 'prompt includes World-generating-process hold example');
+assert.ok(promptExamples.some((example) => example.kind === 'world-design' && example.design?.mode === 'create'), 'prompt includes bounded World create example');
+assert.ok(promptExamples.some((example) => example.kind === 'world-design' && example.design?.mode === 'edit'), 'prompt includes bounded World edit example');
 assert.ok(capturedPrompt.includes('["constructor"]'), 'prompt includes concise invalid unknown-hold example');
 assert.ok(capturedPrompt.includes('["world","world-generating-process"]'), 'prompt distinguishes invalid broad/specific World holds');
 assert.throws(() => normalizeRequestedHolds(['world', 'world-generating-process']), (error) => error.code === 'AI_INVALID_REQUESTED_HOLDS');

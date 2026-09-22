@@ -1,0 +1,276 @@
+{
+  "schema": "agent-request-contract-browser-evidence-v2",
+  "result": "PASS",
+  "fixtureCalls": [
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "ask-1789607682927-1-1",
+      "taskMode": "ask",
+      "repair": false,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "experiment-design-1789607683464-4",
+      "taskMode": "experiment-design",
+      "repair": false,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "ask-1789607685072-2-1",
+      "taskMode": "ask",
+      "repair": false,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "ask-1789607685072-2-1",
+      "taskMode": "ask",
+      "repair": true,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "world-edit-1789607685495-8",
+      "taskMode": "world-edit",
+      "repair": false,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    }
+  ],
+  "browserObservedCalls": [
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "ask-1789607682927-1-1",
+      "taskMode": "ask",
+      "repair": false,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "experiment-design-1789607683464-4",
+      "taskMode": "experiment-design",
+      "repair": false,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "ask-1789607685072-2-1",
+      "taskMode": "ask",
+      "repair": false,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "ask-1789607685072-2-1",
+      "taskMode": "ask",
+      "repair": true,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    },
+    {
+      "method": "POST",
+      "status": 200,
+      "requestId": null,
+      "logicalRequestId": "world-edit-1789607685495-8",
+      "taskMode": "world-edit",
+      "repair": false,
+      "hasTaskRules": true,
+      "hasExample": true,
+      "containsSecret": false
+    }
+  ],
+  "initialRuntimeState": {
+    "experimentId": "experiment-data-lab-teaching-linear-trend-v1",
+    "activeExperimentId": "experiment-data-lab-teaching-linear-trend-v1",
+    "worldId": "world-data-lab-teaching-linear-trend-v1",
+    "worldGenerator": "world-recipe",
+    "worldSeed": 7101,
+    "observationCount": 36,
+    "modelAttached": true,
+    "modelFit": null,
+    "comparison": {
+      "enabled": false,
+      "againstExperimentId": null,
+      "changed": [],
+      "unchanged": []
+    }
+  },
+  "executionTransitions": [
+    {
+      "before": {
+        "experimentId": "experiment-data-lab-teaching-linear-trend-v1",
+        "activeExperimentId": "experiment-data-lab-teaching-linear-trend-v1",
+        "worldId": "world-data-lab-teaching-linear-trend-v1",
+        "worldGenerator": "world-recipe",
+        "worldSeed": 7101,
+        "observationCount": 36,
+        "modelAttached": true,
+        "modelFit": null,
+        "comparison": {
+          "enabled": false,
+          "againstExperimentId": null,
+          "changed": [],
+          "unchanged": []
+        }
+      },
+      "after": {
+        "experimentId": "experiment-data-lab-teaching-linear-trend-v1-copy-2",
+        "activeExperimentId": "experiment-data-lab-teaching-linear-trend-v1-copy-2",
+        "worldId": "world-data-lab-teaching-linear-trend-v1",
+        "worldGenerator": "world-recipe",
+        "worldSeed": 7101,
+        "observationCount": 42,
+        "modelAttached": true,
+        "modelFit": {
+          "weight": 1.3012042723254935,
+          "bias": 0.4565290125464537
+        },
+        "comparison": {
+          "enabled": true,
+          "againstExperimentId": "experiment-data-lab-teaching-linear-trend-v1",
+          "changed": [
+            "observationProcess"
+          ],
+          "unchanged": [
+            "world",
+            "trainTest",
+            "model",
+            "learning",
+            "evaluation",
+            "randomness"
+          ]
+        }
+      },
+      "result": {
+        "kind": "scenario",
+        "changed": [
+          "observationProcess"
+        ]
+      }
+    },
+    {
+      "before": {
+        "experimentId": "experiment-data-lab-teaching-linear-trend-v1-copy-2",
+        "activeExperimentId": "experiment-data-lab-teaching-linear-trend-v1-copy-2",
+        "worldId": "world-data-lab-teaching-linear-trend-v1",
+        "worldGenerator": "world-recipe",
+        "worldSeed": 7101,
+        "observationCount": 42,
+        "modelAttached": true,
+        "modelFit": {
+          "weight": 1.3012042723254935,
+          "bias": 0.4565290125464537
+        },
+        "comparison": {
+          "enabled": true,
+          "againstExperimentId": "experiment-data-lab-teaching-linear-trend-v1",
+          "changed": [
+            "observationProcess"
+          ],
+          "unchanged": [
+            "world",
+            "trainTest",
+            "model",
+            "learning",
+            "evaluation",
+            "randomness"
+          ]
+        }
+      },
+      "after": {
+        "experimentId": "experiment-data-lab-teaching-linear-trend-v1-copy-2-copy-3",
+        "activeExperimentId": "experiment-data-lab-teaching-linear-trend-v1-copy-2-copy-3",
+        "worldId": "world-data-lab-teaching-linear-trend-v1",
+        "worldGenerator": "world-recipe",
+        "worldSeed": 7101,
+        "observationCount": 42,
+        "modelAttached": true,
+        "modelFit": {
+          "weight": 1.319018077536439,
+          "bias": 0.46650996284511864
+        },
+        "comparison": {
+          "enabled": true,
+          "againstExperimentId": "experiment-data-lab-teaching-linear-trend-v1-copy-2",
+          "changed": [
+            "world"
+          ],
+          "unchanged": [
+            "observationProcess",
+            "trainTest",
+            "model",
+            "learning",
+            "evaluation",
+            "randomness"
+          ]
+        }
+      },
+      "result": {
+        "kind": "scenario",
+        "changed": [
+          "world"
+        ]
+      }
+    }
+  ],
+  "componentFaultInjection": {
+    "kind": "pending-task",
+    "delegatedToRealAgent": false,
+    "successfulProposalsAndExecutionsDelegated": true
+  },
+  "body": {
+    "href": "http://127.0.0.1:5174/agent-request-contract-harness.html",
+    "text": "Agent request contract harness\n\nparent renders 1\n\nproposal calls 3\n\nexecute calls 2\n\n{\"experimentId\":\"experiment-data-lab-teaching-linear-trend-v1-copy-2-copy-3\",\"activeExperimentId\":\"experiment-data-lab-teaching-linear-trend-v1-copy-2-copy-3\",\"worldId\":\"world-data-lab-teaching-linear-trend-v1\",\"worldGenerator\":\"world-recipe\",\"worldSeed\":7101,\"observationCount\":42,\"modelAttached\":true,\"modelFit\":{\"weight\":1.319018077536439,\"bias\":0.46650996284511864},\"comparison\":{\"enabled\":true,\"againstExperimentId\":\"experiment-data-lab-teaching-linear-trend-v1-copy-2\",\"changed\":[\"world\"],\"unchanged\":[\"observationProcess\",\"trainTest\",\"model\",\"learning\",\"evaluation\",\"randomness\"]}}\n[{\"before\":{\"experimentId\":\"experiment-data-lab-teaching-linear-trend-v1\",\"activeExperimentId\":\"experiment-data-lab-teaching-linear-trend-v1\",\"worldId\":\"world-data-lab-teaching-linear-trend-v1\",\"worldGenerator\":\"world-recipe\",\"worldSeed\":7101,\"observationCount\":36,\"modelAttached\":true,\"modelFit\":null,\"comparison\":{\"enabled\":false,\"againstExperimentId\":null,\"changed\":[],\"unchanged\":[]}},\"after\":{\"experimentId\":\"experiment-data-lab-teaching-linear-trend-v1-copy-2\",\"activeExperimentId\":\"experiment-data-lab-teaching-linear-trend-v1-copy-2\",\"worldId\":\"world-data-lab-teaching-linear-trend-v1\",\"worldGenerator\":\"world-recipe\",\"worldSeed\":7101,\"observationCount\":42,\"modelAttached\":true,\"modelFit\":{\"weight\":1.3012042723254935,\"bias\":0.4565290125464537},\"comparison\":{\"enabled\":true,\"againstExperimentId\":\"experiment-data-lab-teaching-linear-trend-v1\",\"changed\":[\"observationProcess\"],\"unchanged\":[\"world\",\"trainTest\",\"model\",\"learning\",\"evaluation\",\"randomness\"]}},\"result\":{\"kind\":\"scenario\",\"changed\":[\"observationProcess\"]}},{\"before\":{\"experimentId\":\"experiment-data-lab-teaching-linear-trend-v1-copy-2\",\"activeExperimentId\":\"experiment-data-lab-teaching-linear-trend-v1-copy-2\",\"worldId\":\"world-data-lab-teaching-linear-trend-v1\",\"worldGenerator\":\"world-recipe\",\"worldSeed\":7101,\"observationCount\":42,\"modelAttached\":true"
+  },
+  "checks": [
+    "real production ExploreAgentSurface + AskVolkPanel mounted",
+    "real data-lab host/model/World Recipe initialization",
+    "real gateway -> interpreter -> planner -> scenario validator proposal path",
+    "real HTTP CORS preflight/POST transport fixture",
+    "normal Experiment provider design remains proposal-only before click",
+    "normal World provider patch remains proposal-only before click",
+    "real host semantic state captured before and after explicit confirmation",
+    "pending proposal failure consumed once across rerender",
+    "explicit retry creates one new logical request",
+    "proposal never executes without learner click",
+    "malformed provider output diagnostic",
+    "mode switch suppresses stale response",
+    "repair counted across request messages"
+  ]
+}

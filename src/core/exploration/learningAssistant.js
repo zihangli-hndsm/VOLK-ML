@@ -1,5 +1,6 @@
 import { projectLearnerAnnotations } from './learnerAnnotations.js';
 import { normalizeRequestedHolds, requestedHoldsJsonSchema, REQUESTED_HOLD_IDS } from './requestedHolds.js';
+import { AGENT_TASK_MODES, runBoundedTask } from '../ai/agentRequestContract.js';
 
 
 export const LEARNING_ASSISTANT_VERSION = 1;
@@ -154,7 +155,9 @@ export const LEARNING_ANSWER_SCHEMA = Object.freeze({
       ] },
       depth: { anyOf: [{ type: 'string', enum: [...DEPTHS] }, { type: 'null' }] },
     },
-    required: ['answer', 'tryExperiment', 'depth'],
+    // Optional fields preserve compatibility with older providers that only
+    // returned the answer body. The interpreter supplies null defaults.
+    required: ['answer'],
   },
 });
 
@@ -200,21 +203,39 @@ export function projectLearningAssistantContext({ context = {}, annotations = []
 }
 
 export function validateLearningAnswer(value) {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('AI_LEARNING_ANSWER_INVALID');
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    const error = new Error('AI_LEARNING_ANSWER_INVALID');
+    error.code = 'AI_LEARNING_ANSWER_INVALID';
+    error.details = { fieldPath: 'answer', reason: 'shape' };
+    throw error;
+  }
+  if (Object.keys(value).some((key) => !['answer', 'tryExperiment', 'depth'].includes(key))) {
+    const error = new Error('AI_LEARNING_ANSWER_INVALID');
+    error.code = 'AI_LEARNING_ANSWER_INVALID';
+    error.details = { fieldPath: 'answer', reason: 'unknown-field' };
+    throw error;
+  }
   const answer = bounded(value.answer, 1200);
+  let suggestionUnavailable = false;
   const tryExperiment = value.tryExperiment === null || value.tryExperiment === undefined
     ? null
     : typeof value.tryExperiment === 'string'
-      ? bounded(value.tryExperiment, 240)
+      ? (() => { const text = bounded(value.tryExperiment, 240); suggestionUnavailable = !text; return text; })()
       : value.tryExperiment && typeof value.tryExperiment === 'object' && !Array.isArray(value.tryExperiment)
         ? (() => {
           const question = bounded(value.tryExperiment.question, 240);
           const design = value.tryExperiment.design;
           const goal = design?.goal;
-          if (!question || !design || !EXPERIMENT_DESIGN_GOALS.has(goal)) return null;
+          if (Object.prototype.hasOwnProperty.call(value.tryExperiment, 'operation')) {
+            const error = new Error('AI_LEARNING_ANSWER_INVALID');
+            error.code = 'AI_LEARNING_ANSWER_INVALID';
+            error.details = { fieldPath: 'tryExperiment.operation', reason: 'runtime-operation-forbidden' };
+            throw error;
+          }
+          if (!question || !design || !EXPERIMENT_DESIGN_GOALS.has(goal)) { suggestionUnavailable = true; return null; }
           let requestedHolds = undefined;
           if (design.requestedHolds !== undefined) {
-            try { requestedHolds = normalizeRequestedHolds(design.requestedHolds).holds; } catch { return null; }
+            try { requestedHolds = normalizeRequestedHolds(design.requestedHolds).holds; } catch { suggestionUnavailable = true; return null; }
           }
           return {
             question,
@@ -227,11 +248,15 @@ export function validateLearningAnswer(value) {
             },
           };
         })()
-        : null;
+        : (() => { suggestionUnavailable = true; return null; })();
   const depth = value.depth === null || value.depth === undefined ? null : DEPTHS.has(value.depth) ? value.depth : null;
-  if (!answer || (value.tryExperiment !== null && value.tryExperiment !== undefined && !tryExperiment)
-    || (value.depth !== null && value.depth !== undefined && !depth)) throw new Error('AI_LEARNING_ANSWER_INVALID');
-  return { version: LEARNING_ASSISTANT_VERSION, answer, tryExperiment, depth };
+  if (!answer || (value.depth !== null && value.depth !== undefined && !depth)) {
+    const error = new Error('AI_LEARNING_ANSWER_INVALID');
+    error.code = 'AI_LEARNING_ANSWER_INVALID';
+    error.details = { fieldPath: !answer ? 'answer' : 'depth' };
+    throw error;
+  }
+  return { version: LEARNING_ASSISTANT_VERSION, answer, tryExperiment, depth, ...(suggestionUnavailable ? { suggestionUnavailable: true } : {}) };
 }
 
 export function learningAssistantPrompt({ question, context } = {}) {
@@ -270,35 +295,54 @@ export function createLearningConversationStore() {
   });
 }
 
-export function createLearningAssistant({ gateway } = {}) {
+export function createLearningAssistant({ gateway, timeoutMs } = {}) {
   return Object.freeze({
-    async ask({ question, config, context } = {}) {
-      if (!config?.apiKey?.trim()) {
+    async ask({ question, config, context, taskMode = AGENT_TASK_MODES.ASK, requestId = null, signal = undefined, timeoutMs: requestTimeoutMs } = {}) {
+      if (!config?.apiKey?.trim() && gateway?.kind !== 'volk-cloud') {
         const error = new Error('Configure a provider to use Ask VOLK.');
         error.code = 'AI_CONFIG_MISSING';
         throw error;
       }
-      const response = await gateway.complete({
-        config,
-        system: 'Deterministic runtime code remains authoritative. You provide bounded conceptual language only.',
-        messages: [{ role: 'user', content: learningAssistantPrompt({ question, context }) }],
-        responseMode: 'json',
-        responseSchema: LEARNING_ANSWER_SCHEMA,
+      const logicalRequestId = String(requestId ?? `ask-${Date.now()}`).slice(0, 96);
+      const result = await runBoundedTask({
+        taskMode,
+        requestId: logicalRequestId,
+        signal,
+        timeoutMs: requestTimeoutMs ?? timeoutMs,
+        repairInput: { task: 'answer-validation', instruction: 'Correct only the previous answer shape; preserve truthful runtime facts and do not add actions.' },
+        execute: async ({ attempt, attemptBudget, signal: effectiveSignal }) => {
+          const response = await gateway.complete({
+            config,
+            system: 'Deterministic runtime code remains authoritative. You provide bounded conceptual language only.',
+            messages: [{ role: 'user', content: learningAssistantPrompt({ question, context }) }, ...(attempt ? [{ role: 'user', content: 'Repair the previous response to match the task contract exactly. Return JSON only.' }] : [])],
+            responseMode: 'json',
+            responseSchema: LEARNING_ANSWER_SCHEMA,
+            taskMode,
+            taskContext: context,
+            taskInput: { question: String(question ?? '').trim().slice(0, 240) },
+            requestId: logicalRequestId,
+            signal: effectiveSignal,
+            attemptBudget,
+          });
+          let parsed;
+          try { parsed = JSON.parse(response.text); } catch {
+            const error = new Error('The learning assistant returned invalid JSON.');
+            error.code = 'AI_RESPONSE_INVALID';
+            error.details = { stage: 'parse', responseLength: String(response.text ?? '').length, truncated: String(response.text ?? '').length > 20_000 };
+            throw error;
+          }
+          try {
+            const answer = validateLearningAnswer(parsed);
+            gateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'passed' });
+            return { ...answer, providerId: response.protocol };
+          } catch (error) {
+            error.details = { ...(error.details ?? {}), stage: 'interpreter-validation', fieldPath: 'answer' };
+            gateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'failed' });
+            throw error;
+          }
+        },
       });
-      let parsed;
-      try { parsed = JSON.parse(response.text); } catch {
-        const error = new Error('The learning assistant returned invalid JSON.');
-        error.code = 'AI_RESPONSE_INVALID';
-        throw error;
-      }
-      try {
-        const answer = validateLearningAnswer(parsed);
-        gateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'passed' });
-        return { ...answer, providerId: response.protocol };
-      } catch (error) {
-        gateway.recordTrace?.({ stage: 'interpreter-validation', protocol: response.protocol, model: response.model, status: 'failed' });
-        throw error;
-      }
+      return result.value;
     },
   });
 }
