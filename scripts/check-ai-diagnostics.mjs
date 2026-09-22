@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { probeProviderConnection } from '../src/core/ai/connectionProbe.js';
+import { createExplorationAiInterpreter } from '../src/core/exploration/explorationAiInterpreter.js';
 import { classifyAiError, createAiDiagnostic, diagnosticText } from '../src/core/ai/diagnostics.js';
 import { createProviderGateway } from '../src/core/ai/providerRegistry.js';
 
@@ -37,18 +38,22 @@ const ready = await probeProviderConnection({ gateway: successfulGateway, config
 assert.equal(ready.status, 'ready', 'a successful staged probe reaches ready');
 assert.deepEqual(ready.stages.map((item) => item.id), ['configuration', 'network', 'authentication', 'model', 'basic-text', 'structured-output', 'interpreter']);
 
-const delayedSuccessfulGateway = {
+const delayedInterpreterGateway = {
   async complete(request) {
-    if (request.responseMode === 'json' && request.responseSchema?.name === 'volk_ml_connection_probe') return { text: '{"ok":true}' };
     if (request.responseMode === 'json') {
-      await new Promise((resolve) => setTimeout(resolve, 8));
+      await new Promise((resolve) => setTimeout(resolve, 10));
       return { protocol: 'fake', text: JSON.stringify({ kind: 'explanation', topic: 'comparison' }) };
     }
     return { text: 'OK' };
   },
 };
-const readyWithNullTimeout = await probeProviderConnection({ gateway: delayedSuccessfulGateway, config, timeoutMs: null });
-assert.equal(readyWithNullTimeout.status, 'ready', 'connection probe null timeout uses the standard deadline rather than a one-millisecond deadline');
+const delayedInterpreter = createExplorationAiInterpreter({ gateway: delayedInterpreterGateway, timeoutMs: null });
+const delayedInterpretation = await delayedInterpreter.interpret({
+  request: 'What does a training step mean?',
+  context: { presentation: { availableDepths: ['mechanism', 'evidence'] } },
+  config,
+});
+assert.equal(delayedInterpretation.kind, 'explanation', 'direct interpreter null timeout uses the standard deadline rather than a one-millisecond deadline');
 
 const structuredFailure = await probeProviderConnection({ gateway: { async complete(request) { if (request.responseMode === 'text') return { text: 'OK' }; return { text: 'not-json' }; } }, config });
 assert.equal(structuredFailure.status, 'failed');

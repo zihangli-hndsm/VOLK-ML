@@ -32,7 +32,7 @@ function result({ status, requestId, started, stages, gateway }) {
   };
 }
 
-export async function probeProviderConnection({ gateway, config, timeoutMs } = {}) {
+export async function probeProviderConnection({ gateway, config } = {}) {
   const requestId = makeId();
   const stages = [];
   const started = Date.now();
@@ -122,10 +122,7 @@ export async function probeProviderConnection({ gateway, config, timeoutMs } = {
   });
   if (!structured) return result({ status: 'failed', requestId, started, stages, gateway });
 
-  // Keep the probe's optional override on the same shared normalization path
-  // as the learner-facing Agent surfaces. `null` means the standard logical
-  // deadline; it must not become a one-millisecond probe.
-  const interpreter = createExplorationAiInterpreter({ gateway, timeoutMs });
+  const interpreter = createExplorationAiInterpreter({ gateway });
   const interpreted = await call('interpreter', () => interpreter.interpret({
     request: 'What does a training step mean?',
     context: { presentation: { availableDepths: ['mechanism', 'evidence'] } },
