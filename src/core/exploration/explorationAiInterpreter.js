@@ -2,6 +2,7 @@ import { normalizeAiConfig } from '../ai/aiSettings.js';
 import { createProviderGateway } from '../ai/providerRegistry.js';
 import { EXPLORATION_INTENT_IDS } from './explorationIntents.js';
 import { applyWorldRecipePatch, normalizeWorldRecipe, worldRecipeJsonSchema, worldRecipePatchJsonSchema } from './worldRecipe.js';
+import { getWorldRecipePreset } from './worldRecipePresets.js';
 import { pedagogicalExperimentSchema, validateExplorationDesign, pedagogicalGoalIds } from './pedagogicalExperiment.js';
 import { canonicalizePedagogicalObservation } from './pedagogicalObservation.js';
 import { projectCuriosityContext } from './curiosity.js';
@@ -11,12 +12,13 @@ import { AGENT_TASK_MODES, runBoundedTask } from '../ai/agentRequestContract.js'
 const INTENTS = EXPLORATION_INTENT_IDS;
 const EXPLANATION_TOPICS = Object.freeze(['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate']);
 const GUIDANCE_KINDS = Object.freeze(['explanation', 'navigation', 'experiment', 'world-design', 'clarification']);
+const WORLD_GUIDANCE_KINDS = Object.freeze(['world-design', 'clarification']);
 
 const nullableStringSchema = () => ({ anyOf: [{ type: 'string' }, { type: 'null' }] });
 
 export function explorationGuidanceResponseSchema({ availableDepths = [], taskMode = null } = {}) {
   const depths = availableDepths.length ? availableDepths : ['unavailable'];
-  const kinds = taskMode === AGENT_TASK_MODES.WORLD_EDIT ? ['world-design'] : taskMode === AGENT_TASK_MODES.EXPERIMENT_DESIGN ? ['explanation', 'navigation', 'experiment', 'clarification'] : GUIDANCE_KINDS;
+  const kinds = taskMode === AGENT_TASK_MODES.WORLD_EDIT ? WORLD_GUIDANCE_KINDS : taskMode === AGENT_TASK_MODES.EXPERIMENT_DESIGN ? ['explanation', 'navigation', 'experiment', 'clarification'] : GUIDANCE_KINDS;
   return {
     type: 'object',
     additionalProperties: false,
@@ -89,6 +91,32 @@ function parseJsonText(text) {
   throw error;
 }
 
+function currentWorldRecipe(context) {
+  const generator = context?.world?.generator;
+  if (generator && generator.kind && generator.kind !== 'world-recipe') return null;
+  const recipe = generator?.kind === 'world-recipe'
+    ? generator.recipe
+    : generator?.recipe ?? context?.world?.recipe ?? context?.worldRecipe ?? null;
+  return recipe && typeof recipe === 'object' && !Array.isArray(recipe) ? recipe : null;
+}
+
+function worldCapability(context, key) {
+  const capabilities = context?.exploration?.capabilities
+    ?? context?.exploration?.worldCapabilities
+    ?? context?.worldComposer
+    ?? context?.world?.capabilities
+    ?? null;
+  return capabilities && Object.prototype.hasOwnProperty.call(capabilities, key) ? capabilities[key] !== false : true;
+}
+
+function worldClarification(reason, ambiguity = null) {
+  return {
+    kind: 'clarification',
+    reason: String(reason ?? 'The World request needs one supported, bounded clarification.').slice(0, 240),
+    ambiguity: typeof ambiguity === 'string' ? ambiguity.slice(0, 240) : null,
+  };
+}
+
 function validateInterpretation(value, context, taskMode = null) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid exploration interpretation.');
@@ -96,6 +124,9 @@ function validateInterpretation(value, context, taskMode = null) {
   const allowedKeys = new Set(['kind', 'topic', 'explanation', 'depth', 'intent', 'requestedChange', 'requestedHolds', 'design', 'experimentDesign', 'reason', 'ambiguity']);
   if (Object.keys(value).some((key) => !allowedKeys.has(key))) {
     throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an unsupported field.');
+  }
+  if (taskMode === AGENT_TASK_MODES.WORLD_EDIT && !WORLD_GUIDANCE_KINDS.includes(value.kind)) {
+    return worldClarification('World editing accepts only a bounded recipe/patch or a clarification; the supplied result was not a World result.');
   }
   if (value.kind === 'explanation') {
     if (!EXPLANATION_TOPICS.includes(value.topic)) {
@@ -117,22 +148,32 @@ function validateInterpretation(value, context, taskMode = null) {
   }
   if (value.kind === 'clarification') {
     const reason = typeof value.reason === 'string' ? value.reason.slice(0, 240) : '';
+    if (taskMode === AGENT_TASK_MODES.WORLD_EDIT) return worldClarification(reason || 'Please clarify the intended World recipe or current-context patch.', value.ambiguity);
     return { kind: 'clarification', reason: reason || 'unsupported-request', ambiguity: value.ambiguity ?? null };
   }
   if (value.kind === 'world-design') {
     if (taskMode && taskMode !== AGENT_TASK_MODES.WORLD_EDIT) {
       throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'A World edit response is not valid for this task mode.');
     }
+    if (value.ambiguity) return worldClarification('The World request is ambiguous and needs one concrete bounded change.', value.ambiguity);
     const design = value.design;
-    if (!design || !['create', 'edit'].includes(design.mode)) {
-      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid World design mode.');
+    if (!design || typeof design !== 'object' || Array.isArray(design) || !['mode', 'recipe', 'patch'].every((key) => Object.prototype.hasOwnProperty.call(design, key)) || Object.keys(design).some((key) => !['mode', 'recipe', 'patch'].includes(key)) || !['create', 'edit'].includes(design.mode)) {
+      return worldClarification('Choose either a complete World recipe or one patch against the current World recipe.');
     }
     try {
+      if (design.mode === 'create' && !worldCapability(context, 'canDesignWorldFromNaturalLanguage')) return worldClarification('This workspace cannot create a World recipe through the current capability set.');
+      if (design.mode === 'edit' && !worldCapability(context, 'canEditCurrentWorldRecipe')) return worldClarification('This workspace cannot edit the current World recipe through the current capability set.');
       const recipe = design.mode === 'create' && design.recipe ? normalizeWorldRecipe(design.recipe) : null;
       const patch = design.mode === 'edit' && design.patch ? structuredClone(design.patch) : null;
-      if (design.mode === 'create' && !recipe) throw new Error('recipe-required');
-      if (design.mode === 'edit' && !patch) throw new Error('patch-required');
-      if (patch && context?.world?.generator?.kind === 'world-recipe') applyWorldRecipePatch(context.world.generator.recipe, patch);
+      if (design.mode === 'create' && (!recipe || design.patch !== null)) return worldClarification('World creation requires a complete recipe and no patch.');
+      if (design.mode === 'edit' && (recipe || !patch)) return worldClarification('World editing requires a patch and no replacement recipe.');
+      if (design.mode === 'edit') {
+        const current = currentWorldRecipe(context);
+        if (!current) return worldClarification('A current World recipe is required before applying an edit patch.');
+        const currentVersion = Number(context?.world?.recipeVersion ?? current.version);
+        if (!Number.isInteger(currentVersion) || patch.version !== currentVersion) return worldClarification(`The current World recipe version ${Number.isInteger(currentVersion) ? currentVersion : 'unknown'} must be used by the patch.`);
+        applyWorldRecipePatch(current, patch);
+      }
       const normalizedHolds = normalizeRequestedHolds(value.requestedHolds);
       return {
         kind: 'world-design',
@@ -143,7 +184,7 @@ function validateInterpretation(value, context, taskMode = null) {
       };
     } catch (error) {
       if (error?.code === 'AI_INVALID_REQUESTED_HOLDS') throw error;
-      throw interpreterError('AI_INVALID_EXPLORATION_INTERPRETATION', 'The AI interpreter returned an invalid World design.');
+      return worldClarification('The World recipe or patch is invalid, stale, or uses an unsupported World operation.');
     }
   }
   if (value.kind === 'experiment' || (!value.kind && value.intent)) {
@@ -245,7 +286,7 @@ function promptFor({ request, context, taskMode = null, repairProblem = '', repa
     ...overrides,
   })}`;
   const allowedKinds = taskMode === AGENT_TASK_MODES.WORLD_EDIT
-    ? ['world-design']
+    ? WORLD_GUIDANCE_KINDS
     : taskMode === AGENT_TASK_MODES.EXPERIMENT_DESIGN
       ? ['explanation', 'navigation', 'experiment', 'clarification']
       : GUIDANCE_KINDS;
@@ -257,7 +298,8 @@ function promptFor({ request, context, taskMode = null, repairProblem = '', repa
     examples.push(responseExample('experiment-hold-world-process', { kind: 'experiment', intent: 'more-data', requestedChange: 'increase same-distribution training data', requestedHolds: ['world-generating-process'] }));
     examples.push(responseExample('pedagogical-experiment', { kind: 'experiment', experimentDesign: { version: 1, kind: 'exploration-design', goal: 'more-same-distribution-data', intervention: 'increase-same-distribution-sample-size', evidence: 'outcome-and-stability', prediction: null } }));
   }
-  if (allowedKinds.includes('world-design')) examples.push(responseExample('world-design', { kind: 'world-design', design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } } }));
+  if (allowedKinds.includes('world-design')) examples.push(responseExample('world-design-edit', { kind: 'world-design', design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } } }));
+  if (allowedKinds.includes('world-design')) examples.push(responseExample('world-design-create', { kind: 'world-design', design: { mode: 'create', recipe: getWorldRecipePreset('rings'), patch: null } }));
   if (allowedKinds.includes('clarification')) examples.push(responseExample('clarification', { kind: 'clarification', reason: 'short bounded reason', ambiguity: 'short bounded ambiguity' }));
   return [
     'Interpret the learner request into one bounded high-level VOLK-ML guidance outcome.',

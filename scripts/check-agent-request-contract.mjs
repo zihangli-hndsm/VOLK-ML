@@ -4,6 +4,8 @@ import {
   AGENT_REQUEST_CONTRACT_VERSION,
   AGENT_TASK_MODES,
   AGENT_OUTPUT_SETS,
+  taskContractDefinition,
+  taskContractPrompt,
   createAgentRequest,
   validateAgentRequest,
   projectAgentSemanticContext,
@@ -55,7 +57,38 @@ function assertEveryStrictObjectPropertyIsRequired(schema, path = '$') {
   }
 }
 
-async function callActualProvider({ protocol, taskMode, taskInput, text, responseSchema }) {
+function contractPromptFromActualBody(body, protocol) {
+  const prompt = protocol === 'openai-responses'
+    ? String(body?.instructions ?? '')
+    : String(body?.messages?.find((message) => message?.role === 'system')?.content ?? '');
+  const marker = 'JSON contract: ';
+  const start = prompt.indexOf(marker);
+  const end = prompt.indexOf('\nValid output example:', start + marker.length);
+  assert.ok(start >= 0 && end > start, `${protocol} provider body carries the complete JSON contract descriptor`);
+  return JSON.parse(prompt.slice(start + marker.length, end));
+}
+
+function verifyActualContractDescriptor(contract, taskMode, label = taskMode) {
+  const expected = taskContractDefinition(taskMode);
+  assert.ok(contract && typeof contract === 'object', `${label} actual body contains a JSON contract object`);
+  assert.equal(contract.version, expected.version, `${label} contract version is current`);
+  assert.equal(contract.mode, expected.mode, `${label} contract mode is current`);
+  assert.deepEqual(contract.required, expected.required, `${label}.required fields are complete`);
+  assert.deepEqual(contract.optionalNullable, expected.optionalNullable, `${label}.optionalNullable fields are complete`);
+  assert.deepEqual(contract.bounds, expected.bounds, `${label}.bounds are complete`);
+  assert.deepEqual(contract.enums ?? null, expected.enums ?? null, `${label}.enums are complete`);
+  assert.deepEqual(contract.emptyPolicy ?? null, expected.emptyPolicy ?? null, `${label}.emptyPolicy is complete`);
+  assert.deepEqual(contract.extraFieldPolicy ?? null, expected.extraFieldPolicy ?? null, `${label}.extraFieldPolicy is complete`);
+  assert.deepEqual(contract.crossFieldRules ?? null, expected.crossFieldRules ?? null, `${label}.crossFieldRules are complete`);
+  if (taskMode === AGENT_TASK_MODES.WORLD_EDIT) {
+    assert.deepEqual(contract.resultKinds, expected.resultKinds, `${label}.resultKinds are complete`);
+    assert.deepEqual(contract.designModes, expected.designModes, `${label}.designModes are complete`);
+    assert.deepEqual(contract.nullPolicy, expected.nullPolicy, `${label}.nullPolicy is complete`);
+  }
+  return true;
+}
+
+async function callActualProvider({ protocol, endpoint = null, taskMode, taskInput, text, responseSchema }) {
   let body = null;
   let calls = 0;
   const gateway = createProviderGateway({ fetchImpl: async (_endpoint, options) => {
@@ -64,7 +97,7 @@ async function callActualProvider({ protocol, taskMode, taskInput, text, respons
     return jsonResponse(providerPayload(protocol, text));
   } });
   const config = protocol === 'openai-responses'
-    ? { protocol, model: 'fixture-model', apiKey: 'fixture-secret' }
+    ? { protocol, ...(endpoint ? { endpoint } : {}), model: 'fixture-model', apiKey: 'fixture-secret' }
     : { protocol, endpoint: 'https://fixture.invalid/v1/chat/completions', model: 'fixture-model', apiKey: 'fixture-secret' };
   const result = await gateway.complete({
     config,
@@ -134,6 +167,8 @@ const providerModeFixtures = {
     schema: { name: 'world-fixture', schema: explorationGuidanceResponseSchema({ availableDepths: ['evidence'], taskMode: AGENT_TASK_MODES.WORLD_EDIT }) },
   },
 };
+const providerConfig = { protocol: 'openai-compatible', endpoint: 'https://fixture.invalid/v1/chat/completions', model: 'fixture', apiKey: 'fixture-secret' };
+const actualContractBodies = new Map();
 for (const protocol of ['openai-compatible', 'openai-responses']) {
   for (const taskMode of Object.values(AGENT_TASK_MODES)) {
     const fixture = providerModeFixtures[taskMode];
@@ -141,8 +176,9 @@ for (const protocol of ['openai-compatible', 'openai-responses']) {
     assert.equal(actual.calls, 1, `${protocol}/${taskMode} uses one bounded provider call`);
     const serialized = JSON.stringify(actual.body);
     assert.match(serialized, new RegExp(`taskMode=${taskMode}`));
-    assert.match(serialized, /Task rules:/);
-    assert.match(serialized, /Valid output example:/);
+    const actualContract = contractPromptFromActualBody(actual.body, protocol);
+    actualContractBodies.set(`${protocol}/${taskMode}`, structuredClone(actualContract));
+    verifyActualContractDescriptor(actualContract, taskMode, `${protocol}/${taskMode}`);
     if (protocol === 'openai-responses') {
       assert.equal(actual.body.text?.format?.type, 'json_schema', `${taskMode} uses native strict schema on the known schema-capable path`);
       assert.equal(actual.body.text?.format?.strict, true);
@@ -154,6 +190,91 @@ for (const protocol of ['openai-compatible', 'openai-responses']) {
     assert.equal(actual.result.text, fixture.text);
   }
 }
+
+const unknownResponses = await callActualProvider({
+  protocol: 'openai-responses',
+  endpoint: 'https://unknown.invalid/v1/responses',
+  taskMode: AGENT_TASK_MODES.WORLD_EDIT,
+  taskInput: providerModeFixtures[AGENT_TASK_MODES.WORLD_EDIT].input,
+  text: providerModeFixtures[AGENT_TASK_MODES.WORLD_EDIT].text,
+  responseSchema: providerModeFixtures[AGENT_TASK_MODES.WORLD_EDIT].schema,
+});
+verifyActualContractDescriptor(contractPromptFromActualBody(unknownResponses.body, 'openai-responses'), AGENT_TASK_MODES.WORLD_EDIT, 'openai-responses/unknown-endpoint');
+assert.equal(unknownResponses.body.text, undefined, 'unknown endpoint uses JSON-only output path while retaining the full contract prompt');
+
+const contractMutations = [
+  { taskMode: AGENT_TASK_MODES.ASK, field: 'emptyPolicy', mutate: (value) => { value.emptyPolicy = 'empty strings are allowed'; } },
+  { taskMode: AGENT_TASK_MODES.EXPERIMENT_DESIGN, field: 'crossFieldRules', mutate: (value) => { value.crossFieldRules = value.crossFieldRules.slice(0, -1); } },
+  { taskMode: AGENT_TASK_MODES.WORLD_EDIT, field: 'nullPolicy', mutate: (value) => { value.nullPolicy = value.nullPolicy.filter((rule) => !rule.startsWith('clarification')); } },
+];
+for (const mutation of contractMutations) {
+  const baseline = actualContractBodies.get(`openai-compatible/${mutation.taskMode}`);
+  assert.ok(baseline, `actual JSON-only body baseline exists for ${mutation.taskMode}`);
+  const mutated = structuredClone(baseline);
+  mutation.mutate(mutated);
+  assert.throws(
+    () => verifyActualContractDescriptor(mutated, mutation.taskMode, `mutated/${mutation.taskMode}`),
+    new RegExp(`${mutation.field}`),
+    `${mutation.taskMode} contract mutation of ${mutation.field} is rejected by the same verifier`,
+  );
+}
+
+const askContract = taskContractDefinition(AGENT_TASK_MODES.ASK);
+const experimentContract = taskContractDefinition(AGENT_TASK_MODES.EXPERIMENT_DESIGN);
+const worldContract = taskContractDefinition(AGENT_TASK_MODES.WORLD_EDIT);
+assert.ok(askContract.required.includes('answer') && askContract.optionalNullable.includes('tryExperiment'), 'Ask contract records required and nullable fields');
+assert.ok(experimentContract.enums.kind.includes('clarification') && experimentContract.crossFieldRules.some((rule) => /navigation requires/.test(rule)), 'Experiment contract records enums and cross-field rules');
+assert.deepEqual(worldContract.resultKinds, ['world-design', 'clarification'], 'World contract includes bounded design and clarification results');
+const askContractPrompt = taskContractPrompt(createAgentRequest({ taskMode: AGENT_TASK_MODES.ASK, requestId: 'contract-prompt', context: {}, input: { question: 'Explain.' } }));
+assert.match(askContractPrompt, /additional properties are forbidden/);
+assert.match(askContractPrompt, /answer/);
+assert.match(askContractPrompt, /empty strings are invalid/);
+assert.match(taskContractPrompt(createAgentRequest({ taskMode: AGENT_TASK_MODES.WORLD_EDIT, requestId: 'world-contract-prompt', context: {}, input: { mode: 'edit', patchVersion: 1 } })), /world-design.*clarification/s);
+
+const failedHttpCases = [401, 403, 429, 400, 404, 500, 503];
+for (const protocol of ['openai-compatible', 'openai-responses']) {
+  for (const status of failedHttpCases) {
+    for (const bodyShape of ['json', 'html', 'empty']) {
+      let calls = 0;
+      const failedGateway = createProviderGateway({ fetchImpl: async () => {
+        calls += 1;
+        if (bodyShape === 'json') return jsonResponse({ error: { message: 'bounded provider failure' } }, status);
+        return { ok: false, status, async json() { throw new Error(bodyShape === 'html' ? '<html>provider failure</html>' : 'empty body'); } };
+      } });
+      const config = protocol === 'openai-responses'
+        ? { protocol, model: 'fixture', apiKey: 'fixture-secret' }
+        : { protocol, endpoint: 'https://fixture.invalid/v1/chat/completions', model: 'fixture', apiKey: 'fixture-secret' };
+      await assert.rejects(
+        failedGateway.complete({ config, taskMode: AGENT_TASK_MODES.ASK, taskContext: semantic, taskInput: { question: 'failed HTTP' }, requestId: `failed-${protocol}-${status}-${bodyShape}`, responseMode: 'json', responseSchema: providerModeFixtures[AGENT_TASK_MODES.ASK].schema }),
+        (error) => error.code === 'AI_PROVIDER_REQUEST_FAILED'
+          && error.details?.status === status
+          && error.details?.protocol === protocol
+          && error.details?.requestId === `failed-${protocol}-${status}-${bodyShape}`
+          && classifyAgentFailure(error) === (status === 401 || status === 403 ? 'authentication' : status === 429 ? 'rate-limit' : status >= 500 ? 'server' : 'http'),
+      );
+      assert.equal(calls, 1, `${protocol} ${status}/${bodyShape} emits exactly one physical request`);
+      assert.equal(failedGateway.getAttemptUsageRecords().length, 1, `${protocol} ${status}/${bodyShape} records one physical attempt`);
+    }
+  }
+}
+
+let malformedTwoOhCalls = 0;
+const malformedTwoOhGateway = createProviderGateway({ fetchImpl: async () => {
+  malformedTwoOhCalls += 1;
+  if (malformedTwoOhCalls === 1) return { ok: true, status: 200, async json() { throw new Error('malformed success body'); } };
+  return jsonResponse(providerPayload('openai-compatible', providerModeFixtures[AGENT_TASK_MODES.ASK].text));
+} });
+const malformedTwoOhAssistant = createLearningAssistant({ gateway: malformedTwoOhGateway, timeoutMs: 500 });
+const malformedTwoOhResult = await malformedTwoOhAssistant.ask({ question: 'repair malformed success', config: providerConfig, context: {}, requestId: 'malformed-two-oh' });
+assert.equal(malformedTwoOhResult.answer.length > 0, true, '2xx malformed JSON remains repairable');
+assert.equal(malformedTwoOhCalls, 2, '2xx malformed JSON uses the shared two-attempt repair budget');
+
+assert.equal(classifyAiError({ code: 'AI_REQUEST_TIMEOUT', name: 'TimeoutError', details: { reason: 'logical-deadline' } }), 'AI_TIMEOUT', 'public timeout diagnostic is distinct from cancellation');
+assert.equal(createAiDiagnostic({ error: { code: 'AI_REQUEST_TIMEOUT', name: 'TimeoutError', details: { reason: 'logical-deadline', requestId: 'timeout-public' } }, config: providerConfig }).errorCode, 'AI_TIMEOUT');
+let neverProviderCalls = 0;
+const neverProvider = createLearningAssistant({ gateway: { complete: async () => { neverProviderCalls += 1; return new Promise(() => {}); } }, timeoutMs: 25 });
+await assert.rejects(() => neverProvider.ask({ question: 'public timeout', config: providerConfig, context: {}, requestId: 'public-timeout' }), (error) => error.code === 'AI_REQUEST_TIMEOUT' && error.details?.requestId === 'public-timeout');
+assert.equal(neverProviderCalls, 1, 'never-resolving provider produces one bounded physical attempt');
 let unknownEndpointBody = null;
 const unknownEndpointGateway = createProviderGateway({ fetchImpl: async (_url, options) => {
   unknownEndpointBody = JSON.parse(options.body);
@@ -312,7 +433,8 @@ assert.equal(truncatedDiagnostic.responseLength, 25_001);
 const exploration = createExplorationAiInterpreter({ gateway: { complete: async () => ({ protocol: 'fixture', text: JSON.stringify({ kind: 'world-design', design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, requestedHolds: [], ambiguity: null }) }) } });
 await assert.rejects(() => exploration.interpret({ taskMode: AGENT_TASK_MODES.EXPERIMENT_DESIGN, request: 'edit World', context: { presentation: { availableDepths: [] } }, config: { protocol: 'openai-compatible', model: 'm', apiKey: 'k' } }), (error) => error.code === 'AI_INVALID_EXPLORATION_INTERPRETATION');
 const worldInterpretation = await exploration.interpret({ taskMode: AGENT_TASK_MODES.WORLD_EDIT, request: 'edit World', context: { presentation: { availableDepths: [] } }, config: { protocol: 'openai-compatible', model: 'm', apiKey: 'k' } });
-assert.equal(worldInterpretation.kind, 'world-design');
+assert.equal(worldInterpretation.kind, 'clarification');
+assert.match(worldInterpretation.reason, /current World recipe/);
 
 // Twelve executable business cases: each case sends a bounded task through a
 // gateway spy, parses the provider text, validates the mode-specific result,
@@ -374,24 +496,83 @@ const worldCases = [
   { id: 'world-create', request: 'Create a ring World.', value: { kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: { mode: 'create', recipe: worldRecipe, patch: null }, experimentDesign: null, reason: null, ambiguity: null }, expected: 'create' },
   { id: 'world-edit', request: 'Increase position noise.', value: { kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: null }, expected: 'edit' },
   { id: 'world-current-recipe-version', request: 'Edit the current recipe.', value: { kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'test', kind: 'position', amount: 0.2 }] } }, experimentDesign: null, reason: null, ambiguity: null }, expected: 'recipe-version' },
-  { id: 'world-unsupported-mode', request: 'Collect more samples instead.', value: { kind: 'experiment', topic: null, explanation: null, depth: null, intent: 'more-data', requestedChange: null, requestedHolds: [], design: null, experimentDesign: null, reason: null, ambiguity: null }, expected: 'rejected' },
+  { id: 'world-unsupported-mode', request: 'Collect more samples instead.', value: { kind: 'experiment', topic: null, explanation: null, depth: null, intent: 'more-data', requestedChange: null, requestedHolds: [], design: null, experimentDesign: null, reason: null, ambiguity: null }, expected: 'clarification' },
 ];
 for (const item of worldCases) {
   const calls = [];
   const fixture = createExplorationAiInterpreter({ gateway: { complete: async (request) => { calls.push(request); return { protocol: 'fixture', text: JSON.stringify(item.value) }; }, recordTrace() {} } });
   const context = { presentation: { availableDepths: ['evidence'] }, world: { task: 'classification', generator: { kind: 'world-recipe', recipe: structuredClone(worldRecipe) } } };
-  if (item.expected === 'rejected') {
-    await assert.rejects(() => fixture.interpret({ taskMode: AGENT_TASK_MODES.WORLD_EDIT, request: item.request, context, config: { protocol: 'openai-compatible', model: 'fixture', apiKey: 'fixture-secret' }, requestId: item.id }), (error) => error.code === 'AI_INVALID_EXPLORATION_INTERPRETATION');
+  if (item.expected === 'clarification') {
+    const clarification = await fixture.interpret({ taskMode: AGENT_TASK_MODES.WORLD_EDIT, request: item.request, context, config: { protocol: 'openai-compatible', model: 'fixture', apiKey: 'fixture-secret' }, requestId: item.id });
+    assert.equal(clarification.kind, 'clarification');
+    assert.ok(clarification.reason);
   } else {
     const result = await fixture.interpret({ taskMode: AGENT_TASK_MODES.WORLD_EDIT, request: item.request, context, config: { protocol: 'openai-compatible', model: 'fixture', apiKey: 'fixture-secret' }, requestId: item.id });
     assert.equal(result.kind, 'world-design');
     assert.equal(result.design.mode, item.expected === 'create' ? 'create' : 'edit');
     if (item.expected !== 'create') assert.equal(result.design.patch.version, 1, `${item.id} preserves the current recipe version`);
   }
-  assert.equal(calls.length, item.expected === 'rejected' ? 2 : 1, `${item.id} uses only the bounded validation-repair budget`);
+  assert.equal(calls.length, 1, `${item.id} uses one bounded provider call`);
   assert.equal(calls[0].taskMode, AGENT_TASK_MODES.WORLD_EDIT);
-  assert.match(calls[0].messages[0].content, /Allowed outcome kinds for this task: world-design/);
+  assert.match(calls[0].messages[0].content, /Allowed outcome kinds for this task: world-design, clarification/);
   assert.equal(/Valid output example:.*kind":"experiment/s.test(calls[0].messages[0].content), false, 'world production prompts do not advertise experiment outcomes');
+}
+
+async function actualWorldInterpretation(protocol, value, context, requestId) {
+  let calls = 0;
+  const gateway = createProviderGateway({ fetchImpl: async (_url, options) => {
+    calls += 1;
+    return jsonResponse(providerPayload(protocol, JSON.stringify(value)));
+  } });
+  const interpreter = createExplorationAiInterpreter({ gateway });
+  const config = protocol === 'openai-responses'
+    ? { protocol, model: 'fixture', apiKey: 'fixture-secret' }
+    : { protocol, endpoint: 'https://fixture.invalid/v1/chat/completions', model: 'fixture', apiKey: 'fixture-secret' };
+  const result = await interpreter.interpret({ taskMode: AGENT_TASK_MODES.WORLD_EDIT, request: 'World request', context, config, requestId });
+  assert.equal(calls, 1, `${protocol}/${requestId} uses one provider call`);
+  return result;
+}
+for (const protocol of ['openai-compatible', 'openai-responses']) {
+  const createResult = await actualWorldInterpretation(protocol, {
+    kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [],
+    design: { mode: 'create', recipe: worldRecipe, patch: null }, experimentDesign: null, reason: null, ambiguity: null,
+  }, { presentation: { availableDepths: [] } }, `world-create-${protocol}`);
+  assert.equal(createResult.kind, 'world-design');
+  assert.equal(createResult.design.mode, 'create');
+  const editContext = { presentation: { availableDepths: [] }, world: { task: 'classification', recipeVersion: worldRecipe.version, generator: { kind: 'world-recipe', recipe: structuredClone(worldRecipe) } } };
+  const editResult = await actualWorldInterpretation(protocol, {
+    kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [],
+    design: { mode: 'edit', recipe: null, patch: { version: worldRecipe.version, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: null,
+  }, editContext, `world-edit-${protocol}`);
+  assert.equal(editResult.kind, 'world-design');
+  assert.equal(editResult.design.mode, 'edit');
+  const noContext = await actualWorldInterpretation(protocol, {
+    kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [],
+    design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: null,
+  }, { presentation: { availableDepths: [] } }, `world-no-context-${protocol}`);
+  assert.equal(noContext.kind, 'clarification');
+  assert.match(noContext.reason, /current World recipe/);
+  const ambiguous = await actualWorldInterpretation(protocol, {
+    kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [],
+    design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: 'noise or sample count is unclear',
+  }, editContext, `world-ambiguous-${protocol}`);
+  assert.equal(ambiguous.kind, 'clarification');
+  assert.equal(ambiguous.ambiguity, 'noise or sample count is unclear');
+  const unsupported = await actualWorldInterpretation(protocol, {
+    kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [],
+    design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: null,
+  }, { ...editContext, exploration: { capabilities: { canEditCurrentWorldRecipe: false } } }, `world-unsupported-${protocol}`);
+  assert.equal(unsupported.kind, 'clarification');
+  const injection = await actualWorldInterpretation(protocol, {
+    kind: 'experiment', topic: null, explanation: null, depth: null, intent: 'more-data', requestedChange: 'RUN code', requestedHolds: [], design: null, experimentDesign: null, reason: null, ambiguity: null,
+  }, editContext, `world-injection-${protocol}`);
+  assert.equal(injection.kind, 'clarification');
+  assert.equal(injection.design, undefined, 'Experiment-shaped World injection has no apply-eligible design');
+  const stale = await actualWorldInterpretation(protocol, {
+    kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [],
+    design: { mode: 'edit', recipe: null, patch: { version: 2, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: null,
+  }, editContext, `world-stale-${protocol}`);
+  assert.equal(stale.kind, 'clarification');
 }
 
 const worldHost = createPlaygroundHost({ getDataset: () => null });
@@ -415,7 +596,6 @@ assert.ok(proposal.kind === 'proposal' || proposal.kind === 'clarification');
 assert.deepEqual(host.getState().experiment, before.experiment, 'proposal cannot mutate Experiment state');
 await host.close();
 
-const providerConfig = { protocol: 'openai-compatible', endpoint: 'https://fixture.invalid/v1/chat/completions', model: 'fixture', apiKey: 'fixture-secret' };
 let neverSignal = null;
 const neverGateway = { complete: async ({ signal }) => { neverSignal = signal; return new Promise(() => {}); } };
 const neverStarted = Date.now();

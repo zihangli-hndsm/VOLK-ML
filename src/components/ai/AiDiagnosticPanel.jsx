@@ -20,6 +20,7 @@ export default function AiDiagnosticPanel({ diagnostic, trace = [], t, fallback 
       </dl>
       <p className="mt-2 whitespace-pre-wrap">{diagnostic.providerMessage || '—'}</p>
       <p className="mt-1 text-[10px]">{t('ai.diagnosticFallbackUsed')}: {diagnostic.fallbackUsed ? t('ai.yes') : t('ai.no')}</p>
+      {diagnostic.fallbackSource && <p className="mt-1 text-[10px]">{t('ai.diagnosticFallbackSource')}: {diagnostic.fallbackSource}</p>}
       {recent && <p className="mt-1 font-mono text-[10px]">{t('ai.diagnosticRecentTrace')}: {recent.stage} · {recent.status}</p>}
       <button type="button" onClick={copy} className="mt-2 rounded-lg bg-white px-2 py-1 font-black ring-1 ring-amber-200">{t('ai.copyDiagnostics')}</button>
     </details>

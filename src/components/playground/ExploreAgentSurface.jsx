@@ -73,9 +73,9 @@ function compactProposal(proposal, t) {
   } : null;
 }
 
-export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, initialSelection = null, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, onBusyChange, onRequestLifecycle, t }) {
+export default function ExploreAgentSurface({ snapshot, agent, capabilities, compact = false, onClose, onDepthChange, onOpenAiSettings, host, closeRef, initialSelection = null, onAskAboutSelection, illuminatedConceptIds = [], onIlluminateConcept, onBusyChange, onRequestLifecycle, requestTimeoutMs = null, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
-  const aiInterpreter = useMemo(() => createExplorationAiInterpreter({ gateway }), [gateway]);
+  const aiInterpreter = useMemo(() => createExplorationAiInterpreter({ gateway, timeoutMs: requestTimeoutMs }), [gateway, requestTimeoutMs]);
   const [request, setRequest] = useState('');
   const [prediction, setPrediction] = useState('');
   const [outcome, setOutcome] = useState(null);
@@ -272,7 +272,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       });
       if (!mounted.current || activeRequest.current?.requestId !== requestId) return;
       if (interpretation.kind !== 'world-design') {
-        setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: 'playground.agentGuide.worldClarification' });
+        setOutcome({ kind: AGENT_GUIDANCE_OUTCOMES.CLARIFICATION, reason: interpretation.reason ?? interpretation.ambiguity ?? 'playground.agentGuide.worldClarification' });
         setProposal(null);
         return;
       }
@@ -415,7 +415,7 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <input value={request} onChange={(event) => setRequest(event.target.value)} onKeyDown={(event) => { if (event.key === 'Enter') submitRequest(); }} placeholder={t(mode === 'ask' ? 'ai.askPlaceholder' : mode === 'world' ? 'playground.agentGuide.worldPlaceholder' : 'playground.agentGuide.placeholder')} aria-label={t('playground.agentGuide.inputLabel')} className="min-w-0 flex-1 rounded-xl border border-violet-200 px-3 py-2 text-sm outline-none focus:border-violet-500 focus:ring-2 focus:ring-violet-200" />
       <button type="button" disabled={!request.trim() || busy || (mode === 'world' && (!worldRecipeSupported || !isConfigured))} onClick={submitRequest} className="ui-motion-interactive rounded-xl bg-violet-700 px-3 py-2 text-xs font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-violet-500">{busy ? t('playground.agentGuide.working') : t(mode === 'world' ? 'playground.agentGuide.proposeWorld' : 'playground.agentGuide.ask')}</button>
     </div>
-    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onRequestLifecycle={onRequestLifecycle} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(suggestion) => { const safeTask = createExperimentDesignRequest(suggestion) ?? createExperimentSuggestionTask(suggestion); if (!safeTask || safeTask.kind !== 'experiment-design-request') return; queueExperimentTask(safeTask); setRequest(safeTask.learnerQuestion); selectMode('experiment'); }} t={t} />}
+    {mode === 'ask' && <AskVolkPanel agent={agent} presentation={presentation} initialSelection={initialSelection} question={request} onQuestionChange={setRequest} submitToken={askSubmitToken} onBusyChange={setBusy} onRequestLifecycle={onRequestLifecycle} onOpenAiSettings={onOpenAiSettings} onTryExperiment={(suggestion) => { const safeTask = createExperimentDesignRequest(suggestion) ?? createExperimentSuggestionTask(suggestion); if (!safeTask || safeTask.kind !== 'experiment-design-request') return; queueExperimentTask(safeTask); setRequest(safeTask.learnerQuestion); selectMode('experiment'); }} requestTimeoutMs={requestTimeoutMs} t={t} />}
     <div className={mode === 'ask' ? 'hidden' : ''}>
     {mode === 'world' && <div className="mt-3 rounded-2xl border border-cyan-100 bg-cyan-50 p-3">
       <p className="text-xs font-black text-cyan-950">{t('playground.agentGuide.worldPresets')}</p>
@@ -473,7 +473,9 @@ export default function ExploreAgentSurface({ snapshot, agent, capabilities, com
       <button type="button" disabled={busy} onClick={runProposal} className="mt-3 rounded-xl bg-emerald-600 px-3 py-2 font-black text-white disabled:opacity-40 focus:outline-none focus:ring-2 focus:ring-emerald-500">{compactProposal(proposal, t).pedagogical ? t('playground.pedagogical.runExperiment') : t('playground.agentGuide.tryIt')}</button>
     </div>}
 
-    {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-950">{outcome.reason?.startsWith?.('playground.') ? t(outcome.reason) : outcome.reason === 'world-control' ? t('playground.agentGuide.worldTools') : t('playground.agentGuide.clarification')}</p>}
+    {outcome?.kind === AGENT_GUIDANCE_OUTCOMES.CLARIFICATION && <p className="mt-3 rounded-xl border border-amber-100 bg-amber-50 p-3 text-sm text-amber-950">
+      {outcome.reason?.startsWith?.('playground.') ? t(outcome.reason) : outcome.reason === 'world-control' ? t('playground.agentGuide.worldTools') : outcome.reason && !['unsupported-request', 'depth-unavailable', 'world-composer-unavailable', 'cleaner-comparison-unavailable'].includes(outcome.reason) ? <><span>{t('playground.agentGuide.clarificationReasonPrefix')}</span> <span data-agent-clarification-reason>{outcome.reason}</span></> : t('playground.agentGuide.clarification')}
+    </p>}
     {aiFallback && <p className="mt-2 text-xs font-bold text-slate-500">{t('playground.agentGuide.aiFallback')}</p>}
     <AiDiagnosticPanel diagnostic={aiDiagnostic} trace={gateway.getRequestTrace?.()} fallback={aiFallback} t={t} />
     {result && <div className="mt-3 rounded-xl border border-emerald-100 bg-emerald-50 p-3 text-sm text-emerald-950">

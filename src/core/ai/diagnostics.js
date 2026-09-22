@@ -58,6 +58,10 @@ export function sanitizeEndpoint(endpoint) {
 export function classifyAiError(error) {
   const status = Number(error?.details?.status) || null;
   const providerMessage = String(error?.details?.providerMessage ?? error?.message ?? '').toLowerCase();
+  if (error?.code === 'AI_REQUEST_TIMEOUT'
+    || error?.code === 'AI_PROVIDER_TIMEOUT'
+    || error?.name === 'TimeoutError'
+    || error?.details?.reason === 'logical-deadline') return 'AI_TIMEOUT';
   if (error?.code === 'AI_KEY_REQUIRED' || status === 401 || status === 403) return 'AI_AUTH_FAILED';
   if (status === 404 || /model.*(not found|does not exist|unavailable)/.test(providerMessage)) return 'AI_MODEL_NOT_FOUND';
   if (status === 429) return 'AI_RATE_LIMITED';
@@ -102,7 +106,7 @@ export function createAiDiagnostic({ error, config = {}, stage = 'failed', fallb
     fallbackUsed: Boolean(fallbackUsed),
     fallbackSource: String(fallbackSource ?? '').slice(0, 80) || null,
     latencyMs: Number.isFinite(latencyMs) ? Math.max(0, Math.round(latencyMs)) : null,
-    requestId: requestId ? String(requestId).slice(0, 80) : null,
+    requestId: String(requestId ?? error?.details?.requestId ?? '').slice(0, 80) || null,
     finishReason: String(error?.details?.finishReason ?? '').slice(0, 80) || null,
     truncated: typeof error?.details?.truncated === 'boolean' ? error.details.truncated : null,
     responseLength: Number.isFinite(error?.details?.responseLength) ? Math.max(0, Math.min(100_000, error.details.responseLength)) : null,

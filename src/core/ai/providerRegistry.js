@@ -164,22 +164,28 @@ function endpointFor(config) {
 }
 
 async function readJson(response, protocol = null) {
-  let payload;
+  let payload = null;
+  let parseError = null;
   try {
     payload = await response.json();
-  } catch {
-    const error = providerError('AI_PROVIDER_RESPONSE_INVALID', 'The AI provider returned invalid JSON.');
-    error.details = { cause: 'response-json-parse', status: Number(response?.status) || null };
-    throw error;
+  } catch (error) {
+    parseError = error;
   }
   if (!response?.ok) {
     const error = providerError('AI_PROVIDER_REQUEST_FAILED', `The AI provider request failed (HTTP ${response?.status ?? 'unknown'}).`);
     error.details = {
       status: Number(response?.status) || null,
+      protocol,
+      bodyFormat: parseError ? 'non-json' : 'json',
       providerMessage: String(payload?.error?.message ?? payload?.message ?? '').slice(0, 400),
       usage: normalizeProviderUsage(payload?.usage, { protocol }),
       finishReason: String(payload?.choices?.[0]?.finish_reason ?? payload?.stop_reason ?? payload?.status ?? '').slice(0, 80) || null,
     };
+    throw error;
+  }
+  if (parseError) {
+    const error = providerError('AI_PROVIDER_RESPONSE_INVALID', 'The AI provider returned invalid JSON.');
+    error.details = { cause: 'response-json-parse', bodyFormat: 'non-json', status: Number(response?.status) || null, protocol };
     throw error;
   }
   return payload;
@@ -476,6 +482,14 @@ export function createProviderGateway({ fetchImpl = globalThis.fetch, adapterReg
         if (attempts.length) attemptUsageRecords = [...attemptUsageRecords, ...attempts].slice(-128);
         const timedOut = signal?.reason?.code === 'AI_REQUEST_TIMEOUT' || signal?.reason?.reason === 'logical-deadline';
         const status = timedOut ? 'timeout' : signal?.aborted || error?.name === 'AbortError' ? 'aborted' : 'failed';
+        if (error && typeof error === 'object') {
+          error.details = {
+            ...(error.details ?? {}),
+            requestId,
+            protocol: resolved.protocol.id,
+            model: resolved.model,
+          };
+        }
         usage = setUsageRecord({ requestId, protocol: resolved.protocol.id, model: resolved.model, status, usage: error?.details?.usage ?? usage });
         traceStore.append({ id: requestId, stage: 'failed', protocol: resolved.protocol.id, model: resolved.model, status: error?.code ?? 'failed', usage });
         settled = true;

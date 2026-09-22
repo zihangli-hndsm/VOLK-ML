@@ -1554,7 +1554,7 @@ export function createPlaygroundHost({
             request: request ?? 'Design a controlled experiment',
             interpretation: {
               ambiguity: error.details?.reason ?? 'requested-hold-conflict',
-              messageKey: 'playground.pedagogical.unsupported',
+              messageKey: worldDesign ? 'playground.agentGuide.worldHoldConflict' : 'playground.pedagogical.unsupported',
               choices: [],
               details: { requestedHolds: error.details?.requestedHolds ?? [], changedFactors: error.details?.changedFactors ?? [] },
             },

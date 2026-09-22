@@ -18,7 +18,11 @@ const chromeProfile = path.join(os.tmpdir(), 'volk-agent-request-chrome-profile'
 function fixtureResponseFor(prompt) {
   if (fixtureMode === 'invalid') return 'not-json';
   if (/taskMode=ask/.test(prompt)) return JSON.stringify({ answer: 'Fixture answer from the real browser transport.', tryExperiment: { question: 'What if we collect more data?', design: { goal: 'more-same-distribution-data' } }, depth: null });
-  if (/taskMode=world-edit/.test(prompt)) return JSON.stringify({ kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: null });
+  if (/taskMode=world-edit/.test(prompt)) {
+    if (fixtureMode === 'world-clarification') return JSON.stringify({ kind: 'clarification', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: null, experimentDesign: null, reason: 'A current World recipe is required before applying an edit patch.', ambiguity: null });
+    if (fixtureMode === 'world-planner-clarification') return JSON.stringify({ kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: ['world'], design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: null });
+    return JSON.stringify({ kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: null });
+  }
   if (fixtureMode === 'delay') return JSON.stringify({ kind: 'explanation', topic: 'comparison', explanation: 'Delayed response must not appear after a mode switch.', depth: null, intent: null, requestedChange: null, requestedHolds: [], design: null, experimentDesign: null, reason: null, ambiguity: null });
   if (/taskMode=experiment-design/.test(prompt)) return JSON.stringify({ kind: 'experiment', topic: null, explanation: null, depth: null, intent: null, requestedChange: 'increase same-distribution training data', requestedHolds: [], design: null, experimentDesign: { version: 1, kind: 'exploration-design', goal: 'more-same-distribution-data', intervention: 'increase-same-distribution-sample-size', evidence: 'outcome-and-stability', prediction: false }, reason: null, ambiguity: null });
   return JSON.stringify({ kind: 'clarification', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: null, experimentDesign: null, reason: 'Fixture clarification.', ambiguity: null });
@@ -31,7 +35,7 @@ const fixtureServer = http.createServer((request, response) => {
   if (request.method === 'OPTIONS') { response.writeHead(204); response.end(); return; }
   if (request.method === 'GET' && request.url?.startsWith('/control')) {
     const mode = new URL(request.url, fixtureUrl).searchParams.get('mode');
-    fixtureMode = ['normal', 'invalid', 'delay'].includes(mode) ? mode : 'normal';
+    fixtureMode = ['normal', 'invalid', 'delay', 'timeout', 'world-clarification', 'world-planner-clarification'].includes(mode) ? mode : 'normal';
     fixtureDelayMs = fixtureMode === 'delay' ? 900 : 0;
     response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ mode: fixtureMode })); return;
   }
@@ -45,6 +49,7 @@ const fixtureServer = http.createServer((request, response) => {
     const repair = messages.some((message) => String(message?.content ?? '').includes('Repair the previous response'));
     fixtureCalls.push({ method: 'POST', status: 200, requestId: body.requestId ?? null, logicalRequestId: prompt.match(/requestId=([^;\s.]+)/)?.[1] ?? null, taskMode: prompt.match(/taskMode=([^;\s]+)/)?.[1] ?? null, repair, hasTaskRules: prompt.includes('Task rules:'), hasExample: prompt.includes('Valid output example:'), containsSecret: raw.includes('fixture-key') });
     const text = fixtureResponseFor(prompt);
+    if (fixtureMode === 'timeout') return;
     const send = () => { response.writeHead(200, { 'content-type': 'application/json' }); response.end(JSON.stringify({ choices: [{ message: { content: text } }] })); };
     if (fixtureDelayMs) setTimeout(send, fixtureDelayMs); else send();
   });
@@ -96,6 +101,12 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 async function click(cdp, text, exact = true) {
   const found = await evaluate(cdp, `(() => { const button = [...document.querySelectorAll('button')].find((item) => ${exact ? `(item.textContent || '').trim() === ${JSON.stringify(text)}` : `(item.textContent || '').includes(${JSON.stringify(text)}`}); if (!button) return false; button.click(); return true; })()`);
   if (!found) throw new Error(`Button not found: ${text}`);
+  await sleep(160);
+}
+
+async function clickSummary(cdp, text) {
+  const found = await evaluate(cdp, `(() => { const summary = [...document.querySelectorAll('summary')].find((item) => (item.textContent || '').trim() === ${JSON.stringify(text)}); if (!summary) return false; summary.click(); return true; })()`);
+  if (!found) throw new Error(`Summary not found: ${text}`);
   await sleep(160);
 }
 
@@ -153,6 +164,24 @@ try {
   await click(cdp, 'playground.agentGuide.ask');
   await assertText(cdp, 'ai.diagnostic.AI_RESPONSE_INVALID');
 
+  const beforeTimeout = await evaluate(cdp, '({ runtime: document.querySelector("[data-harness-runtime-state]")?.textContent, proposals: document.querySelector("[data-harness-proposal-calls]")?.textContent, execute: document.querySelector("[data-harness-execute-calls]")?.textContent, transitions: document.querySelector("[data-harness-execution-transitions]")?.textContent })');
+  const experimentCallsBeforeTimeout = fixtureCalls.filter((entry) => entry.taskMode === 'experiment-design').length;
+  await evaluate(cdp, `fetch(${JSON.stringify(`${fixtureUrl}/control?mode=timeout`)})`, true);
+  await click(cdp, 'ai.experimentTab');
+  await setInput(cdp, 'This request should hit the bounded timeout.');
+  await click(cdp, 'playground.agentGuide.ask');
+  await assertText(cdp, 'ai.diagnosticFallback');
+  await clickSummary(cdp, 'ai.showDetails');
+  await assertText(cdp, 'AI_TIMEOUT');
+  await assertText(cdp, 'interpreter');
+  await assertText(cdp, 'local-deterministic');
+  await assertText(cdp, 'playground.agentGuide.ask');
+  await assertText(cdp, 'playground.agentGuide.working', false);
+  await assertText(cdp, 'playground.agentGuide.tryIt', false);
+  const afterTimeout = await evaluate(cdp, '({ runtime: document.querySelector("[data-harness-runtime-state]")?.textContent, proposals: document.querySelector("[data-harness-proposal-calls]")?.textContent, execute: document.querySelector("[data-harness-execute-calls]")?.textContent, transitions: document.querySelector("[data-harness-execution-transitions]")?.textContent })');
+  const experimentCallsAfterTimeout = fixtureCalls.filter((entry) => entry.taskMode === 'experiment-design').length;
+  if (experimentCallsAfterTimeout !== experimentCallsBeforeTimeout + 1 || JSON.stringify(afterTimeout) !== JSON.stringify(beforeTimeout)) throw new Error(`Timeout fallback changed runtime or call count: ${JSON.stringify({ beforeTimeout, afterTimeout, experimentCallsBeforeTimeout, experimentCallsAfterTimeout, fixtureCalls })}`);
+
   await evaluate(cdp, `fetch(${JSON.stringify(`${fixtureUrl}/control?mode=normal`)})`, true);
   await click(cdp, 'ai.worldTab');
   await setInput(cdp, 'Increase World noise.');
@@ -167,6 +196,24 @@ try {
   if (afterWorld.length !== 2 || afterWorld[1].before.worldId !== afterWorld[1].after.worldId || !afterWorld[1].after.comparison?.enabled || !afterWorld[1].after.comparison.changed.includes('world') || afterWorld[1].after.comparison.unchanged.includes('world') || !dimensionsAreDisjoint(afterWorld[1].after.comparison)) throw new Error(`Real World Recipe/patch host transition was not observed: ${JSON.stringify(afterWorld)}`);
   if (afterWorld.some((transition) => !dimensionsAreDisjoint(transition.after?.comparison))) throw new Error(`Comparison changed/held dimensions overlap: ${JSON.stringify(afterWorld)}`);
 
+  const beforeWorldClarifications = await evaluate(cdp, '({ runtime: document.querySelector("[data-harness-runtime-state]")?.textContent, execute: document.querySelector("[data-harness-execute-calls]")?.textContent, transitions: document.querySelector("[data-harness-execution-transitions]")?.textContent })');
+  await evaluate(cdp, `fetch(${JSON.stringify(`${fixtureUrl}/control?mode=world-planner-clarification`)})`, true);
+  await click(cdp, 'ai.worldTab');
+  await setInput(cdp, 'Hold the World fixed while increasing its noise.');
+  await click(cdp, 'playground.agentGuide.proposeWorld');
+  await assertText(cdp, 'playground.agentGuide.worldHoldConflict');
+  await assertText(cdp, 'playground.agentGuide.tryIt', false);
+  const afterPlannerClarification = await evaluate(cdp, '({ runtime: document.querySelector("[data-harness-runtime-state]")?.textContent, execute: document.querySelector("[data-harness-execute-calls]")?.textContent, transitions: document.querySelector("[data-harness-execution-transitions]")?.textContent })');
+  if (JSON.stringify(afterPlannerClarification) !== JSON.stringify(beforeWorldClarifications)) throw new Error(`Planner World clarification changed runtime or execution state: ${JSON.stringify({ beforeWorldClarifications, afterPlannerClarification })}`);
+
+  await evaluate(cdp, `fetch(${JSON.stringify(`${fixtureUrl}/control?mode=world-clarification`)})`, true);
+  await setInput(cdp, 'Edit the current World without a recipe.');
+  await click(cdp, 'playground.agentGuide.proposeWorld');
+  await assertText(cdp, 'A current World recipe is required before applying an edit patch.');
+  await assertText(cdp, 'playground.agentGuide.tryIt', false);
+  const afterDirectClarification = await evaluate(cdp, '({ runtime: document.querySelector("[data-harness-runtime-state]")?.textContent, execute: document.querySelector("[data-harness-execute-calls]")?.textContent, transitions: document.querySelector("[data-harness-execution-transitions]")?.textContent })');
+  if (JSON.stringify(afterDirectClarification) !== JSON.stringify(beforeWorldClarifications)) throw new Error(`Direct World clarification changed runtime or execution state: ${JSON.stringify({ beforeWorldClarifications, afterDirectClarification })}`);
+
   await evaluate(cdp, `fetch(${JSON.stringify(`${fixtureUrl}/control?mode=delay`)})`, true);
   await click(cdp, 'ai.experimentTab');
   await setInput(cdp, 'What if we compare the delayed response?');
@@ -178,11 +225,11 @@ try {
 
   const modeCounts = Object.fromEntries(['ask', 'experiment-design', 'world-edit'].map((mode) => [mode, fixtureCalls.filter((entry) => entry.taskMode === mode).length]));
   const repairs = fixtureCalls.filter((entry) => entry.repair);
-  if (modeCounts.ask !== 3 || modeCounts['experiment-design'] !== 1 || modeCounts['world-edit'] !== 1 || repairs.length !== 1 || repairs[0].taskMode !== 'ask') throw new Error(`Unexpected browser provider call/repair accounting: ${JSON.stringify({ modeCounts, repairs })}`);
+  if (modeCounts.ask !== 3 || modeCounts['experiment-design'] !== 2 || modeCounts['world-edit'] !== 3 || repairs.length !== 1 || repairs[0].taskMode !== 'ask') throw new Error(`Unexpected browser provider call/repair accounting: ${JSON.stringify({ modeCounts, repairs })}`);
   if (fixtureCalls.some((entry) => !entry.logicalRequestId)) throw new Error(`Missing logical request/correlation identity in provider evidence: ${JSON.stringify(fixtureCalls)}`);
   if (fixtureCalls.some((entry) => entry.status !== 200 || entry.containsSecret || !entry.hasTaskRules || !entry.hasExample)) throw new Error(`Unsafe or incomplete browser fixture request: ${JSON.stringify(fixtureCalls)}`);
   const body = await evaluate(cdp, '({ href: location.href, text: document.body.innerText.slice(0, 2000) })');
-  fs.writeFileSync(path.join(artifact, 'browser-evidence.json'), `${JSON.stringify({ schema: 'agent-request-contract-browser-evidence-v2', result: 'PASS', fixtureCalls, browserObservedCalls: fixtureCalls, initialRuntimeState, executionTransitions: afterWorld, componentFaultInjection: { kind: 'pending-task', delegatedToRealAgent: false, successfulProposalsAndExecutionsDelegated: true }, body, checks: ['real production ExploreAgentSurface + AskVolkPanel mounted', 'real data-lab host/model/World Recipe initialization', 'real gateway -> interpreter -> planner -> scenario validator proposal path', 'real HTTP CORS preflight/POST transport fixture', 'normal Experiment provider design remains proposal-only before click', 'normal World provider patch remains proposal-only before click', 'real host semantic state captured before and after explicit confirmation', 'pending proposal failure consumed once across rerender', 'explicit retry creates one new logical request', 'proposal never executes without learner click', 'malformed provider output diagnostic', 'mode switch suppresses stale response', 'repair counted across request messages'] }, null, 2)}\n`, 'utf8');
+  fs.writeFileSync(path.join(artifact, 'browser-evidence.json'), `${JSON.stringify({ schema: 'agent-request-contract-browser-evidence-v2', result: 'PASS', fixtureCalls, browserObservedCalls: fixtureCalls, initialRuntimeState, executionTransitions: afterWorld, componentFaultInjection: { kind: 'pending-task', delegatedToRealAgent: false, successfulProposalsAndExecutionsDelegated: true }, body, checks: ['real production ExploreAgentSurface + AskVolkPanel mounted', 'real data-lab host/model/World Recipe initialization', 'real gateway -> interpreter -> planner -> scenario validator proposal path', 'real HTTP CORS preflight/POST transport fixture', 'normal Experiment provider design remains proposal-only before click', 'normal World provider patch remains proposal-only before click', 'World planner clarification is localized and visible', 'direct World interpreter clarification reason is visible as bounded text', 'clarifications render no Try it action and do not execute', 'World/experiment runtime and execution count remain unchanged for clarifications', 'public timeout fixture reaches AI_TIMEOUT diagnostic in the mounted Explore UI', 'timeout performs one physical request, exits busy state, and preserves runtime truth', 'real host semantic state captured before and after explicit confirmation', 'pending proposal failure consumed once across rerender', 'explicit retry creates one new logical request', 'proposal never executes without learner click', 'malformed provider output diagnostic', 'mode switch suppresses stale response', 'repair counted across request messages'] }, null, 2)}\n`, 'utf8');
   console.log(JSON.stringify({ result: 'PASS', fixtureCalls, executionTransitions: afterWorld, artifact: path.join(artifact, 'browser-evidence.json') }, null, 2));
 } finally {
   cdp?.close();

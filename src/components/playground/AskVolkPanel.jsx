@@ -12,9 +12,9 @@ function initialSelectionFor(value) {
   return { messageId: value.messageId ?? value.anchor.messageId ?? null, anchor: value.anchor, quote: value.quote };
 }
 
-export default function AskVolkPanel({ agent, presentation, initialSelection = null, question, onQuestionChange, submitToken = 0, onBusyChange, onRequestLifecycle, onOpenAiSettings, onTryExperiment, t }) {
+export default function AskVolkPanel({ agent, presentation, initialSelection = null, question, onQuestionChange, submitToken = 0, onBusyChange, onRequestLifecycle, onOpenAiSettings, onTryExperiment, requestTimeoutMs = null, t }) {
   const { config, gateway, isConfigured } = useAiProvider();
-  const assistant = useMemo(() => createLearningAssistant({ gateway }), [gateway]);
+  const assistant = useMemo(() => createLearningAssistant({ gateway, timeoutMs: requestTimeoutMs }), [gateway, requestTimeoutMs]);
   const [answer, setAnswer] = useState(null);
   const [selection, setSelection] = useState(initialSelectionFor(initialSelection));
   const [busy, setBusy] = useState(false);

@@ -23,6 +23,47 @@ export const AGENT_OUTPUT_SETS = Object.freeze({
   [AGENT_TASK_MODES.WORLD_EDIT]: 'world-recipe-or-patch',
 });
 
+// This is the shared JSON-only contract description used in provider prompts.
+// The executable validators and response schemas remain the final authority,
+// but keeping the bounded fields, null/empty policy, enums and cross-field
+// rules here prevents protocol-specific prompt drift.
+export const AGENT_TASK_CONTRACTS = Object.freeze({
+  [AGENT_TASK_MODES.ASK]: Object.freeze({
+    version: AGENT_REQUEST_CONTRACT_VERSION,
+    mode: AGENT_TASK_MODES.ASK,
+    required: ['answer'],
+    optionalNullable: ['tryExperiment', 'depth'],
+    bounds: { answer: 'string 1..1200', suggestionQuestion: 'string 1..240', suggestionMessage: 'string 1..240' },
+    enums: { depth: ['phenomenon', 'tune', 'evidence', 'mechanism', 'representation'], suggestionGoal: ['class-separation', 'train-test-support-shift', 'observation-noise', 'outlier-sensitivity', 'more-same-distribution-data'] },
+    emptyPolicy: 'omit optional fields or send null; empty strings are invalid',
+    extraFieldPolicy: 'additional properties are forbidden at every object level',
+    crossFieldRules: ['tryExperiment must be null/string or {question, design}; design.goal is required when design is present', 'suggestions are non-executable and never contain runtime operations'],
+  }),
+  [AGENT_TASK_MODES.EXPERIMENT_DESIGN]: Object.freeze({
+    version: AGENT_REQUEST_CONTRACT_VERSION,
+    mode: AGENT_TASK_MODES.EXPERIMENT_DESIGN,
+    required: ['kind', 'topic', 'explanation', 'depth', 'intent', 'requestedChange', 'requestedHolds', 'design', 'experimentDesign', 'reason', 'ambiguity'],
+    optionalNullable: ['topic', 'explanation', 'depth', 'intent', 'requestedChange', 'design', 'experimentDesign', 'reason', 'ambiguity'],
+    enums: { kind: ['explanation', 'navigation', 'experiment', 'clarification'], topic: ['slope', 'bias', 'training-step', 'test-error', 'comparison', 'model-capacity', 'learning-rate'] },
+    bounds: { explanation: 'string 1..600', requestedChange: 'string 1..240', reason: 'string 1..240', ambiguity: 'string 1..240', requestedHolds: 'canonical IDs, max 12' },
+    emptyPolicy: 'all nullable fields use null; non-null strings must be non-empty',
+    extraFieldPolicy: 'additional properties are forbidden',
+    crossFieldRules: ['explanation requires a supported topic and explanation text', 'navigation requires an available depth', 'experiment requires a supported intent or validated experimentDesign', 'clarification requires a concrete reason', 'only experiment may carry an executable-design proposal, and it remains learner-confirmed'],
+  }),
+  [AGENT_TASK_MODES.WORLD_EDIT]: Object.freeze({
+    version: AGENT_REQUEST_CONTRACT_VERSION,
+    mode: AGENT_TASK_MODES.WORLD_EDIT,
+    required: ['kind', 'topic', 'explanation', 'depth', 'intent', 'requestedChange', 'requestedHolds', 'design', 'experimentDesign', 'reason', 'ambiguity'],
+    resultKinds: ['world-design', 'clarification'],
+    designModes: ['create', 'edit'],
+    bounds: { clarificationReason: 'string 1..240', recipe: 'WorldRecipe v1 bounded by WORLD_RECIPE_LIMITS', patch: 'WorldRecipePatch v1, max 32 changes' },
+    nullPolicy: ['create requires recipe and null patch', 'edit requires current-context patch and null recipe', 'clarification requires reason and has no proposal'],
+    emptyPolicy: 'non-null strings must be non-empty; omitted optional values normalize to null',
+    extraFieldPolicy: 'additional properties are forbidden; runtime operations, points, observations, metrics and code are forbidden',
+    crossFieldRules: ['edit patch version must equal the current World recipe version', 'edit requires current recipe and edit capability', 'create requires World-design capability', 'unsupported, ambiguous, stale or unauthorized requests become clarification'],
+  }),
+});
+
 const OUTPUT_SET_VALUES = new Set(Object.values(AGENT_OUTPUT_SETS));
 const MAX_ID = 96;
 const MAX_TEXT = 320;
@@ -128,6 +169,11 @@ export function taskContractFor(taskMode) {
   });
 }
 
+export function taskContractDefinition(taskMode) {
+  const definition = AGENT_TASK_CONTRACTS[taskMode];
+  return definition ? structuredClone(definition) : null;
+}
+
 export function createAgentRequest({ taskMode, requestId, context = {}, input = null, contract = null } = {}) {
   const task = contract ?? taskContractFor(taskMode);
   if (!task || task.version !== AGENT_REQUEST_CONTRACT_VERSION || !AGENT_TASK_MODE_VALUES.includes(task.mode)
@@ -173,21 +219,23 @@ export function validateAgentRequest(value) {
 export function taskContractPrompt(request) {
   const checked = validateAgentRequest(request);
   if (!checked.valid) return '';
+  const definition = taskContractDefinition(request.task.mode);
   const rules = {
     [AGENT_TASK_MODES.ASK]: 'Return one JSON object with a bounded answer string and an optional non-executable suggestion; never return runtime operations.',
     [AGENT_TASK_MODES.EXPERIMENT_DESIGN]: 'Return one JSON guidance outcome: explanation, navigation, experiment, or clarification. Any experiment is a proposal for the local planner and cannot execute.',
-    [AGENT_TASK_MODES.WORLD_EDIT]: 'Return one JSON world-design outcome with a validated recipe or patch only. Do not return points, observations, metrics, runtime operations, or evidence.',
+    [AGENT_TASK_MODES.WORLD_EDIT]: 'Return one JSON World result: bounded create, bounded current-context edit/patch, or clarification with a concrete reason. Do not return points, observations, metrics, runtime operations, Experiment output, or evidence.',
   }[request.task.mode];
   const examples = {
     [AGENT_TASK_MODES.ASK]: { answer: 'A bounded explanation.', tryExperiment: null, depth: null },
     [AGENT_TASK_MODES.EXPERIMENT_DESIGN]: { kind: 'clarification', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: null, experimentDesign: null, reason: 'Need one bounded learner question.', ambiguity: null },
-    [AGENT_TASK_MODES.WORLD_EDIT]: { kind: 'world-design', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: { mode: 'edit', recipe: null, patch: { version: 1, changes: [{ type: 'SET_NOISE', split: 'train', kind: 'position', amount: 0.1 }] } }, experimentDesign: null, reason: null, ambiguity: null },
+    [AGENT_TASK_MODES.WORLD_EDIT]: { kind: 'clarification', topic: null, explanation: null, depth: null, intent: null, requestedChange: null, requestedHolds: [], design: null, experimentDesign: null, reason: 'A current World recipe or a complete new recipe is required.', ambiguity: null },
   }[request.task.mode];
   return [
     `VOLK-ML semantic task contract v${request.version}.`,
     `taskMode=${request.task.mode}; outputSet=${request.task.outputSet}; requestId=${request.requestId}.`,
     'Deterministic runtime state, learner consent, and execution remain local authority.',
     rules ? `Task rules: ${rules}` : '',
+    definition ? `JSON contract: ${JSON.stringify(definition)}` : '',
     examples ? `Valid output example: ${JSON.stringify(examples)}` : '',
     `Bounded semantic context: ${JSON.stringify(request.context)}`,
     request.input ? `Bounded task input: ${JSON.stringify(request.input)}` : '',
@@ -202,8 +250,9 @@ export function classifyAgentFailure(error, { stage = null } = {}) {
   if (code.includes('TIMEOUT') || code.includes('INCOMPLETE')) return 'timeout';
   if (code.includes('RESPONSE_INVALID') || code.includes('OUTPUT_MISSING') || code.includes('RESPONSE_EMPTY')) return 'parse';
   if (status === 401 || status === 403 || code.includes('AUTH') || code.includes('KEY_REQUIRED')) return 'authentication';
-  if (status === 408 || status === 409 || status === 422 || status === 429 || (status >= 400 && status < 500)) return 'http';
-  if (status >= 500) return 'http';
+  if (status === 429 || code.includes('RATE_LIMIT')) return 'rate-limit';
+  if (status >= 500 || code.includes('SERVER')) return 'server';
+  if (status === 408 || status === 409 || status === 422 || (status >= 400 && status < 500)) return 'http';
   if (code.includes('INVALID') || code.includes('VALIDATION') || code.includes('INTERPRET') || code.includes('ANSWER') || code.includes('TASK_CONTRACT')) {
     return stage === 'parse' || code.includes('JSON') ? 'parse' : 'answer-validation';
   }

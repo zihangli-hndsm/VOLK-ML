@@ -171,6 +171,7 @@ export default function AgentRequestContractHarness() {
         onIlluminateConcept={() => {}}
         onBusyChange={() => {}}
         onRequestLifecycle={() => {}}
+        requestTimeoutMs={250}
         t={t}
       />}
     </main>
