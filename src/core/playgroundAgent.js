@@ -49,6 +49,7 @@ export {
   classifyAgentFailure,
   safeTaskFailure,
   createLogicalRequestController,
+  normalizeAgentTimeoutMs,
   runBoundedTask,
 } from './ai/agentRequestContract.js';
 

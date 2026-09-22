@@ -314,9 +314,24 @@ function requestAbortError({ kind, requestId, startedAt, stage = 'logical-reques
   return error;
 }
 
+/**
+ * Normalize the optional logical deadline shared by every Agent caller.
+ *
+ * UI surfaces intentionally use `null` to mean "use the standard deadline".
+ * Do that normalization here, before numeric coercion: Number(null) and
+ * Number('') are both zero and would otherwise turn a normal request into a
+ * one-millisecond timeout.
+ */
+export function normalizeAgentTimeoutMs(value) {
+  if (value === null || value === undefined) return AGENT_LOGICAL_TIMEOUT_MS;
+  if (typeof value === 'string' && value.trim() === '') return AGENT_LOGICAL_TIMEOUT_MS;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return AGENT_LOGICAL_TIMEOUT_MS;
+  return Math.max(1, Math.min(120_000, Math.floor(numeric)));
+}
+
 function boundedTimeoutMs(value) {
-  if (!Number.isFinite(Number(value))) return AGENT_LOGICAL_TIMEOUT_MS;
-  return Math.max(1, Math.min(120_000, Math.floor(Number(value))));
+  return normalizeAgentTimeoutMs(value);
 }
 
 /**

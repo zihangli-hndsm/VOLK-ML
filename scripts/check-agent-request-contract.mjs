@@ -10,6 +10,7 @@ import {
   validateAgentRequest,
   projectAgentSemanticContext,
   classifyAgentFailure,
+  normalizeAgentTimeoutMs,
   runBoundedTask,
 } from '../src/core/ai/agentRequestContract.js';
 import { providerStructuredOutputCapability, createProviderGateway, normalizeStrictJsonSchema } from '../src/core/ai/providerRegistry.js';
@@ -368,6 +369,40 @@ const repaired = await runBoundedTask({
 });
 assert.equal(repaired.value, 'ok');
 assert.equal(attempts, 2, 'one business-validation repair is allowed');
+
+assert.equal(normalizeAgentTimeoutMs(null), 15_000, 'null uses the standard logical deadline');
+assert.equal(normalizeAgentTimeoutMs(undefined), 15_000, 'undefined uses the standard logical deadline');
+assert.equal(normalizeAgentTimeoutMs('   '), 15_000, 'blank timeout uses the standard logical deadline');
+assert.equal(normalizeAgentTimeoutMs(Number.NaN), 15_000, 'non-finite timeout uses the standard logical deadline');
+assert.equal(normalizeAgentTimeoutMs(Infinity), 15_000, 'infinite timeout uses the standard logical deadline');
+assert.equal(normalizeAgentTimeoutMs(20), 20, 'finite timeout override is preserved');
+assert.equal(normalizeAgentTimeoutMs(200_000), 120_000, 'finite timeout override is bounded');
+
+const delayedTask = await runBoundedTask({
+  requestId: 'null-timeout-fixture',
+  timeoutMs: null,
+  execute: async () => { await new Promise((resolve) => setTimeout(resolve, 12)); return 'delayed-success'; },
+  validate: (value) => value,
+});
+assert.equal(delayedTask.value, 'delayed-success', 'a delayed task succeeds when null selects the standard deadline');
+
+const delayedAssistant = createLearningAssistant({
+  timeoutMs: null,
+  gateway: { complete: async () => { await new Promise((resolve) => setTimeout(resolve, 12)); return { protocol: 'fixture', text: '{"answer":"null timeout works"}' }; } },
+});
+const delayedAnswer = await delayedAssistant.ask({ question: 'null timeout', config: providerConfig, context: {}, requestId: 'null-timeout-assistant' });
+assert.equal(delayedAnswer.answer, 'null timeout works', 'Learning Assistant null timeout uses the shared standard deadline');
+
+const externalCancel = new AbortController();
+const cancellationTask = runBoundedTask({
+  requestId: 'external-cancel',
+  timeoutMs: 15_000,
+  signal: externalCancel.signal,
+  execute: async () => new Promise(() => {}),
+});
+externalCancel.abort();
+await assert.rejects(cancellationTask, (error) => error.code === 'AI_REQUEST_CANCELLED' && error.details?.reason === 'learner-cancelled', 'external cancellation remains distinct from timeout');
+
 attempts = 0;
 await assert.rejects(() => runBoundedTask({ execute: async () => { attempts += 1; const error = new Error('offline'); error.code = 'AI_PROVIDER_UNAVAILABLE'; throw error; } }), /offline/);
 assert.equal(attempts, 1, 'network failures are never repaired');

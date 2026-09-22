@@ -37,6 +37,19 @@ const ready = await probeProviderConnection({ gateway: successfulGateway, config
 assert.equal(ready.status, 'ready', 'a successful staged probe reaches ready');
 assert.deepEqual(ready.stages.map((item) => item.id), ['configuration', 'network', 'authentication', 'model', 'basic-text', 'structured-output', 'interpreter']);
 
+const delayedSuccessfulGateway = {
+  async complete(request) {
+    if (request.responseMode === 'json' && request.responseSchema?.name === 'volk_ml_connection_probe') return { text: '{"ok":true}' };
+    if (request.responseMode === 'json') {
+      await new Promise((resolve) => setTimeout(resolve, 8));
+      return { protocol: 'fake', text: JSON.stringify({ kind: 'explanation', topic: 'comparison' }) };
+    }
+    return { text: 'OK' };
+  },
+};
+const readyWithNullTimeout = await probeProviderConnection({ gateway: delayedSuccessfulGateway, config, timeoutMs: null });
+assert.equal(readyWithNullTimeout.status, 'ready', 'connection probe null timeout uses the standard deadline rather than a one-millisecond deadline');
+
 const structuredFailure = await probeProviderConnection({ gateway: { async complete(request) { if (request.responseMode === 'text') return { text: 'OK' }; return { text: 'not-json' }; } }, config });
 assert.equal(structuredFailure.status, 'failed');
 assert.equal(structuredFailure.stages.find((item) => item.id === 'structured-output').code, 'AI_STRUCTURED_OUTPUT_UNSUPPORTED');
