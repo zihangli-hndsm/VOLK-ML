@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-23 — Build Agent A local model-design boundary
+
+- Added strict, JSON-safe Build Agent A contracts for semantic dataset context,
+  build goals, model design plans, deterministic registered graph blueprints,
+  and detached learner-acceptance proposals.
+- Reused the existing component registry, Canvas Agent graph validation,
+  browser execution contract, compiler IR, and runtime-tier preflight; the
+  shared exercise suite now consumes the same fixtures and blueprints.
+- Added typed clarification/unsupported outcomes, provider-safe row-free
+  projection checks, focused Build Agent checks, and architecture guidance.
+- Validation: focused Build Agent checks, Episode 1 checks, full repository
+  check, production build, and `git diff --check` pass. Build UI, provider/
+  Cloud policy, apply/run, persistence, and later Build Agent phases remain
+  intentionally out of scope.
+
 ## 2026-09-08 — Phase A.8.2 responsive hit-target repair
 
 - Aligned the closed companion's mascot art, interactive button, focus target,
