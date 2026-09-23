@@ -44,6 +44,11 @@ The first declarative local-first inquiry episode is documented in
 state and deterministic evidence over the existing Playground host without
 creating a second experiment reducer.
 
+The detached Build Agent A model-design boundary is documented in
+[`build-agent.md`](./build-agent.md). It plans registered graphs from local
+semantic dataset context, while keeping proposal authority and execution
+separate from the Canvas Agent and Build workspace.
+
 Agent requests share the versioned, semantic boundary documented in
 [`ai-provider.md`](./ai-provider.md). Ask, Experiment Design, and World Edit
 carry explicit task modes and output sets through the same provider adapter;

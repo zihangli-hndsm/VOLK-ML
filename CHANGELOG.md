@@ -1,5 +1,20 @@
 # Changelog
 
+## 2026-09-23 — Build Agent A local model-design boundary
+
+- Added strict, JSON-safe Build Agent A contracts for semantic dataset context,
+  build goals, model design plans, deterministic registered graph blueprints,
+  and detached learner-acceptance proposals.
+- Reused the existing component registry, Canvas Agent graph validation,
+  browser execution contract, compiler IR, and runtime-tier preflight; the
+  shared exercise suite now consumes the same fixtures and blueprints.
+- Added typed clarification/unsupported outcomes, provider-safe row-free
+  projection checks, focused Build Agent checks, and architecture guidance.
+- Validation: focused Build Agent checks, Episode 1 checks, full repository
+  check, production build, and `git diff --check` pass. Build UI, provider/
+  Cloud policy, apply/run, persistence, and later Build Agent phases remain
+  intentionally out of scope.
+
 ## 2026-09-08 — Phase A.8.2 responsive hit-target repair
 
 - Aligned the closed companion's mascot art, interactive button, focus target,
@@ -1116,3 +1131,17 @@
 - Preserved the learner's World, experiment branches, semantic resample/fit events, Fit A provenance, and inquiry memory through the first-question handoff.
 - Added continuity coverage through Fit B, comparison, deterministic Evidence, continuation, and reflection skip while retaining Episode 1 compatibility.
 - Acceptance: full `npm run check`, focused Episode 0/1/Director checks, production `npm run build`, and `git diff --check` passed.
+
+## 2026-09-23 — Build Agent A dataset and proposal validation hardening
+
+- Bound dataset contexts, model plans, and detached graph proposals to a stable local semantic dataset fingerprint; proposals also retain the selected feature/target projection used for preflight. Runtime-equivalent missing cells share one explicit marker, while provider projection continues to exclude fingerprints and row data.
+- Made selected numeric features determine local preflight for mixed schemas, and made the public proposal validator enforce consistency between applicability and browser, execution-tier, and source-compiler facts. Semantic request, plan, and proposal identities are now documented distinctly.
+- Updated Build Agent A contracts, proposal preflight/validation, focused blueprint regressions, and the architecture guide. Proposals remain detached and require learner acceptance; this does not add an Apply UI or cryptographic identity.
+- Acceptance: focused `npm run check:build-agent`, full `npm run check`, production `npm run build`, independent VOLK-Dev acceptance, and `git diff --check` passed. The build retains the existing large-chunk advisory.
+
+## 2026-09-23 — Bind Build Agent proposals to complete plans and graph semantics
+
+- Graph proposals now embed the complete validated `ModelDesignPlanV1`; proposal identity binds the plan, selected dataset projection, and canonical semantic graph. Validation rematerializes the registered blueprint and rejects graph changes with `BUILD_PROPOSAL_GRAPH_MISMATCH`, independently of dataset freshness.
+- Canonical graph identity includes component schema/capability contracts, normalized parameters, ports, topology, edge handles, and contract-owned positions, while ignoring presentation labels, runtime status, and localized descriptions. Future Apply must recheck current workspace, dataset, and capabilities; preview-time applicability is not authorization.
+- Added plan/graph tampering, capability/property schema, layout, presentation-only, and freshness regressions; updated the Build Agent architecture document.
+- Acceptance: `npm run check:build-agent`, `npm run check`, `npm run build`, independent VOLK-Dev acceptance, and `git diff --check` passed. The build retains the existing large-chunk advisory.
