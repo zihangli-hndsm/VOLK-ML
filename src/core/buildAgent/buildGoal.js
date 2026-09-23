@@ -132,9 +132,6 @@ export function resolveBuildGoal(value, datasetContext) {
   }
   if (task === 'regression' && modelFamily === 'knn') return unsupported('BUILD_REGRESSION_MODEL_UNSUPPORTED', { modelFamily });
   if (task === 'classification' && modelFamily === 'linear-regression') return unsupported('BUILD_CLASSIFICATION_MODEL_UNSUPPORTED', { modelFamily });
-  if (modelFamily === 'mlp' && context.featureColumns.some((column) => column.type !== 'number')) {
-    return unsupported('BUILD_MLP_NUMERIC_FEATURES_REQUIRED');
-  }
   if (task === 'classification' && (!Number.isInteger(context.classCount) || context.classCount < 2)) {
     return clarification('BUILD_CLASS_COUNT_REQUIRED', ['at-least-two-classes']);
   }

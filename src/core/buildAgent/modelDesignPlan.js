@@ -3,6 +3,7 @@ import {
   BUILD_EXECUTION_EXPECTATIONS,
   BUILD_MODEL_FAMILIES,
   BUILD_TASKS,
+  assertBuildIdentity,
   assertJsonSafe,
   boundedId,
   boundedInteger,
@@ -10,6 +11,7 @@ import {
   boundedStringArray,
   failBuildAgent,
   rejectUnknownFields,
+  stableBuildIdentity,
 } from './contracts.js';
 import { resolveBuildGoal } from './buildGoal.js';
 
@@ -23,6 +25,7 @@ export const BUILD_BLUEPRINT_IDS = Object.freeze({
 const PLAN_FIELDS = [
   'version', 'planId', 'blueprintId', 'task', 'modelFamily', 'architecture',
   'dataset', 'training', 'executionExpectation', 'capabilityRefs',
+  'evaluation', 'rationale', 'limitations',
 ];
 
 const BLUEPRINT_BY_FAMILY = Object.freeze({
@@ -46,8 +49,30 @@ const CAPABILITIES = Object.freeze({
   [BUILD_BLUEPRINT_IDS.classificationMlp]: ['dataset.table', 'split.train-test', 'model.mlp', 'loss.cross-entropy', 'optimizer.sgd', 'trainer.supervised', 'evaluation.classification'],
 });
 
-function planId(goalId, blueprintId) {
-  return `build-plan-${goalId}-${blueprintId}`.slice(0, 192);
+const EVALUATION_BY_BLUEPRINT = Object.freeze({
+  [BUILD_BLUEPRINT_IDS.regressionLinear]: { metrics: ['rmse', 'r2'] },
+  [BUILD_BLUEPRINT_IDS.classificationKnn]: { metrics: ['accuracy', 'macro-f1'] },
+  [BUILD_BLUEPRINT_IDS.regressionMlp]: { metrics: ['rmse', 'r2'] },
+  [BUILD_BLUEPRINT_IDS.classificationMlp]: { metrics: ['accuracy', 'macro-f1'] },
+});
+
+const RATIONALE_BY_BLUEPRINT = Object.freeze({
+  [BUILD_BLUEPRINT_IDS.regressionLinear]: ['baseline.linear-regression'],
+  [BUILD_BLUEPRINT_IDS.classificationKnn]: ['baseline.knn-classification'],
+  [BUILD_BLUEPRINT_IDS.regressionMlp]: ['model.small-mlp-regression'],
+  [BUILD_BLUEPRINT_IDS.classificationMlp]: ['model.small-mlp-classification'],
+});
+
+const LIMITATIONS_BY_BLUEPRINT = Object.freeze({
+  [BUILD_BLUEPRINT_IDS.regressionLinear]: [],
+  [BUILD_BLUEPRINT_IDS.classificationKnn]: ['knn.browser-only'],
+  [BUILD_BLUEPRINT_IDS.regressionMlp]: ['mlp.numeric-tabular-only'],
+  [BUILD_BLUEPRINT_IDS.classificationMlp]: ['mlp.numeric-tabular-only'],
+});
+
+function semanticPlanId(plan) {
+  const { planId: _ignored, ...semanticPlan } = plan;
+  return stableBuildIdentity(semanticPlan, 'plan');
 }
 
 function normalizeTraining(blueprintId, goalParameters) {
@@ -101,23 +126,35 @@ function typedUnsupportedGoalRequest(value) {
 export function validateModelDesignPlan(value) {
   rejectUnknownFields(value, PLAN_FIELDS, 'BUILD_PLAN_INVALID', 'plan');
   if (value.version !== BUILD_AGENT_CONTRACT_VERSION) failBuildAgent('BUILD_CONTRACT_VERSION_UNSUPPORTED', 'plan.version is unsupported.');
-  if (typeof value.planId !== 'string' || !value.planId.trim()) failBuildAgent('BUILD_PLAN_INVALID', 'plan.planId is required.');
+  assertBuildIdentity(value.planId, 'plan', 'plan.planId');
   if (!Object.values(BUILD_BLUEPRINT_IDS).includes(value.blueprintId)) failBuildAgent('BUILD_PLAN_INVALID', 'plan.blueprintId is unsupported.');
   if (!['regression', 'classification'].includes(value.task)) failBuildAgent('BUILD_PLAN_INVALID', 'plan.task is unsupported.');
   if (!['linear-regression', 'knn', 'mlp'].includes(value.modelFamily)) failBuildAgent('BUILD_PLAN_INVALID', 'plan.modelFamily is unsupported.');
   if (!['baseline', 'explicit-mlp'].includes(value.architecture)) failBuildAgent('BUILD_PLAN_INVALID', 'plan.architecture is unsupported.');
   if (BLUEPRINT_BY_FAMILY[`${value.task}:${value.modelFamily}`] !== value.blueprintId) failBuildAgent('BUILD_PLAN_INVALID', 'plan.blueprintId does not match task/model family.');
   if ((value.modelFamily === 'mlp') !== (value.architecture === 'explicit-mlp')) failBuildAgent('BUILD_PLAN_INVALID', 'plan.architecture does not match model family.');
-  rejectUnknownFields(value.dataset, ['featureColumns', 'targetColumn', 'featureCount', 'classCount'], 'BUILD_PLAN_INVALID', 'dataset');
+  rejectUnknownFields(value.dataset, ['fingerprint', 'featureColumns', 'targetColumn', 'featureCount', 'classCount'], 'BUILD_PLAN_INVALID', 'dataset');
+  assertBuildIdentity(value.dataset.fingerprint, 'dataset', 'plan.dataset.fingerprint');
   if (!Array.isArray(value.dataset.featureColumns) || value.dataset.featureColumns.length < 1) failBuildAgent('BUILD_PLAN_INVALID', 'plan.dataset.featureColumns is required.');
-  boundedStringArray(value.dataset.featureColumns, 'dataset.featureColumns', { max: 64 });
+  const featureColumns = boundedStringArray(value.dataset.featureColumns, 'dataset.featureColumns', { max: 64 });
   boundedId(value.dataset.targetColumn, 'dataset.targetColumn');
   boundedInteger(value.dataset.featureCount, 'dataset.featureCount', { min: 1, max: 64 });
-  if (value.dataset.classCount !== null) boundedInteger(value.dataset.classCount, 'dataset.classCount', { min: 0, max: 10_000 });
+  if (value.dataset.featureCount !== featureColumns.length) failBuildAgent('BUILD_PLAN_INVALID', 'dataset.featureCount must match selected features.');
+  if (value.dataset.classCount !== null) boundedInteger(value.dataset.classCount, 'dataset.classCount', { min: 2, max: 10_000 });
+  if ((value.task === 'classification') !== (value.dataset.classCount !== null)) failBuildAgent('BUILD_PLAN_INVALID', 'dataset.classCount must match task semantics.');
   validateTraining(value.training);
   if (!BUILD_EXECUTION_EXPECTATIONS.includes(value.executionExpectation)) failBuildAgent('BUILD_PLAN_INVALID', 'plan.executionExpectation is unsupported.');
-  if (!Array.isArray(value.capabilityRefs) || value.capabilityRefs.length < 1) failBuildAgent('BUILD_PLAN_INVALID', 'plan.capabilityRefs is required.');
+  const capabilityRefs = boundedStringArray(value.capabilityRefs, 'plan.capabilityRefs', { max: 16 });
+  if (JSON.stringify(capabilityRefs) !== JSON.stringify(CAPABILITIES[value.blueprintId])) failBuildAgent('BUILD_PLAN_INVALID', 'plan.capabilityRefs do not match the registered blueprint.');
+  rejectUnknownFields(value.evaluation, ['metrics'], 'BUILD_PLAN_INVALID', 'evaluation');
+  const metrics = boundedStringArray(value.evaluation.metrics, 'evaluation.metrics', { max: 8 });
+  if (JSON.stringify(metrics) !== JSON.stringify(EVALUATION_BY_BLUEPRINT[value.blueprintId].metrics)) failBuildAgent('BUILD_PLAN_INVALID', 'evaluation.metrics do not match the registered blueprint.');
+  const rationale = boundedStringArray(value.rationale, 'plan.rationale', { max: 8 });
+  const limitations = boundedStringArray(value.limitations, 'plan.limitations', { max: 8 });
+  if (JSON.stringify(rationale) !== JSON.stringify(RATIONALE_BY_BLUEPRINT[value.blueprintId])) failBuildAgent('BUILD_PLAN_INVALID', 'plan.rationale does not match deterministic policy.');
+  if (JSON.stringify(limitations) !== JSON.stringify(LIMITATIONS_BY_BLUEPRINT[value.blueprintId])) failBuildAgent('BUILD_PLAN_INVALID', 'plan.limitations do not match deterministic policy.');
   assertJsonSafe(value, 'BUILD_PLAN_INVALID');
+  if (value.planId !== semanticPlanId(value)) failBuildAgent('BUILD_PLAN_INVALID', 'plan.planId does not match semantic plan identity.');
   return structuredClone(value);
 }
 
@@ -148,12 +185,12 @@ export function planBuildGoal(goal, datasetContext) {
   if (normalizedGoal.modelFamily === 'mlp') training.hiddenUnits = normalizedGoal.parameters?.hiddenUnits ?? 6;
   const plan = {
     version: BUILD_AGENT_CONTRACT_VERSION,
-    planId: planId(normalizedGoal.goalId, blueprintId),
     blueprintId,
     task: normalizedGoal.task,
     modelFamily: normalizedGoal.modelFamily,
     architecture: normalizedGoal.architecture,
     dataset: {
+      fingerprint: context.datasetFingerprint,
       featureColumns: normalizedGoal.dataset.featureColumns,
       targetColumn: normalizedGoal.dataset.targetColumn,
       featureCount: normalizedGoal.dataset.featureColumns.length,
@@ -162,8 +199,12 @@ export function planBuildGoal(goal, datasetContext) {
     training,
     executionExpectation: normalizedGoal.executionExpectation,
     capabilityRefs: CAPABILITIES[blueprintId],
+    evaluation: EVALUATION_BY_BLUEPRINT[blueprintId],
+    rationale: RATIONALE_BY_BLUEPRINT[blueprintId],
+    limitations: LIMITATIONS_BY_BLUEPRINT[blueprintId],
   };
+  plan.planId = semanticPlanId(plan);
   return { kind: 'plan', version: BUILD_AGENT_CONTRACT_VERSION, plan: validateModelDesignPlan(plan), context };
 }
 
-export { DEFAULT_TRAINING, CAPABILITIES };
+export { DEFAULT_TRAINING, CAPABILITIES, EVALUATION_BY_BLUEPRINT, RATIONALE_BY_BLUEPRINT, LIMITATIONS_BY_BLUEPRINT };

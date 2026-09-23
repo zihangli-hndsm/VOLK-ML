@@ -117,3 +117,55 @@ export function cloneJson(value) {
   assertJsonSafe(value);
   return structuredClone(value);
 }
+
+const FNV64_OFFSET = 14_695_981_039_346_656_037n;
+const FNV64_PRIME = 1_099_511_628_211n;
+const FNV64_MASK = 18_446_744_073_709_551_615n;
+
+function emitCanonical(value, visit) {
+  if (value === null || typeof value !== 'object') {
+    const scalar = JSON.stringify(value);
+    for (let index = 0; index < scalar.length; index += 1) visit(scalar.charCodeAt(index));
+    return;
+  }
+  if (Array.isArray(value)) {
+    visit(91);
+    value.forEach((item, index) => {
+      if (index) visit(44);
+      emitCanonical(item, visit);
+    });
+    visit(93);
+    return;
+  }
+  visit(123);
+  Object.keys(value).sort().forEach((key, index) => {
+    if (index) visit(44);
+    const encodedKey = JSON.stringify(key);
+    for (let offset = 0; offset < encodedKey.length; offset += 1) visit(encodedKey.charCodeAt(offset));
+    visit(58);
+    emitCanonical(value[key], visit);
+  });
+  visit(125);
+}
+
+/** Stable, non-cryptographic identity for bounded local semantic values. */
+export function stableBuildIdentity(value, namespace) {
+  assertJsonSafe(value, 'BUILD_IDENTITY_INVALID');
+  const identityNamespace = boundedId(namespace, 'identity namespace', 32);
+  let hash = FNV64_OFFSET;
+  let codeUnits = 0;
+  emitCanonical(value, (unit) => {
+    hash ^= BigInt(unit);
+    hash = (hash * FNV64_PRIME) & FNV64_MASK;
+    codeUnits += 1;
+  });
+  return `${identityNamespace}-v1-${hash.toString(16).padStart(16, '0')}-${codeUnits.toString(16)}`;
+}
+
+export function assertBuildIdentity(value, namespace, field = 'identity') {
+  const prefix = `${boundedId(namespace, 'identity namespace', 32)}-v1-`;
+  if (typeof value !== 'string' || !value.startsWith(prefix) || !/^[0-9a-f]{16}-[0-9a-f]+$/.test(value.slice(prefix.length))) {
+    failBuildAgent('BUILD_CONTRACT_INVALID', `${field} has an invalid semantic identity.`, { field, namespace });
+  }
+  return value;
+}

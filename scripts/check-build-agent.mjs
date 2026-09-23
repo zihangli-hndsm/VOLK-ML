@@ -2,10 +2,13 @@ import { exerciseDatasets } from '../src/core/buildAgent/exerciseFixtures.js';
 import {
   BUILD_EXECUTION_EXPECTATIONS,
   createBuildDatasetContext,
+  fingerprintBuildDataset,
   projectBuildDatasetContext,
   planBuildGoal,
   materializeBuildBlueprint,
   createGraphProposal,
+  assessGraphProposalAgainstDataset,
+  validateGraphProposal,
   validateBuildGoal,
   validateModelDesignPlan,
 } from '../src/core/buildAgent/index.js';
@@ -46,6 +49,17 @@ const wineContext = createBuildDatasetContext(exerciseDatasets.wine);
 const irisContext = createBuildDatasetContext(exerciseDatasets.iris);
 const mlpContext = createBuildDatasetContext(exerciseDatasets.mlpClassification);
 
+check(wineContext.datasetFingerprint === createBuildDatasetContext(exerciseDatasets.wine).datasetFingerprint, 'Same semantic dataset must have a stable fingerprint.');
+check(wineContext.datasetFingerprint === fingerprintBuildDataset(exerciseDatasets.wine), 'Context and local dataset fingerprint paths must agree.');
+const changedWineDataset = {
+  ...exerciseDatasets.wine,
+  rows: exerciseDatasets.wine.rows.map((row, index) => index === 0 ? { ...row, quality: row.quality + 0.125 } : row),
+};
+check(wineContext.datasetFingerprint !== fingerprintBuildDataset(changedWineDataset), 'A relevant row change must change dataset identity.');
+check(wineContext.datasetFingerprint !== createBuildDatasetContext({ ...exerciseDatasets.wine, task: 'classification' }).datasetFingerprint, 'A task change must change dataset identity.');
+check(wineContext.datasetFingerprint === fingerprintBuildDataset({ ...exerciseDatasets.wine, name: 'renamed', fileContents: 'private-file-contents' }), 'Names and file contents are not dataset training semantics.');
+check(wineContext.datasetFingerprint !== fingerprintBuildDataset({ ...exerciseDatasets.wine, rows: [...exerciseDatasets.wine.rows].reverse() }), 'Training row order is part of dataset identity.');
+
 const projectedWineContext = projectBuildDatasetContext(wineContext);
 check(!Object.hasOwn(projectedWineContext, 'rows'), 'Provider context must not contain rows.');
 check(!Object.hasOwn(projectedWineContext, 'rawValues'), 'Provider context must not contain raw values.');
@@ -56,6 +70,79 @@ const wineDatasetWithSentinel = {
 const projectedSentinelContext = projectBuildDatasetContext(createBuildDatasetContext(wineDatasetWithSentinel));
 check(!JSON.stringify(projectedSentinelContext).includes('row-only-sentinel'), 'Provider projection must not serialize a row-only sentinel from an original row.');
 expectCode(() => projectBuildDatasetContext({ ...wineContext, rows: [{ rowOnly: 'row-only-sentinel' }] }), 'BUILD_DATASET_CONTEXT_INVALID');
+
+const mixedDataset = {
+  name: 'private-dataset-name-sentinel',
+  fileContents: 'private-file-contents-sentinel',
+  task: 'classification',
+  featureColumns: ['age', 'income', 'city'],
+  targetColumn: 'churn',
+  rows: Array.from({ length: 12 }, (_, index) => ({
+    age: 20 + index,
+    income: 30000 + index * 2500,
+    city: `raw-city-sentinel-${index}`,
+    churn: index % 2 ? 'yes-label-sentinel' : 'no-label-sentinel',
+    unused: 'raw-cell-sentinel',
+  })),
+};
+const mixedContext = createBuildDatasetContext(mixedDataset);
+const mixedProjection = projectBuildDatasetContext(mixedContext);
+const serializedMixedProjection = JSON.stringify(mixedProjection);
+check(mixedProjection.featureColumns.some((column) => column.name === 'age' && column.type === 'number'), 'Mixed projection must retain numeric feature metadata.');
+check(mixedProjection.featureColumns.some((column) => column.name === 'city' && column.type === 'text'), 'Mixed projection must retain text feature metadata.');
+check(mixedProjection.targetColumn.name === 'churn' && mixedProjection.targetColumn.type === 'text', 'Mixed projection must retain target schema metadata.');
+check(!Object.hasOwn(mixedProjection, 'datasetFingerprint'), 'Local dataset fingerprint is not part of provider projection.');
+for (const sentinel of ['raw-city-sentinel', 'yes-label-sentinel', 'no-label-sentinel', 'raw-cell-sentinel', 'private-file-contents-sentinel', 'private-dataset-name-sentinel']) {
+  check(!serializedMixedProjection.includes(sentinel), `Provider projection leaked ${sentinel}.`);
+}
+const mixedNumericPlan = planBuildGoal(goal('mixed-numeric-subset', {
+  task: 'classification',
+  dataset: { featureColumns: ['age', 'income'], targetColumn: 'churn' },
+}), mixedContext);
+check(mixedNumericPlan.kind === 'plan', 'A numeric selected subset from a mixed schema must plan successfully.');
+const mixedTextPlan = planBuildGoal(goal('mixed-text-selection', {
+  task: 'classification',
+  dataset: { featureColumns: ['city', 'income'], targetColumn: 'churn' },
+}), mixedContext);
+check(mixedTextPlan.kind === 'unsupported' && mixedTextPlan.code === 'BUILD_NUMERIC_FEATURES_REQUIRED', 'Selected text features must remain a typed unsupported outcome.');
+const mixedNumericProposal = createGraphProposal({ plan: mixedNumericPlan.plan, dataset: mixedDataset, datasetContext: mixedContext });
+check(mixedNumericProposal.application.status === 'applicable', 'A selected numeric subset must be preflighted independently from unused text columns.');
+check(mixedNumericProposal.application.reasons.length === 0, 'A materializable numeric subset must have no application blockers.');
+check(JSON.stringify(mixedNumericProposal.datasetSelection.featureColumns) === JSON.stringify(['age', 'income']), 'Proposal must preserve the selected feature projection that passed preflight.');
+expectCode(() => validateGraphProposal({ ...mixedNumericProposal, datasetSelection: { ...mixedNumericProposal.datasetSelection, featureColumns: ['city'] } }), 'BUILD_PROPOSAL_INVALID');
+const missingCityDataset = {
+  ...mixedDataset,
+  rows: mixedDataset.rows.map((row, index) => index === 0 ? Object.fromEntries(Object.entries(row).filter(([name]) => name !== 'city')) : row),
+};
+const missingCityAsNull = {
+  ...mixedDataset,
+  rows: mixedDataset.rows.map((row, index) => index === 0 ? { ...row, city: null } : row),
+};
+const missingCityAsBlank = {
+  ...mixedDataset,
+  rows: mixedDataset.rows.map((row, index) => index === 0 ? { ...row, city: '  ' } : row),
+};
+const missingCityContext = createBuildDatasetContext(missingCityDataset);
+check(missingCityContext.datasetFingerprint === createBuildDatasetContext(missingCityAsNull).datasetFingerprint, 'Missing-key and null cells must share the runtime missing-value identity.');
+check(missingCityContext.datasetFingerprint === createBuildDatasetContext(missingCityAsBlank).datasetFingerprint, 'Blank cells must share the runtime missing-value identity.');
+const missingCityPlan = planBuildGoal(goal('mixed-missing-unused-cell', {
+  task: 'classification', dataset: { featureColumns: ['age', 'income'], targetColumn: 'churn' },
+}), missingCityContext);
+check(missingCityPlan.kind === 'plan', 'A missing unused mixed-schema cell must still form a planning context.');
+const missingCityProposal = createGraphProposal({ plan: missingCityPlan.plan, dataset: missingCityDataset, datasetContext: missingCityContext });
+check(missingCityProposal.application.status === 'applicable', 'A missing unused text cell must not block selected numeric-feature preflight.');
+const sparseSelectedDataset = {
+  ...mixedDataset,
+  rows: mixedDataset.rows.map((row, index) => index < 2 ? row : { ...row, age: null }),
+};
+const sparseSelectedContext = createBuildDatasetContext(sparseSelectedDataset);
+const sparseSelectedPlan = planBuildGoal(goal('mixed-sparse-selected-cell', {
+  task: 'classification', dataset: { featureColumns: ['age', 'income'], targetColumn: 'churn' },
+}), sparseSelectedContext);
+check(sparseSelectedPlan.kind === 'plan', 'Target-valid planning remains distinct from selected-feature preflight.');
+const sparseSelectedProposal = createGraphProposal({ plan: sparseSelectedPlan.plan, dataset: sparseSelectedDataset, datasetContext: sparseSelectedContext });
+check(sparseSelectedProposal.application.status === 'blocked' && sparseSelectedProposal.application.reasons.includes('BUILD_BROWSER_PREFLIGHT_FAILED'), 'Insufficient selected-feature rows must be decided by normal browser preflight.');
+
 expectCode(() => validateBuildGoal({ ...goal('unknown'), opaque: true }), 'BUILD_GOAL_INVALID');
 
 const winePlanResult = planBuildGoal(goal('wine-default'), wineContext);
@@ -84,12 +171,29 @@ const runtimeFixtures = [
   ['wine', wineContext, winePlanResult.plan, (metrics) => metrics.r2 >= 0.98],
   ['iris', irisContext, irisPlanResult.plan, (metrics) => metrics.accuracy >= 0.65],
   ['mlp-classification', mlpContext, mlpPlanResult.plan, (metrics) => metrics.accuracy >= 0.9],
-  ['mlp-regression', createBuildDatasetContext(exerciseDatasets.mlpRegression), {
-    version: 1, planId: 'mlp-regression-check', blueprintId: 'tabular-regression-mlp-v1', task: 'regression', modelFamily: 'mlp', architecture: 'explicit-mlp',
-    dataset: { featureColumns: ['feature_a', 'feature_b'], targetColumn: 'target', featureCount: 2, classCount: null },
-    training: { trainRatio: 0.8, epochs: 250, batchSize: 10, shuffle: true, loss: 'mse', optimizer: 'sgd', hiddenUnits: 6 }, executionExpectation: 'browser-local', capabilityRefs: ['model.mlp'],
-  }, (metrics) => metrics.r2 >= 0.98],
+  ['mlp-regression', mlpRegressionPlanResult.context, mlpRegressionPlanResult.plan, (metrics) => metrics.r2 >= 0.98],
 ];
+
+const sameSemanticsDifferentGoal = planBuildGoal(goal('different-request-id'), wineContext);
+check(sameSemanticsDifferentGoal.plan.planId === winePlanResult.plan.planId, 'Request IDs must not replace semantic plan identity.');
+const hiddenUnitsPlan = planBuildGoal(goal('changed-hidden-units', {
+  task: 'classification', modelFamily: 'mlp', architecture: 'explicit-mlp', parameters: { hiddenUnits: 7 },
+}), mlpContext);
+check(hiddenUnitsPlan.plan.planId !== mlpPlanResult.plan.planId, 'Changing hiddenUnits must change semantic plan identity.');
+const featureSubsetPlan = planBuildGoal(goal('changed-feature-set', {
+  dataset: { featureColumns: ['alcohol', 'sulphates'], targetColumn: 'quality' },
+}), wineContext);
+check(featureSubsetPlan.plan.planId !== winePlanResult.plan.planId, 'Changing selected features must change semantic plan identity.');
+const changedDatasetPlan = planBuildGoal(goal('changed-dataset'), createBuildDatasetContext(changedWineDataset));
+check(changedDatasetPlan.plan.planId !== winePlanResult.plan.planId, 'Changing dataset identity must change semantic plan identity.');
+const exportOnlyPlan = planBuildGoal(goal('export-only', { executionExpectation: 'export-only' }), wineContext);
+check(exportOnlyPlan.plan.planId !== winePlanResult.plan.planId, 'Changing execution expectation must change semantic plan identity.');
+const changedEpochPlan = planBuildGoal(goal('changed-epochs', { parameters: { epochs: 201 } }), wineContext);
+check(changedEpochPlan.plan.planId !== winePlanResult.plan.planId, 'Changing training parameters must change semantic plan identity.');
+
+expectCode(() => createGraphProposal({ plan: winePlanResult.plan, dataset: changedWineDataset, datasetContext: createBuildDatasetContext(changedWineDataset) }), 'BUILD_DATASET_STALE');
+expectCode(() => createGraphProposal({ plan: winePlanResult.plan, dataset: exerciseDatasets.wine, datasetContext: createBuildDatasetContext(changedWineDataset) }), 'BUILD_DATASET_STALE');
+expectCode(() => createGraphProposal({ plan: winePlanResult.plan, datasetContext: createBuildDatasetContext(changedWineDataset) }), 'BUILD_DATASET_STALE');
 
 for (const [name, context, plan, metricCheck] of runtimeFixtures) {
   validateModelDesignPlan(plan);
@@ -104,10 +208,64 @@ for (const [name, context, plan, metricCheck] of runtimeFixtures) {
   check(proposal.authority === 'detached-proposal' && proposal.requiresLearnerAcceptance, `${name} proposal must remain detached.`);
   check(proposal.executionExpectation === 'browser-local', `${name} proposal expectation must use external vocabulary.`);
   check(proposal.validation.browser.valid, `${name} proposal browser assessment must be valid.`);
+  check(proposal.datasetFingerprint === plan.dataset.fingerprint, `${name} proposal must carry its plan dataset identity.`);
+  check(proposal.application.status === 'applicable' && proposal.application.reasons.length === 0, `${name} current browser-local proposal must pass the authoritative application gate.`);
+  check(validateGraphProposal(proposal).proposalId === proposal.proposalId, `${name} proposal semantic identity must validate.`);
+  check(assessGraphProposalAgainstDataset(proposal, context).compatible, `${name} proposal must match its current context.`);
   if (name === 'iris') check(proposal.validation.source.pytorch.status === 'unsupported', 'KNN source export must remain explicitly unsupported.');
   const copy = createGraphProposal({ plan, dataset, datasetContext: context });
   proposal.graph.nodes[0].id = 'mutated-locally';
   check(copy.graph.nodes[0].id !== 'mutated-locally', `${name} proposal must be detached from subsequent proposals.`);
 }
+
+const wineProposal = createGraphProposal({ plan: winePlanResult.plan, dataset: exerciseDatasets.wine, datasetContext: wineContext });
+check(assessGraphProposalAgainstDataset(wineProposal, createBuildDatasetContext(changedWineDataset)).code === 'BUILD_DATASET_STALE', 'Pure proposal assessment must reject changed dataset identity.');
+const exportProposal = createGraphProposal({ plan: exportOnlyPlan.plan, dataset: exerciseDatasets.wine, datasetContext: wineContext });
+check(exportProposal.application.status === 'applicable', 'Export-only applicability must not require browser-local execution.');
+check(exportProposal.validation.source.pytorch.status === 'supported' || exportProposal.validation.source.tensorflow.status === 'supported', 'Export-only gate must use compiler capability results.');
+check(validateGraphProposal(exportProposal).proposalId === exportProposal.proposalId, 'A valid export-only proposal must pass its public validator.');
+expectCode(() => validateGraphProposal({
+  ...exportProposal,
+  validation: {
+    ...exportProposal.validation,
+    source: {
+      pytorch: { status: 'unsupported', reason: 'error.frameworkUnsupported' },
+      tensorflow: { status: 'unsupported', reason: 'error.frameworkUnsupported' },
+    },
+  },
+}), 'BUILD_PROPOSAL_INVALID');
+
+const invalidBrowserDataset = {
+  name: 'Invalid local sample fixture', task: 'regression', featureColumns: ['x'], targetColumn: 'y',
+  rows: [{ x: 1, y: 2 }, { x: null, y: 3 }, { x: null, y: 4 }],
+};
+const invalidBrowserContext = createBuildDatasetContext(invalidBrowserDataset);
+const invalidBrowserPlan = planBuildGoal(goal('invalid-browser-sample'), invalidBrowserContext);
+check(invalidBrowserPlan.kind === 'plan', 'Target-valid planning should be separated from selected-feature runtime preflight.');
+const blockedProposal = createGraphProposal({ plan: invalidBrowserPlan.plan, dataset: invalidBrowserDataset, datasetContext: invalidBrowserContext });
+check(blockedProposal.application.status === 'blocked', 'Invalid browser-local preflight must block proposal application.');
+check(blockedProposal.application.reasons.includes('BUILD_BROWSER_PREFLIGHT_FAILED'), 'Blocked application must provide a stable preflight reason.');
+check(validateGraphProposal(blockedProposal).proposalId === blockedProposal.proposalId, 'A consistent blocked browser proposal must pass its public validator.');
+expectCode(() => validateGraphProposal({
+  ...wineProposal,
+  validation: {
+    ...wineProposal.validation,
+    browser: { ...wineProposal.validation.browser, valid: false, reason: 'error.datasetMissing' },
+  },
+}), 'BUILD_PROPOSAL_INVALID');
+expectCode(() => validateGraphProposal({
+  ...wineProposal,
+  validation: {
+    ...wineProposal.validation,
+    tier: { ...wineProposal.validation.tier, canRunHere: false, executionExpectation: 'unsupported' },
+  },
+}), 'BUILD_PROPOSAL_INVALID');
+check(assessGraphProposalAgainstDataset(blockedProposal, invalidBrowserContext).compatible, 'Dataset freshness is separate from browser applicability.');
+
+const noDatasetProposal = createGraphProposal({ plan: winePlanResult.plan });
+check(noDatasetProposal.application.status === 'blocked' && noDatasetProposal.application.reasons.includes('BUILD_DATASET_BINDING_UNVERIFIED'), 'Unverified binding must block application.');
+check(hiddenUnitsPlan.plan.planId !== mlpPlanResult.plan.planId, 'Hidden-unit semantic identity must remain distinct.');
+const hiddenUnitsProposal = createGraphProposal({ plan: hiddenUnitsPlan.plan, dataset: exerciseDatasets.mlpClassification, datasetContext: mlpContext });
+check(hiddenUnitsProposal.proposalId !== createGraphProposal({ plan: mlpPlanResult.plan, dataset: exerciseDatasets.mlpClassification, datasetContext: mlpContext }).proposalId, 'Proposal identity must follow semantic plan identity.');
 
 console.log(`Build Agent A checks passed (${runtimeFixtures.length} executable blueprints).`);

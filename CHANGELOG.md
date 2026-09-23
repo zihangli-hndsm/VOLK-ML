@@ -1131,3 +1131,10 @@
 - Preserved the learner's World, experiment branches, semantic resample/fit events, Fit A provenance, and inquiry memory through the first-question handoff.
 - Added continuity coverage through Fit B, comparison, deterministic Evidence, continuation, and reflection skip while retaining Episode 1 compatibility.
 - Acceptance: full `npm run check`, focused Episode 0/1/Director checks, production `npm run build`, and `git diff --check` passed.
+
+## 2026-09-23 — Build Agent A dataset and proposal validation hardening
+
+- Bound dataset contexts, model plans, and detached graph proposals to a stable local semantic dataset fingerprint; proposals also retain the selected feature/target projection used for preflight. Runtime-equivalent missing cells share one explicit marker, while provider projection continues to exclude fingerprints and row data.
+- Made selected numeric features determine local preflight for mixed schemas, and made the public proposal validator enforce consistency between applicability and browser, execution-tier, and source-compiler facts. Semantic request, plan, and proposal identities are now documented distinctly.
+- Updated Build Agent A contracts, proposal preflight/validation, focused blueprint regressions, and the architecture guide. Proposals remain detached and require learner acceptance; this does not add an Apply UI or cryptographic identity.
+- Acceptance: focused `npm run check:build-agent`, full `npm run check`, production `npm run build`, independent VOLK-Dev acceptance, and `git diff --check` passed. The build retains the existing large-chunk advisory.
