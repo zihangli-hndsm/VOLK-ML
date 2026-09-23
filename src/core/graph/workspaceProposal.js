@@ -6,8 +6,10 @@ import { analyzeBrowserExecutionGraph } from '../browserExecutionContract.js';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow } from '../compiler.js';
 import { estimateExecutionPlan } from '../runtimeTiers.js';
 import { validateGraphProposal } from '../buildAgent/graphProposal.js';
+import { createBuildDatasetContext } from '../buildAgent/datasetContext.js';
 import {
   canonicalGraphLayoutJsonV1,
+  canonicalGraphSemanticsJsonV1,
   fingerprintJsonV1,
   graphIdentityV1,
   MAX_GRAPH_COMPONENT_DEFINITIONS,
@@ -18,8 +20,8 @@ import {
 
 export const WORKSPACE_GRAPH_PROPOSAL_VERSION = 1;
 export const WORKSPACE_GRAPH_PROPOSAL_TYPE = 'WorkspaceGraphProposalV1';
-export const GRAPH_SOURCE_VERSION = 1;
-export const GRAPH_CONVERSION_REPORT_VERSION = 1;
+export const GRAPH_SOURCE_VERSION = 2;
+export const GRAPH_CONVERSION_REPORT_VERSION = 2;
 
 const FIDELITIES = ['exact', 'structural', 'partial', 'unsupported'];
 const SOURCE_KINDS = ['planner', 'import'];
@@ -30,6 +32,12 @@ const SOURCE_PRODUCERS = [
 const SOURCE_FORMATS = [
   'volk-model-design-plan-v1', 'volk-graph-candidate-v1', 'volk-project', 'ONNX', 'torch.export', 'torch.fx', 'TensorFlow', 'Keras', 'unknown-import',
 ];
+const OFFICIAL_PRODUCERS = new Set([
+  'build-agent', 'volk-project', 'onnx-adapter', 'torch-export-adapter', 'torch-fx-adapter', 'tensorflow-adapter', 'keras-adapter',
+]);
+const IMPLEMENTED_VERIFIED_PRODUCERS = new Set(['build-agent', 'volk-project']);
+const RESERVED_ADAPTER_PRODUCERS = new Set(['onnx-adapter', 'torch-export-adapter', 'torch-fx-adapter', 'tensorflow-adapter', 'keras-adapter']);
+const CONVERSION_VERIFICATIONS = ['producer-declared', 'volk-verified'];
 const PROVENANCE_LOCATIONS = ['generated', 'local-project', 'local-file', 'inline', 'unknown'];
 const FRAMEWORKS = ['pytorch', 'tensorflow'];
 const TIERS = ['L0', 'L1', 'L2', 'L3'];
@@ -170,20 +178,117 @@ function validateGraphShape(graph) {
   return graph;
 }
 
-function validateGenericProjectGraph(graph) {
-  try {
-    validateProjectForWorkspace({
-      format: 'VOLK-ML',
-      version: PROJECT_VERSION,
-      name: 'Detached Graph Proposal',
-      customComponents: graph.componentDefinitions,
-      graph: { nodes: graph.nodes, edges: graph.edges },
-      data: null,
-      trainedModel: null,
-    });
-  } catch {
-    fail('GRAPH_PROJECT_VALIDATION_FAILED', 'Graph is not valid under the canonical VOLK project contract.');
+function canonicalJsonValue(value) {
+  if (Array.isArray(value)) return value.map(canonicalJsonValue);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJsonValue(value[key])]));
+}
+
+function canonicalJsonString(value) {
+  return JSON.stringify(canonicalJsonValue(value));
+}
+
+function componentContractJson(manifest, definitions) {
+  return canonicalGraphSemanticsJsonV1({
+    nodes: [{ id: 'component-contract', data: { manifest, parameters: {} } }],
+    edges: [],
+    componentDefinitions: definitions,
+  });
+}
+
+function assertManifestAgainstRegistry(manifest, definitions, path) {
+  if (!isRecord(manifest) || typeof manifest.id !== 'string') return;
+  const registered = componentById.get(manifest.id);
+  if (!registered) return;
+  if (manifest.customComposite === true) {
+    fail('GRAPH_COMPONENT_BUILTIN_SHADOWED', 'A custom definition cannot shadow a registered built-in component.', { componentId: manifest.id, path });
   }
+  try {
+    if (componentContractJson(manifest, definitions) !== componentContractJson(registered, definitions)) {
+      fail('GRAPH_COMPONENT_REGISTRY_MISMATCH', 'Embedded built-in component contract differs from the current registry.', { componentId: manifest.id, path });
+    }
+  } catch (error) {
+    if (error instanceof GraphProposalError) throw error;
+    fail('GRAPH_COMPONENT_REGISTRY_MISMATCH', 'Embedded built-in component contract is invalid under the current registry.', { componentId: manifest.id, path });
+  }
+}
+
+function assertNestedManifestsAgainstRegistry(manifest, definitions, path, seen = new WeakSet()) {
+  if (!isRecord(manifest) || seen.has(manifest)) return;
+  seen.add(manifest);
+  assertManifestAgainstRegistry(manifest, definitions, path);
+  for (const [index, child] of (manifest.composition?.nodes ?? []).entries()) {
+    if (child.manifest) {
+      assertNestedManifestsAgainstRegistry(child.manifest, definitions, `${path}.composition.nodes[${index}].manifest`, seen);
+    }
+  }
+}
+
+function assertNoBuiltinShadowing(graph) {
+  const definitions = Array.isArray(graph.componentDefinitions) ? graph.componentDefinitions : [];
+  const definitionsById = new Map();
+  for (const [index, definition] of definitions.entries()) {
+    const path = `graph.componentDefinitions[${index}]`;
+    if (!isRecord(definition) || typeof definition.id !== 'string' || !definition.id) continue;
+    if (componentById.has(definition.id)) {
+      fail('GRAPH_COMPONENT_BUILTIN_SHADOWED', 'Custom component definitions cannot reuse built-in component IDs.', { componentId: definition.id, path });
+    }
+    if (definitionsById.has(definition.id)) fail('GRAPH_COMPONENT_DEFINITION_DUPLICATE', 'Custom component definition IDs must be unique.', { componentId: definition.id, path });
+    definitionsById.set(definition.id, definition);
+    assertNestedManifestsAgainstRegistry(definition, definitions, path);
+  }
+
+  for (const [index, node] of (graph.nodes ?? []).entries()) {
+    const manifest = node?.data?.manifest;
+    const path = `graph.nodes[${index}].data.manifest`;
+    assertNestedManifestsAgainstRegistry(manifest, definitions, path);
+    if (!manifest?.customComposite) continue;
+    const definition = definitionsById.get(manifest.id);
+    if (!definition) fail('GRAPH_COMPONENT_DEFINITION_MISSING', 'Custom composite nodes must carry their referenced canonical definition.', { componentId: manifest.id, path });
+    try {
+      if (componentContractJson(manifest, definitions) !== componentContractJson(definition, definitions)) {
+        fail('GRAPH_CUSTOM_COMPONENT_MISMATCH', 'Custom component instance differs from its carried canonical definition.', { componentId: manifest.id, path });
+      }
+    } catch (error) {
+      if (error instanceof GraphProposalError) throw error;
+      fail('GRAPH_CUSTOM_COMPONENT_MISMATCH', 'Custom component instance cannot be matched to its carried definition.', { componentId: manifest.id, path });
+    }
+  }
+}
+
+function canonicalizeGraphWithProjectContract(graph, { allowBlueprintId = false } = {}) {
+  validateGraphShape(graph);
+  if (graph.blueprintId !== undefined && !allowBlueprintId) {
+    fail('GRAPH_PROPOSAL_INVALID', 'Source-neutral graphs cannot supply a Build Agent blueprint identity.');
+  }
+  assertNoBuiltinShadowing(graph);
+  const prepared = canonicalProjectGraph({
+    format: 'VOLK-ML',
+    version: PROJECT_VERSION,
+    name: 'Detached Graph Candidate',
+    customComponents: graph.componentDefinitions,
+    graph: { nodes: graph.nodes, edges: graph.edges },
+    data: null,
+    trainedModel: null,
+  });
+  if (!prepared.ok) {
+    const diagnostic = prepared.diagnostics?.[0];
+    fail(diagnostic?.code ?? 'GRAPH_PROJECT_VALIDATION_FAILED', 'Graph is invalid under the canonical VOLK project contract.', diagnostic?.details ?? {});
+  }
+  const canonical = structuredClone(prepared.graph);
+  if (allowBlueprintId && graph.blueprintId !== undefined) canonical.blueprintId = graph.blueprintId;
+  try {
+    if (canonicalGraphSemanticsJsonV1(canonical) !== canonicalGraphSemanticsJsonV1(graph)) {
+      fail('GRAPH_CANONICALIZATION_MISMATCH', 'Graph semantics differ from current canonical component and project contracts.');
+    }
+    if (canonicalGraphLayoutJsonV1(canonical) !== canonicalGraphLayoutJsonV1(graph)) {
+      fail('GRAPH_LAYOUT_CANONICALIZATION_MISMATCH', 'Graph layout differs from the canonical detached graph.');
+    }
+  } catch (error) {
+    if (error instanceof GraphProposalError) throw error;
+    fail('GRAPH_PROJECT_VALIDATION_FAILED', 'Graph cannot be compared with the current canonical project contract.');
+  }
+  return canonical;
 }
 
 function validateGraphIdentity(graph, actual) {
@@ -224,12 +329,13 @@ function validateSource(source) {
       return;
     }
     rejectUnknown(source, [
-      'version', 'kind', 'producer', 'format', 'provenance', 'sourceProposalId', 'planId', 'blueprintId', 'datasetBinding', 'rationale', 'limitations', 'diagnostics',
+      'version', 'kind', 'producer', 'format', 'provenance', 'sourceProposalId', 'planId', 'blueprintId', 'datasetBinding', 'buildAgentProposal', 'rationale', 'limitations', 'diagnostics',
     ], 'source');
     if (source.producer !== 'build-agent' || source.format !== 'volk-model-design-plan-v1') {
       fail('GRAPH_PROVENANCE_INVALID', 'Build Agent source producer and format do not match the implemented adapter.');
     }
     for (const field of ['sourceProposalId', 'planId', 'blueprintId']) boundedText(source[field], `source.${field}`, 160);
+    if (!isRecord(source.buildAgentProposal)) fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'Build Agent proposals require the validated source proposal as evidence.');
     rejectUnknown(source.datasetBinding, ['fingerprint', 'featureColumns', 'targetColumn'], 'source.datasetBinding');
     boundedText(source.datasetBinding.fingerprint, 'source.datasetBinding.fingerprint', 160);
     boundedList(source.datasetBinding.featureColumns, 'source.datasetBinding.featureColumns', { max: 64, itemMax: 120 });
@@ -248,7 +354,7 @@ function validateSource(source) {
 
   if (source.kind !== 'import') fail('GRAPH_PROVENANCE_INVALID', 'Import source kind is unsupported.');
   if (source.producer === 'volk-project') {
-    rejectUnknown(source, ['version', 'kind', 'producer', 'format', 'provenance', 'projectVersion'], 'source');
+    rejectUnknown(source, ['version', 'kind', 'producer', 'format', 'provenance', 'projectVersion', 'projectEvidence'], 'source');
     if (source.producer !== 'volk-project' || source.format !== 'volk-project') {
       fail('GRAPH_PROVENANCE_INVALID', 'VOLK project source producer and format do not match the implemented adapter.');
     }
@@ -257,6 +363,11 @@ function validateSource(source) {
     }
     if (source.provenance.artifactId !== 'local-volk-project' || source.provenance.revision !== String(source.projectVersion)) {
       fail('GRAPH_PROVENANCE_INVALID', 'VOLK project provenance does not match its migrated project version.');
+    }
+    if (!isRecord(source.projectEvidence)) fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'VOLK project proposals require graph-only source evidence.');
+    rejectUnknown(source.projectEvidence, ['format', 'version', 'customComponents', 'graph'], 'source.projectEvidence');
+    if (source.projectEvidence.format !== 'VOLK-ML' || source.projectEvidence.version !== source.projectVersion) {
+      fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'VOLK project evidence identity does not match its source contract.');
     }
     return;
   }
@@ -277,14 +388,76 @@ function validateSource(source) {
   }
 }
 
-function validateConversion(conversion) {
+function validateSourceSpecificEvidence(source, canonicalGraph) {
+  if (source.producer === 'build-agent') {
+    let evidence;
+    try {
+      evidence = validateGraphProposal(source.buildAgentProposal);
+    } catch {
+      fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'Embedded Build Agent source proposal failed its native validator.');
+    }
+    const binding = source.datasetBinding;
+    const matches = evidence.proposalId === source.sourceProposalId
+      && evidence.planId === source.planId
+      && evidence.blueprintId === source.blueprintId
+      && evidence.datasetFingerprint === binding.fingerprint
+      && canonicalJsonString(evidence.datasetSelection.featureColumns) === canonicalJsonString(binding.featureColumns)
+      && evidence.datasetSelection.targetColumn === binding.targetColumn
+      && canonicalJsonString(evidence.modelDesignPlan.rationale) === canonicalJsonString(source.rationale)
+      && canonicalJsonString(evidence.modelDesignPlan.limitations) === canonicalJsonString(source.limitations)
+      && canonicalJsonString(buildAgentDiagnostics(evidence)) === canonicalJsonString(source.diagnostics)
+      && evidence.graph.blueprintId === source.blueprintId
+      && canonicalGraphSemanticsJsonV1(evidence.graph) === canonicalGraphSemanticsJsonV1(canonicalGraph)
+      && canonicalGraphLayoutJsonV1(evidence.graph) === canonicalGraphLayoutJsonV1(canonicalGraph);
+    if (!matches) fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'Build Agent source evidence does not bind to the detached graph and preserved plan facts.');
+    return;
+  }
+
+  if (source.producer === 'volk-project') {
+    const evidence = source.projectEvidence;
+    const customComponents = evidence.customComponents ?? [];
+    if (!Array.isArray(evidence.graph?.nodes) || !Array.isArray(evidence.graph?.edges) || !Array.isArray(customComponents)) {
+      fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'VOLK project graph evidence is malformed.');
+    }
+    rejectUnknown(evidence.graph, ['nodes', 'edges'], 'source.projectEvidence.graph');
+    const sourceGraph = { nodes: evidence.graph.nodes, edges: evidence.graph.edges, componentDefinitions: customComponents };
+    validateGraphShape(sourceGraph);
+    let prepared;
+    try {
+      prepared = canonicalProjectGraph({
+        format: evidence.format,
+        version: evidence.version,
+        name: 'Detached VOLK Project Evidence',
+        customComponents,
+        graph: evidence.graph,
+        data: null,
+        trainedModel: null,
+      });
+    } catch {
+      fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'VOLK project graph evidence failed canonical project validation.');
+    }
+    if (!prepared.ok
+      || canonicalGraphSemanticsJsonV1(prepared.graph) !== canonicalGraphSemanticsJsonV1(canonicalGraph)
+      || canonicalGraphLayoutJsonV1(prepared.graph) !== canonicalGraphLayoutJsonV1(canonicalGraph)) {
+      fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'VOLK project evidence does not bind to the detached graph.');
+    }
+  }
+}
+
+function validateConversion(conversion, { requireVerification = true } = {}) {
   rejectUnknown(conversion, [
-    'version', 'fidelity', 'exactFor', 'preserved', 'approximated', 'missing', 'unsupported', 'warnings', 'omitted',
+    'version', 'fidelity', 'verification', 'exactFor', 'preserved', 'approximated', 'missing', 'unsupported', 'warnings', 'omitted',
   ], 'conversion');
   if (conversion.version !== GRAPH_CONVERSION_REPORT_VERSION) {
     fail('GRAPH_CONVERSION_VERSION_UNSUPPORTED', 'Graph conversion report version is unsupported.');
   }
   if (!FIDELITIES.includes(conversion.fidelity)) fail('GRAPH_CONVERSION_INVALID', 'Conversion fidelity is unsupported.');
+  if (requireVerification && !CONVERSION_VERIFICATIONS.includes(conversion.verification)) {
+    fail('GRAPH_CONVERSION_VERIFICATION_INVALID', 'Conversion verification is unsupported or missing.');
+  }
+  if (!requireVerification && conversion.verification !== undefined) {
+    fail('GRAPH_CONVERSION_VERIFICATION_INVALID', 'Candidate producers cannot self-assign conversion verification.');
+  }
   const codeList = (value, path) => {
     const entries = boundedList(value, path, { max: 32, itemMax: 96 });
     if (entries.some((entry) => !/^[a-z][A-Za-z0-9._-]{0,95}$/.test(entry))) {
@@ -373,16 +546,29 @@ function validateInternal(value) {
   }
   boundedText(value.proposalId, 'proposal.proposalId', 160);
   validateSource(value.source);
+  if (RESERVED_ADAPTER_PRODUCERS.has(value.source.producer)) {
+    fail('GRAPH_PROVENANCE_INVALID', 'Reserved source adapters cannot produce proposals until their validated adapters are implemented.');
+  }
   validateGraphShape(value.graph);
   if (value.graph.blueprintId !== undefined) {
     if (value.source.producer !== 'build-agent' || value.graph.blueprintId !== value.source.blueprintId) {
       fail('GRAPH_PROVENANCE_INVALID', 'Blueprint identity is valid only when it matches the adapted Build Agent source.');
     }
+  } else if (value.source.producer === 'build-agent') {
+    fail('GRAPH_PROVENANCE_INVALID', 'Build Agent source evidence requires its registered blueprint identity on the graph.');
   }
-  validateGenericProjectGraph(value.graph);
+  const canonicalGraph = canonicalizeGraphWithProjectContract(value.graph, { allowBlueprintId: value.source.producer === 'build-agent' });
   validateGraphIdentity(value.graph, value.graphIdentity);
+  validateSourceSpecificEvidence(value.source, canonicalGraph);
   validateConversion(value.conversion);
+  const expectedVerification = IMPLEMENTED_VERIFIED_PRODUCERS.has(value.source.producer) ? 'volk-verified' : 'producer-declared';
+  if (value.conversion.verification !== expectedVerification) {
+    fail('GRAPH_CONVERSION_VERIFICATION_INVALID', 'Conversion verification does not match its source producer.');
+  }
   validateCapabilitySnapshot(value.capabilitySnapshot);
+  if (canonicalJsonString(value.capabilitySnapshot) !== canonicalJsonString(createGraphCapabilitySnapshot(canonicalGraph))) {
+    fail('GRAPH_CAPABILITY_SNAPSHOT_MISMATCH', 'Capability snapshot differs from current graph-only capabilities.');
+  }
   validateAssessment(value.assessment);
   if (value.authority !== 'detached-proposal' || value.requiresUserAcceptance !== true) {
     fail('GRAPH_PROPOSAL_AUTHORITY_INVALID', 'Workspace graph proposals require detached user confirmation.');
@@ -396,6 +582,16 @@ export function validateWorkspaceGraphProposal(value) {
   try {
     validateInternal(value);
     return { valid: true, proposal: structuredClone(value) };
+  } catch (error) {
+    return { valid: false, diagnostics: [safeResultError(error)] };
+  }
+}
+
+/** Validate and return a detached, current-registry canonical graph candidate. */
+export function canonicalizeWorkspaceGraphCandidate(graph) {
+  try {
+    const canonicalGraph = canonicalizeGraphWithProjectContract(graph);
+    return { valid: true, graph: structuredClone(canonicalGraph), graphIdentity: graphIdentityV1(canonicalGraph) };
   } catch (error) {
     return { valid: false, diagnostics: [safeResultError(error)] };
   }
@@ -432,11 +628,10 @@ function safeCompile(nodes, edges, framework) {
   }
 }
 
-export function createGraphCapabilitySnapshot(graph, dataset = null) {
-  const browser = analyzeBrowserExecutionGraph({ nodes: graph.nodes, edges: graph.edges, dataset });
+export function createGraphCapabilitySnapshot(graph) {
   let tier;
   try {
-    tier = estimateExecutionPlan(graph.nodes, dataset, { edges: graph.edges });
+    tier = estimateExecutionPlan(graph.nodes, null, { edges: graph.edges });
   } catch {
     tier = { recommendedTier: 'L3', canRunHere: false, browserBackendComplete: false, reasons: ['CAPABILITY_ASSESSMENT_FAILED'] };
   }
@@ -446,9 +641,31 @@ export function createGraphCapabilitySnapshot(graph, dataset = null) {
       pytorch: safeCompile(graph.nodes, graph.edges, 'pytorch'),
       tensorflow: safeCompile(graph.nodes, graph.edges, 'tensorflow'),
     },
-    browserExecution: dataset
-      ? { status: browser.valid ? 'available' : 'unavailable', reason: browser.valid ? null : browser.reason ?? 'BROWSER_PREFLIGHT_FAILED' }
-      : { status: 'not-assessed', reason: 'DATASET_NOT_INCLUDED' },
+    browserExecution: { status: 'not-assessed', reason: 'CURRENT_DATASET_REQUIRED' },
+    executionTier: {
+      recommendedTier: tier.recommendedTier,
+      canRunHere: tier.canRunHere,
+      browserBackendComplete: tier.browserBackendComplete,
+      reasons: tier.reasons ?? [],
+    },
+  };
+}
+
+/** Assess browser runnability only against an explicitly supplied current dataset. */
+export function createDatasetBoundCapabilityAssessment(graph, dataset) {
+  const normalizedDataset = validateAgentDataset(dataset);
+  const browser = analyzeBrowserExecutionGraph({ nodes: graph.nodes, edges: graph.edges, dataset: normalizedDataset });
+  let tier;
+  try {
+    tier = estimateExecutionPlan(graph.nodes, normalizedDataset, { edges: graph.edges });
+  } catch {
+    tier = { recommendedTier: 'L3', canRunHere: false, browserBackendComplete: false, reasons: ['CAPABILITY_ASSESSMENT_FAILED'] };
+  }
+  return {
+    browserExecution: {
+      status: browser.valid ? 'available' : 'unavailable',
+      reason: browser.valid ? null : browser.reason ?? 'BROWSER_PREFLIGHT_FAILED',
+    },
     executionTier: {
       recommendedTier: tier.recommendedTier,
       canRunHere: tier.canRunHere,
@@ -473,8 +690,8 @@ function workspaceAssessment(targetGraph = { nodes: [], edges: [] }) {
   };
 }
 
-function createProposal({ graph, source, conversion, dataset = null, targetGraph = { nodes: [], edges: [] } }) {
-  const detachedGraph = structuredClone(graph);
+function createProposal({ graph, source, conversion, targetGraph = { nodes: [], edges: [] } }) {
+  const detachedGraph = canonicalizeGraphWithProjectContract(graph, { allowBlueprintId: source.producer === 'build-agent' });
   const base = {
     type: WORKSPACE_GRAPH_PROPOSAL_TYPE,
     version: WORKSPACE_GRAPH_PROPOSAL_VERSION,
@@ -482,7 +699,7 @@ function createProposal({ graph, source, conversion, dataset = null, targetGraph
     graph: detachedGraph,
     graphIdentity: graphIdentityV1(detachedGraph),
     conversion,
-    capabilitySnapshot: createGraphCapabilitySnapshot(detachedGraph, dataset),
+    capabilitySnapshot: createGraphCapabilitySnapshot(detachedGraph),
     assessment: workspaceAssessment(targetGraph),
     authority: 'detached-proposal',
     requiresUserAcceptance: true,
@@ -501,6 +718,52 @@ export function assessWorkspaceGraphProposal(proposal, targetGraph = { nodes: []
   if (!checked.valid) return checked;
   try {
     return { valid: true, assessment: workspaceAssessment(targetGraph) };
+  } catch (error) {
+    return { valid: false, diagnostics: [safeResultError(error)] };
+  }
+}
+
+/**
+ * Revalidate an unchanged detached proposal against the current registry and,
+ * only when explicitly supplied, a current local dataset/workspace.
+ */
+export function revalidateWorkspaceGraphProposal(proposal, options = {}) {
+  try {
+    rejectUnknown(options, ['currentDataset', 'targetGraph'], 'options');
+    const checked = validateWorkspaceGraphProposal(proposal);
+    if (!checked.valid) return checked;
+    const canonicalGraph = canonicalizeGraphWithProjectContract(
+      checked.proposal.graph,
+      { allowBlueprintId: checked.proposal.source.producer === 'build-agent' },
+    );
+    const result = {
+      valid: true,
+      proposal: checked.proposal,
+      canonicalGraph: structuredClone(canonicalGraph),
+      graphIdentity: graphIdentityV1(canonicalGraph),
+      capabilitySnapshot: createGraphCapabilitySnapshot(canonicalGraph),
+    };
+
+    if (options.currentDataset !== undefined) {
+      result.datasetBoundCapabilities = createDatasetBoundCapabilityAssessment(canonicalGraph, options.currentDataset);
+      if (checked.proposal.source.producer === 'build-agent') {
+        const binding = checked.proposal.source.datasetBinding;
+        const current = createBuildDatasetContext(options.currentDataset);
+        const availableFeatures = new Set(current.featureColumns.map((column) => column.name));
+        const selectionStillAvailable = binding.featureColumns.every((feature) => availableFeatures.has(feature))
+          && current.targetColumn.name === binding.targetColumn;
+        if (current.datasetFingerprint !== binding.fingerprint || !selectionStillAvailable) {
+          return {
+            ...result,
+            valid: false,
+            diagnostics: [{ code: current.datasetFingerprint !== binding.fingerprint ? 'BUILD_DATASET_STALE' : 'BUILD_PROPOSAL_DATASET_SELECTION_INVALID' }],
+          };
+        }
+      }
+    }
+
+    if (options.targetGraph !== undefined) result.assessment = workspaceAssessment(options.targetGraph);
+    return result;
   } catch (error) {
     return { valid: false, diagnostics: [safeResultError(error)] };
   }
@@ -633,6 +896,7 @@ function canonicalProjectGraph(rawProject) {
 const projectConversion = Object.freeze({
   version: GRAPH_CONVERSION_REPORT_VERSION,
   fidelity: 'partial',
+  verification: 'volk-verified',
   exactFor: ['graph-semantics', 'graph-layout', 'referenced-custom-component-definitions'],
   preserved: ['graph.nodes', 'graph.edges', 'referenced-custom-component-definitions'],
   approximated: [],
@@ -659,9 +923,14 @@ export function createVolkProjectGraphProposal(rawProject, options = {}) {
           location: 'local-project',
         },
         projectVersion: prepared.projectVersion,
+        projectEvidence: {
+          format: 'VOLK-ML',
+          version: prepared.projectVersion,
+          customComponents: structuredClone(prepared.graph.componentDefinitions),
+          graph: { nodes: structuredClone(prepared.graph.nodes), edges: structuredClone(prepared.graph.edges) },
+        },
       },
       conversion: projectConversion,
-      dataset: prepared.dataset,
       targetGraph: options.targetGraph,
     });
     return { ok: true, proposal };
@@ -681,11 +950,13 @@ export function createWorkspaceGraphProposalFromCandidate(candidate, options = {
     rejectUnknown(candidate, ['graph', 'source', 'conversion'], 'candidate');
     rejectUnknown(options, ['targetGraph'], 'options');
     validateSource(candidate.source);
-    if (['build-agent', 'volk-project'].includes(candidate.source.producer)) {
-      fail('GRAPH_PROVENANCE_INVALID', 'Implemented producers must use their validated source adapters.');
+    if (OFFICIAL_PRODUCERS.has(candidate.source.producer)) {
+      fail('GRAPH_PROVENANCE_INVALID', 'Implemented and reserved official producers must use their validated source adapters.');
     }
-    validateConversion(candidate.conversion);
+    validateConversion(candidate.conversion, { requireVerification: false });
+    const conversion = { ...structuredClone(candidate.conversion), verification: 'producer-declared' };
     validateGraphShape(candidate.graph);
+    assertNoBuiltinShadowing(candidate.graph);
     if (candidate.graph.blueprintId !== undefined) {
       fail('GRAPH_PROPOSAL_INVALID', 'Source-neutral graph candidates cannot supply a Build Agent blueprint identity.');
     }
@@ -702,7 +973,7 @@ export function createWorkspaceGraphProposalFromCandidate(candidate, options = {
     const proposal = createProposal({
       graph: prepared.graph,
       source: candidate.source,
-      conversion: candidate.conversion,
+      conversion,
       targetGraph: options.targetGraph,
     });
     return { ok: true, proposal };
@@ -726,6 +997,7 @@ function buildAgentDiagnostics(proposal) {
 const buildAgentConversion = Object.freeze({
   version: GRAPH_CONVERSION_REPORT_VERSION,
   fidelity: 'exact',
+  verification: 'volk-verified',
   exactFor: ['graph-semantics', 'graph-layout', 'model-design-plan-identity', 'dataset-binding', 'rationale', 'limitations', 'diagnostics'],
   preserved: ['graph', 'planId', 'datasetBinding', 'rationale', 'limitations', 'diagnostics'],
   approximated: [],
@@ -769,6 +1041,7 @@ export function adaptBuildAgentGraphProposal(rawProposal, options = {}) {
           featureColumns: [...proposal.datasetSelection.featureColumns],
           targetColumn: proposal.datasetSelection.targetColumn,
         },
+        buildAgentProposal: structuredClone(proposal),
         rationale: [...proposal.modelDesignPlan.rationale],
         limitations: [...proposal.modelDesignPlan.limitations],
         diagnostics: buildAgentDiagnostics(proposal),

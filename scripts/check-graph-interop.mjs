@@ -13,11 +13,16 @@ import { PROJECT_VERSION } from '../src/core/project.js';
 import {
   adaptBuildAgentGraphProposal,
   assessWorkspaceGraphProposal,
+  canonicalizeWorkspaceGraphCandidate,
+  createGraphCapabilitySnapshot,
   createVolkProjectGraphProposal,
   createWorkspaceGraphProposalFromCandidate,
+  GRAPH_SOURCE_VERSION,
+  fingerprintJsonV1,
   graphIdentityV1,
   graphPresentationFingerprintV1,
   graphSemanticFingerprintV1,
+  revalidateWorkspaceGraphProposal,
   validateWorkspaceGraphProposal,
 } from '../src/core/graph/index.js';
 
@@ -25,8 +30,19 @@ function clone(value) {
   return structuredClone(value);
 }
 
+function resignProposal(proposal) {
+  const { proposalId: _proposalId, graph: _graph, ...envelope } = proposal;
+  proposal.proposalId = fingerprintJsonV1(envelope, 'workspace-proposal');
+  return proposal;
+}
+
 function expectDiagnostic(result, code) {
   assert.equal(result.ok, false, `Expected structured failure ${code}.`);
+  assert.equal(result.diagnostics[0]?.code, code, `Expected ${code}, got ${result.diagnostics[0]?.code}.`);
+}
+
+function expectProposalDiagnostic(result, code) {
+  assert.equal(result.valid, false, `Expected invalid proposal ${code}.`);
   assert.equal(result.diagnostics[0]?.code, code, `Expected ${code}, got ${result.diagnostics[0]?.code}.`);
 }
 
@@ -109,7 +125,7 @@ const adaptedResult = adaptBuildAgentGraphProposal(buildProposal);
 assert.equal(adaptedResult.ok, true, adaptedResult.diagnostics?.[0]?.code);
 const adapted = adaptedResult.proposal;
 assert.equal(adapted.source.kind, 'planner');
-assert.equal(adapted.source.version, 1);
+assert.equal(adapted.source.version, GRAPH_SOURCE_VERSION);
 assert.equal(adapted.source.producer, 'build-agent');
 assert.equal(adapted.source.format, 'volk-model-design-plan-v1');
 assert.equal(adapted.source.sourceProposalId, buildProposal.proposalId);
@@ -118,6 +134,7 @@ assert.equal(adapted.source.datasetBinding.fingerprint, buildProposal.datasetFin
 assert.deepEqual(adapted.graph.nodes.map((node) => node.id), buildProposal.graph.nodes.map((node) => node.id));
 assert.deepEqual(adapted.graph.edges, buildProposal.graph.edges);
 assert.equal(adapted.conversion.fidelity, 'exact');
+assert.equal(adapted.conversion.verification, 'volk-verified');
 assert.equal(adapted.conversion.omitted.length, 0);
 for (const lossField of ['approximated', 'missing', 'unsupported', 'warnings']) {
   assert.deepEqual(adapted.conversion[lossField], [], `Exact Build Agent conversion must have no ${lossField}.`);
@@ -128,23 +145,60 @@ assert.equal(adapted.assessment.status, 'eligible');
 assert.ok(adapted.capabilitySnapshot.components.length > 0);
 assert.ok(['supported', 'unsupported'].includes(adapted.capabilitySnapshot.compilers.pytorch.status));
 assert.equal(validateWorkspaceGraphProposal(adapted).valid, true);
-assert.equal(validateWorkspaceGraphProposal(JSON.parse(JSON.stringify(adapted))).valid, true, 'Build Agent proposal must round-trip as JSON.');
+const adaptedRoundTrip = validateWorkspaceGraphProposal(JSON.parse(JSON.stringify(adapted)));
+assert.equal(adaptedRoundTrip.valid, true, 'Build Agent proposal must round-trip as JSON.');
+assert.equal(adaptedRoundTrip.proposal.conversion.verification, 'volk-verified');
+assert.ok(adaptedRoundTrip.proposal.source.buildAgentProposal, 'Build Agent round trip retains independently validated native proposal evidence.');
+
+const canonicalGraphFixture = clone(adapted.graph);
+delete canonicalGraphFixture.blueprintId;
+const canonicalCandidate = canonicalizeWorkspaceGraphCandidate(canonicalGraphFixture);
+assert.equal(canonicalCandidate.valid, true, canonicalCandidate.diagnostics?.[0]?.code);
+assert.notEqual(canonicalCandidate.graph, canonicalGraphFixture, 'Canonicalization returns a detached graph.');
+assert.deepEqual(canonicalCandidate.graphIdentity, graphIdentityV1(canonicalGraphFixture));
+
+const registryContractMutations = [
+  ['relu_node', (manifest) => { manifest.op = 'tampered-operation'; }],
+  ['relu_node', (manifest) => { manifest.runtime.minimumTier = 'L3'; }],
+  ['relu_node', (manifest) => { manifest.compatibility.pytorch = 'unsupported'; }],
+  ['dense_node', (manifest) => { manifest.properties[0].default = 'tampered-default'; }],
+  ['relu_node', (manifest) => { manifest.inputs[0].type = 'TamperedPort'; }],
+];
+for (const [componentId, mutate] of registryContractMutations) {
+  const forged = clone(adapted);
+  const node = forged.graph.nodes.find((candidate) => candidate.data.manifest.id === componentId);
+  const manifest = node.data.manifest;
+  mutate(manifest);
+  forged.graphIdentity = graphIdentityV1(forged.graph);
+  forged.capabilitySnapshot = createGraphCapabilitySnapshot(forged.graph);
+  resignProposal(forged);
+  expectProposalDiagnostic(validateWorkspaceGraphProposal(forged), 'GRAPH_COMPONENT_REGISTRY_MISMATCH');
+}
+
+const tamperedCapabilities = clone(adapted);
+tamperedCapabilities.capabilitySnapshot.compilers.pytorch.fidelity = 'unsupported';
+resignProposal(tamperedCapabilities);
+expectProposalDiagnostic(validateWorkspaceGraphProposal(tamperedCapabilities), 'GRAPH_CAPABILITY_SNAPSHOT_MISMATCH');
+
+const buildRevalidation = revalidateWorkspaceGraphProposal(adapted, { currentDataset: dataset });
+assert.equal(buildRevalidation.valid, true, buildRevalidation.diagnostics?.[0]?.code);
+assert.ok(['available', 'unavailable'].includes(buildRevalidation.datasetBoundCapabilities.browserExecution.status));
+const staleDataset = clone(dataset);
+staleDataset.rows[0][staleDataset.targetColumn] = staleDataset.rows[0][staleDataset.targetColumn] === 'positive' ? 'negative' : 'positive';
+assert.equal(revalidateWorkspaceGraphProposal(adapted, { currentDataset: staleDataset }).diagnostics[0].code, 'BUILD_DATASET_STALE');
 
 const futureGraph = clone(buildProposal.graph);
 delete futureGraph.blueprintId;
 futureGraph.componentDefinitions = [];
 const futureGraphBefore = JSON.stringify(futureGraph);
 const futureConversion = clone(adapted.conversion);
+delete futureConversion.verification;
 const futureSourceShapes = [
-  { version: 1, kind: 'planner', producer: 'external-agent', format: 'volk-graph-candidate-v1', provenance: { artifactId: 'external-plan', revision: 'request-rev-3', location: 'inline' } },
-  { version: 1, kind: 'import', producer: 'torch-export-adapter', format: 'torch.export', provenance: { artifactId: 'torch-export-candidate', location: 'local-file' } },
-  { version: 1, kind: 'import', producer: 'torch-fx-adapter', format: 'torch.fx', provenance: { artifactId: 'torch-fx-candidate', references: ['request-01'], location: 'inline' } },
-  { version: 1, kind: 'import', producer: 'onnx-adapter', format: 'ONNX', provenance: { artifactId: 'onnx-candidate', revision: 'opset-1' } },
-  { version: 1, kind: 'import', producer: 'tensorflow-adapter', format: 'TensorFlow', provenance: { artifactId: 'tensorflow-candidate', revision: 'graph-rev-2' } },
-  { version: 1, kind: 'import', producer: 'keras-adapter', format: 'Keras', provenance: { artifactId: 'keras-candidate', fingerprint: 'artifact-hash-02' } },
-  { version: 1, kind: 'import', producer: 'human-import', format: 'Keras', provenance: { artifactId: 'human-candidate', location: 'local-file' } },
-  { version: 1, kind: 'import', producer: 'external-agent', format: 'torch.fx', provenance: { artifactId: 'external-candidate', references: ['request-02'], location: 'inline' } },
-  { version: 1, kind: 'import', producer: 'unknown-import', format: 'unknown-import', provenance: { artifactId: 'unclassified-candidate', location: 'unknown' } },
+  { version: GRAPH_SOURCE_VERSION, kind: 'planner', producer: 'external-agent', format: 'volk-graph-candidate-v1', provenance: { artifactId: 'external-plan', revision: 'request-rev-3', location: 'inline' } },
+  { version: GRAPH_SOURCE_VERSION, kind: 'import', producer: 'human-import', format: 'Keras', provenance: { artifactId: 'human-candidate', location: 'local-file' } },
+  { version: GRAPH_SOURCE_VERSION, kind: 'import', producer: 'external-agent', format: 'torch.fx', provenance: { artifactId: 'external-candidate', references: ['request-02'], location: 'inline' } },
+  { version: GRAPH_SOURCE_VERSION, kind: 'import', producer: 'external-agent', format: 'ONNX', provenance: { artifactId: 'external-onnx-candidate', location: 'inline' } },
+  { version: GRAPH_SOURCE_VERSION, kind: 'import', producer: 'unknown-import', format: 'unknown-import', provenance: { artifactId: 'unclassified-candidate', location: 'unknown' } },
 ];
 for (const source of futureSourceShapes) {
   const candidateResult = createWorkspaceGraphProposalFromCandidate({
@@ -155,15 +209,62 @@ for (const source of futureSourceShapes) {
   assert.equal(candidateResult.ok, true, `Future source ${source.kind}/${source.format} should use the generic candidate boundary: ${candidateResult.diagnostics?.[0]?.code}`);
   assert.equal(graphSemanticFingerprintV1(candidateResult.proposal.graph), graphSemanticFingerprintV1(futureGraph), 'Generic source metadata must not change graph semantics.');
   assert.notEqual(candidateResult.proposal.graph, futureGraph, 'Generic proposals must detach the candidate graph.');
+  assert.equal(candidateResult.proposal.conversion.fidelity, 'exact', 'Conversion fidelity remains independent of trust verification.');
+  assert.equal(candidateResult.proposal.conversion.verification, 'producer-declared', 'Generic producers cannot self-assign VOLK verification.');
   assert.equal(validateWorkspaceGraphProposal(JSON.parse(JSON.stringify(candidateResult.proposal))).valid, true, 'Future-source candidate must round-trip as JSON.');
 }
 assert.equal(JSON.stringify(futureGraph), futureGraphBefore, 'Generic proposal creation must not mutate its candidate graph.');
 const genericCandidate = (graph = futureGraph, source = futureSourceShapes[0], conversion = futureConversion) => (
   createWorkspaceGraphProposalFromCandidate({ graph, source, conversion })
 );
+const forgedBuildAgent = genericCandidate().proposal;
+forgedBuildAgent.source = {
+  version: GRAPH_SOURCE_VERSION,
+  kind: 'planner',
+  producer: 'build-agent',
+  format: 'volk-model-design-plan-v1',
+  provenance: { artifactId: 'fake-source-proposal', revision: 'fake-plan', fingerprint: 'fake-dataset', references: ['fake-blueprint'], location: 'generated' },
+  sourceProposalId: 'fake-source-proposal',
+  planId: 'fake-plan',
+  blueprintId: 'fake-blueprint',
+  datasetBinding: { fingerprint: 'fake-dataset', featureColumns: ['x'], targetColumn: 'y' },
+  rationale: ['bounded rationale'],
+  limitations: ['bounded limitation'],
+  diagnostics: [],
+};
+forgedBuildAgent.conversion.verification = 'volk-verified';
+resignProposal(forgedBuildAgent);
+expectProposalDiagnostic(validateWorkspaceGraphProposal(forgedBuildAgent), 'GRAPH_SOURCE_EVIDENCE_INVALID');
+
+const forgedVolkProject = genericCandidate().proposal;
+forgedVolkProject.source = {
+  version: GRAPH_SOURCE_VERSION,
+  kind: 'import',
+  producer: 'volk-project',
+  format: 'volk-project',
+  provenance: { artifactId: 'local-volk-project', revision: String(PROJECT_VERSION), location: 'local-project' },
+  projectVersion: PROJECT_VERSION,
+};
+forgedVolkProject.conversion.verification = 'volk-verified';
+resignProposal(forgedVolkProject);
+expectProposalDiagnostic(validateWorkspaceGraphProposal(forgedVolkProject), 'GRAPH_SOURCE_EVIDENCE_INVALID');
+
+const forgedReservedProducer = genericCandidate(futureGraph, futureSourceShapes.find((source) => source.format === 'ONNX')).proposal;
+forgedReservedProducer.source.producer = 'onnx-adapter';
+forgedReservedProducer.conversion.verification = 'volk-verified';
+resignProposal(forgedReservedProducer);
+expectProposalDiagnostic(validateWorkspaceGraphProposal(forgedReservedProducer), 'GRAPH_PROVENANCE_INVALID');
 expectDiagnostic(genericCandidate(futureGraph, { ...futureSourceShapes[0], kind: 'provider-x' }), 'GRAPH_PROVENANCE_INVALID');
 expectDiagnostic(genericCandidate(futureGraph, { ...futureSourceShapes[0], producer: 'provider-x' }), 'GRAPH_PROVENANCE_INVALID');
 expectDiagnostic(genericCandidate(futureGraph, { ...futureSourceShapes[0], format: 'provider-format' }), 'GRAPH_PROVENANCE_INVALID');
+expectDiagnostic(genericCandidate(futureGraph, { version: GRAPH_SOURCE_VERSION, kind: 'import', producer: 'onnx-adapter', format: 'ONNX', provenance: { artifactId: 'onnx-candidate' } }), 'GRAPH_PROVENANCE_INVALID');
+for (const [producer, format] of [
+  ['onnx-adapter', 'ONNX'], ['torch-export-adapter', 'torch.export'], ['torch-fx-adapter', 'torch.fx'],
+  ['tensorflow-adapter', 'TensorFlow'], ['keras-adapter', 'Keras'],
+]) {
+  expectDiagnostic(genericCandidate(futureGraph, { version: GRAPH_SOURCE_VERSION, kind: 'import', producer, format, provenance: { artifactId: 'reserved-adapter' } }), 'GRAPH_PROVENANCE_INVALID');
+}
+expectDiagnostic(genericCandidate(futureGraph, futureSourceShapes[0], { ...futureConversion, verification: 'volk-verified' }), 'GRAPH_CONVERSION_VERIFICATION_INVALID');
 expectDiagnostic(genericCandidate(futureGraph, { ...futureSourceShapes[0], provenance: { ...futureSourceShapes[0].provenance, secret: 'not-allowed' } }), 'GRAPH_PROPOSAL_INVALID');
 expectDiagnostic(genericCandidate(futureGraph, { ...futureSourceShapes[0], provenance: { artifactId: 'a'.repeat(161) } }), 'GRAPH_PROPOSAL_INVALID');
 expectDiagnostic(genericCandidate(futureGraph, { ...futureSourceShapes[0], provenance: { references: Array.from({ length: 17 }, (_, index) => `ref-${index}`) } }), 'GRAPH_PROPOSAL_INVALID');
@@ -199,10 +300,12 @@ assert.equal(projectResult.ok, true, projectResult.diagnostics?.[0]?.code);
 const projectProposal = projectResult.proposal;
 assert.equal(JSON.stringify(project), projectBefore, 'Project proposal creation must not mutate its source project.');
 assert.equal(projectProposal.source.kind, 'import');
-assert.equal(projectProposal.source.version, 1);
+assert.equal(projectProposal.source.version, GRAPH_SOURCE_VERSION);
 assert.equal(projectProposal.source.producer, 'volk-project');
 assert.equal(projectProposal.source.format, 'volk-project');
 assert.equal(projectProposal.conversion.fidelity, 'partial');
+assert.equal(projectProposal.conversion.verification, 'volk-verified');
+assert.deepEqual(projectProposal.capabilitySnapshot.browserExecution, { status: 'not-assessed', reason: 'CURRENT_DATASET_REQUIRED' }, 'Project import must not bind runnability to an embedded dataset.');
 assert.ok(projectProposal.conversion.exactFor.includes('graph-semantics'));
 assert.ok(projectProposal.conversion.omitted.includes('project.dataset'));
 assert.deepEqual(projectProposal.conversion.missing, projectProposal.conversion.omitted, 'Legacy omitted is a documented alias of missing.');
@@ -213,8 +316,17 @@ const serializedProjectProposal = JSON.stringify(projectProposal);
 for (const sentinel of ['private-project-name-sentinel', 'private-dataset-name-sentinel', 'private-row-sentinel']) {
   assert.equal(serializedProjectProposal.includes(sentinel), false, `Proposal must omit ${sentinel}.`);
 }
-assert.equal(validateWorkspaceGraphProposal(JSON.parse(serializedProjectProposal)).valid, true);
+const projectRoundTrip = validateWorkspaceGraphProposal(JSON.parse(serializedProjectProposal));
+assert.equal(projectRoundTrip.valid, true);
+assert.equal(projectRoundTrip.proposal.conversion.verification, 'volk-verified');
+assert.ok(projectRoundTrip.proposal.source.projectEvidence, 'Project round trip retains graph-only validation evidence.');
 assert.equal(validateWorkspaceGraphProposal(JSON.parse(JSON.stringify(projectProposal))).valid, true, 'VOLK project proposal must round-trip as JSON.');
+const serializedBeforeRevalidation = JSON.stringify(projectProposal);
+const projectRevalidation = revalidateWorkspaceGraphProposal(projectProposal, { currentDataset: project.data });
+assert.equal(projectRevalidation.valid, true, projectRevalidation.diagnostics?.[0]?.code);
+assert.ok(['available', 'unavailable'].includes(projectRevalidation.datasetBoundCapabilities.browserExecution.status));
+assert.equal(projectProposal.capabilitySnapshot.browserExecution.status, 'not-assessed', 'Current dataset assessment must remain separate from stored proposal facts.');
+assert.equal(JSON.stringify(projectProposal), serializedBeforeRevalidation, 'Revalidation must not rewrite the detached proposal.');
 expectDiagnostic(genericCandidate(futureGraph, projectProposal.source), 'GRAPH_PROVENANCE_INVALID');
 expectDiagnostic(genericCandidate(futureGraph, adapted.source), 'GRAPH_PROVENANCE_INVALID');
 
@@ -283,5 +395,15 @@ const customResult = createVolkProjectGraphProposal(JSON.parse(JSON.stringify(cu
 assert.equal(customResult.ok, true, customResult.diagnostics?.[0]?.code);
 assert.deepEqual(customResult.proposal.graph.componentDefinitions.map((manifest) => manifest.id), [composite.manifest.id]);
 assert.equal(validateWorkspaceGraphProposal(customResult.proposal).valid, true);
+const mismatchedCustom = clone(customResult.proposal);
+mismatchedCustom.graph.nodes[0].data.manifest.composition.nodes[0].parameters.extra = true;
+mismatchedCustom.graphIdentity = graphIdentityV1(mismatchedCustom.graph);
+mismatchedCustom.capabilitySnapshot = createGraphCapabilitySnapshot(mismatchedCustom.graph);
+resignProposal(mismatchedCustom);
+expectProposalDiagnostic(validateWorkspaceGraphProposal(mismatchedCustom), 'GRAPH_CUSTOM_COMPONENT_MISMATCH');
+
+const builtinShadowGraph = clone(futureGraph);
+builtinShadowGraph.componentDefinitions = [clone(componentById.get('relu_node'))];
+expectDiagnostic(genericCandidate(builtinShadowGraph), 'GRAPH_COMPONENT_BUILTIN_SHADOWED');
 
 console.log('Graph Interop B0 checks passed: identity, detached producers, fidelity, structured validation, capabilities, empty-workspace assessment, privacy, and no mutation.');

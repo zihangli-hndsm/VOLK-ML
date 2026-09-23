@@ -68,7 +68,10 @@ proposal identity binds provenance, graph identity, conversion report,
 capability snapshot, and assessment. The separately versioned source shape
 uses bounded categorical dimensions: `kind` is `planner` or `import`,
 `producer` distinguishes the producer, and `format` identifies the source
-representation. The currently implemented specialized producers are only
+representation. `GRAPH_SOURCE_VERSION` is now 2: Build Agent evidence carries
+the native validated `GraphProposalV1`, while project evidence carries only a
+normalized VOLK project graph and migrated project version (never project data
+rows or other project state). The currently implemented specialized producers are only
 Build Agent (`planner` / `build-agent` / `volk-model-design-plan-v1`) and the
 canonical VOLK project path (`import` / `volk-project` / `volk-project`). The
 closed vocabulary also has bounded future values for human/external imports,
@@ -87,6 +90,67 @@ copies its graph and preserves plan/dataset identity, rationale, limitations,
 and diagnostics; it does not rematerialize the graph. That adaptation reports
 `exact` fidelity for the carried contract.
 
+## B0.1 trust and revalidation boundary
+
+```text
+candidate/source claims
+        │ bounded syntax + detached proposal identity
+        ▼
+proposal snapshot (integrity hint, not authority)
+        │ current built-in registry comparison
+        │ project/Canvas canonicalization and graph validation
+        ▼
+canonical detached graph + recomputed graph-only capabilities
+        │
+        ├─ no current dataset ──> browser runnability: not-assessed
+        └─ explicit current dataset ──> separate dataset-bound assessment
+```
+
+Validation never trusts a caller-recomputed `proposalId` as proof. It compares
+every embedded built-in manifest with the current component registry (including
+operation, runtime, compatibility, property, and port contracts), rejects
+built-in shadowing by custom definitions, checks custom instances against their
+carried definitions, and runs the existing project/Canvas validation path. A
+pure canonicalization API returns a detached graph; it does not rewrite the
+proposal, apply it, or grant authority. Proposal validation and revalidation
+therefore remain safe even when a candidate recomputes its graph identity,
+capability snapshot, and proposal ID after tampering.
+
+The proposal's graph capability snapshot is recalculated from the current
+canonical graph and registry. It describes components, compiler support, and
+graph-level execution tier only. Browser execution is explicitly
+`not-assessed` with `CURRENT_DATASET_REQUIRED`; it is not inferred from absent
+dataset data and does not claim a graph is runnable with arbitrary data. A
+caller may ask for a separate dataset-bound browser/tier assessment by passing
+an explicit current local dataset to revalidation. That assessment returns
+bounded status/reason codes only, never dataset rows. For Build Agent proposals,
+that same explicit dataset must still match the preserved semantic fingerprint
+and selected feature/target columns or revalidation reports stale/invalid
+selection. A VOLK project proposal deliberately omits an embedded project's
+dataset from both its graph snapshot and proposal body.
+
+Conversion fidelity and verification are independent. `fidelity` describes
+how much source meaning is preserved (`exact`, `structural`, `partial`, or
+`unsupported`); `verification` describes which source contract has been
+revalidated. `volk-verified` requires a native Build Agent proposal that passes
+its validator and matches the detached graph and preserved source facts, or a
+graph-only VOLK source project that passes the canonical project path and
+matches the detached graph. Source identity strings alone are insufficient.
+These source records establish semantic validity; they do not authenticate the
+human/process origin because the public envelope fingerprint is
+non-cryptographic. The generic candidate factory rejects any caller-supplied
+`conversion.verification`; when omitted, it sets `producer-declared`. Only the
+specialized Build Agent and VOLK project factories can emit `volk-verified`
+with the required source evidence. The generic factory also reserves those
+producer identities and the future ONNX, Torch, TensorFlow, and Keras adapter
+identities; external agents can still submit a generic graph candidate or an
+ONNX-described import without impersonating a future official adapter.
+
+The proposal identity binds the supplied snapshot and conversion claims for
+change detection; it is a stable non-cryptographic fingerprint, not a signature
+or authorization token. Any future preview/Apply path must repeat current
+registry validation and capability/dataset assessment at the point of use.
+
 Conversion fidelity is one of `exact`, `structural`, `partial`, or
 `unsupported`. The versioned report includes bounded machine-readable
 `exactFor`, `preserved`, `approximated`, `missing`, `unsupported`, and
@@ -95,8 +159,10 @@ Conversion fidelity is one of `exact`, `structural`, `partial`, or
 missing project name, dataset, trained model, language, and workspace
 preferences, while Build Agent graph adaptation has empty approximation/loss/
 warning lists. Capability projection reuses the live component
-registry, browser execution analysis, source compilers, and runtime tier
-estimator. It does not execute a model or include dataset rows in the proposal.
+registry, source compilers, and graph-level runtime tier estimator. It does not
+execute a model or include dataset rows in the proposal. Browser execution
+analysis is only performed as the separate, explicit dataset-bound assessment
+described above.
 
 ## Authority and assessment policy
 

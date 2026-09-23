@@ -1,5 +1,27 @@
 # Changelog
 
+## 2026-09-24 — B0.1 graph proposal trust and revalidation hardening
+
+- Detached graph proposals now revalidate embedded built-in contracts against
+  the live registry, canonicalize through the VOLK project/Canvas path, and
+  recompute graph-only capability claims; dataset-bound browser runnability is
+  assessed separately against an explicitly supplied current dataset.
+- Added source-contract v2 evidence checks so Build Agent and VOLK project
+  proposals retain verified JSON round trips without accepting producer names
+  or verification labels alone. Generic candidates reject caller-supplied
+  verification and remain producer-declared.
+- Affected areas: `src/core/graph/workspaceProposal.js`,
+  `scripts/check-graph-interop.mjs`, and
+  `docs/architecture/graph-interop.md`.
+- Validation: VOLK-Dev accepted this exact candidate; `npm run
+  check:graph-interop`, `npm run check:build-agent`, `npm run check`,
+  `npm run build`, `git diff --check`, and the changed-text transport/encoding
+  scan passed.
+- Limitations: no Apply flow or UI was added; proposal fingerprints are
+  non-cryptographic and do not authenticate the human/process origin; project
+  evidence excludes dataset rows; no real-browser UI run is needed for this
+  core contract boundary.
+
 ## 2026-09-23 — Build Agent A local model-design boundary
 
 - Added strict, JSON-safe Build Agent A contracts for semantic dataset context,
