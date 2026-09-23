@@ -1145,3 +1145,10 @@
 - Canonical graph identity includes component schema/capability contracts, normalized parameters, ports, topology, edge handles, and contract-owned positions, while ignoring presentation labels, runtime status, and localized descriptions. Future Apply must recheck current workspace, dataset, and capabilities; preview-time applicability is not authorization.
 - Added plan/graph tampering, capability/property schema, layout, presentation-only, and freshness regressions; updated the Build Agent architecture document.
 - Acceptance: `npm run check:build-agent`, `npm run check`, `npm run build`, independent VOLK-Dev acceptance, and `git diff --check` passed. The build retains the existing large-chunk advisory.
+
+## 2026-09-24 — Graph Interop B0 detached workspace proposals
+
+- Added a source-neutral, detached graph proposal path for Build Agent plans, canonical VOLK project graphs, and bounded future planner/import source shapes. Graph candidates are canonicalized and validated without applying, executing, or carrying project dataset rows.
+- Added versioned kind/producer/format provenance and conversion-report contracts, including explicit approximation, missing, unsupported, and warning dimensions; kept VOLK project conversion partial and Build Agent graph adaptation exact for its carried fields.
+- Added generic semantic/layout graph identity, pure capability and empty-workspace assessment, focused regressions, and architecture flow documentation. Preview, Apply, merge, UI, and foreign-format adapters remain future work.
+- Acceptance: focused Graph Interop and Build Agent checks, full `npm run check`, production `npm run build`, independent VOLK-Dev acceptance, and post-build `git diff --check` passed. The build retains the existing large-chunk advisory.

@@ -6,6 +6,12 @@ import { assertDatasetContext, createBuildDatasetContext, fingerprintBuildDatase
 import { BUILD_BLUEPRINTS, materializeBuildBlueprint } from './graphBlueprints.js';
 import { validateModelDesignPlan } from './modelDesignPlan.js';
 import {
+  canonicalGraphLayoutJsonV1,
+  canonicalGraphSemanticsJsonV1,
+  graphPresentationFingerprintV1,
+  graphSemanticFingerprintV1,
+} from '../graph/identity.js';
+import {
   BUILD_AGENT_CONTRACT_VERSION,
   BUILD_EXECUTION_EXPECTATIONS,
   assertBuildIdentity,
@@ -23,9 +29,6 @@ const PROPOSAL_FIELDS = [
   'modelDesignPlan', 'task', 'modelFamily', 'architecture', 'executionExpectation', 'graph',
   'validation', 'application', 'authority', 'requiresLearnerAcceptance',
 ];
-const MAX_PROPOSAL_NODES = 256;
-const MAX_PROPOSAL_EDGES = 512;
-const MAX_CANONICAL_GRAPH_CODE_UNITS = 1_000_000;
 
 function safeCompile(nodes, edges, compile) {
   try {
@@ -84,162 +87,21 @@ function proposalIdFor(modelDesignPlan, datasetSelection, graph) {
   return stableBuildIdentity({
     modelDesignPlan,
     datasetSelection,
-    graph: semanticGraphProjection(graph),
+    graphIdentity: {
+      semanticFingerprint: graphSemanticFingerprintV1(graph),
+      presentationFingerprint: graphPresentationFingerprintV1(graph),
+    },
   }, 'proposal');
 }
 
-function canonicalJsonValue(value) {
-  if (Array.isArray(value)) return value.map(canonicalJsonValue);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(Object.keys(value).sort().map((key) => [key, canonicalJsonValue(value[key])]));
-}
-
-function assertBoundedGraphJsonSafe(value, path = 'graph', depth = 0, ancestors = new WeakSet(), budget = { values: 0, codeUnits: 0 }) {
-  budget.values += 1;
-  if (budget.values > 50_000 || depth > 32) {
-    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph exceeds the canonical traversal bounds.');
-  }
-  if (value === null || typeof value === 'boolean') return;
-  if (typeof value === 'string') {
-    budget.codeUnits += value.length;
-    if (budget.codeUnits > MAX_CANONICAL_GRAPH_CODE_UNITS) {
-      failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph exceeds the canonical comparison size bound.');
-    }
-    return;
-  }
-  if (typeof value === 'number') {
-    if (Number.isFinite(value)) return;
-    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', `Proposal graph contains a non-finite number at ${path}.`);
-  }
-  if (!value || typeof value !== 'object' || ancestors.has(value)) {
-    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', `Proposal graph contains a non-JSON value at ${path}.`);
-  }
-  if (!Array.isArray(value) && Object.getPrototypeOf(value) !== Object.prototype) {
-    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', `Proposal graph contains a non-plain object at ${path}.`);
-  }
-  ancestors.add(value);
-  if (Array.isArray(value)) {
-    if (Object.keys(value).length !== value.length) {
-      failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', `Proposal graph contains a sparse or extended array at ${path}.`);
-    }
-    for (let index = 0; index < value.length; index += 1) {
-      if (!(index in value)) failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', `Proposal graph contains a sparse array at ${path}.`);
-      assertBoundedGraphJsonSafe(value[index], `${path}[${index}]`, depth + 1, ancestors, budget);
-    }
-  } else {
-    const entries = Object.entries(value);
-    for (const [key, child] of entries) {
-      budget.codeUnits += key.length;
-      if (budget.codeUnits > MAX_CANONICAL_GRAPH_CODE_UNITS) {
-        failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph exceeds the canonical comparison size bound.');
-      }
-      assertBoundedGraphJsonSafe(child, `${path}.${key}`, depth + 1, ancestors, budget);
-    }
-  }
-  ancestors.delete(value);
-}
-
-function portContract(ports, path) {
-  if (!Array.isArray(ports)) failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', `Proposal graph has an invalid port contract at ${path}.`);
-  const projected = ports.map((port) => {
-    if (!port || typeof port.name !== 'string' || typeof port.type !== 'string') {
-      failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', `Proposal graph has an invalid port contract at ${path}.`);
-    }
-    return { name: port.name, type: port.type };
-  });
-  return projected.sort((left, right) => left.name < right.name ? -1 : left.name > right.name ? 1 : left.type < right.type ? -1 : left.type > right.type ? 1 : 0);
-}
-
-function componentContract(manifest, path) {
-  if (
-    !Number.isInteger(manifest.schemaVersion)
-    || typeof manifest.kind !== 'string'
-    || !Array.isArray(manifest.properties)
-    || !manifest.runtime || typeof manifest.runtime !== 'object'
-    || !manifest.compatibility || typeof manifest.compatibility !== 'object'
-  ) failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', `Proposal graph has an invalid component contract at ${path}.`);
-  return {
-    schemaVersion: manifest.schemaVersion,
-    kind: manifest.kind,
-    properties: manifest.properties.map((property) => {
-      if (!property || typeof property !== 'object' || Array.isArray(property)) {
-        failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', `Proposal graph has an invalid property schema at ${path}.`);
-      }
-      const { label: _presentationLabel, ...semanticSchema } = property;
-      return semanticSchema;
-    }),
-    runtime: manifest.runtime,
-    compatibility: manifest.compatibility,
-    composition: manifest.composition ?? null,
-  };
-}
-
-function semanticGraphProjection(graph) {
-  if (!graph || typeof graph !== 'object' || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
-    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph is structurally invalid.');
-  }
-  const nodes = graph.nodes.map((node) => {
-    const manifest = node?.data?.manifest;
-    const parameters = node?.data?.parameters;
-    const position = node?.position;
-    if (
-      !node || typeof node.id !== 'string' || !node.id
-      || !manifest || typeof manifest.id !== 'string' || !manifest.id
-      || typeof manifest.op !== 'string' || !manifest.op
-      || !parameters || typeof parameters !== 'object' || Array.isArray(parameters)
-      || !position || !Number.isFinite(position.x) || !Number.isFinite(position.y)
-    ) failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph node is missing canonical semantic fields.');
-    return {
-      id: node.id,
-      componentId: manifest.id,
-      operation: manifest.op,
-      componentContract: componentContract(manifest, node.id),
-      parameters,
-      inputs: portContract(manifest.inputs, `${node.id}.inputs`),
-      outputs: portContract(manifest.outputs, `${node.id}.outputs`),
-      position: { x: position.x, y: position.y },
-    };
-  }).sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
-  const edges = graph.edges.map((edge) => {
-    if (
-      !edge || typeof edge.id !== 'string' || !edge.id
-      || typeof edge.source !== 'string' || !edge.source
-      || typeof edge.sourceHandle !== 'string' || !edge.sourceHandle
-      || typeof edge.target !== 'string' || !edge.target
-      || typeof edge.targetHandle !== 'string' || !edge.targetHandle
-    ) failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph edge is missing canonical semantic fields.');
-    return {
-      id: edge.id,
-      source: edge.source,
-      sourceHandle: edge.sourceHandle,
-      target: edge.target,
-      targetHandle: edge.targetHandle,
-    };
-  }).sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
-  if (typeof graph.blueprintId !== 'string' || !graph.blueprintId) {
-    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph blueprint identity is missing.');
-  }
-  return { blueprintId: graph.blueprintId, nodes, edges };
-}
-
 function canonicalGraphJson(graph) {
-  if (!graph || typeof graph !== 'object' || !Array.isArray(graph.nodes) || !Array.isArray(graph.edges)) {
-    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph is structurally invalid.');
-  }
-  if (graph.nodes.length > MAX_PROPOSAL_NODES || graph.edges.length > MAX_PROPOSAL_EDGES) {
-    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph exceeds the canonical comparison bounds.', {
-      maxNodes: MAX_PROPOSAL_NODES,
-      maxEdges: MAX_PROPOSAL_EDGES,
+  try {
+    return `${canonicalGraphSemanticsJsonV1(graph)}\n${canonicalGraphLayoutJsonV1(graph)}`;
+  } catch (error) {
+    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph is invalid or exceeds canonical comparison bounds.', {
+      cause: error?.code ?? 'GRAPH_IDENTITY_INVALID',
     });
   }
-  assertBoundedGraphJsonSafe(graph);
-  const canonical = JSON.stringify(canonicalJsonValue(semanticGraphProjection(graph)));
-  if (typeof canonical !== 'string' || canonical.length > MAX_CANONICAL_GRAPH_CODE_UNITS) {
-    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph exceeds the canonical comparison size bound.', {
-      maxCodeUnits: MAX_CANONICAL_GRAPH_CODE_UNITS,
-    });
-  }
-  return canonical;
 }
 
 function applicationGate({ executionExpectation, datasetBindingCurrent, selectedFeaturesMaterializable, browser, tier, source }) {
@@ -446,6 +308,9 @@ export function validateGraphProposal(value) {
     plan: modelDesignPlan,
     datasetContext: null,
   });
+  if (value.graph?.blueprintId !== modelDesignPlan.blueprintId) {
+    failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph blueprint identity differs from the embedded plan.');
+  }
   if (proposalGraph !== canonicalGraphJson(canonicalGraph)) {
     failBuildAgent('BUILD_PROPOSAL_GRAPH_MISMATCH', 'Proposal graph differs from its registered canonical blueprint.');
   }

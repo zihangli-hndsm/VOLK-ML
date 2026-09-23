@@ -49,6 +49,11 @@ The detached Build Agent A model-design boundary is documented in
 semantic dataset context, while keeping proposal authority and execution
 separate from the Canvas Agent and Build workspace.
 
+The source-neutral detached graph proposal boundary and the distinction
+between graph-scoped and full-project interoperability are documented in
+[`graph-interop.md`](./graph-interop.md). It reuses the canonical VOLK
+`nodes`/`edges` model and keeps graph assessment non-destructive.
+
 Agent requests share the versioned, semantic boundary documented in
 [`ai-provider.md`](./ai-provider.md). Ask, Experiment Design, and World Edit
 carry explicit task modes and output sets through the same provider adapter;
