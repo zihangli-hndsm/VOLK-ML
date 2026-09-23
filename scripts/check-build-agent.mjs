@@ -14,6 +14,8 @@ import {
 } from '../src/core/buildAgent/index.js';
 import { executeBrowserGraph } from '../src/core/browserRuntime.js';
 import { analyzeBrowserExecutionGraph } from '../src/core/browserExecutionContract.js';
+import { createAgentNode, connectAgentNodes } from '../src/core/canvasAgent.js';
+import { componentById } from '../src/core/components.js';
 
 function check(condition, message) {
   if (!condition) throw new Error(message);
@@ -209,6 +211,7 @@ for (const [name, context, plan, metricCheck] of runtimeFixtures) {
   check(proposal.executionExpectation === 'browser-local', `${name} proposal expectation must use external vocabulary.`);
   check(proposal.validation.browser.valid, `${name} proposal browser assessment must be valid.`);
   check(proposal.datasetFingerprint === plan.dataset.fingerprint, `${name} proposal must carry its plan dataset identity.`);
+  check(proposal.modelDesignPlan.planId === plan.planId, `${name} proposal must embed the complete validated ModelDesignPlanV1.`);
   check(proposal.application.status === 'applicable' && proposal.application.reasons.length === 0, `${name} current browser-local proposal must pass the authoritative application gate.`);
   check(validateGraphProposal(proposal).proposalId === proposal.proposalId, `${name} proposal semantic identity must validate.`);
   check(assessGraphProposalAgainstDataset(proposal, context).compatible, `${name} proposal must match its current context.`);
@@ -267,5 +270,86 @@ check(noDatasetProposal.application.status === 'blocked' && noDatasetProposal.ap
 check(hiddenUnitsPlan.plan.planId !== mlpPlanResult.plan.planId, 'Hidden-unit semantic identity must remain distinct.');
 const hiddenUnitsProposal = createGraphProposal({ plan: hiddenUnitsPlan.plan, dataset: exerciseDatasets.mlpClassification, datasetContext: mlpContext });
 check(hiddenUnitsProposal.proposalId !== createGraphProposal({ plan: mlpPlanResult.plan, dataset: exerciseDatasets.mlpClassification, datasetContext: mlpContext }).proposalId, 'Proposal identity must follow semantic plan identity.');
+
+const mlpProposal = createGraphProposal({ plan: mlpPlanResult.plan, dataset: exerciseDatasets.mlpClassification, datasetContext: mlpContext });
+check(createGraphProposal({ plan: mlpPlanResult.plan, dataset: exerciseDatasets.mlpClassification, datasetContext: mlpContext }).proposalId === mlpProposal.proposalId, 'Identical full plans and canonical graphs must produce the same proposal identity.');
+const graphMutation = (mutate) => {
+  const candidate = structuredClone(mlpProposal);
+  mutate(candidate.graph);
+  return candidate;
+};
+expectCode(() => validateGraphProposal(graphMutation((graph) => {
+  graph.nodes.find((node) => node.id === 'build-hidden').data.parameters.units = 7;
+})), 'BUILD_PROPOSAL_GRAPH_MISMATCH');
+expectCode(() => validateGraphProposal(graphMutation((graph) => {
+  graph.nodes.find((node) => node.id === 'build-relu').data.manifest.id = 'sigmoid_node';
+})), 'BUILD_PROPOSAL_GRAPH_MISMATCH');
+expectCode(() => validateGraphProposal(graphMutation((graph) => {
+  graph.nodes.find((node) => node.id === 'build-relu').data.manifest.runtime.browserBackend = 'webgpu';
+})), 'BUILD_PROPOSAL_GRAPH_MISMATCH');
+expectCode(() => validateGraphProposal(graphMutation((graph) => {
+  graph.nodes.find((node) => node.id === 'build-split').data.manifest.properties
+    .find((property) => property.key === 'train_ratio').min = 0.55;
+})), 'BUILD_PROPOSAL_GRAPH_MISMATCH');
+expectCode(() => validateGraphProposal(graphMutation((graph) => { graph.edges.pop(); })), 'BUILD_PROPOSAL_GRAPH_MISMATCH');
+expectCode(() => validateGraphProposal(graphMutation((graph) => {
+  graph.edges.find((edge) => edge.id === 'build-edge-hidden-relu').target = 'build-head';
+})), 'BUILD_PROPOSAL_GRAPH_MISMATCH');
+expectCode(() => validateGraphProposal(graphMutation((graph) => {
+  graph.nodes.find((node) => node.id === 'build-relu').position.x += 1;
+})), 'BUILD_PROPOSAL_GRAPH_MISMATCH');
+const presentationOnlyProposal = structuredClone(mlpProposal);
+const presentationNode = presentationOnlyProposal.graph.nodes.find((node) => node.id === 'build-relu');
+presentationNode.data.label = 'localized presentation label';
+presentationNode.data.status = 'success';
+presentationNode.data.manifest.name = { en: 'Presentation only', zh: '仅用于呈现' };
+presentationNode.data.manifest.description = { en: 'Non-semantic description', zh: '非语义描述' };
+check(validateGraphProposal(presentationOnlyProposal).proposalId === mlpProposal.proposalId, 'Labels, runtime status, and localized manifest copy must not affect semantic graph identity.');
+
+let unrelatedNodes = [];
+for (const [id, x] of [['unrelated-relu-a', 20], ['unrelated-relu-b', 140]]) {
+  unrelatedNodes = [...unrelatedNodes, createAgentNode({
+    nodes: unrelatedNodes,
+    manifest: componentById.get('relu_node'),
+    request: { id, position: { x, y: 420 } },
+  })];
+}
+const unrelatedEdges = connectAgentNodes(unrelatedNodes, [], {
+  id: 'unrelated-relu-edge', source: 'unrelated-relu-a', sourceHandle: 'output',
+  target: 'unrelated-relu-b', targetHandle: 'input',
+});
+expectCode(() => validateGraphProposal(graphMutation((graph) => {
+  graph.nodes.push(...unrelatedNodes);
+  graph.edges.push(...unrelatedEdges);
+})), 'BUILD_PROPOSAL_GRAPH_MISMATCH');
+
+const embeddedPlanMutations = [
+  ['hiddenUnits', (plan) => { plan.training.hiddenUnits = 7; }],
+  ['trainRatio', (plan) => { plan.training.trainRatio = 0.7; }],
+  ['selected features', (plan) => { plan.dataset.featureColumns[0] = 'different-feature'; }],
+  ['executionExpectation', (plan) => { plan.executionExpectation = 'export-only'; }],
+];
+for (const [name, mutate] of embeddedPlanMutations) {
+  const candidate = structuredClone(mlpProposal);
+  mutate(candidate.modelDesignPlan);
+  expectCode(() => validateGraphProposal(candidate), 'BUILD_PLAN_INVALID');
+  check(candidate.planId === mlpProposal.planId, `${name} tampering must not silently rewrite the proposal identity.`);
+}
+const changedRatioResult = planBuildGoal(goal('valid-changed-train-ratio', {
+  task: 'classification', modelFamily: 'mlp', architecture: 'explicit-mlp',
+  parameters: { hiddenUnits: 6, trainRatio: 0.7 },
+}), mlpContext);
+check(changedRatioResult.kind === 'plan' && validateModelDesignPlan(changedRatioResult.plan), 'Changed trainRatio fixture must be an independently valid plan.');
+expectCode(() => validateGraphProposal({
+  ...mlpProposal,
+  planId: changedRatioResult.plan.planId,
+  modelDesignPlan: changedRatioResult.plan,
+  graph: mlpProposal.graph,
+}), 'BUILD_PROPOSAL_GRAPH_MISMATCH');
+expectCode(() => validateGraphProposal({ ...mlpProposal, planId: hiddenUnitsPlan.plan.planId }), 'BUILD_PROPOSAL_INVALID');
+check(
+  assessGraphProposalAgainstDataset(mlpProposal, createBuildDatasetContext(exerciseDatasets.mlpClassification)).compatible,
+  'Exact canonical graph validation must remain separate from current dataset freshness.',
+);
 
 console.log(`Build Agent A checks passed (${runtimeFixtures.length} executable blueprints).`);

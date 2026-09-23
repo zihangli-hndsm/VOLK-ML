@@ -36,12 +36,24 @@ runtime.
 
 Identity roles are distinct: `BuildGoal.goalId` identifies a request, while
 `ModelDesignPlan.planId` identifies its deterministic semantic plan and
-`GraphProposal.proposalId` identifies the plan/blueprint/selected projection.
-Different request IDs can therefore share a plan ID when their semantics
-match. Changing the dataset, selected features/target, training settings, or
-execution expectation changes the plan ID and its proposal ID. These stable
-non-cryptographic IDs are not authorization tokens, signatures, or persistence
-keys.
+`GraphProposal.proposalId` identifies the embedded complete
+`ModelDesignPlanV1`, selected projection, and canonical semantic graph. A
+proposal embeds the validated plan rather than a lossy plan summary. The
+validator rematerializes the registered blueprint from that plan and compares
+node IDs, component IDs/operations and non-presentation contracts (schema/kind,
+property constraints/defaults, runtime/backend tier, framework compatibility,
+and composite expansion), normalized parameters, input/output port contracts,
+edge IDs/endpoints/handles, and deterministic node positions. Presentation
+labels, runtime status, and localized manifest names/descriptions/categories
+are excluded from graph identity. Nodes, edges, ports, and object keys are
+compared without depending on their array/object insertion order. Blueprint
+positions are contract-owned and compared exactly. Graph changes fail with
+`BUILD_PROPOSAL_GRAPH_MISMATCH`; dataset freshness remains a separate check and
+reports `BUILD_DATASET_STALE`. Different request IDs can therefore share a
+plan ID when their semantics match. Changing the dataset, selected
+features/target, training settings, or execution expectation changes the plan
+ID and proposal ID. These stable non-cryptographic IDs are not authorization
+tokens, signatures, or persistence keys.
 
 The external execution vocabulary is deliberately small and stable:
 `browser-local`, `export-only`, `future-cloud`, and `unsupported`. Internal
@@ -71,6 +83,13 @@ features, and at least one supported source compiler. This gate describes
 applicability only; it does not apply, execute, or authorize a graph. Evaluation
 metrics, rationale identifiers, and limitations are deterministic and tied
 to the registered blueprint rather than generated free-form claims.
+
+The validation/application fields inside a proposal are preview-time facts, not
+future Apply authorization. Any later learner-confirmed Apply boundary must
+recheck the current workspace and dataset, current component/runtime
+capabilities, and the integrity of the embedded plan and canonical graph before
+performing an action. Neither a valid proposal ID nor a prior `applicable`
+status grants that authority.
 
 Every proposal carries `authority: detached-proposal` and
 `requiresLearnerAcceptance: true`. A proposal can be inspected or rendered by
