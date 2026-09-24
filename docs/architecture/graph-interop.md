@@ -110,8 +110,12 @@ Validation never trusts a caller-recomputed `proposalId` as proof. It compares
 every embedded built-in manifest with the current component registry (including
 operation, runtime, compatibility, property, and port contracts), rejects
 built-in shadowing by custom definitions, checks custom instances against their
-carried definitions, and runs the existing project/Canvas validation path. A
-pure canonicalization API returns a detached graph; it does not rewrite the
+carried definition/catalogue availability, and runs the existing project/Canvas
+validation path. A folded custom-composite instance is independently validated
+as its own semantic snapshot; its copy-style catalogue definition may remain an
+older template. Graph identity follows the embedded rebuilt instance, while
+nested custom children must resolve through carried manifests/catalogue rules.
+A pure canonicalization API returns a detached graph; it does not rewrite the
 proposal, apply it, or grant authority. Proposal validation and revalidation
 therefore remain safe even when a candidate recomputes its graph identity,
 capability snapshot, and proposal ID after tampering.
@@ -128,6 +132,13 @@ that same explicit dataset must still match the preserved semantic fingerprint
 and selected feature/target columns or revalidation reports stale/invalid
 selection. A VOLK project proposal deliberately omits an embedded project's
 dataset from both its graph snapshot and proposal body.
+
+The exported `createGraphCapabilitySnapshot(graph)` and
+`createDatasetBoundCapabilityAssessment(graph, dataset)` helpers are safe
+public boundaries: each validates/canonicalizes the graph against current
+registry and project rules before exposing derived capability information.
+Their canonical-only implementation helpers are private; callers cannot use
+them to derive a snapshot from an arbitrary forged graph.
 
 Conversion fidelity and verification are independent. `fidelity` describes
 how much source meaning is preserved (`exact`, `structural`, `partial`, or

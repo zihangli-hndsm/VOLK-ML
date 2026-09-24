@@ -1174,3 +1174,9 @@
 - Added versioned kind/producer/format provenance and conversion-report contracts, including explicit approximation, missing, unsupported, and warning dimensions; kept VOLK project conversion partial and Build Agent graph adaptation exact for its carried fields.
 - Added generic semantic/layout graph identity, pure capability and empty-workspace assessment, focused regressions, and architecture flow documentation. Preview, Apply, merge, UI, and foreign-format adapters remain future work.
 - Acceptance: focused Graph Interop and Build Agent checks, full `npm run check`, production `npm run build`, independent VOLK-Dev acceptance, and post-build `git diff --check` passed. The build retains the existing large-chunk advisory.
+
+## 2026-09-24 — Graph Interop B0.1 custom-composite lifecycle and capability boundary
+
+- Preserved rebuilt custom-composite instance semantics and graph identity independently from copy-style catalogue templates; malformed or unresolved definitions, duplicates, and built-in shadowing remain rejected.
+- Hardened exported graph capability helpers to validate canonical project/registry contracts before returning capabilities; added lifecycle and forged-graph regressions and architecture guidance.
+- Acceptance: focused Graph Interop and Build Agent checks, full `npm run check`, production `npm run build`, independent VOLK-Dev PASS, and `git diff --check` passed. The build retains the existing large-chunk advisory; no browser test applies.

@@ -178,6 +178,54 @@ function validateGraphShape(graph) {
   return graph;
 }
 
+function normalizeOptionalNestedCustomManifests(manifest) {
+  const normalized = structuredClone(manifest);
+  const visit = (current, seen = new WeakSet()) => {
+    if (!isRecord(current) || seen.has(current)) return;
+    seen.add(current);
+    for (const spec of current.composition?.nodes ?? []) {
+      if (spec.manifest === undefined) {
+        delete spec.manifest;
+      } else if (spec.manifest?.customComposite === true) {
+        visit(spec.manifest, seen);
+      }
+    }
+  };
+  visit(normalized);
+  return normalized;
+}
+
+function normalizeGraphCustomManifests(graph) {
+  return {
+    ...graph,
+    nodes: graph.nodes.map((node) => ({
+      ...node,
+      data: {
+        ...node.data,
+        manifest: normalizeOptionalNestedCustomManifests(node.data.manifest),
+      },
+    })),
+    componentDefinitions: graph.componentDefinitions.map(normalizeOptionalNestedCustomManifests),
+  };
+}
+
+function normalizeProjectCustomManifests(project) {
+  return {
+    ...project,
+    customComponents: Array.isArray(project.customComponents)
+      ? project.customComponents.map(normalizeOptionalNestedCustomManifests)
+      : project.customComponents,
+    graph: {
+      ...project.graph,
+      nodes: Array.isArray(project.graph?.nodes) ? project.graph.nodes.map((node) => (
+        node?.data?.manifest
+          ? { ...node, data: { ...node.data, manifest: normalizeOptionalNestedCustomManifests(node.data.manifest) } }
+          : node
+      )) : project.graph?.nodes,
+    },
+  };
+}
+
 function canonicalJsonValue(value) {
   if (Array.isArray(value)) return value.map(canonicalJsonValue);
   if (!value || typeof value !== 'object') return value;
@@ -245,29 +293,25 @@ function assertNoBuiltinShadowing(graph) {
     if (!manifest?.customComposite) continue;
     const definition = definitionsById.get(manifest.id);
     if (!definition) fail('GRAPH_COMPONENT_DEFINITION_MISSING', 'Custom composite nodes must carry their referenced canonical definition.', { componentId: manifest.id, path });
-    try {
-      if (componentContractJson(manifest, definitions) !== componentContractJson(definition, definitions)) {
-        fail('GRAPH_CUSTOM_COMPONENT_MISMATCH', 'Custom component instance differs from its carried canonical definition.', { componentId: manifest.id, path });
-      }
-    } catch (error) {
-      if (error instanceof GraphProposalError) throw error;
-      fail('GRAPH_CUSTOM_COMPONENT_MISMATCH', 'Custom component instance cannot be matched to its carried definition.', { componentId: manifest.id, path });
-    }
+    // A folded instance is a validated snapshot, not the catalogue template.
+    // The canonical project validator below independently validates its
+    // expanded child graph while the definition remains available for lookup.
   }
 }
 
 function canonicalizeGraphWithProjectContract(graph, { allowBlueprintId = false } = {}) {
   validateGraphShape(graph);
-  if (graph.blueprintId !== undefined && !allowBlueprintId) {
+  const normalizedGraph = normalizeGraphCustomManifests(graph);
+  if (normalizedGraph.blueprintId !== undefined && !allowBlueprintId) {
     fail('GRAPH_PROPOSAL_INVALID', 'Source-neutral graphs cannot supply a Build Agent blueprint identity.');
   }
-  assertNoBuiltinShadowing(graph);
+  assertNoBuiltinShadowing(normalizedGraph);
   const prepared = canonicalProjectGraph({
     format: 'VOLK-ML',
     version: PROJECT_VERSION,
     name: 'Detached Graph Candidate',
-    customComponents: graph.componentDefinitions,
-    graph: { nodes: graph.nodes, edges: graph.edges },
+    customComponents: normalizedGraph.componentDefinitions,
+    graph: { nodes: normalizedGraph.nodes, edges: normalizedGraph.edges },
     data: null,
     trainedModel: null,
   });
@@ -276,17 +320,20 @@ function canonicalizeGraphWithProjectContract(graph, { allowBlueprintId = false 
     fail(diagnostic?.code ?? 'GRAPH_PROJECT_VALIDATION_FAILED', 'Graph is invalid under the canonical VOLK project contract.', diagnostic?.details ?? {});
   }
   const canonical = structuredClone(prepared.graph);
-  if (allowBlueprintId && graph.blueprintId !== undefined) canonical.blueprintId = graph.blueprintId;
+  if (allowBlueprintId && normalizedGraph.blueprintId !== undefined) canonical.blueprintId = normalizedGraph.blueprintId;
   try {
-    if (canonicalGraphSemanticsJsonV1(canonical) !== canonicalGraphSemanticsJsonV1(graph)) {
+    if (canonicalGraphSemanticsJsonV1(canonical) !== canonicalGraphSemanticsJsonV1(normalizedGraph)) {
       fail('GRAPH_CANONICALIZATION_MISMATCH', 'Graph semantics differ from current canonical component and project contracts.');
     }
-    if (canonicalGraphLayoutJsonV1(canonical) !== canonicalGraphLayoutJsonV1(graph)) {
+    if (canonicalGraphLayoutJsonV1(canonical) !== canonicalGraphLayoutJsonV1(normalizedGraph)) {
       fail('GRAPH_LAYOUT_CANONICALIZATION_MISMATCH', 'Graph layout differs from the canonical detached graph.');
     }
   } catch (error) {
     if (error instanceof GraphProposalError) throw error;
-    fail('GRAPH_PROJECT_VALIDATION_FAILED', 'Graph cannot be compared with the current canonical project contract.');
+    fail('GRAPH_PROJECT_VALIDATION_FAILED', 'Graph cannot be compared with the current canonical project contract.', {
+      reason: error?.code ?? error?.name ?? 'canonicalization',
+      ...(typeof error?.details?.path === 'string' ? { path: error.details.path } : {}),
+    });
   }
   return canonical;
 }
@@ -566,7 +613,7 @@ function validateInternal(value) {
     fail('GRAPH_CONVERSION_VERIFICATION_INVALID', 'Conversion verification does not match its source producer.');
   }
   validateCapabilitySnapshot(value.capabilitySnapshot);
-  if (canonicalJsonString(value.capabilitySnapshot) !== canonicalJsonString(createGraphCapabilitySnapshot(canonicalGraph))) {
+  if (canonicalJsonString(value.capabilitySnapshot) !== canonicalJsonString(createGraphCapabilitySnapshotForCanonicalGraph(canonicalGraph))) {
     fail('GRAPH_CAPABILITY_SNAPSHOT_MISMATCH', 'Capability snapshot differs from current graph-only capabilities.');
   }
   validateAssessment(value.assessment);
@@ -628,7 +675,7 @@ function safeCompile(nodes, edges, framework) {
   }
 }
 
-export function createGraphCapabilitySnapshot(graph) {
+function createGraphCapabilitySnapshotForCanonicalGraph(graph) {
   let tier;
   try {
     tier = estimateExecutionPlan(graph.nodes, null, { edges: graph.edges });
@@ -651,8 +698,14 @@ export function createGraphCapabilitySnapshot(graph) {
   };
 }
 
+/** Validate graph semantics against the current registry before exposing capabilities. */
+export function createGraphCapabilitySnapshot(graph) {
+  const canonicalGraph = canonicalizeGraphWithProjectContract(graph);
+  return createGraphCapabilitySnapshotForCanonicalGraph(canonicalGraph);
+}
+
 /** Assess browser runnability only against an explicitly supplied current dataset. */
-export function createDatasetBoundCapabilityAssessment(graph, dataset) {
+function createDatasetBoundCapabilityAssessmentForCanonicalGraph(graph, dataset) {
   const normalizedDataset = validateAgentDataset(dataset);
   const browser = analyzeBrowserExecutionGraph({ nodes: graph.nodes, edges: graph.edges, dataset: normalizedDataset });
   let tier;
@@ -673,6 +726,12 @@ export function createDatasetBoundCapabilityAssessment(graph, dataset) {
       reasons: tier.reasons ?? [],
     },
   };
+}
+
+/** Validate graph semantics before exposing dataset-bound runnability. */
+export function createDatasetBoundCapabilityAssessment(graph, dataset) {
+  const canonicalGraph = canonicalizeGraphWithProjectContract(graph);
+  return createDatasetBoundCapabilityAssessmentForCanonicalGraph(canonicalGraph, dataset);
 }
 
 function workspaceAssessment(targetGraph = { nodes: [], edges: [] }) {
@@ -699,7 +758,7 @@ function createProposal({ graph, source, conversion, targetGraph = { nodes: [], 
     graph: detachedGraph,
     graphIdentity: graphIdentityV1(detachedGraph),
     conversion,
-    capabilitySnapshot: createGraphCapabilitySnapshot(detachedGraph),
+    capabilitySnapshot: createGraphCapabilitySnapshotForCanonicalGraph(detachedGraph),
     assessment: workspaceAssessment(targetGraph),
     authority: 'detached-proposal',
     requiresUserAcceptance: true,
@@ -741,11 +800,11 @@ export function revalidateWorkspaceGraphProposal(proposal, options = {}) {
       proposal: checked.proposal,
       canonicalGraph: structuredClone(canonicalGraph),
       graphIdentity: graphIdentityV1(canonicalGraph),
-      capabilitySnapshot: createGraphCapabilitySnapshot(canonicalGraph),
+      capabilitySnapshot: createGraphCapabilitySnapshotForCanonicalGraph(canonicalGraph),
     };
 
     if (options.currentDataset !== undefined) {
-      result.datasetBoundCapabilities = createDatasetBoundCapabilityAssessment(canonicalGraph, options.currentDataset);
+      result.datasetBoundCapabilities = createDatasetBoundCapabilityAssessmentForCanonicalGraph(canonicalGraph, options.currentDataset);
       if (checked.proposal.source.producer === 'build-agent') {
         const binding = checked.proposal.source.datasetBinding;
         const current = createBuildDatasetContext(options.currentDataset);
@@ -865,6 +924,11 @@ function canonicalProjectGraph(rawProject) {
   let migrated;
   try {
     migrated = migrateProject(rawProject);
+  } catch {
+    return projectGraphFailure('VOLK_PROJECT_INVALID');
+  }
+  try {
+    migrated = normalizeProjectCustomManifests(migrated);
   } catch {
     return projectGraphFailure('VOLK_PROJECT_INVALID');
   }

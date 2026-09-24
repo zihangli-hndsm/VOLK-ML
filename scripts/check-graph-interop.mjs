@@ -1,19 +1,20 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { componentById } from '../src/core/components.js';
+import { componentById, expandComposite } from '../src/core/components.js';
 import { createAgentNode, connectAgentNodes } from '../src/core/canvasAgent.js';
-import { createCustomComposite } from '../src/core/customComposites.js';
+import { createCustomComposite, rebuildCompositeInstance } from '../src/core/customComposites.js';
 import {
   createBuildDatasetContext,
   planBuildGoal,
   createGraphProposal,
 } from '../src/core/buildAgent/index.js';
 import { exerciseDatasets } from '../src/core/buildAgent/exerciseFixtures.js';
-import { PROJECT_VERSION } from '../src/core/project.js';
+import { PROJECT_VERSION, validateProjectForWorkspace } from '../src/core/project.js';
 import {
   adaptBuildAgentGraphProposal,
   assessWorkspaceGraphProposal,
   canonicalizeWorkspaceGraphCandidate,
+  createDatasetBoundCapabilityAssessment,
   createGraphCapabilitySnapshot,
   createVolkProjectGraphProposal,
   createWorkspaceGraphProposalFromCandidate,
@@ -156,6 +157,20 @@ const canonicalCandidate = canonicalizeWorkspaceGraphCandidate(canonicalGraphFix
 assert.equal(canonicalCandidate.valid, true, canonicalCandidate.diagnostics?.[0]?.code);
 assert.notEqual(canonicalCandidate.graph, canonicalGraphFixture, 'Canonicalization returns a detached graph.');
 assert.deepEqual(canonicalCandidate.graphIdentity, graphIdentityV1(canonicalGraphFixture));
+const invalidCapabilityGraph = clone(canonicalGraphFixture);
+invalidCapabilityGraph.nodes.find((node) => node.data.manifest.id === 'relu_node').data.manifest.op = 'forged-op';
+assert.throws(
+  () => createGraphCapabilitySnapshot(invalidCapabilityGraph),
+  (error) => error.code === 'GRAPH_COMPONENT_REGISTRY_MISMATCH',
+  'Public graph capability helper must reject a noncanonical built-in contract.',
+);
+assert.throws(
+  () => createDatasetBoundCapabilityAssessment(invalidCapabilityGraph, dataset),
+  (error) => error.code === 'GRAPH_COMPONENT_REGISTRY_MISMATCH',
+  'Public dataset-bound capability helper must reject a noncanonical built-in contract.',
+);
+const validDatasetCapabilities = createDatasetBoundCapabilityAssessment(canonicalGraphFixture, dataset);
+assert.ok(['available', 'unavailable'].includes(validDatasetCapabilities.browserExecution.status));
 
 const registryContractMutations = [
   ['relu_node', (manifest) => { manifest.op = 'tampered-operation'; }],
@@ -170,7 +185,6 @@ for (const [componentId, mutate] of registryContractMutations) {
   const manifest = node.data.manifest;
   mutate(manifest);
   forged.graphIdentity = graphIdentityV1(forged.graph);
-  forged.capabilitySnapshot = createGraphCapabilitySnapshot(forged.graph);
   resignProposal(forged);
   expectProposalDiagnostic(validateWorkspaceGraphProposal(forged), 'GRAPH_COMPONENT_REGISTRY_MISMATCH');
 }
@@ -395,12 +409,137 @@ const customResult = createVolkProjectGraphProposal(JSON.parse(JSON.stringify(cu
 assert.equal(customResult.ok, true, customResult.diagnostics?.[0]?.code);
 assert.deepEqual(customResult.proposal.graph.componentDefinitions.map((manifest) => manifest.id), [composite.manifest.id]);
 assert.equal(validateWorkspaceGraphProposal(customResult.proposal).valid, true);
-const mismatchedCustom = clone(customResult.proposal);
-mismatchedCustom.graph.nodes[0].data.manifest.composition.nodes[0].parameters.extra = true;
-mismatchedCustom.graphIdentity = graphIdentityV1(mismatchedCustom.graph);
-mismatchedCustom.capabilitySnapshot = createGraphCapabilitySnapshot(mismatchedCustom.graph);
-resignProposal(mismatchedCustom);
-expectProposalDiagnostic(validateWorkspaceGraphProposal(mismatchedCustom), 'GRAPH_CUSTOM_COMPONENT_MISMATCH');
+
+const denseNode = createAgentNode({
+  nodes: [],
+  manifest: componentById.get('dense_node'),
+  request: { id: 'lifecycle-dense', position: { x: 10, y: 20 }, parameters: { units: 6 } },
+});
+const lifecycleReluNode = createAgentNode({
+  nodes: [denseNode],
+  manifest: componentById.get('relu_node'),
+  request: { id: 'lifecycle-relu', position: { x: 220, y: 20 } },
+});
+const denseReluNodes = [denseNode, lifecycleReluNode];
+const denseReluEdges = connectAgentNodes(denseReluNodes, [], {
+  id: 'lifecycle-dense-relu',
+  source: denseNode.id,
+  sourceHandle: 'output',
+  target: lifecycleReluNode.id,
+  targetHandle: 'input',
+});
+const denseReluComposite = createCustomComposite({
+  selectedNodes: denseReluNodes,
+  edges: denseReluEdges,
+  name: 'Dense six then ReLU',
+  color: '#3777aa',
+});
+const catalogueTemplate = clone(denseReluComposite.manifest);
+const expandedLifecycle = expandComposite(denseReluComposite.instance);
+const expandedDense = expandedLifecycle.nodes.find((node) => node.data.manifest.id === 'dense_node');
+assert.equal(expandedDense.data.parameters.units, 6);
+expandedDense.data.parameters.units = 7;
+const rebuiltLifecycle = rebuildCompositeInstance({
+  origin: {
+    id: denseReluComposite.instance.id,
+    label: denseReluComposite.instance.data.label,
+    manifest: denseReluComposite.instance.data.manifest,
+    parameters: denseReluComposite.instance.data.parameters,
+    position: denseReluComposite.instance.position,
+  },
+  groupNodes: expandedLifecycle.nodes,
+  edges: expandedLifecycle.edges,
+});
+assert.equal(rebuiltLifecycle.manifest.composition.nodes.find((node) => node.componentId === 'dense_node').parameters.units, 7);
+assert.equal(catalogueTemplate.composition.nodes.find((node) => node.componentId === 'dense_node').parameters.units, 6);
+assert.deepEqual(denseReluComposite.manifest, catalogueTemplate, 'Rebuilding the instance must leave the catalogue template unchanged.');
+const rebuiltInstance = {
+  id: denseReluComposite.instance.id,
+  type: 'pipelineNode',
+  position: rebuiltLifecycle.position,
+  data: {
+    label: denseReluComposite.instance.data.label,
+    manifest: rebuiltLifecycle.manifest,
+    parameters: rebuiltLifecycle.parameters,
+    status: 'idle',
+  },
+};
+const lifecycleProject = bareProject([rebuiltInstance], [], [catalogueTemplate]);
+const catalogueTemplateProject = bareProject(
+  [denseReluComposite.instance],
+  [],
+  [catalogueTemplate],
+);
+assert.doesNotThrow(() => validateProjectForWorkspace(catalogueTemplateProject));
+const catalogueCanonicalCandidate = canonicalizeWorkspaceGraphCandidate({
+  nodes: catalogueTemplateProject.graph.nodes,
+  edges: catalogueTemplateProject.graph.edges,
+  componentDefinitions: catalogueTemplateProject.customComponents,
+});
+assert.equal(catalogueCanonicalCandidate.valid, true, JSON.stringify(catalogueCanonicalCandidate.diagnostics));
+const catalogueTemplateProposalResult = createVolkProjectGraphProposal(catalogueTemplateProject);
+assert.equal(catalogueTemplateProposalResult.ok, true, JSON.stringify(catalogueTemplateProposalResult.diagnostics));
+const validatedLifecycleProject = validateProjectForWorkspace(lifecycleProject);
+assert.equal(validatedLifecycleProject.graph.nodes[0].data.manifest.composition.nodes.find((node) => node.componentId === 'dense_node').parameters.units, 7);
+const lifecycleProposalResult = createVolkProjectGraphProposal(lifecycleProject);
+assert.equal(lifecycleProposalResult.ok, true, lifecycleProposalResult.diagnostics?.[0]?.code);
+const lifecycleProposal = lifecycleProposalResult.proposal;
+assert.equal(validateWorkspaceGraphProposal(lifecycleProposal).valid, true);
+assert.equal(lifecycleProposal.graph.nodes[0].data.manifest.composition.nodes.find((node) => node.componentId === 'dense_node').parameters.units, 7);
+assert.equal(lifecycleProposal.graph.componentDefinitions[0].composition.nodes.find((node) => node.componentId === 'dense_node').parameters.units, 6);
+assert.notEqual(
+  graphSemanticFingerprintV1(lifecycleProposal.graph),
+  graphSemanticFingerprintV1(catalogueTemplateProposalResult.proposal.graph),
+  'Proposal identity follows the rebuilt embedded instance rather than its older catalogue template.',
+);
+
+const malformedInstanceProject = clone(lifecycleProject);
+malformedInstanceProject.graph.nodes[0].data.manifest.composition.nodes.find((node) => node.componentId === 'dense_node').parameters.units = 'seven';
+assert.throws(() => validateProjectForWorkspace(malformedInstanceProject), 'Malformed rebuilt instances must fail canonical project validation.');
+assert.equal(createVolkProjectGraphProposal(malformedInstanceProject).ok, false);
+
+const duplicateDefinitionProject = clone(lifecycleProject);
+duplicateDefinitionProject.customComponents.push(clone(duplicateDefinitionProject.customComponents[0]));
+assert.throws(() => validateProjectForWorkspace(duplicateDefinitionProject), 'Duplicate custom definitions must fail project validation.');
+assert.equal(createVolkProjectGraphProposal(duplicateDefinitionProject).ok, false);
+
+const builtinShadowProject = bareProject([], [], [clone(componentById.get('relu_node'))]);
+assert.throws(() => validateProjectForWorkspace(builtinShadowProject), 'Custom definitions cannot shadow a built-in registry ID.');
+assert.equal(createVolkProjectGraphProposal(builtinShadowProject).ok, false);
+
+const nestedReluNode = createAgentNode({
+  nodes: [denseReluComposite.instance],
+  manifest: componentById.get('relu_node'),
+  request: { id: 'nested-lifecycle-relu', position: { x: 500, y: 20 } },
+});
+const nestedEdge = connectAgentNodes([denseReluComposite.instance, nestedReluNode], [], {
+  id: 'nested-lifecycle-edge',
+  source: denseReluComposite.instance.id,
+  sourceHandle: denseReluComposite.manifest.outputs[0].name,
+  target: nestedReluNode.id,
+  targetHandle: 'input',
+});
+const nestedComposite = createCustomComposite({
+  selectedNodes: [denseReluComposite.instance, nestedReluNode],
+  edges: nestedEdge,
+  name: 'Nested Dense-ReLU block',
+  color: '#7654a8',
+});
+const nestedProject = bareProject(
+  [nestedComposite.instance],
+  [],
+  [catalogueTemplate, clone(nestedComposite.manifest)],
+);
+assert.equal(createVolkProjectGraphProposal(nestedProject).ok, true, 'Nested custom definitions carried in the project remain valid.');
+const missingNestedProject = clone(nestedProject);
+for (const manifest of [
+  missingNestedProject.customComponents.find((definition) => definition.id === nestedComposite.manifest.id),
+  missingNestedProject.graph.nodes[0].data.manifest,
+]) {
+  manifest.composition.nodes.find((node) => node.componentId === denseReluComposite.manifest.id).manifest = undefined;
+}
+assert.throws(() => validateProjectForWorkspace(missingNestedProject), 'Nested custom children require their carried instance definition.');
+assert.equal(createVolkProjectGraphProposal(missingNestedProject).ok, false);
 
 const builtinShadowGraph = clone(futureGraph);
 builtinShadowGraph.componentDefinitions = [clone(componentById.get('relu_node'))];
