@@ -446,9 +446,13 @@ export function validateProjectForWorkspace(rawProject) {
   const validationNodes = [];
   project.graph.nodes.forEach((node) => {
     const embeddedManifest = node?.data?.manifest;
-    const embeddedInstance = embeddedManifest?.customComposite === true
-      ? (customManifestIsValid(embeddedManifest, customById) ? embeddedManifest : null)
-      : null;
+    let embeddedInstance = null;
+    if (embeddedManifest?.customComposite === true) {
+      // A present folded instance is its own semantic snapshot. If malformed,
+      // reject it rather than silently substituting the older catalogue copy.
+      if (!customManifestIsValid(embeddedManifest, customById)) invalidProject();
+      embeddedInstance = embeddedManifest;
+    }
     const manifest = embeddedInstance
       ?? componentById.get(embeddedManifest?.id)
       ?? customById.get(embeddedManifest?.id);

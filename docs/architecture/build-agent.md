@@ -107,3 +107,11 @@ npm run check:build-agent
 The existing `agentExerciseSuite` now consumes the same fixture datasets and
 blueprint materializer, so the browser exercise path and Build Agent path do
 not maintain duplicate graph definitions.
+
+Build Agent graph proposals can also be adapted into the source-neutral
+detached workspace contract described in
+[`graph-interop.md`](./graph-interop.md). That adapter validates the original
+proposal, copies its graph without rematerializing it, and preserves its plan,
+dataset binding, rationale, limitations, and diagnostics. The generic graph
+identity utility is shared, while Build Agent retains its stricter exact
+semantic-and-layout comparison against the registered blueprint.
