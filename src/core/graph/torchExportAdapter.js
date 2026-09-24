@@ -1,18 +1,18 @@
 import { componentById } from '../components.js';
 import { connectAgentNodes, createAgentNode } from '../canvasAgent.js';
-import { fingerprintJsonV1 } from './identity.js';
+import { artifactFingerprintJsonV1 } from './artifactFingerprint.js';
 
-export const TORCH_EXPORT_DOCUMENT_TYPE = 'TorchExportDocumentV1';
-export const TORCH_EXPORT_DOCUMENT_VERSION = 1;
+export const TORCH_EXPORT_DOCUMENT_TYPE = 'TorchExportDocumentV2';
+export const TORCH_EXPORT_DOCUMENT_VERSION = 2;
 export const MAX_TORCH_EXPORT_DOCUMENT_CODE_UNITS = 500_000;
 export const MAX_TORCH_EXPORT_OPS = 64;
 export const MAX_TORCH_EXPORT_INPUTS_AND_STATE = 128;
 export const MAX_TORCH_EXPORT_TENSOR_ELEMENTS = 65_536;
-export const MAX_TORCH_EXPORT_STATE_BYTES = 196_608;
 const MAX_DIMENSION = 1_000_000;
 const IDENTIFIER = /^[A-Za-z][A-Za-z0-9_-]{0,63}$/;
 const TARGET = /^[A-Za-z][A-Za-z0-9_.]{0,127}$/;
 const TORCH_VERSION = /^[0-9][A-Za-z0-9.+-]{0,31}$/;
+const SHA256_FINGERPRINT = /^sha256:[a-f0-9]{64}$/;
 const SUPPORTED_DTYPES = new Set(['float16', 'float32']);
 
 export class TorchExportDocumentError extends Error {
@@ -91,65 +91,30 @@ function sameJson(left, right) {
   return JSON.stringify(left) === JSON.stringify(right);
 }
 
-function decodeBase64(value, path) {
-  if (typeof value !== 'string' || value.length > MAX_TORCH_EXPORT_STATE_BYTES * 2 || !/^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$/.test(value)) {
-    fail('TORCH_EXPORT_STATE_INVALID', 'Tensor state payload is not canonical base64.', path);
-  }
-  try {
-    if (typeof atob === 'function') {
-      const binary = atob(value);
-      const bytes = Uint8Array.from(binary, (character) => character.charCodeAt(0));
-      let encoded = '';
-      for (const byte of bytes) encoded += String.fromCharCode(byte);
-      if (btoa(encoded) !== value) fail('TORCH_EXPORT_STATE_INVALID', 'Tensor state base64 must use canonical padding.', path);
-      return bytes;
-    }
-    if (typeof Buffer !== 'undefined') {
-      const bytes = Uint8Array.from(Buffer.from(value, 'base64'));
-      if (Buffer.from(bytes).toString('base64') !== value) fail('TORCH_EXPORT_STATE_INVALID', 'Tensor state base64 must use canonical padding.', path);
-      return bytes;
-    }
-  } catch {
-    fail('TORCH_EXPORT_STATE_INVALID', 'Tensor state payload could not be decoded.', path);
-  }
-  fail('TORCH_EXPORT_STATE_INVALID', 'Base64 decoding is unavailable.', path);
-}
-
 function shapeElementCount(shape, path) {
   return shape.reduce((count, dimension, index) => {
     if (dimension.kind !== 'static') fail('TORCH_EXPORT_SHAPE_UNSUPPORTED', 'Parameter shapes must be static.', path + '[' + index + ']');
     const next = count * dimension.value;
     if (!Number.isSafeInteger(next) || next > MAX_TORCH_EXPORT_TENSOR_ELEMENTS) {
-      fail('TORCH_EXPORT_STATE_LIMIT', 'Tensor state exceeds the element bound.', path);
+      fail('TORCH_EXPORT_STATE_LIMIT', 'Tensor metadata exceeds the element bound.', path);
     }
     return next;
   }, 1);
 }
 
-function validateParameter(parameter, path) {
-  exactObject(parameter, ['id', 'target', 'dtype', 'shape', 'encoding', 'data'], path);
-  boundedString(parameter.id, path + '.id', IDENTIFIER, 64);
-  boundedString(parameter.target, path + '.target', TARGET, 128);
-  validateDtype(parameter.dtype, path + '.dtype');
-  boundedArray(parameter.shape, path + '.shape', 8);
-  if (parameter.shape.length !== 1 && parameter.shape.length !== 2) fail('TORCH_EXPORT_SHAPE_UNSUPPORTED', 'Parameters must be rank one or two.', path + '.shape');
-  parameter.shape.forEach((dimension, index) => validateDimension(dimension, path + '.shape[' + index + ']'));
-  if (parameter.encoding !== 'base64-le') fail('TORCH_EXPORT_STATE_INVALID', 'Tensor state encoding must be little-endian base64.', path + '.encoding');
-  const expectedBytes = shapeElementCount(parameter.shape, path + '.shape') * (parameter.dtype === 'float32' ? 4 : 2);
-  const bytes = decodeBase64(parameter.data, path + '.data');
-  if (bytes.byteLength !== expectedBytes) fail('TORCH_EXPORT_STATE_INVALID', 'Tensor state byte length does not match shape and dtype.', path + '.data');
-  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (parameter.dtype === 'float32') {
-    for (let offset = 0; offset < bytes.length; offset += 4) {
-      if (!Number.isFinite(view.getFloat32(offset, true))) fail('TORCH_EXPORT_STATE_INVALID', 'Tensor state must contain finite values.', path + '.data');
-    }
-  } else {
-    for (let offset = 0; offset < bytes.length; offset += 2) {
-      const bits = view.getUint16(offset, true);
-      if (((bits >> 10) & 0x1f) === 0x1f) fail('TORCH_EXPORT_STATE_INVALID', 'Tensor state must contain finite values.', path + '.data');
-    }
-  }
-  return expectedBytes;
+function validateTensorMetadata(entry, expectedKind, path) {
+  exactObject(entry, ['id', 'target', 'name', 'kind', 'dtype', 'shape', 'requiresGrad'], path);
+  boundedString(entry.id, path + '.id', IDENTIFIER, 64);
+  boundedString(entry.target, path + '.target', TARGET, 128);
+  boundedString(entry.name, path + '.name', IDENTIFIER, 64);
+  if (entry.kind !== expectedKind) fail('TORCH_EXPORT_STATE_INVALID', 'Tensor metadata kind does not match its collection.', path + '.kind');
+  validateDtype(entry.dtype, path + '.dtype');
+  boundedArray(entry.shape, path + '.shape', 8);
+  if (entry.shape.length !== 1 && entry.shape.length !== 2) fail('TORCH_EXPORT_SHAPE_UNSUPPORTED', 'State metadata must be rank one or two.', path + '.shape');
+  entry.shape.forEach((dimension, index) => validateDimension(dimension, path + '.shape[' + index + ']'));
+  shapeElementCount(entry.shape, path + '.shape');
+  if (typeof entry.requiresGrad !== 'boolean') fail('TORCH_EXPORT_STATE_INVALID', 'requiresGrad must be a boolean metadata value.', path + '.requiresGrad');
+  return entry;
 }
 
 function validateSpec(spec, path, options) {
@@ -170,7 +135,10 @@ function validateInput(input, path) {
   exactObject(input, ['id', 'name', 'kind', 'target', 'spec'], path);
   boundedString(input.id, path + '.id', IDENTIFIER, 64);
   boundedString(input.name, path + '.name', IDENTIFIER, 64);
-  if (!['USER_INPUT', 'PARAMETER'].includes(input.kind)) fail('TORCH_EXPORT_INPUT_UNSUPPORTED', 'Only user tensor and parameter inputs are supported.', path + '.kind');
+  if (input.kind === 'BUFFER' || input.kind === 'CONSTANT_TENSOR') {
+    fail('TORCH_EXPORT_STATE_UNSUPPORTED', 'Buffer and constant tensor inputs are identified but not imported.', path + '.kind');
+  }
+  if (!['USER_INPUT', 'PARAMETER'].includes(input.kind)) fail('TORCH_EXPORT_INPUT_UNSUPPORTED', 'Graph-signature input kind is unsupported.', path + '.kind');
   if (input.kind === 'USER_INPUT') {
     if (input.target !== null) fail('TORCH_EXPORT_DOCUMENT_INVALID', 'User input target must be null.', path + '.target');
   } else {
@@ -204,13 +172,7 @@ function validateOperand(value, path) {
 function validateNode(node, index, path) {
   exactObject(node, ['id', 'target', 'args', 'kwargs', 'metadata'], path);
   if (node.id !== 'n' + index) fail('TORCH_EXPORT_GRAPH_INVALID', 'Operator IDs must be contiguous and topological.', path + '.id');
-  if (!['aten.linear.default', 'aten.relu.default', 'aten.sigmoid.default', 'aten.tanh.default', 'aten.softmax.int'].includes(node.target)) {
-    fail('TORCH_EXPORT_OPERATOR_UNSUPPORTED', 'ATen overload is not in the supported allowlist.', path + '.target');
-  }
-  const componentId = componentIdForTarget(node.target);
-  if (!componentId || !componentById.has(componentId)) {
-    fail('TORCH_EXPORT_COMPONENT_UNAVAILABLE', 'ATen mapping has no registered VOLK component.', path + '.target');
-  }
+  boundedString(node.target, path + '.target', TARGET, 128);
   boundedArray(node.args, path + '.args', 4);
   node.args.forEach((operand, operandIndex) => validateOperand(operand, path + '.args[' + operandIndex + ']'));
   exactObject(node.kwargs, [], path + '.kwargs');
@@ -218,6 +180,13 @@ function validateNode(node, index, path) {
   validateDtype(node.metadata.dtype, path + '.metadata.dtype');
   validateShape(node.metadata.shape, path + '.metadata.shape', { allowBatchSymbol: true });
   if (node.metadata.layout !== 'strided') fail('TORCH_EXPORT_LAYOUT_UNSUPPORTED', 'Only strided tensor layout is supported.', path + '.metadata.layout');
+  if (!['aten.linear.default', 'aten.relu.default', 'aten.sigmoid.default', 'aten.tanh.default', 'aten.softmax.int'].includes(node.target)) {
+    fail('TORCH_EXPORT_OPERATOR_UNSUPPORTED', 'ATen overload is not in the supported allowlist.', path + '.target');
+  }
+  const componentId = componentIdForTarget(node.target);
+  if (!componentId || !componentById.has(componentId)) {
+    fail('TORCH_EXPORT_COMPONENT_UNAVAILABLE', 'ATen mapping has no registered VOLK component.', path + '.target');
+  }
   return node;
 }
 
@@ -229,13 +198,17 @@ function validateOutput(output, path) {
 }
 
 function validateDocumentShape(document) {
-  exactObject(document, ['type', 'version', 'exporter', 'graph', 'state', 'documentFingerprint'], '$');
+  exactObject(document, ['type', 'version', 'exporter', 'model', 'extractor', 'graph', 'state', 'documentFingerprint'], '$');
   if (document.type !== TORCH_EXPORT_DOCUMENT_TYPE || document.version !== TORCH_EXPORT_DOCUMENT_VERSION) {
     fail('TORCH_EXPORT_DOCUMENT_VERSION_UNSUPPORTED', 'Torch Export document version is unsupported.', '$.version');
   }
   exactObject(document.exporter, ['name', 'torchVersion'], '$.exporter');
   if (document.exporter.name !== 'torch.export') fail('TORCH_EXPORT_DOCUMENT_INVALID', 'Exporter name must be torch.export.', '$.exporter.name');
   boundedString(document.exporter.torchVersion, '$.exporter.torchVersion', TORCH_VERSION, 32);
+  exactObject(document.model, ['identifier'], '$.model');
+  boundedString(document.model.identifier, '$.model.identifier', IDENTIFIER, 64);
+  exactObject(document.extractor, ['schemaVersion'], '$.extractor');
+  if (document.extractor.schemaVersion !== 2) fail('TORCH_EXPORT_DOCUMENT_VERSION_UNSUPPORTED', 'Torch Export extractor schema version is unsupported.', '$.extractor.schemaVersion');
   exactObject(document.graph, ['inputs', 'nodes', 'outputs', 'rangeConstraints'], '$.graph');
   boundedArray(document.graph.inputs, '$.graph.inputs', MAX_TORCH_EXPORT_INPUTS_AND_STATE);
   boundedArray(document.graph.nodes, '$.graph.nodes', MAX_TORCH_EXPORT_OPS);
@@ -259,24 +232,22 @@ function validateDocumentShape(document) {
   boundedArray(document.state.parameters, '$.state.parameters', MAX_TORCH_EXPORT_INPUTS_AND_STATE);
   boundedArray(document.state.buffers, '$.state.buffers', MAX_TORCH_EXPORT_INPUTS_AND_STATE);
   boundedArray(document.state.constants, '$.state.constants', MAX_TORCH_EXPORT_INPUTS_AND_STATE);
-  if (document.state.buffers.length || document.state.constants.length) {
-    fail('TORCH_EXPORT_STATE_UNSUPPORTED', 'Buffers and exported constants are not supported in this import.', '$.state');
-  }
   const ids = new Set();
   const targets = new Set();
-  let stateBytes = 0;
-  for (const [index, parameter] of document.state.parameters.entries()) {
-    const path = '$.state.parameters[' + index + ']';
-    stateBytes += validateParameter(parameter, path);
-    if (ids.has(parameter.id) || targets.has(parameter.target)) fail('TORCH_EXPORT_STATE_INVALID', 'Parameter IDs and targets must be unique.', path);
-    ids.add(parameter.id);
-    targets.add(parameter.target);
+  for (const [collection, kind] of [['parameters', 'PARAMETER'], ['buffers', 'BUFFER'], ['constants', 'CONSTANT_TENSOR']]) {
+    for (const [index, entry] of document.state[collection].entries()) {
+      const path = '$.state.' + collection + '[' + index + ']';
+      validateTensorMetadata(entry, kind, path);
+      if (ids.has(entry.id) || targets.has(entry.target)) fail('TORCH_EXPORT_STATE_INVALID', 'State metadata IDs and targets must be unique.', path);
+      ids.add(entry.id);
+      targets.add(entry.target);
+    }
   }
-  if (stateBytes > MAX_TORCH_EXPORT_STATE_BYTES) fail('TORCH_EXPORT_STATE_LIMIT', 'Aggregate tensor state exceeds the byte bound.', '$.state.parameters');
-  if (document.graph.inputs.length + document.state.parameters.length > MAX_TORCH_EXPORT_INPUTS_AND_STATE) {
+  const stateEntryCount = document.state.parameters.length + document.state.buffers.length + document.state.constants.length;
+  if (document.graph.inputs.length + stateEntryCount > MAX_TORCH_EXPORT_INPUTS_AND_STATE) {
     fail('TORCH_EXPORT_DOCUMENT_LIMIT', 'Input and state entry count exceeds the document bound.', '$.graph.inputs');
   }
-  boundedString(document.documentFingerprint, '$.documentFingerprint', /^[a-z][a-z0-9-]{0,31}-v1-[a-f0-9]{16}-[a-f0-9]+$/, 96);
+  boundedString(document.documentFingerprint, '$.documentFingerprint', SHA256_FINGERPRINT, 71);
 }
 
 function resolveShapeSymbol(shape, path) {
@@ -286,6 +257,9 @@ function resolveShapeSymbol(shape, path) {
 }
 
 function validateLineage(document) {
+  if (document.state.buffers.length || document.state.constants.length) {
+    fail('TORCH_EXPORT_STATE_UNSUPPORTED', 'Buffer and constant tensor metadata are identified but not imported.', '$.state');
+  }
   const inputsById = new Map(document.graph.inputs.map((input) => [input.id, input]));
   if (inputsById.size !== document.graph.inputs.length) fail('TORCH_EXPORT_GRAPH_INVALID', 'Input IDs must be unique.', '$.graph.inputs');
   const userInputs = document.graph.inputs.filter((input) => input.kind === 'USER_INPUT');
@@ -312,7 +286,7 @@ function validateLineage(document) {
   if (parameterInputs.length !== parametersById.size) fail('TORCH_EXPORT_STATE_INVALID', 'Every parameter must have one matching graph input.', '$.graph.inputs');
   for (const input of parameterInputs) {
     const parameter = parametersById.get(input.id);
-    if (!parameter || parameter.target !== input.target || parameter.dtype !== input.spec.dtype
+    if (!parameter || parameter.target !== input.target || parameter.name !== input.name || parameter.dtype !== input.spec.dtype
       || !sameJson(parameter.shape, input.spec.shape)) {
       fail('TORCH_EXPORT_STATE_INVALID', 'Parameter graph input does not match its state record.', '$.graph.inputs.' + input.id);
     }
@@ -415,7 +389,7 @@ function assertDocumentSize(document) {
   }
 }
 
-/** Validate, clone, and return a strict normalized TorchExportDocumentV1. */
+/** Validate, clone, and return a strict normalized TorchExportDocumentV2. */
 export function validateTorchExportDocument(value) {
   if (!isRecord(value)) fail('TORCH_EXPORT_DOCUMENT_INVALID', 'Document root must be a plain object.', '$');
   assertDocumentSize(value);
@@ -423,7 +397,7 @@ export function validateTorchExportDocument(value) {
   try { document = structuredClone(value); } catch { fail('TORCH_EXPORT_DOCUMENT_INVALID', 'Document cannot be cloned as JSON data.', '$'); }
   validateDocumentShape(document);
   validateLineage(document);
-  const expectedFingerprint = fingerprintJsonV1(canonicalDocumentContent(document), 'torch-export-doc');
+  const expectedFingerprint = artifactFingerprintJsonV1(canonicalDocumentContent(document));
   if (document.documentFingerprint !== expectedFingerprint) {
     fail('TORCH_EXPORT_FINGERPRINT_MISMATCH', 'Document fingerprint does not match its normalized content.', '$.documentFingerprint');
   }

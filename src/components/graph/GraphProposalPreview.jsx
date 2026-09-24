@@ -19,6 +19,8 @@ const producerKey = (producer) => ({
 const valueKey = (value) => `graphApply.value.${value}`;
 const conversionWarningKey = (warning) => ({
   'trained-weights-not-imported': 'graphApply.warning.trainedWeightsNotImported',
+  'APPROXIMATED:high-level-module-structure': 'graphApply.approximated.highLevelModuleStructure',
+  'MISSING:original-python-structure': 'graphApply.missing.originalPythonStructure',
   'MISSING:trained-parameter-values': 'graphApply.missing.trainedParameterValues',
   'MISSING:batch-range-constraints': 'graphApply.missing.batchRangeConstraints',
 }[warning]);

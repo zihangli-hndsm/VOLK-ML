@@ -46,6 +46,8 @@ export const messages = {
   'graphApply.value.adapter-verified': { en: 'Adapter-verified; graph rematerialized from source', zh: '已由适配器验证并从来源文档重新生成图' },
   'graphApply.value.producer-declared': { en: 'Declared by proposal source', zh: '由提案来源声明' },
   'graphApply.warning.trainedWeightsNotImported': { en: 'Architecture only: trained parameter values are not imported.', zh: '仅导入模型结构，不导入已训练参数值。' },
+  'graphApply.approximated.highLevelModuleStructure': { en: 'High-level module structure is represented by the supported operator chain.', zh: '高层模块结构由受支持的算子链表示。' },
+  'graphApply.missing.originalPythonStructure': { en: 'Original Python module classes and source structure are not retained.', zh: '不会保留原始 Python 模块类和源代码结构。' },
   'graphApply.missing.trainedParameterValues': { en: 'Trained parameter values are not copied into the workspace.', zh: '已训练参数值不会复制到工作区。' },
   'graphApply.missing.batchRangeConstraints': { en: 'Dynamic batch-size constraints are retained only in source evidence.', zh: '动态批次大小约束仅保留在来源证据中。' },
   'graphApply.torchImportFailed': { en: 'This file is not a supported Torch Export JSON document. No proposal was opened.', zh: '此文件不是受支持的 Torch Export JSON 文档，未创建提案。' },

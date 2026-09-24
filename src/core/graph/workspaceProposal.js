@@ -26,8 +26,8 @@ export const WORKSPACE_GRAPH_PROPOSAL_VERSION = 1;
 export const WORKSPACE_GRAPH_PROPOSAL_TYPE = 'WorkspaceGraphProposalV1';
 export const GRAPH_SOURCE_VERSION = 2;
 export const GRAPH_CONVERSION_REPORT_VERSION = 2;
-export const TORCH_EXPORT_SOURCE_VERSION = 3;
-export const TORCH_EXPORT_CONVERSION_REPORT_VERSION = 3;
+export const TORCH_EXPORT_SOURCE_VERSION = 4;
+export const TORCH_EXPORT_CONVERSION_REPORT_VERSION = 4;
 
 const FIDELITIES = ['exact', 'structural', 'partial', 'unsupported'];
 const SOURCE_KINDS = ['planner', 'import'];
@@ -646,6 +646,10 @@ function validateInternal(value) {
   validateGraphIdentity(value.graph, value.graphIdentity);
   validateSourceSpecificEvidence(value.source, canonicalGraph);
   validateConversion(value.conversion, { sourceProducer: value.source.producer });
+  if (value.source.producer === 'torch-export-adapter'
+    && canonicalJsonString(value.conversion) !== canonicalJsonString(torchExportConversion)) {
+    fail('GRAPH_CONVERSION_INVALID', 'Torch Export conversion details must match the registered metadata-only adapter report.');
+  }
   const expectedVerification = value.source.producer === 'torch-export-adapter'
     ? 'adapter-verified'
     : IMPLEMENTED_VERIFIED_PRODUCERS.has(value.source.producer) ? 'volk-verified' : 'producer-declared';
@@ -1016,15 +1020,15 @@ const torchExportConversion = Object.freeze({
   verification: 'adapter-verified',
   exactFor: ['supported-operator-topology', 'activation-semantics', 'feature-dimensions', 'uniform-float-dtype'],
   preserved: ['operator-order', 'feature-dimensions', 'input-dtype', 'bias-presence'],
-  approximated: [],
-  missing: ['trained-parameter-values', 'batch-range-constraints'],
+  approximated: ['high-level-module-structure'],
+  missing: ['original-python-structure', 'trained-parameter-values', 'batch-range-constraints'],
   unsupported: [],
   warnings: ['trained-weights-not-imported'],
-  omitted: ['trained-parameter-values', 'batch-range-constraints'],
+  omitted: ['original-python-structure', 'trained-parameter-values', 'batch-range-constraints'],
 });
 
 /**
- * Create a detached proposal from a bounded TorchExportDocumentV1. The source
+ * Create a detached proposal from a bounded metadata-only TorchExportDocumentV2. The source
  * document remains embedded so proposal validation can rematerialize and bind
  * both graph semantics and layout before B1 preview/Apply.
  */

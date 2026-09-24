@@ -1,4 +1,4 @@
-"""Extract a bounded, non-executable TorchExportDocumentV1 from a trusted .pt2 file.
+"""Extract metadata-only TorchExportDocumentV2 records from a trusted ExportedProgram.
 
 torch.export.load uses pickle-backed data. Never point this CLI at an artifact
 from an untrusted source. The browser accepts only the resulting JSON document.
@@ -7,7 +7,7 @@ from an untrusted source. The browser accepts only the resulting JSON document.
 from __future__ import annotations
 
 import argparse
-import base64
+import hashlib
 import json
 import math
 import re
@@ -16,41 +16,29 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-DOCUMENT_TYPE = "TorchExportDocumentV1"
+DOCUMENT_TYPE = "TorchExportDocumentV2"
+DOCUMENT_VERSION = 2
+EXTRACTOR_SCHEMA_VERSION = 2
 MAX_DOCUMENT_CODE_UNITS = 500_000
 MAX_OPS = 64
 MAX_INPUTS_AND_STATE = 128
 MAX_TENSOR_ELEMENTS = 65_536
-MAX_STATE_BYTES = 196_608
 MAX_ARCHIVE_BYTES = 64 * 1024 * 1024
 MAX_ARCHIVE_UNPACKED_BYTES = 128 * 1024 * 1024
 IDENTIFIER = re.compile(r"^[A-Za-z][A-Za-z0-9_-]{0,63}$")
 TARGET = re.compile(r"^[A-Za-z][A-Za-z0-9_.]{0,127}$")
-SUPPORTED_TARGETS = {
-    "aten.linear.default",
-    "aten.relu.default",
-    "aten.sigmoid.default",
-    "aten.tanh.default",
-    "aten.softmax.int",
-}
 
 
 class ExtractionError(ValueError):
     """A safe, bounded error suitable for the local CLI."""
 
 
-def _fnv64_identity(value: dict[str, Any]) -> str:
-    serialized = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)
+def artifact_fingerprint_v1(value: dict[str, Any]) -> str:
+    """Hash normalized semantic JSON. This is not source authentication."""
+    serialized = json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
     if len(serialized) > MAX_DOCUMENT_CODE_UNITS:
         raise ExtractionError("Torch Export document exceeds the JSON size bound.")
-    # The emitted schema restricts all strings and keys to ASCII; code-point
-    # iteration therefore matches the browser's UTF-16-code-unit fingerprint.
-    mask = (1 << 64) - 1
-    digest = 14_695_981_039_346_656_037
-    for character in serialized:
-        digest ^= ord(character)
-        digest = (digest * 1_099_511_628_211) & mask
-    return f"torch-export-doc-v1-{digest:016x}-{len(serialized):x}"
+    return "sha256:" + hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
 def _preflight_pt2(path: Path) -> None:
@@ -100,41 +88,26 @@ def _static_shape(shape: Any, *, allow_vector: bool = False) -> list[dict[str, A
     return result
 
 
-def _tensor_record(identifier: str, target: str, tensor: Any) -> dict[str, Any]:
+def _tensor_metadata(identifier: str, target: str, name: str, kind: str, tensor: Any) -> dict[str, Any]:
     if not TARGET.fullmatch(target):
-        raise ExtractionError("Parameter target is not a bounded identifier.")
-    cpu_tensor = tensor.detach().to(device="cpu").contiguous()
-    dtype = _dtype_name(cpu_tensor.dtype)
-    shape = [{"kind": "static", "value": int(value)} for value in cpu_tensor.shape]
+        raise ExtractionError("State target is not a bounded identifier.")
+    if not IDENTIFIER.fullmatch(name):
+        raise ExtractionError("State name is not a bounded identifier.")
+    dtype = _dtype_name(tensor.dtype)
+    shape = [{"kind": "static", "value": int(value)} for value in tensor.shape]
     if len(shape) not in (1, 2):
-        raise ExtractionError("Only rank-one biases and rank-two weights are supported.")
+        raise ExtractionError("Only rank-one and rank-two state metadata are supported.")
     count = math.prod(dimension["value"] for dimension in shape)
     if count < 1 or count > MAX_TENSOR_ELEMENTS:
-        raise ExtractionError("Parameter tensor exceeds the element bound.")
-    try:
-        array = cpu_tensor.numpy()
-        if sys.byteorder != "little":
-            array = array.byteswap().view(array.dtype.newbyteorder("<"))
-        payload = array.tobytes(order="C")
-    except Exception as error:  # torch/numpy incompatibility is a safe extraction failure
-        raise ExtractionError("Could not encode tensor state as little-endian bytes.") from error
-    if dtype == "float16":
-        import struct
-
-        values = struct.iter_unpack("<e", payload)
-    else:
-        import struct
-
-        values = struct.iter_unpack("<f", payload)
-    if any(not math.isfinite(value[0]) for value in values):
-        raise ExtractionError("Parameter tensor contains a non-finite value.")
+        raise ExtractionError("Tensor metadata exceeds the element bound.")
     return {
         "id": identifier,
         "target": target,
+        "name": name,
+        "kind": kind,
         "dtype": dtype,
         "shape": shape,
-        "encoding": "base64-le",
-        "data": base64.b64encode(payload).decode("ascii"),
+        "requiresGrad": bool(getattr(tensor, "requires_grad", False)),
     }
 
 
@@ -182,15 +155,20 @@ def _range_constraints(program: Any) -> list[dict[str, Any]]:
     return constraints
 
 
-def _build_document(program: Any, torch: Any) -> dict[str, Any]:
+def _build_document(program: Any, torch: Any, model_identifier: str) -> dict[str, Any]:
+    if not IDENTIFIER.fullmatch(model_identifier):
+        raise ExtractionError("Model definition identifier is not a bounded identifier.")
     graph = program.graph_module.graph
     signature_by_name = {spec.arg.name: spec for spec in program.graph_signature.input_specs}
     placeholders = [node for node in graph.nodes if node.op == "placeholder"]
     graph_inputs = []
     parameters = []
-    state_bytes = 0
+    buffers = []
+    constants = []
     input_ids: dict[str, str] = {}
     parameter_index = 0
+    buffer_index = 0
+    constant_index = 0
     user_index = 0
     for placeholder in placeholders:
         signature = signature_by_name.get(placeholder.name)
@@ -205,28 +183,33 @@ def _build_document(program: Any, torch: Any) -> dict[str, Any]:
             entry_kind = "USER_INPUT"
             target = None
             name = f"input{user_index - 1}"
-        elif kind == "PARAMETER":
+        elif kind in {"PARAMETER", "BUFFER", "CONSTANT_TENSOR"}:
             tensor = placeholder.meta.get("val")
             spec = _tensor_spec(tensor, allow_vector=True)
-            identifier = f"p{parameter_index}"
-            parameter_index += 1
-            entry_kind = "PARAMETER"
-            target = str(signature.target)
-            if not TARGET.fullmatch(target):
-                raise ExtractionError("Parameter target is not a bounded identifier.")
-            name = f"parameter{parameter_index - 1}"
-            state_tensor = program.state_dict.get(target)
-            if state_tensor is None:
-                raise ExtractionError("Exported parameter state is missing from the document.")
-            parameter = _tensor_record(identifier, target, state_tensor)
-            state_bytes += len(base64.b64decode(parameter["data"]))
-            if state_bytes > MAX_STATE_BYTES:
-                raise ExtractionError("Exported parameter state exceeds the aggregate byte bound.")
-            if parameter["dtype"] != spec["dtype"] or parameter["shape"] != spec["shape"]:
-                raise ExtractionError("Parameter fake-tensor metadata does not match its state.")
-            parameters.append(parameter)
+            if kind == "PARAMETER":
+                identifier = f"p{parameter_index}"
+                name = f"parameter{parameter_index}"
+                collection = parameters
+                parameter_index += 1
+            elif kind == "BUFFER":
+                identifier = f"b{buffer_index}"
+                name = f"buffer{buffer_index}"
+                collection = buffers
+                buffer_index += 1
+            else:
+                identifier = f"c{constant_index}"
+                name = f"constant{constant_index}"
+                collection = constants
+                constant_index += 1
+            entry_kind = kind
+            raw_target = getattr(signature, "target", None)
+            if raw_target is None:
+                raise ExtractionError("State graph-signature entry is missing its target identifier.")
+            target = str(raw_target)
+            collection.append(_tensor_metadata(identifier, target, name, kind, tensor))
         else:
-            raise ExtractionError("Only USER_INPUT and PARAMETER graph-signature entries are supported.")
+            bounded_kind = kind[:64] if isinstance(kind, str) else "unknown"
+            raise ExtractionError(f"Unsupported graph-signature input kind: {bounded_kind}")
         input_ids[placeholder.name] = identifier
         graph_inputs.append({
             "id": identifier,
@@ -244,8 +227,10 @@ def _build_document(program: Any, torch: Any) -> dict[str, Any]:
         if node.op != "call_function":
             raise ExtractionError("Only direct call_function ATen nodes are supported.")
         target = str(node.target)
-        if target not in SUPPORTED_TARGETS:
-            raise ExtractionError(f"Unsupported ATen target: {target[:96]}")
+        if not TARGET.fullmatch(target):
+            raise ExtractionError("ATen target is not a bounded identifier.")
+        if node.kwargs:
+            raise ExtractionError("Call-function keyword arguments are outside the bounded operand schema.")
         identifier = f"n{len(exported_nodes)}"
         node_ids[node.name] = identifier
         exported_nodes.append({
@@ -273,25 +258,42 @@ def _build_document(program: Any, torch: Any) -> dict[str, Any]:
         output_tensor = output_tensor[0]
     document = {
         "type": DOCUMENT_TYPE,
-        "version": 1,
+        "version": DOCUMENT_VERSION,
         "exporter": {"name": "torch.export", "torchVersion": str(torch.__version__)[:32]},
+        "model": {"identifier": model_identifier},
+        "extractor": {"schemaVersion": EXTRACTOR_SCHEMA_VERSION},
         "graph": {
             "inputs": graph_inputs,
             "nodes": exported_nodes,
             "outputs": [{"kind": "USER_OUTPUT", "value": output_value, "spec": _tensor_spec(output_tensor)}],
             "rangeConstraints": _range_constraints(program),
         },
-        "state": {"parameters": parameters, "buffers": [], "constants": []},
+        "state": {"parameters": parameters, "buffers": buffers, "constants": constants},
     }
-    if len(exported_nodes) > MAX_OPS or len(graph_inputs) + len(parameters) > MAX_INPUTS_AND_STATE:
+    state_entries = len(parameters) + len(buffers) + len(constants)
+    if len(exported_nodes) > MAX_OPS or len(graph_inputs) + state_entries > MAX_INPUTS_AND_STATE:
         raise ExtractionError("Exported graph exceeds the operation or state-entry bound.")
-    document["documentFingerprint"] = _fnv64_identity(document)
+    document["documentFingerprint"] = artifact_fingerprint_v1(document)
     if len(json.dumps(document, ensure_ascii=False)) > MAX_DOCUMENT_CODE_UNITS:
         raise ExtractionError("Torch Export document exceeds the JSON size bound.")
     return document
 
 
-def extract_torch_export_document(path: str | Path, *, trusted: bool = False) -> dict[str, Any]:
+def extract_exported_program(program: Any, model_identifier: str = "anonymous-exported-program") -> dict[str, Any]:
+    """Normalize an already-loaded ExportedProgram without copying tensor values."""
+    try:
+        import torch
+    except ImportError as error:
+        raise ExtractionError("PyTorch must already be installed locally; this tool does not install it.") from error
+    try:
+        return _build_document(program, torch, model_identifier)
+    except ExtractionError:
+        raise
+    except Exception as error:
+        raise ExtractionError("ExportedProgram could not be normalized within the bounded schema.") from error
+
+
+def extract_torch_export_document(path: str | Path, *, trusted: bool = False, model_identifier: str = "anonymous-exported-program") -> dict[str, Any]:
     """Load a local .pt2 only after explicit caller trust acknowledgement."""
     if trusted is not True:
         raise ExtractionError("Refusing to load pickle-backed .pt2 without explicit trusted=True acknowledgement.")
@@ -302,19 +304,20 @@ def extract_torch_export_document(path: str | Path, *, trusted: bool = False) ->
     _preflight_pt2(source)
     try:
         import torch
+
+        program = torch.export.load(source)
     except ImportError as error:
         raise ExtractionError("PyTorch must already be installed locally; this tool does not install it.") from error
-    try:
-        program = torch.export.load(source)
     except Exception as error:
         raise ExtractionError("Trusted .pt2 could not be loaded by the installed torch.export version.") from error
-    return _build_document(program, torch)
+    return extract_exported_program(program, model_identifier=model_identifier)
 
 
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Extract a bounded JSON graph document from a trusted local .pt2 file.")
     parser.add_argument("--input", required=True, help="Local .pt2 path produced by a trusted source.")
     parser.add_argument("--output", required=True, help="New JSON output path; existing files are not overwritten by default.")
+    parser.add_argument("--model-id", required=True, help="Stable bounded identifier for the model definition, not a file path.")
     parser.add_argument("--trusted-pt2", action="store_true", help="Acknowledge that torch.export.load uses pickle and the input is trusted.")
     parser.add_argument("--overwrite", action="store_true", help="Allow replacing the selected output JSON file.")
     args = parser.parse_args(argv)
@@ -325,7 +328,7 @@ def main(argv: list[str] | None = None) -> int:
     if source.resolve() == output.resolve():
         parser.error("Input and output paths must be different.")
     try:
-        document = extract_torch_export_document(source, trusted=True)
+        document = extract_torch_export_document(source, trusted=True, model_identifier=args.model_id)
         output.parent.mkdir(parents=True, exist_ok=True)
         payload = json.dumps(document, ensure_ascii=True, indent=2) + "\n"
         if args.overwrite:

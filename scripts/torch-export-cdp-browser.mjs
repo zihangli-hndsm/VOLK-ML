@@ -235,7 +235,7 @@ try {
   await openTorchExportPickerAndSetFile(validFixture);
   await waitFor('Boolean(document.querySelector("[data-graph-proposal-preview]"))', 'Torch Export proposal preview');
   const preview = await readPreviewState();
-  assert.equal(preview.previewNodes, 4);
+  assert.equal(preview.previewNodes, 5);
   assert.equal(preview.applyDisabled, false);
   assert.equal(preview.graphControls, 0);
   assert.match(preview.sourceText, /Adapter-verified/i);
@@ -261,11 +261,11 @@ try {
   await clickSelector('[data-graph-proposal-apply]');
   await waitFor('!document.querySelector("[data-graph-proposal-preview]")', 'preview to close after explicit Apply');
   const appliedProject = await currentProject();
-  assert.equal(appliedProject.graph.nodes.length, 4);
-  assert.equal(appliedProject.graph.edges.length, 3);
+  assert.equal(appliedProject.graph.nodes.length, 5);
+  assert.equal(appliedProject.graph.edges.length, 4);
   assert.equal(appliedProject.trainedModel, null);
   await captureScreenshot('desktop-applied.png');
-  scenarios.push({ id: 'explicit-apply-adds-architecture-only', result: 'PASS', nodes: 4, edges: 3, trainedModel: null });
+  scenarios.push({ id: 'explicit-apply-adds-reference-mlp-architecture-only', result: 'PASS', nodes: 5, edges: 4, trainedModel: null });
 
   await setLanguages('zh', null);
   const projectBeforeChinesePreview = await currentProject();
@@ -305,7 +305,10 @@ try {
   console.log(JSON.stringify(report, null, 2));
 } finally {
   if (cdp) {
-    try { await cdp.send('Browser.close'); } catch {}
+    await Promise.race([
+      cdp.send('Browser.close').catch(() => {}),
+      sleep(750),
+    ]);
   }
   cdp?.close();
   stopProcess(chromeProcess);

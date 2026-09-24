@@ -239,7 +239,7 @@ their adapters, authentication, and provider transport remain future work.
 ## B2 Torch Export JSON adapter
 
 The local Torch Export adapter maps a bounded, non-executable
-TorchExportDocumentV1 into the existing WorkspaceGraphProposalV1 boundary.
+TorchExportDocumentV2 into the existing WorkspaceGraphProposalV1 boundary.
 Build More exposes “Import Torch Export JSON”; selecting a file only parses and
 stages a detached proposal. The B1 read-only preview, Cancel, latest-snapshot
 revalidation, empty-workspace check, and explicit Apply remain authoritative.
@@ -247,68 +247,68 @@ The browser accepts JSON only and never opens a .pt2 archive.
 
 The document has strict, unknown-field-rejecting objects:
 
-- Root: type, version, exporter, graph, state, documentFingerprint.
-- Exporter: name=torch.export and a bounded ASCII torchVersion.
+- Root: type, version, exporter, model, extractor, graph, state, and
+  documentFingerprint. Exporter records the bounded PyTorch version; model has
+  a stable model-definition identifier; extractor records its schema version.
 - Graph: ordered inputs, topological nodes, exactly one output, and finite
-  rangeConstraints.
-- Inputs: stable id/name, kind USER_INPUT or PARAMETER, target (null only for
-  USER_INPUT), and a dtype/shape spec. Shapes use only positive static
-  dimensions or one shared symbolic batch dimension in axis 0.
-- Nodes: contiguous n0..n63 IDs, exact target overload, typed args, empty
-  kwargs, and only dtype/shape/layout metadata. Output layout is strided.
-- State: parameters, buffers, constants. Parameter payloads are little-endian
-  float16/float32 base64 tensors. Buffers and constants are currently required
-  to be empty.
+  rangeConstraints. Inputs distinguish USER_INPUT, PARAMETER, BUFFER, and
+  CONSTANT_TENSOR. Other graph-signature kinds are bounded explicit errors;
+  buffers/constants are recognized metadata but currently rejected for Apply.
+- State: parameters, buffers, and constants contain only target/name/kind,
+  dtype, shape, and requiresGrad metadata. Tensor values, byte payloads,
+  buffers, and constants are never serialized into the document or proposal.
+- Nodes: contiguous IDs, bounded ATen target names, typed arguments, and only
+  dtype/shape/layout metadata. Unsupported operators may appear in a bounded
+  normalized document, but the VOLK adapter rejects them before proposal
+  creation. The supported target allowlist is checked against registered
+  VOLK components.
 - Output: exactly one USER_OUTPUT reference matching the inferred final tensor.
 
-The initial exact overload allowlist is:
+The current supported chain is one rank-2 input-to-output path with at least
+one Linear, no fanout, shared or unused parameters, mutation, buffer/constant
+execution, extra user inputs/outputs, or unsupported operators. The reference
+fixture is `Linear(8,32) → ReLU → Linear(32,4)`. The importer carries only
+architecture dimensions and bias-presence into editable Dense components;
+it never imports trained values or marks a model trained. Shape/dtype
+relationships are recomputed and checked against each operator's metadata.
+Only static feature dimensions are materialized; symbolic batch constraints
+remain in source evidence and are reported as missing from the target graph.
 
-| ATen target | Accepted arguments | VOLK component |
-| --- | --- | --- |
-| aten.linear.default | rank-2 input, rank-2 [out,in] weight, optional rank-1 [out] bias; matching float16/float32 | dense_node |
-| aten.relu.default | one rank-2 tensor | relu_node |
-| aten.sigmoid.default | one rank-2 tensor | sigmoid_node |
-| aten.tanh.default | one rank-2 tensor | tanh_node |
-| aten.softmax.int | rank-2 tensor, dim=-1 or 1, dtype=None | softmax_node with axis=-1 |
+Bounds are 500,000 JSON code units per document, 64 operators, 128 graph
+input/state entries, at most 65,536 metadata elements per state tensor, rank at
+most 8, and static dimensions at most 1,000,000. The optional batch symbol has
+exactly one finite range with 1 <= min <= max <= 1,000,000.
 
-The graph must be one single-use input-to-output chain containing at least one
-Linear, with no fanout, shared or unused parameters, extra user inputs/outputs,
-mutation, buffers/constants, or non-allowlisted operators. Every operator's
-fake-tensor metadata is checked against inferred shape and dtype. Only static
-feature dimensions are materialized; symbolic batch constraints remain in
-source evidence and are listed as missing from the target graph. Parameter
-values are retained only in the bounded source document for revalidation; they
-are not copied into VOLK trained-model state.
+`documentFingerprint` is `sha256:<hex>` over canonical semantic JSON with the
+fingerprint field omitted. Python and browser-side JavaScript use the same
+sorted-key UTF-8 serialization and SHA-256 algorithm; validation recomputes it.
+This artifact fingerprint is distinct from VOLK GraphIdentity and is not a
+signature, source authentication, or proof of PyTorch origin. GraphIdentity
+keeps its existing implementation.
 
-Bounds are: 500,000 JSON code units per document, 64 operators, 128 combined
-graph input/state entries, rank at most 8 (supported operators currently
-require rank 2), at most 65,536 elements per tensor, and 196,608 aggregate
-parameter bytes. Static dimensions are at most 1,000,000. The optional batch
-symbol has exactly one finite range with 1 <= min <= max <= 1,000,000.
-Document identity uses fingerprintJsonV1 over the normalized document without
-documentFingerprint. This stable non-cryptographic fingerprint is not a
-signature or proof of PyTorch origin.
-
-Torch proposals use source version 3 and conversion-report version 3;
-existing version-2 Build Agent, VOLK project, and source-neutral proposals
-remain valid. The source embeds the complete validated TorchExportDocumentV1.
-Revalidation recomputes its fingerprint, validates the allowlist and tensor
+The conversion report identifies high-level module structure as approximated
+and original Python classes/source structure, trained parameter values, and
+batch-range constraints as missing. Torch proposals use source version 4 and
+conversion-report version 4; other version-2 proposal families remain valid.
+The source embeds the complete validated metadata-only document. Revalidation
+recomputes its SHA-256 fingerprint, validates the allowlist and metadata
 references, deterministically rematerializes stable node/edge IDs and layout,
-then compares canonical semantic and presentation graph identities. The
-specialized factory alone can emit adapter-verified. That label means the
+then compares canonical semantic and presentation graph identities and the
+registered conversion report. `adapter-verified` means only that the bounded
 document-to-graph mapping was revalidated; it does not authenticate the
 document's producer or origin.
 
-tools/torch_export/extract_torch_export.py is a local-only helper that exports
-a normalized JSON document. Its callable requires trusted=True and its CLI
-requires --trusted-pt2. It preflights a local regular .pt2 archive, caps input
-and expanded archive sizes, and refuses to overwrite an output unless
---overwrite is supplied. torch.export.load is pickle-backed: run it only on a
-trusted artifact. The application and Cloud never load .pt2, and PyTorch is
-not installed as part of VOLK-ML setup. The extractor records the installed
-torch version; unsupported exporter versions, graph signatures, operators,
-state, and symbolic constraints fail closed.
+`tools/torch_export/extract_torch_export.py` exposes
+`extract_exported_program(program, model_identifier=...)` as the reusable
+function for an already-loaded ExportedProgram. The independent .pt2 convenience
+wrapper/CLI requires explicit `trusted=True` / `--trusted-pt2`, plus a stable
+`--model-id`; `torch.export.load` is pickle-backed and must only load a trusted
+local artifact. The helper preflights archive sizes and refuses to overwrite
+output unless `--overwrite` is supplied. The application and Cloud never load
+.pt2, and PyTorch is not installed as part of VOLK-ML setup. Without PyTorch,
+contract and digest tests still run, while the real ExportedProgram integration
+is explicitly skipped rather than installing dependencies.
 
 Example local invocation:
 
-    python tools/torch_export/extract_torch_export.py --input model.pt2 --output model.json --trusted-pt2
+    python tools/torch_export/extract_torch_export.py --input model.pt2 --output model.json --model-id my-model --trusted-pt2
