@@ -1,0 +1,122 @@
+{
+  "type": "TorchExportDocumentV1",
+  "version": 1,
+  "exporter": {
+    "name": "torch.export",
+    "torchVersion": "2.5.0"
+  },
+  "graph": {
+    "inputs": [
+      {
+        "id": "i0",
+        "name": "features",
+        "kind": "USER_INPUT",
+        "target": null,
+        "spec": {
+          "dtype": "float32",
+          "shape": [
+            { "kind": "symbol", "name": "batch" },
+            { "kind": "static", "value": 2 }
+          ]
+        }
+      },
+      {
+        "id": "p0",
+        "name": "weight0",
+        "kind": "PARAMETER",
+        "target": "layers.0.weight",
+        "spec": {
+          "dtype": "float32",
+          "shape": [
+            { "kind": "static", "value": 2 },
+            { "kind": "static", "value": 2 }
+          ]
+        }
+      },
+      {
+        "id": "p1",
+        "name": "bias0",
+        "kind": "PARAMETER",
+        "target": "layers.0.bias",
+        "spec": {
+          "dtype": "float32",
+          "shape": [{ "kind": "static", "value": 2 }]
+        }
+      }
+    ],
+    "nodes": [
+      {
+        "id": "n0",
+        "target": "aten.linear.default",
+        "args": [
+          { "kind": "input", "id": "i0" },
+          { "kind": "input", "id": "p0" },
+          { "kind": "input", "id": "p1" }
+        ],
+        "kwargs": {},
+        "metadata": {
+          "dtype": "float32",
+          "shape": [
+            { "kind": "symbol", "name": "batch" },
+            { "kind": "static", "value": 2 }
+          ],
+          "layout": "strided"
+        }
+      },
+      {
+        "id": "n1",
+        "target": "aten.relu.default",
+        "args": [{ "kind": "node", "id": "n0" }],
+        "kwargs": {},
+        "metadata": {
+          "dtype": "float32",
+          "shape": [
+            { "kind": "symbol", "name": "batch" },
+            { "kind": "static", "value": 2 }
+          ],
+          "layout": "strided"
+        }
+      }
+    ],
+    "outputs": [
+      {
+        "kind": "USER_OUTPUT",
+        "value": { "kind": "node", "id": "n1" },
+        "spec": {
+          "dtype": "float32",
+          "shape": [
+            { "kind": "symbol", "name": "batch" },
+            { "kind": "static", "value": 2 }
+          ]
+        }
+      }
+    ],
+    "rangeConstraints": [{ "symbol": "batch", "min": 1, "max": 128 }]
+  },
+  "state": {
+    "parameters": [
+      {
+        "id": "p0",
+        "target": "layers.0.weight",
+        "dtype": "float32",
+        "shape": [
+          { "kind": "static", "value": 2 },
+          { "kind": "static", "value": 2 }
+        ],
+        "encoding": "base64-le",
+        "data": "AACAPwAAAAAAAAAAAACAPw=="
+      },
+      {
+        "id": "p1",
+        "target": "layers.0.bias",
+        "dtype": "float32",
+        "shape": [{ "kind": "static", "value": 2 }],
+        "encoding": "base64-le",
+        "data": "AAAAAAAAAAA="
+      }
+    ],
+    "buffers": [],
+    "constants": []
+  },
+  "documentFingerprint": "torch-export-doc-v1-326cc26ffa9b75f0-686"
+}

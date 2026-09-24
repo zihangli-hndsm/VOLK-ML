@@ -22,11 +22,13 @@ export default function BuildToolbar({
   exportProject,
   importRef,
   importProject,
+  importTorchExport,
   onOpenExplorePlayground,
   onExploreCurrentSetup,
   setRunnerOpen,
   t,
 }) {
+  const torchExportImportRef = React.useRef(null);
   return <section data-build-toolbar aria-label={t('surface.buildToolbar')} className="z-30 border-b border-white/70 bg-white/80 px-3 py-3 shadow-sm backdrop-blur sm:px-5">
     <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-2">
       <label className="mr-auto min-w-0 basis-full sm:basis-auto">
@@ -51,9 +53,18 @@ export default function BuildToolbar({
         exportProject={exportProject}
         importRef={importRef}
         importProject={importProject}
+        onPickTorchExport={() => torchExportImportRef.current?.click()}
         onOpenExplorePlayground={onOpenExplorePlayground}
         onExploreCurrentSetup={onExploreCurrentSetup}
         t={t}
+      />
+      <input
+        ref={torchExportImportRef}
+        type="file"
+        accept="application/json,.json"
+        data-torch-export-document-input
+        className="hidden"
+        onChange={importTorchExport}
       />
     </div>
   </section>;
@@ -73,6 +84,7 @@ function BuildMoreDisclosure({
   exportProject,
   importRef,
   importProject,
+  onPickTorchExport,
   onOpenExplorePlayground,
   onExploreCurrentSetup,
   t,
@@ -122,6 +134,7 @@ function BuildMoreDisclosure({
     <button type="button" className={actionClass} onClick={() => { onExploreCurrentSetup?.('data-lab'); close(); }}>✦ {t('nav.exploreCurrentSetup')}</button>
     <button type="button" className={actionClass} onClick={() => { exportProject(); close(); }}>↓ JSON</button>
     <button type="button" className={actionClass} onClick={() => { close(); importRef.current?.click(); }}>↑ {t('nav.import')}</button>
+    <button type="button" data-torch-export-import className={actionClass} onClick={() => { close(); onPickTorchExport?.(); }}>↑ {t('nav.importTorchExport')}</button>
     <input ref={importRef} type="file" accept="application/json,.json" className="hidden" onChange={(event) => { importProject(event); close(); }} />
     <label className="mt-1 border-t border-slate-100 px-3 pt-2">
       <span className="sr-only">{t('nav.playground')}</span>

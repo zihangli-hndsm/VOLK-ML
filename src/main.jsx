@@ -44,7 +44,8 @@ import { UI_SURFACES } from './core/ui/uiArchitecture.js';
 import { createBuildPanelPresentation, toggleBuildPanel } from './core/ui/buildSurfacePresentation.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
 import { commitWorkspaceGraphApply, prepareWorkspaceGraphApply } from './core/graph/workspaceApply.js';
-import { validateWorkspaceGraphProposal } from './core/graph/workspaceProposal.js';
+import { createTorchExportGraphProposal, validateWorkspaceGraphProposal } from './core/graph/workspaceProposal.js';
+import { MAX_TORCH_EXPORT_DOCUMENT_CODE_UNITS } from './core/graph/torchExportAdapter.js';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
@@ -673,6 +674,27 @@ function Workspace() {
     setStagedGraphProposal(checked.proposal);
     return { ok: true, proposalId: checked.proposal.proposalId };
   }, []);
+  const importTorchExportDocument = useCallback(async (event) => {
+    const input = event.currentTarget;
+    const file = input.files?.[0];
+    input.value = '';
+    if (!file) return;
+    try {
+      if (file.size > MAX_TORCH_EXPORT_DOCUMENT_CODE_UNITS * 2) throw new Error('document-size');
+      const raw = await file.text();
+      if (raw.length > MAX_TORCH_EXPORT_DOCUMENT_CODE_UNITS) throw new Error('document-size');
+      const document = JSON.parse(raw);
+      const created = createTorchExportGraphProposal(document);
+      if (!created.ok) {
+        setNotice(t('graphApply.torchImportFailed'));
+        return;
+      }
+      const submitted = submitWorkspaceGraphProposal(created.proposal);
+      if (!submitted.ok) setNotice(t('graphApply.torchImportFailed'));
+    } catch {
+      setNotice(t('graphApply.torchImportFailed'));
+    }
+  }, [submitWorkspaceGraphProposal, t]);
   const cancelGraphProposalPreview = useCallback(() => {
     setGraphApplyCommitDiagnostic(null);
     setStagedGraphProposal(null);
@@ -1734,7 +1756,7 @@ function Workspace() {
     </header>
 
     {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenOnboarding={openPhaseAHandoff} onRestartOnboarding={openPhaseAHandoff} t={t} /> : <>
-      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} setRunnerOpen={setRunnerOpen} t={t} />
+      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} setRunnerOpen={setRunnerOpen} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
       <motion.aside initial={false} animate={{ x: leftOpen ? 0 : '-110%' }} style={{ width: `min(${leftWidth}px, calc(100vw - 24px))` }} className={`${asideBase} left-3 lg:transform-none ${leftOpen ? 'lg:block' : 'lg:hidden'}`}>

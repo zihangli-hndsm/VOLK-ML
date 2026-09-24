@@ -54,6 +54,8 @@ between graph-scoped and full-project interoperability are documented in
 [`graph-interop.md`](./graph-interop.md). It reuses the canonical VOLK
 `nodes`/`edges` model, presents proposals without editing the workspace, and
 allows only an explicit learner-confirmed Apply through canonical validation.
+The local Torch Export JSON adapter also targets this proposal boundary; its
+trusted `.pt2` extraction stays outside the browser.
 
 Agent requests share the versioned, semantic boundary documented in
 [`ai-provider.md`](./ai-provider.md). Ask, Experiment Design, and World Edit

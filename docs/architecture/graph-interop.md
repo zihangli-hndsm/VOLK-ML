@@ -68,15 +68,17 @@ proposal identity binds provenance, graph identity, conversion report,
 capability snapshot, and assessment. The separately versioned source shape
 uses bounded categorical dimensions: `kind` is `planner` or `import`,
 `producer` distinguishes the producer, and `format` identifies the source
-representation. `GRAPH_SOURCE_VERSION` is now 2: Build Agent evidence carries
+representation. `GRAPH_SOURCE_VERSION` is 2 for existing producers: Build Agent evidence carries
 the native validated `GraphProposalV1`, while project evidence carries only a
 normalized VOLK project graph and migrated project version (never project data
 rows or other project state). The currently implemented specialized producers are only
 Build Agent (`planner` / `build-agent` / `volk-model-design-plan-v1`) and the
 canonical VOLK project path (`import` / `volk-project` / `volk-project`). The
-closed vocabulary also has bounded future values for human/external imports,
-ONNX, `torch.export`, `torch.fx`, TensorFlow, Keras, and unknown imports; their
-adapters are not implemented in B0. A source-neutral external planner can be
+Torch Export adapter adds its own strict source-v3 evidence shape while
+preserving source-v2 compatibility for existing producers. The closed
+vocabulary also has bounded values for human/external imports, ONNX,
+`torch.export`, `torch.fx`, TensorFlow, Keras, and unknown imports; the other
+framework adapters remain unimplemented. A source-neutral external planner can be
 represented as `planner` / `external-agent` / `volk-graph-candidate-v1`
 without claiming a framework export. Provenance accepts only bounded opaque
 artifact/revision/fingerprint/reference identifiers and a finite location
@@ -146,16 +148,18 @@ how much source meaning is preserved (`exact`, `structural`, `partial`, or
 revalidated. `volk-verified` requires a native Build Agent proposal that passes
 its validator and matches the detached graph and preserved source facts, or a
 graph-only VOLK source project that passes the canonical project path and
-matches the detached graph. Source identity strings alone are insufficient.
+matches the detached graph. `adapter-verified` is reserved for the Torch
+Export adapter after strict document validation and deterministic semantic +
+layout rematerialization. Source identity strings alone are insufficient.
 These source records establish semantic validity; they do not authenticate the
 human/process origin because the public envelope fingerprint is
 non-cryptographic. The generic candidate factory rejects any caller-supplied
 `conversion.verification`; when omitted, it sets `producer-declared`. Only the
-specialized Build Agent and VOLK project factories can emit `volk-verified`
-with the required source evidence. The generic factory also reserves those
-producer identities and the future ONNX, Torch, TensorFlow, and Keras adapter
-identities; external agents can still submit a generic graph candidate or an
-ONNX-described import without impersonating a future official adapter.
+specialized Build Agent and VOLK project factories can emit `volk-verified`;
+only the Torch Export adapter factory can emit `adapter-verified`. The generic
+factory continues to reserve these official producer identities and all
+unimplemented adapters; external agents can submit generic candidates without
+impersonating an official adapter.
 
 The proposal identity binds the supplied snapshot and conversion claims for
 change detection; it is a stable non-cryptographic fingerprint, not a signature
@@ -231,3 +235,80 @@ change `PROJECT_VERSION`, or add a Cloud endpoint. Existing Canvas Agent graph
 editing, execution, code export, project serialization, and local autosave
 remain the canonical post-Apply paths. Graph patches/merge, remote formats and
 their adapters, authentication, and provider transport remain future work.
+
+## B2 Torch Export JSON adapter
+
+The local Torch Export adapter maps a bounded, non-executable
+TorchExportDocumentV1 into the existing WorkspaceGraphProposalV1 boundary.
+Build More exposes “Import Torch Export JSON”; selecting a file only parses and
+stages a detached proposal. The B1 read-only preview, Cancel, latest-snapshot
+revalidation, empty-workspace check, and explicit Apply remain authoritative.
+The browser accepts JSON only and never opens a .pt2 archive.
+
+The document has strict, unknown-field-rejecting objects:
+
+- Root: type, version, exporter, graph, state, documentFingerprint.
+- Exporter: name=torch.export and a bounded ASCII torchVersion.
+- Graph: ordered inputs, topological nodes, exactly one output, and finite
+  rangeConstraints.
+- Inputs: stable id/name, kind USER_INPUT or PARAMETER, target (null only for
+  USER_INPUT), and a dtype/shape spec. Shapes use only positive static
+  dimensions or one shared symbolic batch dimension in axis 0.
+- Nodes: contiguous n0..n63 IDs, exact target overload, typed args, empty
+  kwargs, and only dtype/shape/layout metadata. Output layout is strided.
+- State: parameters, buffers, constants. Parameter payloads are little-endian
+  float16/float32 base64 tensors. Buffers and constants are currently required
+  to be empty.
+- Output: exactly one USER_OUTPUT reference matching the inferred final tensor.
+
+The initial exact overload allowlist is:
+
+| ATen target | Accepted arguments | VOLK component |
+| --- | --- | --- |
+| aten.linear.default | rank-2 input, rank-2 [out,in] weight, optional rank-1 [out] bias; matching float16/float32 | dense_node |
+| aten.relu.default | one rank-2 tensor | relu_node |
+| aten.sigmoid.default | one rank-2 tensor | sigmoid_node |
+| aten.tanh.default | one rank-2 tensor | tanh_node |
+| aten.softmax.int | rank-2 tensor, dim=-1 or 1, dtype=None | softmax_node with axis=-1 |
+
+The graph must be one single-use input-to-output chain containing at least one
+Linear, with no fanout, shared or unused parameters, extra user inputs/outputs,
+mutation, buffers/constants, or non-allowlisted operators. Every operator's
+fake-tensor metadata is checked against inferred shape and dtype. Only static
+feature dimensions are materialized; symbolic batch constraints remain in
+source evidence and are listed as missing from the target graph. Parameter
+values are retained only in the bounded source document for revalidation; they
+are not copied into VOLK trained-model state.
+
+Bounds are: 500,000 JSON code units per document, 64 operators, 128 combined
+graph input/state entries, rank at most 8 (supported operators currently
+require rank 2), at most 65,536 elements per tensor, and 196,608 aggregate
+parameter bytes. Static dimensions are at most 1,000,000. The optional batch
+symbol has exactly one finite range with 1 <= min <= max <= 1,000,000.
+Document identity uses fingerprintJsonV1 over the normalized document without
+documentFingerprint. This stable non-cryptographic fingerprint is not a
+signature or proof of PyTorch origin.
+
+Torch proposals use source version 3 and conversion-report version 3;
+existing version-2 Build Agent, VOLK project, and source-neutral proposals
+remain valid. The source embeds the complete validated TorchExportDocumentV1.
+Revalidation recomputes its fingerprint, validates the allowlist and tensor
+references, deterministically rematerializes stable node/edge IDs and layout,
+then compares canonical semantic and presentation graph identities. The
+specialized factory alone can emit adapter-verified. That label means the
+document-to-graph mapping was revalidated; it does not authenticate the
+document's producer or origin.
+
+tools/torch_export/extract_torch_export.py is a local-only helper that exports
+a normalized JSON document. Its callable requires trusted=True and its CLI
+requires --trusted-pt2. It preflights a local regular .pt2 archive, caps input
+and expanded archive sizes, and refuses to overwrite an output unless
+--overwrite is supplied. torch.export.load is pickle-backed: run it only on a
+trusted artifact. The application and Cloud never load .pt2, and PyTorch is
+not installed as part of VOLK-ML setup. The extractor records the installed
+torch version; unsupported exporter versions, graph signatures, operators,
+state, and symbolic constraints fail closed.
+
+Example local invocation:
+
+    python tools/torch_export/extract_torch_export.py --input model.pt2 --output model.json --trusted-pt2

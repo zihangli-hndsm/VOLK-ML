@@ -17,11 +17,17 @@ import {
   MAX_GRAPH_JSON_CODE_UNITS,
   MAX_GRAPH_NODES,
 } from './identity.js';
+import {
+  materializeTorchExportDocument,
+  validateTorchExportDocument,
+} from './torchExportAdapter.js';
 
 export const WORKSPACE_GRAPH_PROPOSAL_VERSION = 1;
 export const WORKSPACE_GRAPH_PROPOSAL_TYPE = 'WorkspaceGraphProposalV1';
 export const GRAPH_SOURCE_VERSION = 2;
 export const GRAPH_CONVERSION_REPORT_VERSION = 2;
+export const TORCH_EXPORT_SOURCE_VERSION = 3;
+export const TORCH_EXPORT_CONVERSION_REPORT_VERSION = 3;
 
 const FIDELITIES = ['exact', 'structural', 'partial', 'unsupported'];
 const SOURCE_KINDS = ['planner', 'import'];
@@ -36,7 +42,7 @@ const OFFICIAL_PRODUCERS = new Set([
   'build-agent', 'volk-project', 'onnx-adapter', 'torch-export-adapter', 'torch-fx-adapter', 'tensorflow-adapter', 'keras-adapter',
 ]);
 const IMPLEMENTED_VERIFIED_PRODUCERS = new Set(['build-agent', 'volk-project']);
-const RESERVED_ADAPTER_PRODUCERS = new Set(['onnx-adapter', 'torch-export-adapter', 'torch-fx-adapter', 'tensorflow-adapter', 'keras-adapter']);
+const RESERVED_ADAPTER_PRODUCERS = new Set(['onnx-adapter', 'torch-fx-adapter', 'tensorflow-adapter', 'keras-adapter']);
 const CONVERSION_VERIFICATIONS = ['producer-declared', 'volk-verified'];
 const PROVENANCE_LOCATIONS = ['generated', 'local-project', 'local-file', 'inline', 'unknown'];
 const FRAMEWORKS = ['pytorch', 'tensorflow'];
@@ -365,9 +371,10 @@ function validateSource(source) {
   if (!isRecord(source) || !SOURCE_KINDS.includes(source.kind)) {
     fail('GRAPH_PROVENANCE_INVALID', 'Proposal source kind is unsupported.');
   }
-  if (source.version !== GRAPH_SOURCE_VERSION) fail('GRAPH_PROVENANCE_VERSION_UNSUPPORTED', 'Graph source contract version is unsupported.');
   if (!SOURCE_PRODUCERS.includes(source.producer)) fail('GRAPH_PROVENANCE_INVALID', 'Proposal source producer is unsupported.');
   if (!SOURCE_FORMATS.includes(source.format)) fail('GRAPH_PROVENANCE_INVALID', 'Proposal source format is unsupported.');
+  const expectedSourceVersion = source.producer === 'torch-export-adapter' ? TORCH_EXPORT_SOURCE_VERSION : GRAPH_SOURCE_VERSION;
+  if (source.version !== expectedSourceVersion) fail('GRAPH_PROVENANCE_VERSION_UNSUPPORTED', 'Graph source contract version is unsupported.');
   validateProvenance(source.provenance);
 
   if (source.kind === 'planner') {
@@ -400,6 +407,20 @@ function validateSource(source) {
   }
 
   if (source.kind !== 'import') fail('GRAPH_PROVENANCE_INVALID', 'Import source kind is unsupported.');
+  if (source.producer === 'torch-export-adapter') {
+    rejectUnknown(source, ['version', 'kind', 'producer', 'format', 'provenance', 'torchExportDocument'], 'source');
+    if (source.format !== 'torch.export') fail('GRAPH_PROVENANCE_INVALID', 'Torch Export source producer and format do not match the implemented adapter.');
+    let document;
+    try { document = validateTorchExportDocument(source.torchExportDocument); } catch {
+      fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'Embedded Torch Export document failed its strict adapter validator.');
+    }
+    if (
+      source.provenance.artifactId !== 'torch-export-document'
+      || source.provenance.fingerprint !== document.documentFingerprint
+      || source.provenance.location !== 'local-file'
+    ) fail('GRAPH_PROVENANCE_INVALID', 'Torch Export provenance does not match its embedded normalized document.');
+    return;
+  }
   if (source.producer === 'volk-project') {
     rejectUnknown(source, ['version', 'kind', 'producer', 'format', 'provenance', 'projectVersion', 'projectEvidence'], 'source');
     if (source.producer !== 'volk-project' || source.format !== 'volk-project') {
@@ -488,18 +509,35 @@ function validateSourceSpecificEvidence(source, canonicalGraph) {
       || canonicalGraphLayoutJsonV1(prepared.graph) !== canonicalGraphLayoutJsonV1(canonicalGraph)) {
       fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'VOLK project evidence does not bind to the detached graph.');
     }
+    return;
+  }
+
+  if (source.producer === 'torch-export-adapter') {
+    let rematerialized;
+    try {
+      rematerialized = materializeTorchExportDocument(source.torchExportDocument);
+    } catch {
+      fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'Torch Export source evidence could not be deterministically rematerialized.');
+    }
+    if (
+      canonicalGraphSemanticsJsonV1(rematerialized) !== canonicalGraphSemanticsJsonV1(canonicalGraph)
+      || canonicalGraphLayoutJsonV1(rematerialized) !== canonicalGraphLayoutJsonV1(canonicalGraph)
+    ) fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'Torch Export evidence does not bind to the detached graph.');
   }
 }
 
-function validateConversion(conversion, { requireVerification = true } = {}) {
+function validateConversion(conversion, { requireVerification = true, sourceProducer = null } = {}) {
   rejectUnknown(conversion, [
     'version', 'fidelity', 'verification', 'exactFor', 'preserved', 'approximated', 'missing', 'unsupported', 'warnings', 'omitted',
   ], 'conversion');
-  if (conversion.version !== GRAPH_CONVERSION_REPORT_VERSION) {
+  const torchExport = sourceProducer === 'torch-export-adapter';
+  const expectedVersion = torchExport ? TORCH_EXPORT_CONVERSION_REPORT_VERSION : GRAPH_CONVERSION_REPORT_VERSION;
+  if (conversion.version !== expectedVersion) {
     fail('GRAPH_CONVERSION_VERSION_UNSUPPORTED', 'Graph conversion report version is unsupported.');
   }
   if (!FIDELITIES.includes(conversion.fidelity)) fail('GRAPH_CONVERSION_INVALID', 'Conversion fidelity is unsupported.');
-  if (requireVerification && !CONVERSION_VERIFICATIONS.includes(conversion.verification)) {
+  const supportedVerifications = torchExport ? ['adapter-verified'] : CONVERSION_VERIFICATIONS;
+  if (requireVerification && !supportedVerifications.includes(conversion.verification)) {
     fail('GRAPH_CONVERSION_VERIFICATION_INVALID', 'Conversion verification is unsupported or missing.');
   }
   if (!requireVerification && conversion.verification !== undefined) {
@@ -607,8 +645,10 @@ function validateInternal(value) {
   const canonicalGraph = canonicalizeGraphWithProjectContract(value.graph, { allowBlueprintId: value.source.producer === 'build-agent' });
   validateGraphIdentity(value.graph, value.graphIdentity);
   validateSourceSpecificEvidence(value.source, canonicalGraph);
-  validateConversion(value.conversion);
-  const expectedVerification = IMPLEMENTED_VERIFIED_PRODUCERS.has(value.source.producer) ? 'volk-verified' : 'producer-declared';
+  validateConversion(value.conversion, { sourceProducer: value.source.producer });
+  const expectedVerification = value.source.producer === 'torch-export-adapter'
+    ? 'adapter-verified'
+    : IMPLEMENTED_VERIFIED_PRODUCERS.has(value.source.producer) ? 'volk-verified' : 'producer-declared';
   if (value.conversion.verification !== expectedVerification) {
     fail('GRAPH_CONVERSION_VERIFICATION_INVALID', 'Conversion verification does not match its source producer.');
   }
@@ -969,6 +1009,52 @@ const projectConversion = Object.freeze({
   warnings: [],
   omitted: ['project.name', 'project.dataset', 'project.trainedModel', 'project.language', 'project.workspace'],
 });
+
+const torchExportConversion = Object.freeze({
+  version: TORCH_EXPORT_CONVERSION_REPORT_VERSION,
+  fidelity: 'structural',
+  verification: 'adapter-verified',
+  exactFor: ['supported-operator-topology', 'activation-semantics', 'feature-dimensions', 'uniform-float-dtype'],
+  preserved: ['operator-order', 'feature-dimensions', 'input-dtype', 'bias-presence'],
+  approximated: [],
+  missing: ['trained-parameter-values', 'batch-range-constraints'],
+  unsupported: [],
+  warnings: ['trained-weights-not-imported'],
+  omitted: ['trained-parameter-values', 'batch-range-constraints'],
+});
+
+/**
+ * Create a detached proposal from a bounded TorchExportDocumentV1. The source
+ * document remains embedded so proposal validation can rematerialize and bind
+ * both graph semantics and layout before B1 preview/Apply.
+ */
+export function createTorchExportGraphProposal(rawDocument, options = {}) {
+  try {
+    rejectUnknown(options, ['targetGraph'], 'options');
+    const document = validateTorchExportDocument(rawDocument);
+    const graph = materializeTorchExportDocument(document);
+    const proposal = createProposal({
+      graph,
+      source: {
+        version: TORCH_EXPORT_SOURCE_VERSION,
+        kind: 'import',
+        producer: 'torch-export-adapter',
+        format: 'torch.export',
+        provenance: {
+          artifactId: 'torch-export-document',
+          fingerprint: document.documentFingerprint,
+          location: 'local-file',
+        },
+        torchExportDocument: document,
+      },
+      conversion: torchExportConversion,
+      targetGraph: options.targetGraph,
+    });
+    return { ok: true, proposal };
+  } catch (error) {
+    return projectGraphFailure(error?.code ?? 'GRAPH_PROPOSAL_INVALID', safeResultError(error).details ?? {});
+  }
+}
 
 export function createVolkProjectGraphProposal(rawProject, options = {}) {
   const prepared = canonicalProjectGraph(rawProject);
