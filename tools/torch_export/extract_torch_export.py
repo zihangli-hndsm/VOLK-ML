@@ -137,6 +137,20 @@ def _shape_metadata_for_node(node: Any) -> dict[str, Any]:
     return {**spec, "layout": "strided"}
 
 
+def _user_output_spec(output_node: Any, output_value: Any, torch: Any) -> dict[str, Any]:
+    output_metadata = getattr(output_node, "meta", None)
+    output_tensor = output_metadata.get("val") if isinstance(output_metadata, dict) else None
+    if output_tensor is None and isinstance(output_value, torch.fx.Node):
+        producer_metadata = getattr(output_value, "meta", None)
+        if isinstance(producer_metadata, dict):
+            output_tensor = producer_metadata.get("val")
+    if isinstance(output_tensor, (tuple, list)):
+        if len(output_tensor) != 1:
+            raise ExtractionError("Tuple and multiple output tensors are unsupported.")
+        output_tensor = output_tensor[0]
+    return _tensor_spec(output_tensor)
+
+
 def _range_constraints(program: Any) -> list[dict[str, Any]]:
     constraints = []
     for symbol, value_range in program.range_constraints.items():
@@ -251,11 +265,7 @@ def _build_document(program: Any, torch: Any, model_identifier: str) -> dict[str
             raise ExtractionError("Tuple and multiple graph outputs are unsupported.")
         raw_output = raw_output[0]
     output_value = _ref_for_fx_value(raw_output, torch, input_ids, node_ids)
-    output_tensor = output_node.meta.get("val")
-    if isinstance(output_tensor, (tuple, list)):
-        if len(output_tensor) != 1:
-            raise ExtractionError("Tuple and multiple output tensors are unsupported.")
-        output_tensor = output_tensor[0]
+    output_spec = _user_output_spec(output_node, raw_output, torch)
     document = {
         "type": DOCUMENT_TYPE,
         "version": DOCUMENT_VERSION,
@@ -265,7 +275,7 @@ def _build_document(program: Any, torch: Any, model_identifier: str) -> dict[str
         "graph": {
             "inputs": graph_inputs,
             "nodes": exported_nodes,
-            "outputs": [{"kind": "USER_OUTPUT", "value": output_value, "spec": _tensor_spec(output_tensor)}],
+            "outputs": [{"kind": "USER_OUTPUT", "value": output_value, "spec": output_spec}],
             "rangeConstraints": _range_constraints(program),
         },
         "state": {"parameters": parameters, "buffers": buffers, "constants": constants},

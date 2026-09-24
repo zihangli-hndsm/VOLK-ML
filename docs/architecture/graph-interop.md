@@ -266,6 +266,9 @@ The document has strict, unknown-field-rejecting objects:
   creation. The supported target allowlist is checked against registered
   VOLK components.
 - Output: exactly one USER_OUTPUT reference matching the inferred final tensor.
+  When that output wrapper has no `val`, extraction derives its dtype and shape
+  from the referenced producer node's `meta["val"]`; the single-output
+  signature, tensor metadata, and operator checks remain strict.
 
 The current supported chain is one rank-2 input-to-output path with at least
 one Linear, no fanout, shared or unused parameters, mutation, buffer/constant

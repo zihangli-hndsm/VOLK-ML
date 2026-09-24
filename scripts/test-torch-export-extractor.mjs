@@ -61,7 +61,7 @@ const metadataSeam = spawnSync(python, ['-c', [
   'n0 = FakeNode("linear1", "call_function", "aten.linear.default", (x, w0, b0), FakeTensor((2, 32)))',
   'n1 = FakeNode("relu", "call_function", "aten.relu.default", (n0,), FakeTensor((2, 32)))',
   'n2 = FakeNode("linear2", "call_function", "aten.linear.default", (n1, w1, b1), FakeTensor((2, 4)))',
-  'out = FakeNode("output", "output", args=((n2,),), value=FakeTensor((2, 4)))',
+  'out = FakeNode("output", "output", args=((n2,),))',
   'nodes = [x, w0, b0, w1, b1, n0, n1, n2, out]',
   'inputs = []',
   'for name, kind, target in [("x", "USER_INPUT", None), ("first_weight", "PARAMETER", "first.weight"), ("first_bias", "PARAMETER", "first.bias"), ("second_weight", "PARAMETER", "second.weight"), ("second_bias", "PARAMETER", "second.bias")]:',
@@ -69,6 +69,15 @@ const metadataSeam = spawnSync(python, ['-c', [
   'program = NS(graph_module=NS(graph=NS(nodes=nodes)), graph_signature=NS(input_specs=inputs, output_specs=[NS(kind=NS(name="USER_OUTPUT"))]), range_constraints={})',
   'fake_torch = NS(__version__="2.5.1", fx=NS(Node=FakeNode))',
   'document = module._build_document(program, fake_torch, "reference-mlp-8-32-4")',
+  'def capture_error(call):',
+  '    try: call()',
+  '    except module.ExtractionError as error: return str(error)',
+  '    return "missing rejection"',
+  'multi_output_program = NS(graph_module=NS(graph=NS(nodes=nodes)), graph_signature=NS(input_specs=inputs, output_specs=[NS(kind=NS(name="USER_OUTPUT")), NS(kind=NS(name="USER_OUTPUT"))]), range_constraints={})',
+  'multi_output_error = capture_error(lambda: module._build_document(multi_output_program, fake_torch, "multiple-outputs"))',
+  'invalid_output = FakeNode("output", "output", args=((n2,),), value=object())',
+  'invalid_type_program = NS(graph_module=NS(graph=NS(nodes=nodes[:-1] + [invalid_output])), graph_signature=NS(input_specs=inputs, output_specs=[NS(kind=NS(name="USER_OUTPUT"))]), range_constraints={})',
+  'invalid_output_type_error = capture_error(lambda: module._build_document(invalid_type_program, fake_torch, "invalid-output-type"))',
   'buffer = FakeNode("buffer", "placeholder", value=FakeTensor((8,)))',
   'buffer_program = NS(graph_module=NS(graph=NS(nodes=[x, w0, b0, w1, b1, buffer, n0, n1, n2, out])), graph_signature=NS(input_specs=inputs + [NS(arg=NS(name="buffer"), kind=NS(name="BUFFER"), target="layer.scale")], output_specs=[NS(kind=NS(name="USER_OUTPUT"))]), range_constraints={})',
   'constant = FakeNode("constant", "placeholder", value=FakeTensor((8,)))',
@@ -82,7 +91,7 @@ const metadataSeam = spawnSync(python, ['-c', [
   '    unknown_kind_error = "missing rejection"',
   'except module.ExtractionError as error:',
   '    unknown_kind_error = str(error)',
-  'print(json.dumps({"document": document, "buffer": buffer_document, "constant": constant_document, "unknownKindError": unknown_kind_error}, separators=(",", ":")))',
+  'print(json.dumps({"document": document, "buffer": buffer_document, "constant": constant_document, "unknownKindError": unknown_kind_error, "multiOutputError": multi_output_error, "invalidOutputTypeError": invalid_output_type_error}, separators=(",", ":")))',
 ].join('\n'), extractor], { encoding: 'utf8', maxBuffer: 2 * 1024 * 1024 });
 assert.equal(metadataSeam.status, 0, metadataSeam.stderr);
 const extractedDocuments = JSON.parse(metadataSeam.stdout);
@@ -92,6 +101,10 @@ assert.equal(metadataOnlyText.includes('SENTINEL'), false);
 assert.equal(metadataOnlyText.includes('0.314159'), false);
 assert.ok(extractedMetadataOnly.state.parameters.every((entry) => !Object.hasOwn(entry, 'data') && !Object.hasOwn(entry, 'value')));
 assert.equal(extractedMetadataOnly.model.identifier, 'reference-mlp-8-32-4');
+assert.deepEqual(extractedMetadataOnly.graph.outputs[0].spec, {
+  dtype: 'float32',
+  shape: [{ kind: 'static', value: 2 }, { kind: 'static', value: 4 }],
+}, 'Missing output-wrapper metadata is derived from the single USER_OUTPUT producer.');
 validateTorchExportDocument(extractedMetadataOnly);
 const metadataOnlyProposal = createTorchExportGraphProposal(extractedMetadataOnly);
 assert.equal(metadataOnlyProposal.ok, true, JSON.stringify(metadataOnlyProposal.diagnostics));
@@ -105,10 +118,15 @@ assert.equal(extractedDocuments.constant.graph.inputs.at(-1).kind, 'CONSTANT_TEN
 assert.equal(createTorchExportGraphProposal(extractedDocuments.constant).diagnostics[0]?.code, 'TORCH_EXPORT_STATE_UNSUPPORTED');
 assert.match(extractedDocuments.unknownKindError, /CUSTOM_STATE_KIND/);
 assert.ok(extractedDocuments.unknownKindError.length < 160, 'Unsupported signature errors remain bounded.');
+assert.match(extractedDocuments.multiOutputError, /Exactly one exported user output/);
+assert.match(extractedDocuments.invalidOutputTypeError, /Operator metadata does not describe one tensor/);
 console.log('PASS deterministic extractor seam: bounded ExportedProgram metadata produces a proposal without reading or serializing parameter values.');
 
 const torchProbe = spawnSync(python, ['-c', 'import torch; print(torch.__version__)'], { encoding: 'utf8' });
 if (torchProbe.status !== 0) {
+  if (process.env.PYTHON) {
+    assert.equal(torchProbe.status, 0, 'An explicitly configured PYTHON must provide PyTorch for the real ExportedProgram regression.');
+  }
   console.log('SKIP optional PyTorch integration: PyTorch is not installed; dependency installation is intentionally omitted.');
   process.exit(0);
 }
@@ -135,14 +153,24 @@ const integration = spawnSync(python, ['-c', [
   'metadata = extract_exported_program(program, model_identifier="reference-mlp-8-32-4")',
   'unsupported_program = torch.export.export(Unsupported().eval(), (torch.zeros(2, 8),))',
   'unsupported = extract_exported_program(unsupported_program, model_identifier="unsupported-sin")',
-  'print(json.dumps({"metadata": metadata, "unsupported": unsupported}, separators=(",", ":")))',
+  'print(json.dumps({"torchVersion": str(torch.__version__), "metadata": metadata, "unsupported": unsupported}, separators=(",", ":")))',
 ].join('\n'), path.resolve('tools/torch_export')], { encoding: 'utf8', maxBuffer: 2 * 1024 * 1024 });
 assert.equal(integration.status, 0, integration.stderr);
 const extracted = JSON.parse(integration.stdout);
+assert.ok(typeof extracted.torchVersion === 'string' && extracted.torchVersion.length > 0);
+assert.equal(extracted.metadata.exporter.torchVersion, extracted.torchVersion.slice(0, 32));
 const serializedMetadata = JSON.stringify(extracted.metadata);
 assert.equal(serializedMetadata.includes('0.314159'), false, 'Extracted JSON excludes trained parameter values.');
 assert.equal(serializedMetadata.includes('0.271828'), false, 'Extracted JSON excludes trained bias values.');
 assert.equal(extracted.metadata.model.identifier, 'reference-mlp-8-32-4');
+assert.equal(extracted.metadata.type, 'TorchExportDocumentV1');
+assert.equal(extracted.metadata.version, 1);
+assert.equal(extracted.metadata.extractor.schemaVersion, 1);
+assert.deepEqual(extracted.metadata.graph.outputs[0].spec, {
+  dtype: 'float32',
+  shape: [{ kind: 'static', value: 2 }, { kind: 'static', value: 4 }],
+});
+assert.equal(validateTorchExportDocument(extracted.metadata).documentFingerprint, extracted.metadata.documentFingerprint);
 assert.ok(extracted.metadata.state.parameters.every((entry) => !Object.hasOwn(entry, 'data') && !Object.hasOwn(entry, 'value')));
 assert.equal(extracted.metadata.graph.nodes.length, 3);
 assert.deepEqual(extracted.metadata.graph.nodes.map((node) => node.target), [
@@ -150,6 +178,12 @@ assert.deepEqual(extracted.metadata.graph.nodes.map((node) => node.target), [
 ]);
 const proposal = createTorchExportGraphProposal(extracted.metadata);
 assert.equal(proposal.ok, true, JSON.stringify(proposal.diagnostics));
+assert.deepEqual(proposal.proposal.graph.nodes
+  .filter((node) => node.data.manifest.id === 'dense_node')
+  .map((node) => ({ input: node.data.parameters.input_features, units: node.data.parameters.units })), [
+  { input: 8, units: 32 },
+  { input: 32, units: 4 },
+]);
 const serializedProposal = JSON.stringify(proposal.proposal);
 assert.equal(serializedProposal.includes('0.314159'), false, 'Proposal source and graph exclude parameter values.');
 assert.equal(serializedProposal.includes('0.271828'), false, 'Proposal source and graph exclude bias values.');
@@ -159,4 +193,4 @@ const unsupported = createTorchExportGraphProposal(extracted.unsupported);
 assert.equal(unsupported.ok, false, 'An extracted-but-unmapped operator cannot produce a proposal.');
 assert.equal(unsupported.diagnostics[0]?.code, 'TORCH_EXPORT_OPERATOR_UNSUPPORTED');
 assert.equal('proposal' in unsupported, false);
-console.log('PASS optional PyTorch integration: existing ExportedProgram → metadata-only MLP JSON → proposal, and bounded unsupported op rejects without proposal.');
+console.log(`PASS real PyTorch integration (${extracted.torchVersion}): ExportedProgram → metadata-only MLP V1 → validated proposal; unsupported op rejected without proposal.`);
