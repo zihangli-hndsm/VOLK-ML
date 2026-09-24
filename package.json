@@ -12,6 +12,8 @@
     "check:episode-1": "node scripts/check-inquiry-episode-runtime.mjs",
     "check:build-agent": "node scripts/check-build-agent.mjs",
     "check:graph-interop": "node scripts/check-graph-interop.mjs",
+    "check:graph-apply": "node scripts/check-graph-apply.mjs",
+    "test:graph-apply:browser": "node scripts/graph-apply-cdp-browser.mjs",
     "check:episode-0": "node scripts/check-orchestration-runtime.mjs",
     "check:director-prototype": "node scripts/check-director-prototype.mjs",
     "check:phase-a7": "node scripts/check-phase-a7.mjs",

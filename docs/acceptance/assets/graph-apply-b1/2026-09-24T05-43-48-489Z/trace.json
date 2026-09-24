@@ -1,0 +1,119 @@
+{
+  "task": "VOLK-ML Graph Infrastructure B1 Apply browser acceptance",
+  "browser": {
+    "product": "Chrome/153.0.8010.53",
+    "revision": "@792bf6722e73a45aa9e47c163b9901bdc17f3230",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+    "viewport": {
+      "width": 1424,
+      "height": 905
+    }
+  },
+  "scenarios": [
+    {
+      "id": "B-cancel-preserves-workspace",
+      "outcome": "PASS",
+      "evidence": {
+        "preview": {
+          "visible": true,
+          "blockedBy": null,
+          "applyDisabled": false,
+          "previewNodes": 6,
+          "interactiveControlsInsideGraph": 0,
+          "accessibleDialog": true
+        },
+        "canonicalProjectUnchanged": true
+      }
+    },
+    {
+      "id": "C-target-occupied-during-preview",
+      "outcome": "PASS",
+      "evidence": {
+        "preview": {
+          "visible": true,
+          "blockedBy": "TARGET_WORKSPACE_NOT_EMPTY",
+          "applyDisabled": true,
+          "previewNodes": 6,
+          "interactiveControlsInsideGraph": 0,
+          "accessibleDialog": true
+        },
+        "proposalDidNotReplaceTarget": true
+      }
+    },
+    {
+      "id": "D-dataset-changed-during-preview",
+      "outcome": "PASS",
+      "evidence": {
+        "preview": {
+          "visible": true,
+          "blockedBy": "BUILD_DATASET_STALE",
+          "applyDisabled": true,
+          "previewNodes": 6,
+          "interactiveControlsInsideGraph": 0,
+          "accessibleDialog": true
+        },
+        "staleDatasetPreservedUntilExplicitReset": true
+      }
+    },
+    {
+      "id": "A-build-agent-preview-and-apply",
+      "outcome": "PASS",
+      "evidence": {
+        "preview": {
+          "visible": true,
+          "blockedBy": null,
+          "applyDisabled": false,
+          "previewNodes": 6,
+          "interactiveControlsInsideGraph": 0,
+          "accessibleDialog": true
+        },
+        "proposalId": "workspace-proposal-v1-b9c55671a6838d30-2c13",
+        "nodes": 6,
+        "edges": 5,
+        "datasetPreserved": true,
+        "metadataPreserved": true
+      }
+    },
+    {
+      "id": "ordinary-edit-connect-run-export-save",
+      "outcome": "PASS",
+      "evidence": {
+        "parameterEdited": true,
+        "moved": true,
+        "selected": true,
+        "connectedAndDisconnected": true,
+        "removed": true,
+        "runType": "linear_regression",
+        "exportCharacters": 927,
+        "projectSerializationFilename": "sample-project.volkml.json",
+        "projectSerializationBytes": 21995,
+        "autosavedLocally": true
+      }
+    },
+    {
+      "id": "B0.1-composite-preview-apply",
+      "outcome": "PASS",
+      "evidence": {
+        "preview": {
+          "visible": true,
+          "blockedBy": null,
+          "applyDisabled": false,
+          "previewNodes": 1,
+          "interactiveControlsInsideGraph": 0,
+          "accessibleDialog": true
+        },
+        "componentId": "custom_d37f3736-dcb2-4a87-87f6-1a0f9b026c7a",
+        "catalogueTemplateUnits": 6,
+        "appliedInstanceUnits": 7,
+        "canonicalProjectValidation": true,
+        "datasetAndMetadataPreserved": true
+      }
+    }
+  ],
+  "artifacts": {
+    "directory": "C:\\Users\\Administrator\\Documents\\ChatGPT\\VOLK-ML\\docs\\acceptance\\assets\\graph-apply-b1\\2026-09-24T05-43-48-489Z",
+    "previewScreenshot": "C:\\Users\\Administrator\\Documents\\ChatGPT\\VOLK-ML\\docs\\acceptance\\assets\\graph-apply-b1\\2026-09-24T05-43-48-489Z\\graph-apply-preview.png"
+  },
+  "result": "PASS",
+  "finishedAt": "2026-09-24T05:43:57.815Z"
+}
