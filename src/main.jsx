@@ -43,6 +43,8 @@ import { compareExploreEnvironment, createBuildExploreBridge, createExploreEnvir
 import { UI_SURFACES } from './core/ui/uiArchitecture.js';
 import { createBuildPanelPresentation, toggleBuildPanel } from './core/ui/buildSurfacePresentation.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
+import { commitWorkspaceGraphApply, prepareWorkspaceGraphApply } from './core/graph/workspaceApply.js';
+import { validateWorkspaceGraphProposal } from './core/graph/workspaceProposal.js';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
@@ -56,6 +58,8 @@ import AccountDialog from './components/AccountDialog.jsx';
 import ExploreHome from './components/ExploreHome.jsx';
 import DirectorPrototype from './components/DirectorPrototype.jsx';
 import BuildToolbar from './components/BuildToolbar.jsx';
+import GraphProposalPreview from './components/graph/GraphProposalPreview.jsx';
+import { WorkspaceGraphProposalContext } from './components/graph/WorkspaceGraphProposalContext.jsx';
 import { AiProvider, useAiProvider } from './components/ai/AiProviderContext.jsx';
 import { VolkCloudProvider, useVolkCloud } from './services/volkCloud/VolkCloudContext.jsx';
 
@@ -524,6 +528,8 @@ function Workspace() {
   const [exploreWorkspaceKey, setExploreWorkspaceKey] = useState(null);
   const [exploreRecovery, setExploreRecovery] = useState(null);
   const [surface, setSurface] = useState(UI_SURFACES.EXPLORE);
+  const graphProposalSubmissionAllowedRef = useRef(surface === UI_SURFACES.BUILD);
+  graphProposalSubmissionAllowedRef.current = surface === UI_SURFACES.BUILD;
   const [globalMoreOpen, setGlobalMoreOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [tutorialManifest, setTutorialManifest] = useState(null);
@@ -539,6 +545,10 @@ function Workspace() {
   const [pendingConnection, setPendingConnection] = useState(null);
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [notice, setNotice] = useState('');
+  const [stagedGraphProposal, setStagedGraphProposal] = useState(null);
+  const [graphApplyCommitDiagnostic, setGraphApplyCommitDiagnostic] = useState(null);
+  const [graphApplyTestBridge, setGraphApplyTestBridge] = useState(null);
+  const GraphApplyTestBridgeComponent = graphApplyTestBridge;
   const buildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth, leftOpen, rightOpen, rightWidth }), [viewportWidth, leftOpen, rightOpen, rightWidth]);
   const toggleLeftPanel = useCallback(() => {
     const next = toggleBuildPanel(buildPresentation, 'left');
@@ -655,6 +665,102 @@ function Workspace() {
   );
   const previousExecutionSignature = useRef(executionInputSignature);
   const makeProject = useCallback(() => projectFromWorkspace(workspaceStateRef.current), []);
+  const submitWorkspaceGraphProposal = useCallback((candidate) => {
+    if (!graphProposalSubmissionAllowedRef.current) return { ok: false, diagnostics: [{ code: 'GRAPH_APPLY_BUILD_WORKSPACE_REQUIRED' }] };
+    const checked = validateWorkspaceGraphProposal(candidate);
+    if (!checked.valid) return { ok: false, diagnostics: checked.diagnostics };
+    setGraphApplyCommitDiagnostic(null);
+    setStagedGraphProposal(checked.proposal);
+    return { ok: true, proposalId: checked.proposal.proposalId };
+  }, []);
+  const cancelGraphProposalPreview = useCallback(() => {
+    setGraphApplyCommitDiagnostic(null);
+    setStagedGraphProposal(null);
+  }, []);
+  const graphApplyEligibility = useMemo(() => {
+    if (!stagedGraphProposal) return null;
+    const state = workspaceStateRef.current;
+    return prepareWorkspaceGraphApply(stagedGraphProposal, {
+      currentProject: projectFromWorkspace(state),
+      runtime: state.runtime,
+    });
+  }, [
+    stagedGraphProposal,
+    projectName,
+    primary,
+    secondary,
+    libraryMode,
+    leftWidth,
+    rightWidth,
+    viewMode,
+    nodes,
+    edges,
+    customComponents,
+    dataset,
+    model,
+    runtime,
+  ]);
+  const graphApplyEligibilityForPreview = graphApplyCommitDiagnostic && graphApplyEligibility
+    ? { ...graphApplyEligibility, ok: false, diagnostics: [graphApplyCommitDiagnostic] }
+    : graphApplyEligibility;
+  const applyStagedGraphProposal = useCallback(() => {
+    if (!stagedGraphProposal) return;
+    const latestState = workspaceStateRef.current;
+    const currentProject = projectFromWorkspace(latestState);
+    const prepared = prepareWorkspaceGraphApply(stagedGraphProposal, {
+      currentProject,
+      runtime: latestState.runtime,
+    });
+    const committed = prepared.ok
+      ? commitWorkspaceGraphApply(prepared, {
+        currentProject: projectFromWorkspace(workspaceStateRef.current),
+        runtime: workspaceStateRef.current.runtime,
+      })
+      : prepared;
+    if (!committed.ok) {
+      setGraphApplyCommitDiagnostic(committed.diagnostics?.[0] ?? { code: 'GRAPH_APPLY_PROJECT_INVALID' });
+      return;
+    }
+
+    const nextProject = committed.project;
+    const nextNodes = nextProject.graph.nodes.map((node) => ({
+      ...node,
+      selected: false,
+      type: 'pipelineNode',
+      data: {
+        ...node.data,
+        label: node.data.label ?? node.data.manifest.name,
+        status: 'idle',
+      },
+    }));
+    const nextEdges = nextProject.graph.edges.map((edge) => ({ ...edge, selected: false, type: 'deletable' }));
+    const nextState = {
+      ...workspaceStateRef.current,
+      projectName: nextProject.name,
+      nodes: nextNodes,
+      edges: nextEdges,
+      customComponents: nextProject.customComponents,
+      dataset: nextProject.data ?? null,
+      model: null,
+      runtime: committed.runtime,
+      selectedId: null,
+    };
+    workspaceStateRef.current = nextState;
+    previousExecutionSignature.current = canvasExecutionInputSignature(nextNodes, nextEdges, nextState.dataset);
+    setProjectName(nextState.projectName);
+    setNodes(nextNodes);
+    setEdges(nextEdges);
+    setCustomComponents(nextState.customComponents);
+    setDataset(nextState.dataset);
+    setModel(null);
+    setRuntime(committed.runtime);
+    setSelectedId(null);
+    setPendingConnection(null);
+    setPendingDeletion(null);
+    setGraphApplyCommitDiagnostic(null);
+    setStagedGraphProposal(null);
+    setNotice(t('graphApply.applied'));
+  }, [setEdges, setNodes, stagedGraphProposal, t]);
   const applyProject = useCallback((rawProject, { languagePolicy = 'project' } = {}) => {
     const language = resolveLanguagePreference({
       projectPrimary: rawProject?.language?.primary,
@@ -755,6 +861,18 @@ function Workspace() {
   }, []);
 
   useEffect(() => {
+    if (import.meta.env.DEV !== true || new URLSearchParams(window.location.search).get('graphApplyTest') !== '1') return undefined;
+    let active = true;
+    import('./components/graph/GraphApplyBrowserTestBridge.jsx').then(({ default: Bridge }) => {
+      if (active) setGraphApplyTestBridge(() => Bridge);
+    }).catch(() => {});
+    return () => {
+      active = false;
+      setGraphApplyTestBridge(null);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!localReady) return undefined;
     const timeout = window.setTimeout(() => {
       platformServices.projects.save(makeProject()).then(() => {
@@ -765,6 +883,24 @@ function Workspace() {
     }, 800);
     return () => window.clearTimeout(timeout);
   }, [localReady, projectSignature, makeProject, t]);
+
+  useEffect(() => {
+    if (graphApplyCommitDiagnostic) setGraphApplyCommitDiagnostic(null);
+  }, [
+    projectName,
+    primary,
+    secondary,
+    libraryMode,
+    leftWidth,
+    rightWidth,
+    viewMode,
+    nodes,
+    edges,
+    customComponents,
+    dataset,
+    model,
+    runtime,
+  ]);
 
   useEffect(() => {
     if (!lastDownloadSignature.current) lastDownloadSignature.current = projectSignature;
@@ -1584,11 +1720,11 @@ function Workspace() {
   const activeExploreAgent = activeExploreWorkspace?.agent ?? null;
 
   const asideBase = 'fixed bottom-3 top-[76px] z-30 overflow-auto rounded-3xl border border-white/80 bg-white/95 p-4 shadow-2xl backdrop-blur transition-transform lg:static lg:z-auto lg:h-auto lg:rounded-3xl lg:bg-white/85 lg:shadow-xl';
-  return <div className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-sky-50 via-white to-indigo-100">
+  return <WorkspaceGraphProposalContext.Provider value={surface === UI_SURFACES.BUILD ? submitWorkspaceGraphProposal : null}><div className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-sky-50 via-white to-indigo-100">
     <header data-top-level-surface={surface} className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
       <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><span className="hidden text-xs font-bold text-slate-400 sm:inline">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span>{SHOW_CLOUD_STATUS && <span data-cloud-status={cloudStatus.status} aria-live="polite" className={`hidden rounded-full px-2 py-1 text-[10px] font-black sm:inline ${cloudStatus.status === CLOUD_AVAILABILITY.AVAILABLE ? 'bg-emerald-100 text-emerald-800' : cloudStatus.status === CLOUD_AVAILABILITY.CHECKING ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800'}`}>{t(`cloud.status.${cloudStatus.status}`)}</span>}</div>
       <nav aria-label={t('surface.navigation')} className="flex items-center gap-1.5 text-sm">
-        <button type="button" aria-pressed={surface === UI_SURFACES.EXPLORE} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.EXPLORE ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setSurface(UI_SURFACES.EXPLORE)}>{t('ui.surface.explore')}</button>
+        <button type="button" aria-pressed={surface === UI_SURFACES.EXPLORE} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.EXPLORE ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => { setStagedGraphProposal(null); setGraphApplyCommitDiagnostic(null); setSurface(UI_SURFACES.EXPLORE); }}>{t('ui.surface.explore')}</button>
         <button type="button" aria-pressed={surface === UI_SURFACES.BUILD} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.BUILD ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setSurface(UI_SURFACES.BUILD)}>{t('ui.surface.build')}</button>
         <div className="relative">
           <button type="button" aria-expanded={globalMoreOpen} aria-controls="global-more-actions" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setGlobalMoreOpen((value) => !value)}>⋯ <span className="hidden sm:inline">{t('surface.more')}</span></button>
@@ -1639,7 +1775,9 @@ function Workspace() {
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} developmentMatrixDriver={developmentMatrixDriver} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
     <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />
-  </div>;
+    {surface === UI_SURFACES.BUILD && stagedGraphProposal && <GraphProposalPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
+    {surface === UI_SURFACES.BUILD && GraphApplyTestBridgeComponent && <GraphApplyTestBridgeComponent />}
+  </div></WorkspaceGraphProposalContext.Provider>;
 }
 
 createRoot(document.getElementById('root')).render(<LanguageProvider><VolkCloudProvider><AiProvider><Workspace /></AiProvider></VolkCloudProvider></LanguageProvider>);

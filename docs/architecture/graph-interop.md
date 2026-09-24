@@ -1,4 +1,4 @@
-# Graph Interop B0: detached workspace graph proposals
+# Graph Interop: detached workspace graph proposals (B0 and B1)
 
 Graph Interop B0 introduces a small source-neutral boundary for describing and
 assessing a VOLK graph without loading it into, running it in, or mutating a
@@ -16,18 +16,18 @@ Build Agent GraphProposalV1 ─┐
 VOLK project JSON ───────────┘
         │
         └─ migrate/validate with the existing project contract
-
-Future producer families
-        → source adapter / planner
-        → WorkspaceGraphProposalV1
-        → validation [B0]
-        → preview / apply [future]
-        → canonical VOLK project [future]
+                 ↓
+        detached read-only preview
+                 ↓ explicit learner Apply
+        latest-snapshot revalidation
+                 ↓
+        canonical VOLK workspace commit
 ```
 
-B0 implements only the source contract, graph-candidate handoff, and validation
-through the bracketed B0 step. Preview, Apply, graph patching, and writing a
-canonical project remain future work; no candidate path performs those actions.
+B0 established the source contract, detached graph-candidate handoff, and
+validation. B1 adds a local read-only preview and an explicit, gated Apply path
+for a whole graph proposal. The B0 proposal API remains detached and pure;
+producer code cannot mutate a mounted workspace.
 
 ## Graph scope and project boundary
 
@@ -159,8 +159,9 @@ ONNX-described import without impersonating a future official adapter.
 
 The proposal identity binds the supplied snapshot and conversion claims for
 change detection; it is a stable non-cryptographic fingerprint, not a signature
-or authorization token. Any future preview/Apply path must repeat current
-registry validation and capability/dataset assessment at the point of use.
+or authorization token. B1 repeats current registry validation and
+capability/dataset assessment both when preparing the preview and immediately
+before committing it.
 
 Conversion fidelity is one of `exact`, `structural`, `partial`, or
 `unsupported`. The versioned report includes bounded machine-readable
@@ -178,16 +179,55 @@ described above.
 ## Authority and assessment policy
 
 Every proposal has `authority: detached-proposal` and
-`requiresUserAcceptance: true`. B0 creates no Apply action, run path, ghost
-graph, patch proposal, transport, or importer beyond the local VOLK producer.
+`requiresUserAcceptance: true`. B0 created no Apply action, run path, ghost
+graph, or patch proposal. B1's Apply is an app-level learner action, not
+proposal authority: the proposal remains data until the learner explicitly
+accepts it in the preview.
 
-The current pure workspace assessment is deliberately non-destructive: an
-empty target is `eligible`; any non-empty target is `blocked` with
+The pure workspace assessment is deliberately non-destructive: an empty target
+is `eligible`; any non-empty target is `blocked` with
 `TARGET_WORKSPACE_NOT_EMPTY`. Assessment reads counts only and does not replace,
-merge, clear, or otherwise mutate the target workspace or proposal. The
-assessment is informational and grants no future Apply authority.
+merge, clear, or otherwise mutate the target workspace or proposal. It is a
+precondition for Apply, not Apply authority.
 
-GraphPatchProposal, merge policy, transport, authentication, provider
-integration, remote formats such as ONNX/PyTorch/TensorFlow, and UI preview are
-future phases. Existing `PROJECT_VERSION`, Canvas Agent API, and full-project
-serialization remain unchanged in B0.
+## B1 local preview and Apply lifecycle
+
+`src/core/graph/workspaceApply.js` owns the pure preparation/commit boundary.
+The Build workspace owns the only submission context in
+`src/components/graph/WorkspaceGraphProposalContext.jsx`; producer surfaces
+submit a detached proposal and receive no graph mutation capability. The
+application validates and clones the proposal, stages it in transient UI state,
+and renders `GraphProposalPreview` as a non-editable React Flow view.
+
+Preparation uses the latest serialized project, runtime, dataset, current
+component registry, proposal revalidation, and canonical project validator.
+It blocks a running runtime, missing Build Agent dataset, stale data or column
+selection, an occupied target, registry mismatch, malformed project, and
+conflicting custom definition. The preview reports bounded localized reasons;
+it never edits nodes, edges, parameters, or project fields. Presentation-only
+selection/drag metadata is reset on the incoming nodes and edges before the
+candidate project is validated.
+
+Apply synchronously prepares again against the latest workspace snapshot. A
+changed snapshot rejects the stale preparation; a newly occupied workspace or
+stale dataset is rejected by the same current validator. Successful Apply
+replaces only the graph, adds exact required custom definitions, clears the
+prior trained model and execution runtime, clears selection/transient pending
+operations, and then lets the existing project autosave path persist the
+canonical project. Current project name, data, language, and workspace
+preferences remain authoritative. Custom definition ID conflicts are rejected
+unless the current definition is exactly identical. There is no merge or patch
+mode.
+
+The producer flow is source-neutral: the Build Agent's existing native
+`GraphProposalV1` and the VOLK graph-only project adapter both end at
+`WorkspaceGraphProposalV1`. The same validator, read-only preview, and Apply
+boundary handle either; the existing full-project import/export format remains
+separate. A dev-only `?graphApplyTest=1` bridge exposes fixture construction and
+proposal staging for actual-browser acceptance, but exposes no Apply primitive.
+
+Apply does not add a Canvas Agent command, change `CANVAS_AGENT_API_VERSION`,
+change `PROJECT_VERSION`, or add a Cloud endpoint. Existing Canvas Agent graph
+editing, execution, code export, project serialization, and local autosave
+remain the canonical post-Apply paths. Graph patches/merge, remote formats and
+their adapters, authentication, and provider transport remain future work.

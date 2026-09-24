@@ -52,7 +52,8 @@ separate from the Canvas Agent and Build workspace.
 The source-neutral detached graph proposal boundary and the distinction
 between graph-scoped and full-project interoperability are documented in
 [`graph-interop.md`](./graph-interop.md). It reuses the canonical VOLK
-`nodes`/`edges` model and keeps graph assessment non-destructive.
+`nodes`/`edges` model, presents proposals without editing the workspace, and
+allows only an explicit learner-confirmed Apply through canonical validation.
 
 Agent requests share the versioned, semantic boundary documented in
 [`ai-provider.md`](./ai-provider.md). Ask, Experiment Design, and World Edit

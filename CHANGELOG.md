@@ -1180,3 +1180,10 @@
 - Preserved rebuilt custom-composite instance semantics and graph identity independently from copy-style catalogue templates; malformed or unresolved definitions, duplicates, and built-in shadowing remain rejected.
 - Hardened exported graph capability helpers to validate canonical project/registry contracts before returning capabilities; added lifecycle and forged-graph regressions and architecture guidance.
 - Acceptance: focused Graph Interop and Build Agent checks, full `npm run check`, production `npm run build`, independent VOLK-Dev PASS, and `git diff --check` passed. The build retains the existing large-chunk advisory; no browser test applies.
+
+## 2026-09-24 — Graph Infrastructure B1 proposal preview and Apply
+
+- Added an app-owned detached proposal lifecycle with pure preparation, current-snapshot revalidation, and explicit Apply into an empty Build workspace. The localized read-only preview reports fidelity, verification, capabilities, warnings, and bounded eligibility reasons; current project metadata/data remain authoritative and successful Apply clears stale model/runtime state.
+- Preserved rebuilt folded-composite instance parameters independently from the copy-style catalogue template, kept proposal submission limited to Build, and retained existing project and Canvas Agent API versions. Updated Graph Interop and overview architecture documentation.
+- Added focused apply contract tests and an actual-browser CDP matrix covering cancellation, target occupancy, stale datasets, Build Agent Apply, ordinary graph operations/autosave, and rebuilt-composite Apply. Passing browser trace and screenshots: `docs/acceptance/assets/graph-apply-b1/2026-09-24T05-43-48-489Z/`.
+- Acceptance: independent VOLK-Dev PASS; focused Graph Apply, Graph Interop, and Build Agent checks; full `npm run check`; `npm run build`; browser matrix in Chrome 153; and `git diff --check` passed. The build retains the existing large-chunk advisory. Apply is whole-graph only for an empty Build workspace; merge/patch and producer-specific UI integrations remain follow-ups.

@@ -811,11 +811,11 @@ export function revalidateWorkspaceGraphProposal(proposal, options = {}) {
         const availableFeatures = new Set(current.featureColumns.map((column) => column.name));
         const selectionStillAvailable = binding.featureColumns.every((feature) => availableFeatures.has(feature))
           && current.targetColumn.name === binding.targetColumn;
-        if (current.datasetFingerprint !== binding.fingerprint || !selectionStillAvailable) {
+        if (!selectionStillAvailable || current.datasetFingerprint !== binding.fingerprint) {
           return {
             ...result,
             valid: false,
-            diagnostics: [{ code: current.datasetFingerprint !== binding.fingerprint ? 'BUILD_DATASET_STALE' : 'BUILD_PROPOSAL_DATASET_SELECTION_INVALID' }],
+            diagnostics: [{ code: !selectionStillAvailable ? 'BUILD_PROPOSAL_DATASET_SELECTION_INVALID' : 'BUILD_DATASET_STALE' }],
           };
         }
       }
