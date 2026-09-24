@@ -241,6 +241,11 @@ activationTamper.graph.nodes.find((node) => node.data.manifest.id === 'relu_node
 resignProposal(activationTamper, { refreshGraphIdentity: true });
 expectProposalDiagnostic(validateWorkspaceGraphProposal(activationTamper), 'GRAPH_SOURCE_EVIDENCE_INVALID');
 
+const denseParameterTamper = clone(proposal);
+denseParameterTamper.graph.nodes.find((node) => node.id === 'torch-op-000').data.parameters.units = 33;
+resignProposal(denseParameterTamper, { refreshGraphIdentity: true });
+expectProposalDiagnostic(validateWorkspaceGraphProposal(denseParameterTamper), 'GRAPH_SOURCE_EVIDENCE_INVALID');
+
 const edgeTamper = clone(proposal);
 edgeTamper.graph.edges.pop();
 resignProposal(edgeTamper, { refreshGraphIdentity: true });
