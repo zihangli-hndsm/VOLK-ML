@@ -1,4 +1,4 @@
-"""Extract metadata-only TorchExportDocumentV2 records from a trusted ExportedProgram.
+"""Extract metadata-only TorchExportDocumentV1 records from a trusted ExportedProgram.
 
 torch.export.load uses pickle-backed data. Never point this CLI at an artifact
 from an untrusted source. The browser accepts only the resulting JSON document.
@@ -16,9 +16,9 @@ import zipfile
 from pathlib import Path
 from typing import Any
 
-DOCUMENT_TYPE = "TorchExportDocumentV2"
-DOCUMENT_VERSION = 2
-EXTRACTOR_SCHEMA_VERSION = 2
+DOCUMENT_TYPE = "TorchExportDocumentV1"
+DOCUMENT_VERSION = 1
+EXTRACTOR_SCHEMA_VERSION = 1
 MAX_DOCUMENT_CODE_UNITS = 500_000
 MAX_OPS = 64
 MAX_INPUTS_AND_STATE = 128

@@ -238,8 +238,11 @@ their adapters, authentication, and provider transport remain future work.
 
 ## B2 Torch Export JSON adapter
 
-The local Torch Export adapter maps a bounded, non-executable
-TorchExportDocumentV2 into the existing WorkspaceGraphProposalV1 boundary.
+The local Torch Export adapter maps the bounded, non-executable
+`TorchExportDocumentV1` contract (`type: "TorchExportDocumentV1"`, `version: 1`)
+into the existing WorkspaceGraphProposalV1 boundary. Its nested extractor
+metadata declares `schemaVersion: 1`; the document schema is strict and rejects
+unknown fields while carrying metadata only.
 Build More exposes “Import Torch Export JSON”; selecting a file only parses and
 stages a detached proposal. The B1 read-only preview, Cancel, latest-snapshot
 revalidation, empty-workspace check, and explicit Apply remain authoritative.

@@ -1028,7 +1028,7 @@ const torchExportConversion = Object.freeze({
 });
 
 /**
- * Create a detached proposal from a bounded metadata-only TorchExportDocumentV2. The source
+ * Create a detached proposal from a bounded metadata-only TorchExportDocumentV1. The source
  * document remains embedded so proposal validation can rematerialize and bind
  * both graph semantics and layout before B1 preview/Apply.
  */

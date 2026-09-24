@@ -1,6 +1,6 @@
 {
-  "type": "TorchExportDocumentV2",
-  "version": 2,
+  "type": "TorchExportDocumentV1",
+  "version": 1,
   "exporter": {
     "name": "torch.export",
     "torchVersion": "2.5.1"
@@ -9,7 +9,7 @@
     "identifier": "reference-mlp-8-32-4"
   },
   "extractor": {
-    "schemaVersion": 2
+    "schemaVersion": 1
   },
   "graph": {
     "inputs": [
@@ -39,5 +39,5 @@
     "buffers": [],
     "constants": []
   },
-  "documentFingerprint": "sha256:9cfbf998a65acba50abc14379d6fed76c8c9bae7cdb5f7f3dfae7d78e1ec9c04"
+  "documentFingerprint": "sha256:1e7c35efb450fba3c985da60b6959fb7f28c40f6aa5bd62456ed7b3ee5a4b933"
 }

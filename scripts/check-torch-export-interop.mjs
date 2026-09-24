@@ -59,9 +59,10 @@ function resignProposal(proposal, { refreshGraphIdentity = false } = {}) {
 assert.equal(sha256Hex('abc'), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad', 'SHA-256 implementation matches the standard test vector.');
 assert.equal(fixture.documentFingerprint, artifactFingerprintJsonV1(Object.fromEntries(Object.entries(fixture).filter(([key]) => key !== 'documentFingerprint'))));
 assert.match(fixture.documentFingerprint, /^sha256:[a-f0-9]{64}$/);
-assert.equal(fixture.type, 'TorchExportDocumentV2');
+assert.equal(fixture.type, 'TorchExportDocumentV1');
+assert.equal(fixture.version, 1);
 assert.equal(fixture.model.identifier, 'reference-mlp-8-32-4');
-assert.equal(fixture.extractor.schemaVersion, 2);
+assert.equal(fixture.extractor.schemaVersion, 1);
 assert.equal(fixture.exporter.torchVersion, '2.5.1');
 assert.equal(JSON.stringify(fixture).includes('SENTINEL-PARAMETER-VALUE'), false);
 assert.ok(fixture.state.parameters.every((entry) => !Object.hasOwn(entry, 'data') && !Object.hasOwn(entry, 'value')),
@@ -70,6 +71,17 @@ assert.ok(fixture.state.parameters.every((entry) => !Object.hasOwn(entry, 'data'
 const normalized = validateTorchExportDocument(fixture);
 assert.equal(normalized.documentFingerprint, fixture.documentFingerprint);
 assert.equal(normalized.graph.nodes.length, 3);
+
+const unsupportedDocumentVersion = clone(fixture);
+unsupportedDocumentVersion.type = 'TorchExportDocumentV2';
+unsupportedDocumentVersion.version = 2;
+seal(unsupportedDocumentVersion);
+expectDocumentFailure(unsupportedDocumentVersion, 'TORCH_EXPORT_DOCUMENT_VERSION_UNSUPPORTED');
+
+const unsupportedExtractorVersion = clone(fixture);
+unsupportedExtractorVersion.extractor.schemaVersion = 2;
+seal(unsupportedExtractorVersion);
+expectDocumentFailure(unsupportedExtractorVersion, 'TORCH_EXPORT_DOCUMENT_VERSION_UNSUPPORTED');
 
 const graphA = materializeTorchExportDocument(fixture);
 const graphB = materializeTorchExportDocument(fixture);

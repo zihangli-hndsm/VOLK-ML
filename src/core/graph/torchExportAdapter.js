@@ -2,8 +2,8 @@ import { componentById } from '../components.js';
 import { connectAgentNodes, createAgentNode } from '../canvasAgent.js';
 import { artifactFingerprintJsonV1 } from './artifactFingerprint.js';
 
-export const TORCH_EXPORT_DOCUMENT_TYPE = 'TorchExportDocumentV2';
-export const TORCH_EXPORT_DOCUMENT_VERSION = 2;
+export const TORCH_EXPORT_DOCUMENT_TYPE = 'TorchExportDocumentV1';
+export const TORCH_EXPORT_DOCUMENT_VERSION = 1;
 export const MAX_TORCH_EXPORT_DOCUMENT_CODE_UNITS = 500_000;
 export const MAX_TORCH_EXPORT_OPS = 64;
 export const MAX_TORCH_EXPORT_INPUTS_AND_STATE = 128;
@@ -208,7 +208,7 @@ function validateDocumentShape(document) {
   exactObject(document.model, ['identifier'], '$.model');
   boundedString(document.model.identifier, '$.model.identifier', IDENTIFIER, 64);
   exactObject(document.extractor, ['schemaVersion'], '$.extractor');
-  if (document.extractor.schemaVersion !== 2) fail('TORCH_EXPORT_DOCUMENT_VERSION_UNSUPPORTED', 'Torch Export extractor schema version is unsupported.', '$.extractor.schemaVersion');
+  if (document.extractor.schemaVersion !== 1) fail('TORCH_EXPORT_DOCUMENT_VERSION_UNSUPPORTED', 'Torch Export extractor schema version is unsupported.', '$.extractor.schemaVersion');
   exactObject(document.graph, ['inputs', 'nodes', 'outputs', 'rangeConstraints'], '$.graph');
   boundedArray(document.graph.inputs, '$.graph.inputs', MAX_TORCH_EXPORT_INPUTS_AND_STATE);
   boundedArray(document.graph.nodes, '$.graph.nodes', MAX_TORCH_EXPORT_OPS);
@@ -389,7 +389,7 @@ function assertDocumentSize(document) {
   }
 }
 
-/** Validate, clone, and return a strict normalized TorchExportDocumentV2. */
+/** Validate, clone, and return a strict normalized TorchExportDocumentV1. */
 export function validateTorchExportDocument(value) {
   if (!isRecord(value)) fail('TORCH_EXPORT_DOCUMENT_INVALID', 'Document root must be a plain object.', '$');
   assertDocumentSize(value);
