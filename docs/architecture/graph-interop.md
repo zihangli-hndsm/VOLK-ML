@@ -462,3 +462,53 @@ current component/property/port/cycle rules, custom-definition lifecycle,
 bounds, unknown fields, unsupported operations, and the absence of a workspace
 Apply path. Existing B0/B1, Torch Export B2, and ONNX B3 contracts remain
 separate and unchanged.
+
+## C2 occupied-workspace patch preview and Apply
+
+C2 adds `src/core/graph/workspacePatchApply.js` as the Apply boundary for the
+existing `GraphPatchProposalV1` contract. The patch remains detached proposal
+data until the learner explicitly selects Apply; source adapters and the
+Canvas Agent still receive no workspace mutation capability. The existing
+Build submission context stages either a whole-graph proposal or a graph
+patch, then dispatches to the corresponding pure preparation/commit helper.
+This is one proposal handoff surface, not a second patch producer or graph
+reducer.
+
+Patch Apply is intentionally distinct from B1 whole-graph Apply. It accepts an
+occupied graph and revalidates the proposal against the latest canonical
+project graph, current component registry, custom-definition catalogue,
+project validator, execution runtime, and workspace snapshot. Semantic and
+presentation graph identity are both checked: a changed graph or layout makes
+the patch stale, while React Flow selection, drag, measurement, and other
+view-only fields are removed before comparison. The preview derives its node
+and edge groups from the canonical before/after graphs and ordered operations;
+parameters, positions, endpoints, additions, and removals are details of that
+derived diff, not independent UI claims. Both graphs are read-only.
+
+Preparation is detached. The explicit Apply callback prepares again and
+commits only if the project, dataset, runtime, and workspace metadata still
+match the prepared snapshot. Current project name, dataset, language,
+workspace preferences, and custom catalogue remain authoritative. Semantic
+graph changes clear trained-model and execution results; layout-only changes
+preserve them. Concurrent edits, an active run, invalid project, live registry
+drift, or custom-definition collision block Apply with a bounded diagnostic.
+Cancel and failed Apply preserve newer learner changes. Successful Apply
+returns a canonical project to the existing app state/autosave path; Canvas
+Agent edit, run, export, and project serialization contracts remain unchanged.
+
+The localized `GraphPatchPreview` groups existing, added, removed, and changed
+nodes and connections, includes exact parameter/layout/endpoint details, shows
+source and ordered operations, and explicitly lists unsupported operations
+that are rejected before staging. Its Apply eligibility is recomputed from
+current runtime facts. Read-only React Flow canvases do not expose graph
+controls, and the dialog keeps cancel/apply keyboard access at desktop and
+compact widths. The dev-only `?graphApplyTest=1` bridge supplies deterministic
+occupied-graph fixtures through the same proposal submission context; it does
+not expose an Apply primitive.
+
+Run `npm run check:graph-patch-apply` for detached preparation, diff, stale and
+registry checks, and `npm run test:graph-patch:browser` for the mounted browser
+flow, localization, cancellation, stale-edit preservation, explicit keyboard
+Apply, and post-Apply run/export/save paths. `npm run check` includes the pure
+patch-Apply check. C2 does not increment the Canvas Agent or project API
+version, add a Cloud route, or change B1's empty-target behavior.

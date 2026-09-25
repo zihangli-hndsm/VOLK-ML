@@ -55,8 +55,11 @@ between graph-scoped and full-project interoperability are documented in
 [`graph-interop.md`](./graph-interop.md). It reuses the canonical VOLK
 `nodes`/`edges` model, presents proposals without editing the workspace, and
 allows only an explicit learner-confirmed Apply through canonical validation.
-Local Torch Export and ONNX metadata-only adapters also target this proposal
-boundary; their trusted source extraction stays outside the browser.
+Occupied-workspace graph patches use the same submission boundary with a
+canonical before/after diff and an explicit stale-checked Apply; whole-graph
+proposals retain their separate empty-target rule. Local Torch Export and ONNX
+metadata-only adapters also target this proposal boundary; their trusted
+source extraction stays outside the browser.
 
 Agent requests share the versioned, semantic boundary documented in
 [`ai-provider.md`](./ai-provider.md). Ask, Experiment Design, and World Edit
