@@ -1208,3 +1208,11 @@
 - Added localized ONNX import UI, versioned source evidence and conversion reporting, adversarial re-signed source/graph/conversion validation, real ModelProto fixtures, and Chromium coverage for Cancel, occupied-target blocking, explicit Apply, invalid input, English/Chinese/parallel language modes, and compact layout. Updated Graph Interop, overview, and local-development documentation.
 - Acceptance: configured ONNX 1.23.0 extraction/contracts, independent seven-case ModelProto matrix, ONNX and Torch browser paths, Graph Apply browser, full `npm run check` with configured ONNX and PyTorch runtimes, production `npm run build`, `git diff --check`, and independent VOLK-Dev PASS.
 - Limitations: import intentionally preserves supported architecture semantics only, not learned parameter values; the adapter supports a bounded standard ONNX opset-13 subset. The production build retains the existing greater-than-500-kB chunk advisory.
+
+## 2026-09-25 — C1 detached GraphPatchProposalV1 contract
+
+- Added a bounded, ordered graph-patch proposal contract that replays changes against a canonical detached base, binds semantic and layout fingerprints, records bounded rationale and recomputed proposal-time validation facts, and preserves learner acceptance without a workspace Apply path.
+- Added custom-composite definition reuse and instance-divergence coverage, strict tamper/unknown-field checks, and an explicit C1.1 reservation for REPLACE_SUBGRAPH.
+- Affected areas: src/core/graph/graphPatchProposal.js, src/core/graph/index.js, scripts/check-graph-patch.mjs, package.json, and docs/architecture/graph-interop.md.
+- Acceptance: independent VOLK-Dev PASS; focused patch and graph interop/apply checks; real PyTorch 2.14.0+cpu and ONNX 1.23.0 prechecks; B1 Graph Apply and B3 ONNX browser regressions; full npm run check; production npm run build; and git diff --check passed.
+- Limitations: the patch contract remains detached; future Apply must revalidate current target, registry, and capability truth. REPLACE_SUBGRAPH remains unsupported in V1 pending explicit boundary mapping and custom-definition lifecycle design.
