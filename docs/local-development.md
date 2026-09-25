@@ -127,6 +127,30 @@ and local CORS contract, including cleanup. `npm run test:local` runs both
 focused checks. The comprehensive `npm run check` remains the repository-wide
 suite. No production backend is bundled into GitHub Pages.
 
+## Local ONNX graph import (B3)
+
+ONNX import is an optional local preparation step; the browser receives only a
+bounded metadata JSON document, never the `.onnx` protobuf or external tensor
+files. With a local Python that has ONNX and NumPy installed, run:
+
+```text
+python tools/onnx/extract_onnx.py --input model.onnx --output model.onnx.json --model-id local-model
+```
+
+Then open Build → More → **Import normalized ONNX JSON**, select the generated
+JSON, inspect the detached graph preview, and use **Apply graph** only if the
+current workspace is empty and the proposed architecture is what you want.
+Canceling or rejecting the document does not alter the workspace. The adapter
+supports only standard ONNX opset 13; models at the current default opset 28
+receive a clear unsupported-opset diagnostic. The supported operator subset,
+metadata-only initializer rule, and reshape limitations are detailed in
+[`architecture/graph-interop.md`](architecture/graph-interop.md#b3-local-onnx-adapter).
+
+For the real ModelProto and browser regressions, set `ONNX_PYTHON` to the ONNX-enabled
+Python executable and run `npm run check:onnx-interop` and
+`npm run test:onnx:browser`. A configured but unavailable/broken interpreter is
+a test failure, not a silent skip.
+
 Episode 0 is frontend-shipped and runs through the same Explore host. Use
 `npm run check:episode-0` to verify its registry, stage derivation, fallback,
 out-of-order progress, and generic-runtime reuse fixture.
