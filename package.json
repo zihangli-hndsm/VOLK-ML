@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "precheck": "node scripts/check-graph-interop.mjs && node scripts/check-torch-export-interop.mjs && node scripts/test-torch-export-extractor.mjs && node scripts/check-onnx-interop.mjs",
+    "precheck": "node scripts/check-graph-interop.mjs && node scripts/check-graph-patch.mjs && node scripts/check-torch-export-interop.mjs && node scripts/test-torch-export-extractor.mjs && node scripts/check-onnx-interop.mjs",
     "dev": "vite",
     "dev:backend": "node scripts/start-backend.mjs",
     "dev:all": "node scripts/dev-all.mjs",
@@ -12,6 +12,7 @@
     "check:episode-1": "node scripts/check-inquiry-episode-runtime.mjs",
     "check:build-agent": "node scripts/check-build-agent.mjs",
     "check:graph-interop": "node scripts/check-graph-interop.mjs",
+    "check:graph-patch": "node scripts/check-graph-patch.mjs",
     "check:graph-apply": "node scripts/check-graph-apply.mjs",
     "check:torch-export-interop": "node scripts/check-torch-export-interop.mjs",
     "check:onnx-interop": "node scripts/check-onnx-interop.mjs",

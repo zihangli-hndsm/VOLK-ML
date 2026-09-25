@@ -1,4 +1,4 @@
-# Graph Interop: detached workspace graph proposals (B0 and B1)
+# Graph Interop: detached graph proposals and patches (B0-B3 and C1)
 
 Graph Interop B0 introduces a small source-neutral boundary for describing and
 assessing a VOLK graph without loading it into, running it in, or mutating a
@@ -390,3 +390,75 @@ check:onnx-interop` runs the real ModelProto-to-document-to-proposal tests;
 post-Apply compiler use in Chromium. Set `ONNX_PYTHON` (or `PYTHON`) to the
 ONNX-enabled Python executable when running these checks; if it is explicitly configured,
 the tests fail rather than silently skipping a missing or broken runtime.
+
+## C1 detached graph patches
+
+GraphPatchProposalV1 describes an ordered, bounded patch against one detached
+graph snapshot. Its implementation is src/core/graph/graphPatchProposal.js;
+the contract is exported from src/core/graph/index.js. A patch carries the
+canonical base graph, its semantic and presentation identities, ordered
+operations, expected result identities, bounded source/provenance labels, and
+a graph-only capability snapshot.
+
+The V1 operation vocabulary is:
+
+- ADD_NODE: add one canonical node and the required custom component
+  definitions; built-in nodes pass an empty componentDefinitions list.
+- REMOVE_NODE: remove a node only after earlier operations explicitly
+  disconnect every incident edge.
+- UPDATE_PARAMETERS: replace the node's parameter override object. The
+  canonical project validator resolves registered defaults in the result.
+- CONNECT: add one edge with stable identity and exact source/target handles;
+  current port typing, occupied-input, self-edge, and cycle rules are checked.
+- DISCONNECT: remove one existing edge by identity.
+- MOVE_NODE: update only one node's finite layout coordinates.
+
+Operations replay in order into a detached copy, then the result is
+canonicalized through the existing project/registry graph contract. ADD_NODE
+can reuse a canonical custom definition already present in the base graph
+without resending it; a new definition is carried only when needed by the
+added node. Existing catalogue definitions and valid instance-specific folded
+manifests remain distinct. Removing the last referencing node prunes
+unreferenced definitions. REPLACE_SUBGRAPH is explicitly unsupported in V1
+and returns GRAPH_PATCH_OPERATION_UNSUPPORTED. A later C1.1 design must first
+specify atomic replacement, boundary-edge mapping, stable internal identities,
+and custom-definition lifecycle rather than treating replacement as an
+opaque bulk edit.
+
+dryRunGraphPatch returns only a detached canonical candidate and recomputed
+identity/capabilities. createGraphPatchProposal and validateGraphPatchProposal
+replay the patch and verify the base identity, expected result identity,
+current capability snapshot, source shape, and proposal identity.
+revalidateGraphPatchProposal repeats those checks against the current
+component registry and current code capabilities. Callers may also supply a
+detached currentBaseGraph; semantic and presentation canonical JSON are
+compared directly (not only by their non-cryptographic fingerprints), and a
+mismatch returns GRAPH_PATCH_BASE_STALE. None of these APIs reads or mutates a
+mounted project, invokes workspaceApply, or provides a commit/Canvas command.
+
+The required baseGraphFingerprint and expectedResultFingerprint each bind the
+corresponding versioned graph identity pair: semanticFingerprint plus
+presentationFingerprint. Therefore a stale layout blocks a patch just as a
+stale semantic graph does, while a move remains presentation-only in the
+semantic fingerprint. Both explicit fingerprints and identity objects are
+recomputed from the base and replayed result. Proposal IDs and graph
+fingerprints are bounded non-cryptographic integrity hints, not signatures,
+authentication, or authority. Source producer/provenance and the bounded
+rationale are descriptive metadata only and are included in proposalId.
+
+The required validation object is a deterministic proposal-time report:
+current canonical project-contract validation of the base and result,
+successful ordered detached replay, current-registry capability recomputation,
+the checked operation count, and revalidateBeforeApply=true. Validation
+recomputes these claims; future C2 Apply must revalidate current target,
+registry, capabilities, and graph truth rather than trust the stored report.
+The exact authority=detached-proposal and requiresUserAcceptance=true fields
+preserve the consent boundary; they do not execute the patch.
+
+Run focused checks with npm run check:graph-patch; this is also included in the
+repository graph-interop precheck. The suite exercises ordered mixed
+operations, determinism and detachment, base/result/capability tampering,
+current component/property/port/cycle rules, custom-definition lifecycle,
+bounds, unknown fields, unsupported operations, and the absence of a workspace
+Apply path. Existing B0/B1, Torch Export B2, and ONNX B3 contracts remain
+separate and unchanged.
