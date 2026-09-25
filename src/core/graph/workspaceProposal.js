@@ -21,6 +21,11 @@ import {
   materializeTorchExportDocument,
   validateTorchExportDocument,
 } from './torchExportAdapter.js';
+import {
+  materializeOnnxDocument,
+  ONNX_SUPPORTED_OPSET,
+  validateOnnxDocument,
+} from './onnxAdapter.js';
 
 export const WORKSPACE_GRAPH_PROPOSAL_VERSION = 1;
 export const WORKSPACE_GRAPH_PROPOSAL_TYPE = 'WorkspaceGraphProposalV1';
@@ -28,6 +33,8 @@ export const GRAPH_SOURCE_VERSION = 2;
 export const GRAPH_CONVERSION_REPORT_VERSION = 2;
 export const TORCH_EXPORT_SOURCE_VERSION = 4;
 export const TORCH_EXPORT_CONVERSION_REPORT_VERSION = 4;
+export const ONNX_SOURCE_VERSION = 1;
+export const ONNX_CONVERSION_REPORT_VERSION = 1;
 
 const FIDELITIES = ['exact', 'structural', 'partial', 'unsupported'];
 const SOURCE_KINDS = ['planner', 'import'];
@@ -42,7 +49,7 @@ const OFFICIAL_PRODUCERS = new Set([
   'build-agent', 'volk-project', 'onnx-adapter', 'torch-export-adapter', 'torch-fx-adapter', 'tensorflow-adapter', 'keras-adapter',
 ]);
 const IMPLEMENTED_VERIFIED_PRODUCERS = new Set(['build-agent', 'volk-project']);
-const RESERVED_ADAPTER_PRODUCERS = new Set(['onnx-adapter', 'torch-fx-adapter', 'tensorflow-adapter', 'keras-adapter']);
+const RESERVED_ADAPTER_PRODUCERS = new Set(['torch-fx-adapter', 'tensorflow-adapter', 'keras-adapter']);
 const CONVERSION_VERIFICATIONS = ['producer-declared', 'volk-verified'];
 const PROVENANCE_LOCATIONS = ['generated', 'local-project', 'local-file', 'inline', 'unknown'];
 const FRAMEWORKS = ['pytorch', 'tensorflow'];
@@ -373,7 +380,9 @@ function validateSource(source) {
   }
   if (!SOURCE_PRODUCERS.includes(source.producer)) fail('GRAPH_PROVENANCE_INVALID', 'Proposal source producer is unsupported.');
   if (!SOURCE_FORMATS.includes(source.format)) fail('GRAPH_PROVENANCE_INVALID', 'Proposal source format is unsupported.');
-  const expectedSourceVersion = source.producer === 'torch-export-adapter' ? TORCH_EXPORT_SOURCE_VERSION : GRAPH_SOURCE_VERSION;
+  const expectedSourceVersion = source.producer === 'torch-export-adapter'
+    ? TORCH_EXPORT_SOURCE_VERSION
+    : source.producer === 'onnx-adapter' ? ONNX_SOURCE_VERSION : GRAPH_SOURCE_VERSION;
   if (source.version !== expectedSourceVersion) fail('GRAPH_PROVENANCE_VERSION_UNSUPPORTED', 'Graph source contract version is unsupported.');
   validateProvenance(source.provenance);
 
@@ -407,6 +416,20 @@ function validateSource(source) {
   }
 
   if (source.kind !== 'import') fail('GRAPH_PROVENANCE_INVALID', 'Import source kind is unsupported.');
+  if (source.producer === 'onnx-adapter') {
+    rejectUnknown(source, ['version', 'kind', 'producer', 'format', 'provenance', 'onnxDocument'], 'source');
+    if (source.format !== 'ONNX') fail('GRAPH_PROVENANCE_INVALID', 'ONNX source producer and format do not match the implemented adapter.');
+    let document;
+    try { document = validateOnnxDocument(source.onnxDocument); } catch {
+      fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'Embedded normalized ONNX document failed its strict adapter validator.');
+    }
+    if (
+      source.provenance.artifactId !== 'onnx-normalized-document'
+      || source.provenance.fingerprint !== document.documentFingerprint
+      || source.provenance.location !== 'local-file'
+    ) fail('GRAPH_PROVENANCE_INVALID', 'ONNX provenance does not match its embedded normalized document.');
+    return;
+  }
   if (source.producer === 'torch-export-adapter') {
     rejectUnknown(source, ['version', 'kind', 'producer', 'format', 'provenance', 'torchExportDocument'], 'source');
     if (source.format !== 'torch.export') fail('GRAPH_PROVENANCE_INVALID', 'Torch Export source producer and format do not match the implemented adapter.');
@@ -524,19 +547,33 @@ function validateSourceSpecificEvidence(source, canonicalGraph) {
       || canonicalGraphLayoutJsonV1(rematerialized) !== canonicalGraphLayoutJsonV1(canonicalGraph)
     ) fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'Torch Export evidence does not bind to the detached graph.');
   }
+  if (source.producer === 'onnx-adapter') {
+    let rematerialized;
+    try {
+      rematerialized = materializeOnnxDocument(source.onnxDocument);
+    } catch {
+      fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'ONNX source evidence could not be deterministically rematerialized.');
+    }
+    if (
+      canonicalGraphSemanticsJsonV1(rematerialized) !== canonicalGraphSemanticsJsonV1(canonicalGraph)
+      || canonicalGraphLayoutJsonV1(rematerialized) !== canonicalGraphLayoutJsonV1(canonicalGraph)
+    ) fail('GRAPH_SOURCE_EVIDENCE_INVALID', 'ONNX evidence does not bind to the detached graph.');
+  }
 }
 
 function validateConversion(conversion, { requireVerification = true, sourceProducer = null } = {}) {
   rejectUnknown(conversion, [
     'version', 'fidelity', 'verification', 'exactFor', 'preserved', 'approximated', 'missing', 'unsupported', 'warnings', 'omitted',
   ], 'conversion');
-  const torchExport = sourceProducer === 'torch-export-adapter';
-  const expectedVersion = torchExport ? TORCH_EXPORT_CONVERSION_REPORT_VERSION : GRAPH_CONVERSION_REPORT_VERSION;
+  const sourceAdapter = sourceProducer === 'torch-export-adapter' || sourceProducer === 'onnx-adapter';
+  const expectedVersion = sourceProducer === 'torch-export-adapter'
+    ? TORCH_EXPORT_CONVERSION_REPORT_VERSION
+    : sourceProducer === 'onnx-adapter' ? ONNX_CONVERSION_REPORT_VERSION : GRAPH_CONVERSION_REPORT_VERSION;
   if (conversion.version !== expectedVersion) {
     fail('GRAPH_CONVERSION_VERSION_UNSUPPORTED', 'Graph conversion report version is unsupported.');
   }
   if (!FIDELITIES.includes(conversion.fidelity)) fail('GRAPH_CONVERSION_INVALID', 'Conversion fidelity is unsupported.');
-  const supportedVerifications = torchExport ? ['adapter-verified'] : CONVERSION_VERIFICATIONS;
+  const supportedVerifications = sourceAdapter ? ['adapter-verified'] : CONVERSION_VERIFICATIONS;
   if (requireVerification && !supportedVerifications.includes(conversion.verification)) {
     fail('GRAPH_CONVERSION_VERIFICATION_INVALID', 'Conversion verification is unsupported or missing.');
   }
@@ -646,11 +683,15 @@ function validateInternal(value) {
   validateGraphIdentity(value.graph, value.graphIdentity);
   validateSourceSpecificEvidence(value.source, canonicalGraph);
   validateConversion(value.conversion, { sourceProducer: value.source.producer });
+  if (value.source.producer === 'onnx-adapter'
+    && canonicalJsonString(value.conversion) !== canonicalJsonString(onnxConversion)) {
+    fail('GRAPH_CONVERSION_INVALID', 'ONNX conversion details must match the registered metadata-only adapter report.');
+  }
   if (value.source.producer === 'torch-export-adapter'
     && canonicalJsonString(value.conversion) !== canonicalJsonString(torchExportConversion)) {
     fail('GRAPH_CONVERSION_INVALID', 'Torch Export conversion details must match the registered metadata-only adapter report.');
   }
-  const expectedVerification = value.source.producer === 'torch-export-adapter'
+  const expectedVerification = ['torch-export-adapter', 'onnx-adapter'].includes(value.source.producer)
     ? 'adapter-verified'
     : IMPLEMENTED_VERIFIED_PRODUCERS.has(value.source.producer) ? 'volk-verified' : 'producer-declared';
   if (value.conversion.verification !== expectedVerification) {
@@ -1027,6 +1068,19 @@ const torchExportConversion = Object.freeze({
   omitted: ['original-python-structure', 'trained-parameter-values', 'batch-range-constraints'],
 });
 
+const onnxConversion = Object.freeze({
+  version: ONNX_CONVERSION_REPORT_VERSION,
+  fidelity: 'structural',
+  verification: 'adapter-verified',
+  exactFor: ['opset-' + ONNX_SUPPORTED_OPSET + '-supported-operator-semantics', 'supported-operator-order', 'feature-dimensions', 'uniform-float-dtype'],
+  preserved: ['affine-operator-topology', 'activation-semantics', 'feature-dimensions', 'bias-presence', 'deterministic-shape-operations'],
+  approximated: ['onnx-tensor-graph-to-editable-components'],
+  missing: ['trained-parameter-values', 'fixed-and-dynamic-batch-constraints', 'onnx-metadata-and-functions'],
+  unsupported: [],
+  warnings: ['trained-weights-not-imported', 'batch-dimension-is-implicit-in-target-graph'],
+  omitted: ['trained-parameter-values', 'fixed-and-dynamic-batch-constraints', 'onnx-metadata-and-functions'],
+});
+
 /**
  * Create a detached proposal from a bounded metadata-only TorchExportDocumentV1. The source
  * document remains embedded so proposal validation can rematerialize and bind
@@ -1052,6 +1106,35 @@ export function createTorchExportGraphProposal(rawDocument, options = {}) {
         torchExportDocument: document,
       },
       conversion: torchExportConversion,
+      targetGraph: options.targetGraph,
+    });
+    return { ok: true, proposal };
+  } catch (error) {
+    return projectGraphFailure(error?.code ?? 'GRAPH_PROPOSAL_INVALID', safeResultError(error).details ?? {});
+  }
+}
+
+/** Create a detached proposal from a normalized metadata-only ONNX V1 document. */
+export function createOnnxGraphProposal(rawDocument, options = {}) {
+  try {
+    rejectUnknown(options, ['targetGraph'], 'options');
+    const document = validateOnnxDocument(rawDocument);
+    const graph = materializeOnnxDocument(document);
+    const proposal = createProposal({
+      graph,
+      source: {
+        version: ONNX_SOURCE_VERSION,
+        kind: 'import',
+        producer: 'onnx-adapter',
+        format: 'ONNX',
+        provenance: {
+          artifactId: 'onnx-normalized-document',
+          fingerprint: document.documentFingerprint,
+          location: 'local-file',
+        },
+        onnxDocument: document,
+      },
+      conversion: onnxConversion,
       targetGraph: options.targetGraph,
     });
     return { ok: true, proposal };

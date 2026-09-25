@@ -27,6 +27,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
 | Framework-neutral compiler | `src/core/compiler.js` | VOLK IR, graph selection, compatibility report, PyTorch and TensorFlow generation |
+| Graph interoperability | `src/core/graph/` | Detached proposal contracts, deterministic revalidation, explicit Apply, local Torch Export and ONNX adapters |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
 | Teaching datasets | `src/core/teachingDatasets.js` | Deterministic seeded datasets for example projects and playgrounds |
 | Example quality | `src/core/exampleQuality.js` | Pure teaching-contract checks (class balance, leakage, nonlinearity, R²) |
@@ -54,8 +55,8 @@ between graph-scoped and full-project interoperability are documented in
 [`graph-interop.md`](./graph-interop.md). It reuses the canonical VOLK
 `nodes`/`edges` model, presents proposals without editing the workspace, and
 allows only an explicit learner-confirmed Apply through canonical validation.
-The local Torch Export JSON adapter also targets this proposal boundary; its
-trusted `.pt2` extraction stays outside the browser.
+Local Torch Export and ONNX metadata-only adapters also target this proposal
+boundary; their trusted source extraction stays outside the browser.
 
 Agent requests share the versioned, semantic boundary documented in
 [`ai-provider.md`](./ai-provider.md). Ask, Experiment Design, and World Edit

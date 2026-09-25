@@ -68,14 +68,13 @@ proposal identity binds provenance, graph identity, conversion report,
 capability snapshot, and assessment. The separately versioned source shape
 uses bounded categorical dimensions: `kind` is `planner` or `import`,
 `producer` distinguishes the producer, and `format` identifies the source
-representation. `GRAPH_SOURCE_VERSION` is 2 for existing producers: Build Agent evidence carries
-the native validated `GraphProposalV1`, while project evidence carries only a
-normalized VOLK project graph and migrated project version (never project data
-rows or other project state). The currently implemented specialized producers are only
-Build Agent (`planner` / `build-agent` / `volk-model-design-plan-v1`) and the
-canonical VOLK project path (`import` / `volk-project` / `volk-project`). The
-Torch Export adapter adds its own strict source-v3 evidence shape while
-preserving source-v2 compatibility for existing producers. The closed
+representation. `GRAPH_SOURCE_VERSION` is 2 for the native Build Agent and
+project producers: Build Agent evidence carries the validated
+`GraphProposalV1`, while project evidence carries only a normalized VOLK
+project graph and migrated project version (never project data rows or other
+project state). The Torch Export adapter has a strict source-v4 evidence shape
+while preserving source-v2 compatibility for native producers. B3 adds the
+specialized local ONNX adapter with its own source-v1 evidence shape. The closed
 vocabulary also has bounded values for human/external imports, ONNX,
 `torch.export`, `torch.fx`, TensorFlow, Keras, and unknown imports; the other
 framework adapters remain unimplemented. A source-neutral external planner can be
@@ -148,18 +147,19 @@ how much source meaning is preserved (`exact`, `structural`, `partial`, or
 revalidated. `volk-verified` requires a native Build Agent proposal that passes
 its validator and matches the detached graph and preserved source facts, or a
 graph-only VOLK source project that passes the canonical project path and
-matches the detached graph. `adapter-verified` is reserved for the Torch
-Export adapter after strict document validation and deterministic semantic +
-layout rematerialization. Source identity strings alone are insufficient.
+matches the detached graph. `adapter-verified` is emitted only by specialized
+adapters after strict document validation and deterministic semantic + layout
+rematerialization: Torch Export and ONNX. Source identity strings alone are
+insufficient.
 These source records establish semantic validity; they do not authenticate the
 human/process origin because the public envelope fingerprint is
 non-cryptographic. The generic candidate factory rejects any caller-supplied
 `conversion.verification`; when omitted, it sets `producer-declared`. Only the
 specialized Build Agent and VOLK project factories can emit `volk-verified`;
-only the Torch Export adapter factory can emit `adapter-verified`. The generic
-factory continues to reserve these official producer identities and all
-unimplemented adapters; external agents can submit generic candidates without
-impersonating an official adapter.
+only the Torch Export and ONNX adapter factories can emit `adapter-verified`.
+The generic factory continues to reserve these official producer identities
+and all unimplemented adapters; external agents can submit generic candidates
+without impersonating an official adapter.
 
 The proposal identity binds the supplied snapshot and conversion claims for
 change detection; it is a stable non-cryptographic fingerprint, not a signature
@@ -318,3 +318,75 @@ is explicitly skipped rather than installing dependencies.
 Example local invocation:
 
     python tools/torch_export/extract_torch_export.py --input model.pt2 --output model.json --model-id my-model --trusted-pt2
+
+## B3 local ONNX adapter
+
+The local ONNX adapter converts an actual ONNX `ModelProto` to the strict,
+metadata-only `VolkOnnxDocumentV1` (`type: "VolkOnnxDocumentV1"`, `version: 1`)
+then uses the same `WorkspaceGraphProposalV1`, read-only preview, latest-state
+revalidation, empty-workspace gate, and learner-confirmed Apply as B1. The
+browser accepts normalized JSON only. It never reads an ONNX protobuf, follows
+external tensor files, evaluates operators, copies initializer payloads, or
+imports trained values.
+
+The reusable extractor is `tools/onnx/extract_onnx.py` and exposes
+`extract_model(model, model_identifier=...)` for a local ONNX `ModelProto`. Its
+CLI requires a stable `--model-id`, bounds the input file to 25 MiB and the
+normalized JSON document to 500,000 code units, and refuses to overwrite an
+existing output unless `--overwrite` is supplied. A local Python environment
+with ONNX and NumPy is needed only to prepare this JSON; running VOLK-ML and
+importing the normalized document do not require Python or Cloud.
+
+Example local workflow:
+
+```text
+python tools/onnx/extract_onnx.py --input model.onnx --output model.onnx.json --model-id local-model
+```
+
+Use Build More → Import normalized ONNX JSON to stage the detached proposal.
+Only pressing Apply commits the ordinary editable VOLK graph. Cancelling or a
+validation failure leaves the current graph unchanged.
+
+The B3 adapter deliberately supports exactly standard-domain ONNX opset 13;
+the library's current/default opset 28 is rejected with `ONNX_OPSET_UNSUPPORTED`.
+No compatibility claim is made for other opsets. The bounded single-path
+subset supports:
+
+- `Gemm` with `alpha=1`, `beta=1`, `transA=0`, and `transB=0` or `1`;
+- `MatMul` with a rank-two parameter initializer, optionally followed by an
+  `Add` with a same-dtype `[units]` or `[1, units]` bias initializer;
+- `Relu`, `Sigmoid`, `Tanh`, and class-axis `Softmax`;
+- `Flatten(axis=1)`, which matches VOLK's non-batch flatten; and
+- deterministic `Reshape` whose small `int64` shape-control vector is copied
+  as structural metadata, preserves the batch dimension, and has statically
+  inferable feature dimensions. Opset-13 zero entries copy their matching
+  input dimension; at most one integral `-1` feature dimension is inferred.
+
+The normalizer rejects custom domains, other opsets/operators, unrecognized
+attributes, subgraphs/local functions, sparse or external initializers,
+unknown/dynamic feature shapes, non-single input/output graphs, branches/fanout,
+shared or unused parameters, and any unproved reshape. Only one leading batch
+dimension may be symbolic. The normalized document carries initializer names,
+dtypes and shapes but not learned values; shape-control integers are the sole
+permitted initializer values. The source evidence retains fixed/dynamic batch
+metadata for revalidation, while the editable VOLK graph treats batch as
+implicit. Conversion reports this omission and that trained weights are not
+imported.
+
+`documentFingerprint` is a canonical SHA-256 over semantic normalized JSON and
+is recomputed by the browser validator. It detects document inconsistency but
+is not source authentication or proof of ONNX provenance. The adapter embeds
+the full bounded normalized document in proposal source evidence. Revalidation
+revalidates that document, rematerializes stable node/edge IDs and layout, then
+compares graph semantics, presentation identity and the registered conversion
+report. `adapter-verified` therefore means the source-document-to-graph mapping
+was checked, not that the file origin is authenticated.
+
+The actual ModelProto regression uses ONNX 1.23.0 in the configured local
+runtime with IR version 14 and opset 13 fixtures. The explicit default-opset-28
+negative fixture verifies the supported-opset boundary. `npm run
+check:onnx-interop` runs the real ModelProto-to-document-to-proposal tests;
+`npm run test:onnx:browser` verifies import, preview, explicit Apply and
+post-Apply compiler use in Chromium. Set `ONNX_PYTHON` (or `PYTHON`) to the
+ONNX-enabled Python executable when running these checks; if it is explicitly configured,
+the tests fail rather than silently skipping a missing or broken runtime.
