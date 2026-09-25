@@ -44,6 +44,8 @@ import { UI_SURFACES } from './core/ui/uiArchitecture.js';
 import { createBuildPanelPresentation, toggleBuildPanel } from './core/ui/buildSurfacePresentation.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
 import { commitWorkspaceGraphApply, prepareWorkspaceGraphApply } from './core/graph/workspaceApply.js';
+import { GRAPH_PATCH_PROPOSAL_TYPE, validateGraphPatchProposal } from './core/graph/graphPatchProposal.js';
+import { commitWorkspaceGraphPatchApply, prepareWorkspaceGraphPatchApply } from './core/graph/workspacePatchApply.js';
 import { createOnnxGraphProposal, createTorchExportGraphProposal, validateWorkspaceGraphProposal } from './core/graph/workspaceProposal.js';
 import { MAX_ONNX_DOCUMENT_CODE_UNITS } from './core/graph/onnxAdapter.js';
 import { MAX_TORCH_EXPORT_DOCUMENT_CODE_UNITS } from './core/graph/torchExportAdapter.js';
@@ -61,6 +63,7 @@ import ExploreHome from './components/ExploreHome.jsx';
 import DirectorPrototype from './components/DirectorPrototype.jsx';
 import BuildToolbar from './components/BuildToolbar.jsx';
 import GraphProposalPreview from './components/graph/GraphProposalPreview.jsx';
+import GraphPatchPreview from './components/graph/GraphPatchPreview.jsx';
 import { WorkspaceGraphProposalContext } from './components/graph/WorkspaceGraphProposalContext.jsx';
 import { AiProvider, useAiProvider } from './components/ai/AiProviderContext.jsx';
 import { VolkCloudProvider, useVolkCloud } from './services/volkCloud/VolkCloudContext.jsx';
@@ -175,6 +178,26 @@ function projectFromWorkspace(state) {
     data: state.dataset,
     trainedModel: state.model,
   };
+}
+
+const GRAPH_PATCH_DIAGNOSTIC_CODES = new Set([
+  'GRAPH_PATCH_BASE_STALE',
+  'GRAPH_PATCH_APPLY_WORKSPACE_BUSY',
+  'GRAPH_PATCH_APPLY_PROJECT_INVALID',
+  'GRAPH_PATCH_APPLY_COMPONENT_DEFINITION_COLLISION',
+  'GRAPH_PATCH_APPLY_WORKSPACE_CHANGED',
+  'GRAPH_PATCH_APPLY_PREPARATION_INVALID',
+  'GRAPH_PATCH_INVALID',
+  'GRAPH_PATCH_OPERATION_UNSUPPORTED',
+  'GRAPH_PATCH_AUTHORITY_INVALID',
+  'GRAPH_PATCH_CAPABILITY_SNAPSHOT_MISMATCH',
+  'GRAPH_PATCH_VERSION_UNSUPPORTED',
+]);
+
+function graphPatchDiagnosticKey(diagnostic) {
+  return GRAPH_PATCH_DIAGNOSTIC_CODES.has(diagnostic?.code)
+    ? `graphPatch.reason.${diagnostic.code}`
+    : 'graphPatch.reason.generic';
 }
 
 function executionPlanFor(nodes, edges, dataset) {
@@ -549,6 +572,7 @@ function Workspace() {
   const [notice, setNotice] = useState('');
   const [stagedGraphProposal, setStagedGraphProposal] = useState(null);
   const [graphApplyCommitDiagnostic, setGraphApplyCommitDiagnostic] = useState(null);
+  const graphApplyCommitInProgressRef = useRef(false);
   const [graphApplyTestBridge, setGraphApplyTestBridge] = useState(null);
   const GraphApplyTestBridgeComponent = graphApplyTestBridge;
   const buildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth, leftOpen, rightOpen, rightWidth }), [viewportWidth, leftOpen, rightOpen, rightWidth]);
@@ -669,12 +693,23 @@ function Workspace() {
   const makeProject = useCallback(() => projectFromWorkspace(workspaceStateRef.current), []);
   const submitWorkspaceGraphProposal = useCallback((candidate) => {
     if (!graphProposalSubmissionAllowedRef.current) return { ok: false, diagnostics: [{ code: 'GRAPH_APPLY_BUILD_WORKSPACE_REQUIRED' }] };
+    if (candidate?.type === GRAPH_PATCH_PROPOSAL_TYPE || candidate?.baseGraphFingerprint !== undefined) {
+      const checkedPatch = validateGraphPatchProposal(candidate);
+      if (!checkedPatch.valid) {
+        const issue = checkedPatch.diagnostics?.[0] ?? { code: 'GRAPH_PATCH_INVALID' };
+        setNotice(t(graphPatchDiagnosticKey(issue)));
+        return { ok: false, diagnostics: checkedPatch.diagnostics };
+      }
+      setGraphApplyCommitDiagnostic(null);
+      setStagedGraphProposal(checkedPatch.proposal);
+      return { ok: true, proposalId: checkedPatch.proposal.proposalId };
+    }
     const checked = validateWorkspaceGraphProposal(candidate);
     if (!checked.valid) return { ok: false, diagnostics: checked.diagnostics };
     setGraphApplyCommitDiagnostic(null);
     setStagedGraphProposal(checked.proposal);
     return { ok: true, proposalId: checked.proposal.proposalId };
-  }, []);
+  }, [t]);
   const importTorchExportDocument = useCallback(async (event) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
@@ -724,7 +759,10 @@ function Workspace() {
   const graphApplyEligibility = useMemo(() => {
     if (!stagedGraphProposal) return null;
     const state = workspaceStateRef.current;
-    return prepareWorkspaceGraphApply(stagedGraphProposal, {
+    const prepare = stagedGraphProposal.type === GRAPH_PATCH_PROPOSAL_TYPE
+      ? prepareWorkspaceGraphPatchApply
+      : prepareWorkspaceGraphApply;
+    return prepare(stagedGraphProposal, {
       currentProject: projectFromWorkspace(state),
       runtime: state.runtime,
     });
@@ -748,64 +786,76 @@ function Workspace() {
     ? { ...graphApplyEligibility, ok: false, diagnostics: [graphApplyCommitDiagnostic] }
     : graphApplyEligibility;
   const applyStagedGraphProposal = useCallback(() => {
-    if (!stagedGraphProposal) return;
-    const latestState = workspaceStateRef.current;
-    const currentProject = projectFromWorkspace(latestState);
-    const prepared = prepareWorkspaceGraphApply(stagedGraphProposal, {
-      currentProject,
-      runtime: latestState.runtime,
-    });
-    const committed = prepared.ok
-      ? commitWorkspaceGraphApply(prepared, {
-        currentProject: projectFromWorkspace(workspaceStateRef.current),
-        runtime: workspaceStateRef.current.runtime,
-      })
-      : prepared;
-    if (!committed.ok) {
-      setGraphApplyCommitDiagnostic(committed.diagnostics?.[0] ?? { code: 'GRAPH_APPLY_PROJECT_INVALID' });
-      return;
-    }
+    if (!stagedGraphProposal || graphApplyCommitInProgressRef.current) return;
+    graphApplyCommitInProgressRef.current = true;
+    try {
+      const isPatch = stagedGraphProposal.type === GRAPH_PATCH_PROPOSAL_TYPE;
+      const prepare = isPatch ? prepareWorkspaceGraphPatchApply : prepareWorkspaceGraphApply;
+      const commit = isPatch ? commitWorkspaceGraphPatchApply : commitWorkspaceGraphApply;
+      const latestState = workspaceStateRef.current;
+      const prepared = prepare(stagedGraphProposal, {
+        currentProject: projectFromWorkspace(latestState),
+        runtime: latestState.runtime,
+      });
+      const committed = prepared.ok
+        ? commit(prepared, {
+          currentProject: projectFromWorkspace(workspaceStateRef.current),
+          runtime: workspaceStateRef.current.runtime,
+        })
+        : prepared;
+      if (!committed.ok) {
+        const issue = committed.diagnostics?.[0] ?? { code: isPatch ? 'GRAPH_PATCH_APPLY_PROJECT_INVALID' : 'GRAPH_APPLY_PROJECT_INVALID' };
+        setGraphApplyCommitDiagnostic(issue);
+        return;
+      }
 
-    const nextProject = committed.project;
-    const nextNodes = nextProject.graph.nodes.map((node) => ({
-      ...node,
-      selected: false,
-      type: 'pipelineNode',
-      data: {
-        ...node.data,
-        label: node.data.label ?? node.data.manifest.name,
-        status: 'idle',
-      },
-    }));
-    const nextEdges = nextProject.graph.edges.map((edge) => ({ ...edge, selected: false, type: 'deletable' }));
-    const nextState = {
-      ...workspaceStateRef.current,
-      projectName: nextProject.name,
-      nodes: nextNodes,
-      edges: nextEdges,
-      customComponents: nextProject.customComponents,
-      dataset: nextProject.data ?? null,
-      model: null,
-      runtime: committed.runtime,
-      selectedId: null,
-    };
-    workspaceStateRef.current = nextState;
-    previousExecutionSignature.current = canvasExecutionInputSignature(nextNodes, nextEdges, nextState.dataset);
-    setProjectName(nextState.projectName);
-    setNodes(nextNodes);
-    setEdges(nextEdges);
-    setCustomComponents(nextState.customComponents);
-    setDataset(nextState.dataset);
-    setModel(null);
-    setRuntime(committed.runtime);
-    setSelectedId(null);
-    setPendingConnection(null);
-    setPendingDeletion(null);
-    setGraphApplyCommitDiagnostic(null);
-    setStagedGraphProposal(null);
-    setNotice(t('graphApply.applied'));
+      const nextProject = committed.project;
+      const nextNodes = nextProject.graph.nodes.map((node) => ({
+        ...node,
+        selected: false,
+        type: 'pipelineNode',
+        data: {
+          ...node.data,
+          label: node.data.label ?? node.data.manifest.name,
+          status: node.data.status ?? 'idle',
+        },
+      }));
+      const nextEdges = nextProject.graph.edges.map((edge) => ({ ...edge, selected: false, type: 'deletable' }));
+      const nextState = {
+        ...workspaceStateRef.current,
+        projectName: nextProject.name,
+        nodes: nextNodes,
+        edges: nextEdges,
+        customComponents: nextProject.customComponents,
+        dataset: nextProject.data ?? null,
+        model: nextProject.trainedModel ?? null,
+        runtime: committed.runtime,
+        selectedId: committed.selectedNodeId ?? null,
+      };
+      workspaceStateRef.current = nextState;
+      previousExecutionSignature.current = canvasExecutionInputSignature(nextNodes, nextEdges, nextState.dataset);
+      setProjectName(nextState.projectName);
+      setNodes(nextNodes);
+      setEdges(nextEdges);
+      setCustomComponents(nextState.customComponents);
+      setDataset(nextState.dataset);
+      setModel(nextState.model);
+      setRuntime(committed.runtime);
+      setSelectedId(nextState.selectedId);
+      setPendingConnection(null);
+      setPendingDeletion(null);
+      setGraphApplyCommitDiagnostic(null);
+      setStagedGraphProposal(null);
+      setNotice(isPatch
+        ? t(committed.semanticChanged ? 'graphPatch.appliedSemantic' : 'graphPatch.appliedLayout')
+        : t('graphApply.applied'));
+    } finally {
+      graphApplyCommitInProgressRef.current = false;
+    }
   }, [setEdges, setNodes, stagedGraphProposal, t]);
   const applyProject = useCallback((rawProject, { languagePolicy = 'project' } = {}) => {
+    setStagedGraphProposal(null);
+    setGraphApplyCommitDiagnostic(null);
     const language = resolveLanguagePreference({
       projectPrimary: rawProject?.language?.primary,
       projectSecondary: rawProject?.language?.secondary,
@@ -1819,7 +1869,8 @@ function Workspace() {
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} developmentMatrixDriver={developmentMatrixDriver} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
     <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />
-    {surface === UI_SURFACES.BUILD && stagedGraphProposal && <GraphProposalPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
+    {surface === UI_SURFACES.BUILD && stagedGraphProposal?.type === GRAPH_PATCH_PROPOSAL_TYPE && <GraphPatchPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
+    {surface === UI_SURFACES.BUILD && stagedGraphProposal && stagedGraphProposal.type !== GRAPH_PATCH_PROPOSAL_TYPE && <GraphProposalPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
     {surface === UI_SURFACES.BUILD && GraphApplyTestBridgeComponent && <GraphApplyTestBridgeComponent />}
   </div></WorkspaceGraphProposalContext.Provider>;
 }

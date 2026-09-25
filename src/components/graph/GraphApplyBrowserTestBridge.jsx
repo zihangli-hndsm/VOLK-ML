@@ -16,6 +16,8 @@ import {
 } from '../../core/buildAgent/index.js';
 import { exerciseDatasets } from '../../core/buildAgent/exerciseFixtures.js';
 import { PROJECT_VERSION, validateProjectForWorkspace } from '../../core/project.js';
+import { createGraphPatchProposal } from '../../core/graph/graphPatchProposal.js';
+import { graphPatchBaseFromProject } from '../../core/graph/workspacePatchApply.js';
 import { useWorkspaceGraphProposalSubmission } from './WorkspaceGraphProposalContext.jsx';
 
 const TEST_GLOBAL = '__VOLK_ML_GRAPH_APPLY_TEST__';
@@ -103,6 +105,49 @@ function createRebuiltCompositeFixture() {
   };
 }
 
+async function createOccupiedPatchFixture() {
+  const api = await window.__VOLK_ML_AGENT__?.open?.();
+  const project = api?.getProject?.();
+  if (!project?.graph || !Array.isArray(project.graph.nodes) || !Array.isArray(project.graph.edges)) {
+    throw new Error('Canvas Agent project snapshot is unavailable for the patch fixture.');
+  }
+  const byId = new Map(project.graph.nodes.map((node) => [node.id, node]));
+  const linear = byId.get('pipeline-linear');
+  const optimizer = byId.get('pipeline-optimizer');
+  const predictor = byId.get('pipeline-predictor');
+  const requiredEdgeIds = ['optimizer-predictor', 'optimizer-evaluate'];
+  if (!linear || !optimizer || !predictor || requiredEdgeIds.some((id) => !project.graph.edges.some((edge) => edge.id === id))) {
+    throw new Error('The occupied default Build graph fixture is incomplete.');
+  }
+  const numericProperty = linear.data.manifest.properties.find((property) => ['number', 'slider'].includes(property.type));
+  if (!numericProperty) throw new Error('The occupied graph fixture has no numeric parameter to change.');
+  const beforeValue = linear.data.parameters[numericProperty.key] ?? numericProperty.default;
+  const step = numericProperty.step ?? 1;
+  let afterValue = beforeValue + step;
+  if (Number.isFinite(numericProperty.max) && afterValue > numericProperty.max) afterValue = beforeValue - step;
+  if (Number.isFinite(numericProperty.min) && afterValue < numericProperty.min) throw new Error('No valid adjacent parameter value is available.');
+  const addedNode = createAgentNode({
+    nodes: project.graph.nodes,
+    manifest: componentById.get('evaluate_node'),
+    request: { id: 'patch-added-evaluate', position: { x: 2180, y: 460 } },
+  });
+  const result = createGraphPatchProposal({
+    baseGraph: clone(graphPatchBaseFromProject(project)),
+    operations: [
+      { op: 'MOVE_NODE', nodeId: linear.id, position: { x: linear.position.x + 24, y: linear.position.y + 16 } },
+      { op: 'UPDATE_PARAMETERS', nodeId: linear.id, parameters: { ...linear.data.parameters, [numericProperty.key]: afterValue } },
+      { op: 'DISCONNECT', edgeId: 'optimizer-predictor' },
+      { op: 'ADD_NODE', node: addedNode, componentDefinitions: [] },
+      { op: 'CONNECT', edge: { id: 'patch-edge-added', source: optimizer.id, sourceHandle: 'trained_model', target: addedNode.id, targetHandle: 'trained_model', type: 'deletable' } },
+      { op: 'REMOVE_NODE', nodeId: predictor.id },
+    ],
+    source: { producer: 'external-agent', provenance: { artifactId: 'c2-browser-fixture', revision: '1', location: 'inline' } },
+    rationale: 'Exercise a detached graph patch through the source-neutral staging boundary.',
+  });
+  if (!result.ok) throw new Error(`Occupied patch fixture failed validation: ${JSON.stringify(result.diagnostics?.[0] ?? { code: 'unknown' })}`);
+  return { proposal: clone(result.proposal), expected: { beforeValue, afterValue, parameter: numericProperty.key }, dataset: clone(exerciseDatasets.wine) };
+}
+
 export default function GraphApplyBrowserTestBridge() {
   const submitProposal = useWorkspaceGraphProposalSubmission();
 
@@ -110,6 +155,7 @@ export default function GraphApplyBrowserTestBridge() {
     const bridge = Object.freeze({
       createBuildAgentFixture: () => createLinearRegressionFixture(),
       createRebuiltCompositeFixture: () => createRebuiltCompositeFixture(),
+      createOccupiedPatchFixture,
       stageProposal: (proposal) => submitProposal(clone(proposal)),
       validateCurrentProject: async () => {
         const api = await window.__VOLK_ML_AGENT__?.open?.();
