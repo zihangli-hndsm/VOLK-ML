@@ -19,6 +19,7 @@ import {
   createVolkProjectGraphProposal,
   createWorkspaceGraphProposalFromCandidate,
   GRAPH_SOURCE_VERSION,
+  TORCH_EXPORT_SOURCE_VERSION,
   fingerprintJsonV1,
   graphIdentityV1,
   graphPresentationFingerprintV1,
@@ -276,7 +277,9 @@ for (const [producer, format] of [
   ['onnx-adapter', 'ONNX'], ['torch-export-adapter', 'torch.export'], ['torch-fx-adapter', 'torch.fx'],
   ['tensorflow-adapter', 'TensorFlow'], ['keras-adapter', 'Keras'],
 ]) {
-  expectDiagnostic(genericCandidate(futureGraph, { version: GRAPH_SOURCE_VERSION, kind: 'import', producer, format, provenance: { artifactId: 'reserved-adapter' } }), 'GRAPH_PROVENANCE_INVALID');
+  const version = producer === 'torch-export-adapter' ? TORCH_EXPORT_SOURCE_VERSION : GRAPH_SOURCE_VERSION;
+  const diagnostic = producer === 'torch-export-adapter' ? 'GRAPH_SOURCE_EVIDENCE_INVALID' : 'GRAPH_PROVENANCE_INVALID';
+  expectDiagnostic(genericCandidate(futureGraph, { version, kind: 'import', producer, format, provenance: { artifactId: 'reserved-adapter' } }), diagnostic);
 }
 expectDiagnostic(genericCandidate(futureGraph, futureSourceShapes[0], { ...futureConversion, verification: 'volk-verified' }), 'GRAPH_CONVERSION_VERIFICATION_INVALID');
 expectDiagnostic(genericCandidate(futureGraph, { ...futureSourceShapes[0], provenance: { ...futureSourceShapes[0].provenance, secret: 'not-allowed' } }), 'GRAPH_PROPOSAL_INVALID');

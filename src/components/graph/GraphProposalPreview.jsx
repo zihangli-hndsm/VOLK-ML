@@ -17,6 +17,13 @@ const producerKey = (producer) => ({
 }[producer] ?? 'graphApply.producer.unknown');
 
 const valueKey = (value) => `graphApply.value.${value}`;
+const conversionWarningKey = (warning) => ({
+  'trained-weights-not-imported': 'graphApply.warning.trainedWeightsNotImported',
+  'APPROXIMATED:high-level-module-structure': 'graphApply.approximated.highLevelModuleStructure',
+  'MISSING:original-python-structure': 'graphApply.missing.originalPythonStructure',
+  'MISSING:trained-parameter-values': 'graphApply.missing.trainedParameterValues',
+  'MISSING:batch-range-constraints': 'graphApply.missing.batchRangeConstraints',
+}[warning]);
 
 function ProposalNode({ data }) {
   const manifest = data.manifest;
@@ -176,7 +183,7 @@ export default function GraphProposalPreview({ proposal, applyEligibility, onCan
 
           <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
             <h3 className="font-black text-slate-900">{t('graphApply.warnings')}</h3>
-            {warnings.length > 0 ? <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-900">{warnings.map((warning) => <li key={warning} className="break-words font-mono">{warning}</li>)}</ul> : <p className="mt-1 text-xs text-amber-900">{t('graphApply.noWarnings')}</p>}
+            {warnings.length > 0 ? <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-amber-900">{warnings.map((warning) => <li key={warning} className="break-words">{conversionWarningKey(warning) ? t(conversionWarningKey(warning)) : warning}</li>)}</ul> : <p className="mt-1 text-xs text-amber-900">{t('graphApply.noWarnings')}</p>}
           </section>
 
           <section className={`rounded-2xl border p-4 ${applyEligibility?.ok ? 'border-emerald-200 bg-emerald-50' : 'border-rose-200 bg-rose-50'}`} aria-live="polite">
