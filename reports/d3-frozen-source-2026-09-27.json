@@ -1,0 +1,39 @@
+{
+  "manifestVersion": 1,
+  "repository": "VOLK-ML",
+  "branch": "codex/agent-application-d3",
+  "acceptedFrozenHead": "3d029342a476dfee09123efec5bd9612a10daa9d",
+  "sourceFileCount": 18,
+  "sourceFiles": [
+    { "path": "docs/architecture/agent-mcp-transport.md", "sha256": "2CA9116B0763A281F6C4D886FC71C7E78EF3DAE99FA0AA45894D433C48338517" },
+    { "path": "docs/architecture/overview.md", "sha256": "07CAA654D23E3AAAB725ADB22794938BEC3BD3BD992B7507E7F3B4609D1C9209" },
+    { "path": "docs/local-development.md", "sha256": "8001FB2588D457BB5990E48590C1B6F8EE58BF227A65CE680C9CE80E637FFEAB" },
+    { "path": "docs/architecture/agent-mcp-d3-reference.md", "sha256": "680805AD5FED96DCC2DD7291D9161F80F9A123F721FE93AEA672BDF60B2BFF72" },
+    { "path": "package.json", "sha256": "AB5AD2FAF4EB40478C571DAA690F05EFC61B80938511928C954FA77915BBCFE4" },
+    { "path": "src/core/mcpBrowserBridge.js", "sha256": "28C84F5516B1C9C90748AE8CEC6EB5835A0B08EB10B3D5CC9441063BC693B052" },
+    { "path": "scripts/check-mcp-transport.mjs", "sha256": "02276B9F3F7939485D94559CDD2BA4DF0CD0C17CAF5B6F0F185E460ADD36AE76" },
+    { "path": "scripts/mcp-browser-integration.mjs", "sha256": "A50D8A12EBB6958910A2D6C0031F553AECB19907AD293055D059845221513753" },
+    { "path": "scripts/agent-application-d3-codex-run.mjs", "sha256": "16BF8B03D7D550DAC59D261B1C8B746D5EF035E6374A35BC8EDA2D8941AD9D2B" },
+    { "path": "scripts/agent-application-d3-contract.mjs", "sha256": "14E91A70A5EFE893950026BC25DEFEEC0A284CF2A3D9AECD501BB22329231A15" },
+    { "path": "scripts/agent-application-d3-reference.mjs", "sha256": "943FF55C6ABE8C7A6B77DB547245F9A28E34B24A04CC3333EC02F24CD6C2C1AE" },
+    { "path": "scripts/check-agent-application-d3.mjs", "sha256": "3A7F1F6ED6ED6282DCB59C238DF2144E749C30EDEED0F722271C67F58448A707" },
+    { "path": "scripts/d3-graph-proposal-helper.mjs", "sha256": "102A9A88F41C4DD58122658E73890A19F75C05950AD3FBAC99CEDCF8FBA776DF" },
+    { "path": "scripts/test-agent-application-d3-python-attestation.mjs", "sha256": "C99A70F1D2AB27C42C283C5E10F81C1775D5AFEC43C71EBA687A175A2989F1F2" },
+    { "path": "scripts/test-agent-application-d3-concurrency.mjs", "sha256": "6867667054EB406227687726CF8B668F24D4F9E8600F747C2BA6C09CD088D94D" },
+    { "path": "fixtures/graph-infrastructure-d3/pytorch-repo/export_document.py", "sha256": "01708B481685D31CCC82D77AE270FF0FD2D8193560161148D546E99F57D4547F" },
+    { "path": "fixtures/graph-infrastructure-d3/pytorch-repo/model.py", "sha256": "30F0C419780CA23D4EF9074E55D796C755720247EBA2F75A755BB3D90140A0ED" },
+    { "path": "fixtures/graph-infrastructure-d3/pytorch-repo/README.md", "sha256": "FFC98565AD82E719AC48D9E1D9A444F3014602FCD2B26115CA585FF05EF23848" }
+  ],
+  "deliveryEvidence": [
+    "docs/acceptance/assets/agent-application-d3/2026-09-26T16-24-23-106Z.json",
+    "docs/acceptance/assets/agent-application-d3/2026-09-26T16-24-23-106Z-before-b1.png",
+    "docs/acceptance/assets/agent-application-d3/2026-09-26T16-24-23-106Z-after-b1.png",
+    "docs/acceptance/assets/agent-application-d3/2026-09-26T16-24-23-106Z-b1-preview.png",
+    "docs/acceptance/assets/agent-application-d3/2026-09-26T16-24-23-106Z-after-c2.png",
+    "docs/acceptance/assets/agent-application-d3/2026-09-26T16-24-23-106Z-c2-preview.png",
+    "docs/acceptance/assets/agent-application-d3/validation-2026-09-27T00-06-45-check.json",
+    "docs/acceptance/assets/agent-application-d3/validation-2026-09-27T00-06-45-check.log",
+    "docs/acceptance/assets/agent-application-d3/validation-2026-09-27T00-16-12-build.json",
+    "docs/acceptance/assets/agent-application-d3/validation-2026-09-27T00-16-12-build.log"
+  ]
+}

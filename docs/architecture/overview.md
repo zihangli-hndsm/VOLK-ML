@@ -20,6 +20,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Canvas Agent API | `src/core/canvasAgent.js`, `src/main.jsx` | Versioned in-page inspection, graph commands, execution status, source export, and project download |
 | Agent Application API | `src/core/agentApplicationApi.js`, `src/core/agentApplicationBridge.js`, `src/main.jsx` | Bounded application inspection, preview-only graph proposals, result provenance, source-only export, and confirmation-required run requests |
 | MCP transport | `src/core/mcpTransport.js`, `src/core/mcpBrowserBridge.js`, `scripts/volk-mcp-server.mjs` | Local official MCP stdio server and loopback session bridge backed by the mounted Agent Application API |
+| External Agent reference | `scripts/agent-application-d3-reference.mjs`, `docs/architecture/agent-mcp-d3-reference.md` | Bounded real Codex + D2 MCP + mounted B1/C2 learner-acceptance workflow |
 | Visual language | `src/core/visualLanguage.js`, `src/components/VisualGlyph.jsx` | Stable stage colors, static canvas glyphs, animated teaching glyphs, architecture layout |
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
