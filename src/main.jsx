@@ -35,6 +35,8 @@ import {
   validateAgentDataset,
 } from './core/canvasAgent';
 import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
+import { createAgentApplicationApi, createAgentApplicationResultBinding } from './core/agentApplicationApi.js';
+import { installAgentApplicationBridge } from './core/agentApplicationBridge.js';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
 import { createTeachingDialogueProvider } from './core/exploration/teachingDialoguePilot.js';
@@ -222,6 +224,15 @@ function runtimeErrorInfo(error) {
 
 function assertAgentWritable(state, message = 'Canvas cannot change while execution is running.') {
   if (state.runtime.status === 'running') throw new CanvasAgentError('INSTANCE_BUSY', message);
+}
+
+function recordProposalLifecycle(historyRef, proposal, status) {
+  if (!proposal || typeof proposal.proposalId !== 'string') return;
+  historyRef.current = [...historyRef.current, {
+    proposalId: proposal.proposalId,
+    type: proposal.type === GRAPH_PATCH_PROPOSAL_TYPE ? 'graph-patch' : 'graph',
+    status,
+  }].slice(-12);
 }
 
 const idleRuntimeState = () => ({
@@ -571,9 +582,15 @@ function Workspace() {
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [notice, setNotice] = useState('');
   const [stagedGraphProposal, setStagedGraphProposal] = useState(null);
+  const stagedGraphProposalRef = useRef(null);
+  stagedGraphProposalRef.current = stagedGraphProposal;
   const [graphApplyCommitDiagnostic, setGraphApplyCommitDiagnostic] = useState(null);
   const graphApplyCommitInProgressRef = useRef(false);
   const [graphApplyTestBridge, setGraphApplyTestBridge] = useState(null);
+  const proposalHistoryRef = useRef([]);
+  const resultBindingRef = useRef(null);
+  const agentApplicationApiRef = useRef(null);
+  const proposalSubmitAdapterRef = useRef(null);
   const GraphApplyTestBridgeComponent = graphApplyTestBridge;
   const buildPresentation = useMemo(() => createBuildPanelPresentation({ viewportWidth, leftOpen, rightOpen, rightWidth }), [viewportWidth, leftOpen, rightOpen, rightWidth]);
   const toggleLeftPanel = useCallback(() => {
@@ -691,6 +708,19 @@ function Workspace() {
   );
   const previousExecutionSignature = useRef(executionInputSignature);
   const makeProject = useCallback(() => projectFromWorkspace(workspaceStateRef.current), []);
+  const stageGraphProposal = useCallback((proposal) => {
+    const previous = stagedGraphProposalRef.current;
+    if (previous && previous.proposalId !== proposal.proposalId) recordProposalLifecycle(proposalHistoryRef, previous, 'superseded');
+    stagedGraphProposalRef.current = proposal;
+    setStagedGraphProposal(proposal);
+    recordProposalLifecycle(proposalHistoryRef, proposal, 'staged');
+  }, []);
+  const clearGraphProposal = useCallback((status = 'cancelled') => {
+    const previous = stagedGraphProposalRef.current;
+    if (previous) recordProposalLifecycle(proposalHistoryRef, previous, status);
+    stagedGraphProposalRef.current = null;
+    setStagedGraphProposal(null);
+  }, []);
   const submitWorkspaceGraphProposal = useCallback((candidate) => {
     if (!graphProposalSubmissionAllowedRef.current) return { ok: false, diagnostics: [{ code: 'GRAPH_APPLY_BUILD_WORKSPACE_REQUIRED' }] };
     if (candidate?.type === GRAPH_PATCH_PROPOSAL_TYPE || candidate?.baseGraphFingerprint !== undefined) {
@@ -701,15 +731,16 @@ function Workspace() {
         return { ok: false, diagnostics: checkedPatch.diagnostics };
       }
       setGraphApplyCommitDiagnostic(null);
-      setStagedGraphProposal(checkedPatch.proposal);
+      stageGraphProposal(checkedPatch.proposal);
       return { ok: true, proposalId: checkedPatch.proposal.proposalId };
     }
     const checked = validateWorkspaceGraphProposal(candidate);
     if (!checked.valid) return { ok: false, diagnostics: checked.diagnostics };
     setGraphApplyCommitDiagnostic(null);
-    setStagedGraphProposal(checked.proposal);
+    stageGraphProposal(checked.proposal);
     return { ok: true, proposalId: checked.proposal.proposalId };
-  }, [t]);
+  }, [stageGraphProposal, t]);
+  proposalSubmitAdapterRef.current = submitWorkspaceGraphProposal;
   const importTorchExportDocument = useCallback(async (event) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
@@ -754,8 +785,8 @@ function Workspace() {
   }, [submitWorkspaceGraphProposal, t]);
   const cancelGraphProposalPreview = useCallback(() => {
     setGraphApplyCommitDiagnostic(null);
-    setStagedGraphProposal(null);
-  }, []);
+    clearGraphProposal('cancelled');
+  }, [clearGraphProposal]);
   const graphApplyEligibility = useMemo(() => {
     if (!stagedGraphProposal) return null;
     const state = workspaceStateRef.current;
@@ -845,16 +876,18 @@ function Workspace() {
       setPendingConnection(null);
       setPendingDeletion(null);
       setGraphApplyCommitDiagnostic(null);
-      setStagedGraphProposal(null);
+      if (!isPatch || committed.semanticChanged) resultBindingRef.current = null;
+      clearGraphProposal('applied');
       setNotice(isPatch
         ? t(committed.semanticChanged ? 'graphPatch.appliedSemantic' : 'graphPatch.appliedLayout')
         : t('graphApply.applied'));
     } finally {
       graphApplyCommitInProgressRef.current = false;
     }
-  }, [setEdges, setNodes, stagedGraphProposal, t]);
+  }, [clearGraphProposal, setEdges, setNodes, stagedGraphProposal, t]);
   const applyProject = useCallback((rawProject, { languagePolicy = 'project' } = {}) => {
-    setStagedGraphProposal(null);
+    clearGraphProposal('superseded');
+    resultBindingRef.current = null;
     setGraphApplyCommitDiagnostic(null);
     const language = resolveLanguagePreference({
       projectPrimary: rawProject?.language?.primary,
@@ -926,7 +959,7 @@ function Workspace() {
     setRuntime(nextRuntime);
     pendingFitRef.current = true;
     return project;
-  }, [setNodes, setEdges, setLanguages, t]);
+  }, [clearGraphProposal, setNodes, setEdges, setLanguages, t]);
 
   useEffect(() => {
     const handleResize = () => setViewportWidth(window.innerWidth);
@@ -1221,6 +1254,7 @@ function Workspace() {
     if (state.runtime.status === 'running') {
       throw new CanvasAgentError('INSTANCE_BUSY', 'Canvas execution is already running.');
     }
+    resultBindingRef.current = null;
     const startedAt = new Date().toISOString();
     const startedWithSignature = canvasExecutionInputSignature(state.nodes, state.edges, state.dataset);
     let currentNode = null;
@@ -1272,6 +1306,16 @@ function Workspace() {
       }
       const { test, ...persistableModel } = finalModel;
       workspaceStateRef.current = { ...workspaceStateRef.current, model: persistableModel };
+      try {
+        resultBindingRef.current = createAgentApplicationResultBinding({
+          nodes: state.nodes,
+          edges: state.edges,
+          customComponents: state.customComponents,
+          dataset: state.dataset,
+        });
+      } catch {
+        resultBindingRef.current = null;
+      }
       setModel(persistableModel);
       updateRuntime((current) => ({
         ...current,
@@ -1288,6 +1332,7 @@ function Workspace() {
       }));
       return persistableModel;
     } catch (error) {
+      resultBindingRef.current = null;
       if (error?.code === 'WORKSPACE_CHANGED') {
         const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
         workspaceStateRef.current = { ...workspaceStateRef.current, nodes: nextNodes, model: null };
@@ -1494,6 +1539,7 @@ function Workspace() {
   }, []);
   const commitAgentGraph = useCallback(({ nextNodes, nextEdges, nextSelectedId, invalidateArtifacts = true }) => {
     assertAgentWritable(workspaceStateRef.current, 'Canvas graph cannot change while execution is running.');
+    if (invalidateArtifacts) resultBindingRef.current = null;
     const currentNodes = invalidateArtifacts ? invalidateAgentNodeStatuses(nextNodes) : nextNodes;
     const synchronizedNodes = selectAgentNode(currentNodes, nextSelectedId);
     const nextRuntime = invalidateArtifacts ? idleRuntimeState() : workspaceStateRef.current.runtime;
@@ -1588,6 +1634,7 @@ function Workspace() {
   }, []);
   const agentSetDataset = useCallback(async (nextDataset) => {
     assertAgentWritable(workspaceStateRef.current, 'Dataset cannot change while execution is running.');
+    resultBindingRef.current = null;
     const validatedDataset = validateAgentDataset(nextDataset);
     const nextRuntime = idleRuntimeState();
     const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
@@ -1656,6 +1703,28 @@ function Workspace() {
       return () => agentSubscribersRef.current.delete(listener);
     },
   };
+  if (!agentApplicationApiRef.current) {
+    agentApplicationApiRef.current = createAgentApplicationApi({
+      getContext: () => {
+        const state = workspaceStateRef.current;
+        return {
+          project: projectFromWorkspace(state),
+          nodes: state.nodes,
+          edges: state.edges,
+          dataset: state.dataset,
+          runtime: state.runtime,
+          executionPlan: executionPlanFor(state.nodes, state.edges, state.dataset),
+          resultBinding: resultBindingRef.current,
+          currentProposal: stagedGraphProposalRef.current,
+          proposalHistory: proposalHistoryRef.current,
+          components: [...pluginRegistry, ...state.customComponents],
+        };
+      },
+      submitProposal: (proposal) => proposalSubmitAdapterRef.current?.(proposal)
+        ?? { ok: false, diagnostics: [{ code: 'PROPOSAL_SUBMISSION_UNAVAILABLE' }] },
+    });
+  }
+  useEffect(() => installAgentApplicationBridge(agentApplicationApiRef.current, window), []);
   useEffect(() => {
     const forward = (method) => (...args) => agentAdapterRef.current[method](...args);
     const api = createCanvasAgentApi({
@@ -1818,7 +1887,7 @@ function Workspace() {
     <header data-top-level-surface={surface} className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
       <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><span className="hidden text-xs font-bold text-slate-400 sm:inline">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span>{SHOW_CLOUD_STATUS && <span data-cloud-status={cloudStatus.status} aria-live="polite" className={`hidden rounded-full px-2 py-1 text-[10px] font-black sm:inline ${cloudStatus.status === CLOUD_AVAILABILITY.AVAILABLE ? 'bg-emerald-100 text-emerald-800' : cloudStatus.status === CLOUD_AVAILABILITY.CHECKING ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800'}`}>{t(`cloud.status.${cloudStatus.status}`)}</span>}</div>
       <nav aria-label={t('surface.navigation')} className="flex items-center gap-1.5 text-sm">
-        <button type="button" aria-pressed={surface === UI_SURFACES.EXPLORE} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.EXPLORE ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => { setStagedGraphProposal(null); setGraphApplyCommitDiagnostic(null); setSurface(UI_SURFACES.EXPLORE); }}>{t('ui.surface.explore')}</button>
+        <button type="button" aria-pressed={surface === UI_SURFACES.EXPLORE} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.EXPLORE ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => { clearGraphProposal('cancelled'); setGraphApplyCommitDiagnostic(null); setSurface(UI_SURFACES.EXPLORE); }}>{t('ui.surface.explore')}</button>
         <button type="button" aria-pressed={surface === UI_SURFACES.BUILD} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.BUILD ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setSurface(UI_SURFACES.BUILD)}>{t('ui.surface.build')}</button>
         <div className="relative">
           <button type="button" aria-expanded={globalMoreOpen} aria-controls="global-more-actions" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setGlobalMoreOpen((value) => !value)}>⋯ <span className="hidden sm:inline">{t('surface.more')}</span></button>

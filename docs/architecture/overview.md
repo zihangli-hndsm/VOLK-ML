@@ -18,6 +18,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | --- | --- | --- |
 | Application shell | `src/main.jsx` | React Flow canvas, mobile UI, project import/export, runner presentation |
 | Canvas Agent API | `src/core/canvasAgent.js`, `src/main.jsx` | Versioned in-page inspection, graph commands, execution status, source export, and project download |
+| Agent Application API | `src/core/agentApplicationApi.js`, `src/core/agentApplicationBridge.js`, `src/main.jsx` | Bounded application inspection, preview-only graph proposals, result provenance, source-only export, and confirmation-required run requests |
 | Visual language | `src/core/visualLanguage.js`, `src/components/VisualGlyph.jsx` | Stable stage colors, static canvas glyphs, animated teaching glyphs, architecture layout |
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
@@ -60,6 +61,11 @@ canonical before/after diff and an explicit stale-checked Apply; whole-graph
 proposals retain their separate empty-target rule. Local Torch Export and ONNX
 metadata-only adapters also target this proposal boundary; their trusted
 source extraction stays outside the browser.
+
+The separately versioned in-page Agent Application request boundary and its
+preview-only proposal authority are documented in
+[`agent-application-api.md`](./agent-application-api.md). It does not change
+Canvas Agent API v1.
 
 Agent requests share the versioned, semantic boundary documented in
 [`ai-provider.md`](./ai-provider.md). Ask, Experiment Design, and World Edit
@@ -195,6 +201,7 @@ Do not make an unavailable backend appear runnable. Update availability only whe
 | Add a browser-executable algorithm | All three documents | Manifest runtime metadata, browser runner, estimator, tests |
 | Add cloud storage, collaboration, or remote execution | `platform-services.md` | External provider implementation plus contract tests |
 | Change agent canvas commands or snapshots | `agent-canvas-api.md` | Pure command helpers, workspace adapter, API version, and contract tests |
+| Add application-level agent inspection or proposal methods | `agent-application-api.md` | Bounded request/response contract, workspace adapter, authority boundary, privacy and freshness tests |
 | Change project JSON | This document and relevant subsystem document | `PROJECT_VERSION`, importer, exporter, compatibility behavior |
 | Change visible UI | `AGENTS.md` localization section | JSX and `src/locales/ui.js` |
 | Change a component lesson | `component-manifest.md` | Tutorial catalog, tutorial coverage tests, and dialog only when presentation changes |
