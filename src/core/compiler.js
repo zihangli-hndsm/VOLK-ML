@@ -1,6 +1,18 @@
 import { componentById } from './components.js';
 import { flattenCustomComposites } from './customComposites.js';
 import { compileLossExpression, LossExpressionError } from './lossExpression.js';
+import { SourceMapWriter } from './sourceMapWriter.js';
+import {
+  SOURCE_EXPORT_COMPILER_CONTRACT_VERSION,
+  SOURCE_EXPORT_LIMITS,
+  SOURCE_EXPORT_MANIFEST_TYPE,
+  SOURCE_EXPORT_MANIFEST_VERSION,
+  SourceExportManifestError,
+  assertSourceExportManifestBounded,
+  sha256Utf8,
+  sourceGraphProjectionV1,
+  stableSourceJson,
+} from './sourceExportManifest.js';
 
 const architectureKinds = new Set(['source', 'layer', 'merge', 'sink', 'composite']);
 
@@ -13,6 +25,59 @@ const pythonShape = (value) => {
 };
 const tensorflowPadding = (value) => value === 'same' ? 'same' : 'valid';
 const pytorchPadding = (value, kernelSize) => value === 'same' ? Math.floor(Number(kernelSize) / 2) : 0;
+const FNV64_OFFSET = 14_695_981_039_346_656_037n;
+const FNV64_PRIME = 1_099_511_628_211n;
+const FNV64_MASK = 18_446_744_073_709_551_615n;
+
+function stableExportIdFactory(initialIds) {
+  const used = new Set(initialIds);
+  const requestById = new Map();
+  return (request) => {
+    const canonical = stableSourceJson(request);
+    let hash = FNV64_OFFSET;
+    for (let index = 0; index < canonical.length; index += 1) {
+      hash ^= BigInt(canonical.charCodeAt(index));
+      hash = (hash * FNV64_PRIME) & FNV64_MASK;
+    }
+    const base = `volk_export_${hash.toString(16).padStart(16, '0')}`;
+    let candidate = base;
+    let suffix = 1;
+    while (used.has(candidate) && requestById.get(candidate) !== canonical) {
+      suffix += 1;
+      candidate = `${base}_${suffix}`;
+    }
+    used.add(candidate);
+    requestById.set(candidate, canonical);
+    return candidate;
+  };
+}
+
+function sourceOriginForNode(node) {
+  return {
+    workspaceNodeId: node.data.runtimeOwnerId ?? node.id,
+    compositionPath: node.data.runtimeCompositionPath ?? [],
+    componentId: node.data.manifest.id,
+    operation: node.data.manifest.op,
+  };
+}
+
+function sourceEdgeReference(edge) {
+  const origin = edge.runtimeSourceExportOrigin ?? { kind: 'workspace-edge', workspaceEdgeId: edge.id };
+  return {
+    id: origin.kind === 'workspace-edge' ? origin.workspaceEdgeId : edge.id,
+    kind: origin.kind,
+    ...(origin.workspaceEdgeId ? { workspaceEdgeId: origin.workspaceEdgeId } : {}),
+    ...(origin.instanceNodeId ? { instanceNodeId: origin.instanceNodeId } : {}),
+    ...(Array.isArray(origin.compositionPath) ? { compositionPath: origin.compositionPath } : {}),
+    ...(Number.isInteger(origin.edgeIndex) ? { edgeIndex: origin.edgeIndex } : {}),
+    ...(origin.sourceKey ? { sourceKey: origin.sourceKey } : {}),
+    ...(origin.targetKey ? { targetKey: origin.targetKey } : {}),
+    sourceNodeId: edge.source,
+    sourceHandle: edge.sourceHandle,
+    targetNodeId: edge.target,
+    targetHandle: edge.targetHandle,
+  };
+}
 
 function selectCompilationGraph(nodes, edges) {
   const nodeById = new Map(nodes.map((node) => [node.id, node]));
@@ -38,6 +103,7 @@ function selectCompilationGraph(nodes, edges) {
     (node) => connectedIds.has(node.id) && node.data.manifest.op === 'tabular_data',
   );
   let activeIds;
+  let selectionRule;
 
   if (connectedTrainers.length > 1) {
     const error = new Error('error.multipleTrainers');
@@ -46,6 +112,7 @@ function selectCompilationGraph(nodes, edges) {
   }
 
   if (connectedTrainers.length) {
+    selectionRule = 'trainer-dependencies';
     activeIds = new Set();
     const pending = [connectedTrainers[0].id];
     while (pending.length) {
@@ -55,6 +122,7 @@ function selectCompilationGraph(nodes, edges) {
       incomingSources.get(id)?.forEach((source) => pending.push(source));
     }
   } else if (connectedOutputs.length) {
+    selectionRule = 'model-output-dependencies';
     activeIds = new Set();
     const pending = connectedOutputs.map((node) => node.id);
     while (pending.length) {
@@ -66,6 +134,7 @@ function selectCompilationGraph(nodes, edges) {
     nodes.filter((node) => ['loss', 'optimizer'].includes(node.data.manifest.kind))
       .forEach((node) => activeIds.add(node.id));
   } else if (connectedTabular) {
+    selectionRule = 'connected-tabular-graph';
     activeIds = new Set();
     const pending = nodes
       .filter((node) => connectedIds.has(node.id) && node.data.manifest.op === 'tabular_data')
@@ -78,6 +147,7 @@ function selectCompilationGraph(nodes, edges) {
     }
   } else {
     activeIds = connectedIds.size ? connectedIds : new Set(nodes.map((node) => node.id));
+    selectionRule = connectedIds.size ? 'connected-graph-fallback' : 'all-nodes-fallback';
   }
 
   const selectedNodes = nodes.filter((node) => activeIds.has(node.id));
@@ -85,7 +155,7 @@ function selectCompilationGraph(nodes, edges) {
   const selectedEdges = edges.filter(
     (edge) => selectedIds.has(edge.source) && selectedIds.has(edge.target),
   );
-  return { nodes: selectedNodes, edges: selectedEdges };
+  return { nodes: selectedNodes, edges: selectedEdges, rule: selectionRule };
 }
 
 export function graphToIR(nodes, edges) {
@@ -451,7 +521,26 @@ function trainingConfiguration(ir, framework) {
   ];
 }
 
-function compileArchitecture(ir, framework) {
+function emittedSection(lines, { nodes = [], edges = [], role, compilerRole } = {}) {
+  return {
+    lines,
+    nodeIds: nodes.map((node) => node.id),
+    edgeIds: edges.map((edge) => edge.id),
+    role,
+    compilerRole,
+  };
+}
+
+function trainingSection(ir, framework) {
+  const context = trainerContext(ir);
+  const related = [context.trainer, context.split, context.loss, context.optimizer].filter(Boolean);
+  return emittedSection(trainingConfiguration(ir, framework), {
+    nodes: related,
+    role: 'training-configuration',
+  });
+}
+
+function compileArchitecture(ir, framework, sourceEdgeForInput = () => null) {
   const candidates = ir.nodes.filter((node) => architectureKinds.has(node.kind));
   if (!candidates.length) return null;
   const nodeById = new Map(candidates.map((node) => [node.id, node]));
@@ -482,18 +571,8 @@ function compileArchitecture(ir, framework) {
   const outputCandidates = [];
 
   if (framework === 'pytorch') {
-    const initLines = architecture.map(pytorchLayerInit).filter(Boolean).map((line) => `        ${line}`);
     const forwardArgs = inputs.map((node) => safeName(node.id)).join(', ');
-    const forwardLines = [];
-    architecture.forEach((node) => {
-      const variable = `v_${safeName(node.id)}`;
-      variableByNode.set(node.id, variable);
-      const expression = pytorchForwardExpression(node, connectedInputVariables(node, variableByNode));
-      forwardLines.push(`        ${variable} = ${expression}`);
-      if (node.op === 'model_output') outputCandidates.push(variable);
-    });
-    const fallbackOutput = variableByNode.get(architecture.at(-1)?.id) ?? forwardArgs.split(', ')[0];
-    return [
+    const sections = [emittedSection([
       'import torch',
       'import torch.nn as nn',
       '',
@@ -507,33 +586,40 @@ function compileArchitecture(ir, framework) {
       'class VOLKModel(nn.Module):',
       '    def __init__(self):',
       '        super().__init__()',
-      ...(initLines.length ? initLines : ['        pass']),
-      '',
-      `    def forward(self, ${forwardArgs}):`,
-      ...forwardLines,
+    ], { compilerRole: 'architecture-scaffold' })];
+    architecture.forEach((node) => {
+      const line = pytorchLayerInit(node);
+      if (line) sections.push(emittedSection([`        ${line}`], {
+        nodes: [node], role: 'layer-definition',
+      }));
+    });
+    if (!architecture.some((node) => pytorchLayerInit(node))) {
+      sections.push(emittedSection(['        pass'], { compilerRole: 'architecture-scaffold' }));
+    }
+    sections.push(emittedSection(['', `    def forward(self, ${forwardArgs}):`], {
+      nodes: inputs, role: 'model-input-signature', compilerRole: 'architecture-scaffold',
+    }));
+    architecture.forEach((node) => {
+      const variable = `v_${safeName(node.id)}`;
+      variableByNode.set(node.id, variable);
+      const expression = pytorchForwardExpression(node, connectedInputVariables(node, variableByNode));
+      if (node.op === 'model_output') outputCandidates.push(variable);
+      const sourceEdges = node.inputs.map((connection) => sourceEdgeForInput(node, connection));
+      sections.push(emittedSection([`        ${variable} = ${expression}`], {
+        nodes: [node], edges: sourceEdges.filter(Boolean), role: 'forward-operation',
+      }));
+    });
+    const fallbackOutput = variableByNode.get(architecture.at(-1)?.id) ?? forwardArgs.split(', ')[0];
+    sections.push(emittedSection([
       `        return ${outputCandidates.length > 1 ? `(${outputCandidates.join(', ')})` : outputCandidates[0] ?? fallbackOutput}`,
       '',
       'model = VOLKModel()',
-      ...trainingConfiguration(ir, framework),
-    ].join('\n');
+    ], { nodes: architecture.filter((node) => node.op === 'model_output'), role: 'model-output' }));
+    sections.push(trainingSection(ir, framework));
+    return sections;
   }
 
-  const initLines = architecture.map(tensorflowLayerInit).filter(Boolean);
-  const forwardLines = [];
-  inputs.forEach((node) => {
-    const variable = safeName(node.id);
-    variableByNode.set(node.id, variable);
-  });
-  architecture.forEach((node) => {
-    if (node.op === 'tensor_input') return;
-    const variable = `v_${safeName(node.id)}`;
-    variableByNode.set(node.id, variable);
-    forwardLines.push(`${variable} = ${tensorflowForwardExpression(node, connectedInputVariables(node, variableByNode))}`);
-    if (node.op === 'model_output') outputCandidates.push(variable);
-  });
-  const inputLines = inputs.map((node) => `${safeName(node.id)} = keras.Input(shape=${pythonShape(node.parameters.shape)}, dtype="${node.parameters.dtype}", name="${safeName(node.id)}")`);
-  const fallbackOutput = variableByNode.get(architecture.at(-1)?.id) ?? safeName(inputs[0].id);
-  return [
+  const sections = [emittedSection([
     'import tensorflow as tf',
     'from tensorflow import keras',
     'from tensorflow.keras import layers',
@@ -545,20 +631,45 @@ function compileArchitecture(ir, framework) {
     '    def call(self, inputs):',
     '        return inputs + self.layers(inputs)',
     '',
-    ...initLines,
-    ...inputLines,
-    ...forwardLines,
+  ], { compilerRole: 'architecture-scaffold' })];
+  architecture.forEach((node) => {
+    const line = tensorflowLayerInit(node);
+    if (line) sections.push(emittedSection([line], { nodes: [node], role: 'layer-definition' }));
+  });
+  inputs.forEach((node) => {
+    const variable = safeName(node.id);
+    variableByNode.set(node.id, variable);
+    sections.push(emittedSection([
+      `${variable} = keras.Input(shape=${pythonShape(node.parameters.shape)}, dtype="${node.parameters.dtype}", name="${safeName(node.id)}")`,
+    ], { nodes: [node], role: 'model-input' }));
+  });
+  architecture.forEach((node) => {
+    if (node.op === 'tensor_input') return;
+    const variable = `v_${safeName(node.id)}`;
+    variableByNode.set(node.id, variable);
+    const expression = tensorflowForwardExpression(node, connectedInputVariables(node, variableByNode));
+    if (node.op === 'model_output') outputCandidates.push(variable);
+    const sourceEdges = node.inputs.map((connection) => sourceEdgeForInput(node, connection));
+    sections.push(emittedSection([`${variable} = ${expression}`], {
+      nodes: [node], edges: sourceEdges.filter(Boolean), role: 'forward-operation',
+    }));
+  });
+  const fallbackOutput = variableByNode.get(architecture.at(-1)?.id) ?? safeName(inputs[0].id);
+  sections.push(emittedSection([
     `model = keras.Model(inputs=[${inputs.map((node) => safeName(node.id)).join(', ')}], outputs=${outputCandidates.length > 1 ? `[${outputCandidates.join(', ')}]` : outputCandidates[0] ?? fallbackOutput})`,
-    ...trainingConfiguration(ir, framework),
-  ].join('\n');
+  ], { nodes: architecture.filter((node) => node.op === 'model_output'), role: 'model-output' }));
+  sections.push(trainingSection(ir, framework));
+  return sections;
 }
 
-function compileTabularPipeline(ir, framework) {
+function compileTabularPipeline(ir, framework, sourceEdgesForNode = () => []) {
   const split = ir.nodes.find((node) => node.op === 'train_test_split');
   const linear = ir.nodes.find((node) => node.op === 'linear_regression');
   const trainer = ir.nodes.find((node) => node.op === 'gradient_descent');
+  const data = ir.nodes.find((node) => node.op === 'tabular_data');
+  const sections = [];
   if (framework === 'pytorch') {
-    return [
+    sections.push(emittedSection([
       'import torch',
       'from torch import nn',
       'from torch.utils.data import DataLoader, TensorDataset, random_split',
@@ -566,30 +677,44 @@ function compileTabularPipeline(ir, framework) {
       '# Replace this loader with the dataset saved in the VOLK-ML project JSON.',
       'X, y = load_tabular_data()',
       'dataset = TensorDataset(torch.tensor(X, dtype=torch.float32), torch.tensor(y, dtype=torch.float32).unsqueeze(1))',
+    ], { nodes: [data].filter(Boolean), role: 'dataset-binding' }));
+    sections.push(emittedSection([
       `train_size = int(len(dataset) * ${split?.parameters.train_ratio ?? 0.8})`,
       'train_set, test_set = random_split(dataset, [train_size, len(dataset) - train_size], generator=torch.Generator().manual_seed(2026))',
+    ], { nodes: [split].filter(Boolean), edges: split ? sourceEdgesForNode(split) : [], role: 'dataset-split' }));
+    sections.push(emittedSection([
       'model = nn.Linear(X.shape[1], 1)',
       `optimizer = torch.optim.SGD(model.parameters(), lr=${linear?.parameters.learning_rate ?? 0.01})`,
       'criterion = nn.MSELoss()',
+    ], { nodes: [linear].filter(Boolean), role: 'linear-model' }));
+    sections.push(emittedSection([
       `for epoch in range(${trainer?.parameters.epochs ?? 100}):`,
       '    for features, target in DataLoader(train_set, batch_size=32, shuffle=True):',
       '        optimizer.zero_grad()',
       '        loss = criterion(model(features), target)',
       '        loss.backward()',
       '        optimizer.step()',
-    ].join('\n');
+    ], { nodes: [trainer].filter(Boolean), edges: trainer ? sourceEdgesForNode(trainer) : [], role: 'training-loop' }));
+    return sections;
   }
-  return [
+  sections.push(emittedSection([
     'import tensorflow as tf',
     'from tensorflow import keras',
     '',
     '# Replace this loader with the dataset saved in the VOLK-ML project JSON.',
     'X, y = load_tabular_data()',
-    ...tensorflowSplitLines(split?.parameters.train_ratio ?? 0.8),
+  ], { nodes: [data].filter(Boolean), role: 'dataset-binding' }));
+  sections.push(emittedSection(tensorflowSplitLines(split?.parameters.train_ratio ?? 0.8), {
+    nodes: [split].filter(Boolean), edges: split ? sourceEdgesForNode(split) : [], role: 'dataset-split',
+  }));
+  sections.push(emittedSection([
     'model = keras.Sequential([keras.layers.Input(shape=(X.shape[1],)), keras.layers.Dense(1)])',
     `model.compile(optimizer=keras.optimizers.SGD(learning_rate=${linear?.parameters.learning_rate ?? 0.01}), loss="mse", metrics=[keras.metrics.RootMeanSquaredError()])`,
+  ], { nodes: [linear].filter(Boolean), role: 'linear-model' }));
+  sections.push(emittedSection([
     `model.fit(X_train, y_train, epochs=${trainer?.parameters.epochs ?? 100}, batch_size=32, validation_data=(X_test, y_test))`,
-  ].join('\n');
+  ], { nodes: [trainer].filter(Boolean), edges: trainer ? sourceEdgesForNode(trainer) : [], role: 'training-loop' }));
+  return sections;
 }
 
 export function compatibilityReport(nodes, framework) {
@@ -604,11 +729,28 @@ export function compatibilityReport(nodes, framework) {
   });
 }
 
-export function compileGraph(nodes, edges, framework) {
+function sourceConnectionKey(nodeId, connection) {
+  return `${connection.source}\0${connection.sourceHandle}\0${nodeId}\0${connection.targetHandle}`;
+}
+
+function compileSections(ir, framework, sourceEdgeForInput, sourceEdgesForNode) {
+  return compileArchitecture(ir, framework, sourceEdgeForInput)
+    ?? compileTabularPipeline(ir, framework, sourceEdgesForNode);
+}
+
+function compileGraphCore(nodes, edges, framework, includeSourceMap) {
   if (!['pytorch', 'tensorflow'].includes(framework)) throw new Error(`Unsupported framework: ${framework}`);
-  const flattened = flattenCustomComposites(nodes, edges);
+  const idFactory = stableExportIdFactory([...nodes.map((node) => node.id), ...edges.map((edge) => edge.id)]);
+  const flattened = flattenCustomComposites(nodes, edges, { idFactory });
   const selected = selectCompilationGraph(flattened.nodes, flattened.edges);
   const ir = graphToIR(selected.nodes, selected.edges);
+  const compilerNodeById = new Map(selected.nodes.map((node) => [node.id, node]));
+  const sourceEdgeByConnection = new Map(selected.edges.map((edge) => [
+    `${edge.source}\0${edge.sourceHandle}\0${edge.target}\0${edge.targetHandle}`,
+    edge,
+  ]));
+  const sourceEdgeForInput = (node, connection) => sourceEdgeByConnection.get(sourceConnectionKey(node.id, connection)) ?? null;
+  const sourceEdgesForNode = (node) => node.inputs.map((connection) => sourceEdgeForInput(node, connection)).filter(Boolean);
   if (ir.nodes.some((node) => node.op === 'supervised_trainer')) trainerContext(ir);
   const report = compatibilityReport(selected.nodes, framework);
   if (report.some((item) => item.quality === 'unsupported')) {
@@ -620,8 +762,176 @@ export function compileGraph(nodes, edges, framework) {
     };
     throw error;
   }
-  const code = compileArchitecture(ir, framework) ?? compileTabularPipeline(ir, framework);
-  return { code: `# Generated by VOLK-ML IR v${ir.version}\n# Review tensor shapes and dataset bindings before running.\n\n${code}\n`, ir, report };
+  const sections = compileSections(ir, framework, sourceEdgeForInput, sourceEdgesForNode);
+  let result;
+  if (includeSourceMap) {
+    const writer = new SourceMapWriter(ir.version);
+    sections.forEach((section) => {
+      const nodeOrigins = section.nodeIds.map((id) => compilerNodeById.get(id)).filter(Boolean).map(sourceOriginForNode);
+      const edgeRefs = section.edgeIds.map((id) => selected.edges.find((edge) => edge.id === id)).filter(Boolean).map(sourceEdgeReference);
+      writer.addLines(section.lines, {
+        role: section.role,
+        nodeOrigins,
+        edgeRefs,
+        compilerRole: section.compilerRole,
+      });
+    });
+    result = { ...writer.finish(), ir, report };
+  } else {
+    const body = sections.flatMap((section) => section.lines).join('\n');
+    result = {
+      code: `# Generated by VOLK-ML IR v${ir.version}\n# Review tensor shapes and dataset bindings before running.\n\n${body}\n`,
+      ir,
+      report,
+    };
+  }
+  return {
+    ...result,
+    framework,
+    workspaceNodes: nodes,
+    workspaceEdges: edges,
+    expandedNodes: flattened.nodes,
+    expandedEdges: flattened.edges,
+    selected,
+    compilerNodeById,
+  };
+}
+
+export function compileGraph(nodes, edges, framework) {
+  const { code, ir, report } = compileGraphCore(nodes, edges, framework, false);
+  return { code, ir, report };
+}
+
+function groupNodeConstructs(constructs) {
+  const groups = new Map();
+  constructs.forEach((construct) => {
+    const key = stableSourceJson({
+      workspaceNodeId: construct.workspaceNodeId,
+      compositionPath: construct.compositionPath,
+      componentId: construct.componentId,
+      operation: construct.operation,
+    });
+    if (!groups.has(key)) groups.set(key, {
+      workspaceNodeId: construct.workspaceNodeId,
+      compositionPath: construct.compositionPath,
+      componentId: construct.componentId,
+      operation: construct.operation,
+      constructs: [],
+    });
+    groups.get(key).constructs.push({
+      role: construct.role,
+      span: construct.span,
+      edgeRefs: construct.edgeRefs,
+    });
+  });
+  return [...groups.values()];
+}
+
+function groupEdgeConstructs(constructs) {
+  const groups = new Map();
+  constructs.forEach(({ edge, role, span }) => {
+    const key = stableSourceJson(edge);
+    if (!groups.has(key)) groups.set(key, { ...edge, constructs: [] });
+    groups.get(key).constructs.push({ role, span });
+  });
+  return [...groups.values()];
+}
+
+function workspaceEdgeOrigin(edge) {
+  return edge.runtimeSourceExportOrigin ?? { kind: 'workspace-edge', workspaceEdgeId: edge.id };
+}
+
+function createSourceManifest({ nodes, edges, framework, compiled, selected }) {
+  const selectedProjection = {
+    graph: sourceGraphProjectionV1(selected.nodes, selected.edges, { includeOrigins: true }),
+    effectiveCompilationOrder: compiled.ir.nodes.map((node) => node.id),
+  };
+  const sourceBytes = new TextEncoder().encode(compiled.code).length;
+  const selectedWorkspaceNodeIds = new Set(selected.nodes.map((node) => node.data.runtimeOwnerId ?? node.id));
+  const selectedWorkspaceEdgeIds = new Set(selected.edges.map((edge) => {
+    const origin = workspaceEdgeOrigin(edge);
+    return origin.kind === 'workspace-edge' ? origin.workspaceEdgeId : null;
+  }).filter(Boolean));
+  const workspaceNodeIds = nodes.map((node) => node.id);
+  const workspaceEdgeIds = edges.map((edge) => edge.id);
+  const nodeMappings = groupNodeConstructs(compiled.nodeConstructs);
+  const mappedNodeOrigins = new Set(nodeMappings.map((item) => `${item.workspaceNodeId}\0${item.compositionPath.join('\0')}`));
+  const edgeMappings = groupEdgeConstructs(compiled.edgeConstructs);
+  const mappedEdges = new Set(edgeMappings.map((item) => `${item.kind}\0${item.workspaceEdgeId ?? item.id}`));
+  const selectedOrigins = selected.nodes.map((node) => sourceOriginForNode(node));
+  const selectedOriginKeys = new Set(selectedOrigins.map((origin) => `${origin.workspaceNodeId}\0${origin.compositionPath.join('\0')}`));
+  const unmapped = [
+    ...[...selectedOriginKeys].filter((key) => !mappedNodeOrigins.has(key)).map((key) => ({ kind: 'node', key })),
+    ...selected.edges.map((edge) => ({ edge, origin: workspaceEdgeOrigin(edge) })).filter(({ edge, origin }) => {
+      const key = `${origin.kind}\0${origin.workspaceEdgeId ?? edge.id}`;
+      return !mappedEdges.has(key);
+    }).map(({ origin }) => ({ kind: 'edge', origin })),
+  ];
+  return {
+    type: SOURCE_EXPORT_MANIFEST_TYPE,
+    version: SOURCE_EXPORT_MANIFEST_VERSION,
+    compiler: { id: 'volk-ml-canonical-python', contractVersion: SOURCE_EXPORT_COMPILER_CONTRACT_VERSION, irVersion: compiled.ir.version },
+    framework,
+    identityPolicy: 'semantic-graph-v1',
+    presentationPolicy: 'excluded',
+    workspace: {
+      semanticGraphSha256: null,
+      nodeIds: workspaceNodeIds,
+      edgeIds: workspaceEdgeIds,
+    },
+    selection: {
+      rule: selected.rule,
+      semanticGraphSha256: null,
+      expandedNodeIds: selected.nodes.map((node) => node.id),
+      expandedEdgeIds: selected.edges.map((edge) => edge.id),
+      includedWorkspaceNodeIds: [...selectedWorkspaceNodeIds],
+      excludedWorkspaceNodeIds: workspaceNodeIds.filter((id) => !selectedWorkspaceNodeIds.has(id)),
+      includedWorkspaceEdgeIds: [...selectedWorkspaceEdgeIds],
+      excludedWorkspaceEdgeIds: workspaceEdgeIds.filter((id) => !selectedWorkspaceEdgeIds.has(id)),
+      effectiveCompilationOrder: selectedProjection.effectiveCompilationOrder,
+    },
+    source: { sha256: null, byteLength: sourceBytes, encoding: 'utf-8' },
+    nodeMappings,
+    edgeMappings,
+    compilerConstructs: compiled.compilerConstructs,
+    unmapped,
+  };
+}
+
+export async function compileGraphWithSourceManifest(nodes, edges, framework) {
+  const { code, ir, report, ...internal } = compileGraphCore(nodes, edges, framework, true);
+  if (new TextEncoder().encode(code).length > SOURCE_EXPORT_LIMITS.maxSourceBytes) {
+    throw new SourceExportManifestError('SOURCE_EXPORT_SOURCE_BOUND');
+  }
+  const manifest = createSourceManifest({
+    nodes,
+    edges,
+    framework,
+    compiled: { ...internal, code, ir, report },
+    selected: internal.selected,
+  });
+  manifest.workspace.semanticGraphSha256 = await sha256Utf8(stableSourceJson(sourceGraphProjectionV1(nodes, edges)));
+  manifest.selection.semanticGraphSha256 = await sha256Utf8(stableSourceJson({
+    graph: sourceGraphProjectionV1(internal.selected.nodes, internal.selected.edges, { includeOrigins: true }),
+    effectiveCompilationOrder: ir.nodes.map((node) => node.id),
+  }));
+  manifest.source.sha256 = await sha256Utf8(code);
+  const serialized = assertSourceExportManifestBounded(manifest);
+  if (serialized.length > SOURCE_EXPORT_LIMITS.maxManifestCodeUnits) throw new SourceExportManifestError('SOURCE_EXPORT_MANIFEST_BOUND');
+  return { code, ir, report, manifest };
+}
+
+/** Re-materializes only through the canonical compiler; never parses or executes source. */
+export async function validateSourceExportManifest({ nodes, edges, framework, code, manifest }) {
+  assertSourceExportManifestBounded(manifest);
+  if (typeof code !== 'string' || await sha256Utf8(code) !== manifest.source?.sha256) {
+    return { valid: false, reason: 'SOURCE_EXPORT_SOURCE_MISMATCH' };
+  }
+  const expected = await compileGraphWithSourceManifest(nodes, edges, framework);
+  if (expected.code !== code || stableSourceJson(expected.manifest) !== stableSourceJson(manifest)) {
+    return { valid: false, reason: 'SOURCE_EXPORT_REMATERIALIZATION_MISMATCH' };
+  }
+  return { valid: true, sourceSha256: expected.manifest.source.sha256 };
 }
 
 export const compilePipelineToPyTorch = (nodes, edges) => compileGraph(nodes, edges, 'pytorch');

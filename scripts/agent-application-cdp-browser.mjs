@@ -8,6 +8,7 @@ import { graphPatchBaseFromProject } from '../src/core/graph/workspacePatchApply
 const baseUrl = 'http://127.0.0.1:5181';
 const chromeDebugUrl = 'http://127.0.0.1:9231/json/list';
 const chromeProfile = fs.mkdtempSync(path.join(os.tmpdir(), 'volk-agent-app-d1-'));
+const downloadDirectory = path.join(chromeProfile, 'downloads');
 const scenarios = [];
 const browserErrors = [];
 let viteProcess = null;
@@ -68,6 +69,21 @@ async function waitForHttp(url, timeoutMs = 15000) {
     await new Promise((resolve) => setTimeout(resolve, 200));
   }
   throw new Error(`Timed out waiting for ${url}`);
+}
+
+async function waitForDownloadedJson(filename, timeoutMs = 10000) {
+  const filePath = path.join(downloadDirectory, filename);
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (fs.existsSync(filePath)) {
+      try {
+        const contents = fs.readFileSync(filePath, 'utf8');
+        return { filePath, bundle: JSON.parse(contents) };
+      } catch {}
+    }
+    await new Promise((resolve) => setTimeout(resolve, 80));
+  }
+  throw new Error(`Timed out waiting for browser download ${filename}`);
 }
 
 async function connectBrowser() {
@@ -145,12 +161,18 @@ async function startServices() {
     cwd: process.cwd(), env, stdio: 'inherit',
   });
   await waitForHttp(`${baseUrl}/`);
+  fs.mkdirSync(downloadDirectory, { recursive: true });
   chromeProcess = spawn('C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe', [
     '--headless=new', '--disable-gpu', '--remote-debugging-port=9231', '--window-size=1440,1000',
     `--user-data-dir=${chromeProfile}`, 'about:blank',
   ], { stdio: 'ignore' });
   await waitForHttp(chromeDebugUrl);
   cdp = await connectBrowser();
+  try {
+    await cdp.send('Browser.setDownloadBehavior', { behavior: 'allow', downloadPath: downloadDirectory, eventsEnabled: true });
+  } catch {
+    await cdp.send('Page.setDownloadBehavior', { behavior: 'allow', downloadPath: downloadDirectory });
+  }
   await cdp.send('Page.navigate', { url: `${baseUrl}/?graphApplyTest=1` });
   await waitFor('Boolean(window.__VOLK_ML_AGENT_APPLICATION__) && Boolean(document.querySelector("nav button"))', 'application shell and restricted application API');
   const enteredBuild = await evaluate(`(() => {
@@ -343,7 +365,42 @@ try {
   if (runAfter.execution.runtime.status !== runBefore.execution.runtime.status) throw new Error('Rejected agent run changed execution state.');
   const sourceArtifact = await agentRequest('exportGraph', { framework: 'pytorch' });
   if (!sourceArtifact.ok || sourceArtifact.result.executed || sourceArtifact.result.downloaded) throw new Error(`Source export had unexpected execution/download side effects: ${JSON.stringify(sourceArtifact.error ?? sourceArtifact.result)}`);
-  await record('run-requires-confirmation-and-export-is-source-only', 'PASS', { runCode: runResponse.error.code, executed: sourceArtifact.result.executed, downloaded: sourceArtifact.result.downloaded });
+  const sourceManifestArtifact = await agentRequest('exportGraph', { framework: 'pytorch', includeManifest: true });
+  if (!sourceManifestArtifact.ok || sourceManifestArtifact.result.manifest?.type !== 'VolkSourceExportManifestV1') throw new Error(`Source export did not return the typed provenance manifest: ${JSON.stringify(sourceManifestArtifact.error ?? sourceManifestArtifact.result)}`);
+  if (sourceManifestArtifact.result.executed || sourceManifestArtifact.result.downloaded) throw new Error('Provenance export executed or downloaded without learner action.');
+  await record('run-requires-confirmation-and-export-is-source-only', 'PASS', {
+    runCode: runResponse.error.code,
+    executed: sourceArtifact.result.executed,
+    downloaded: sourceArtifact.result.downloaded,
+    manifestType: sourceManifestArtifact.result.manifest.type,
+    sourceHash: sourceManifestArtifact.result.manifest.source.sha256,
+  });
+
+  const projectBeforeMapDownload = await currentProject();
+  await canvasAgent('selectNode', projectBeforeMapDownload.graph.nodes[0].id);
+  await waitFor('Boolean(document.querySelector("[data-testid=compiler-export-source-map-pytorch]"))', 'localized source provenance control');
+  const semanticStateBeforeMapDownload = await canvasAgent('getState');
+  await clickSelector('[data-testid="compiler-export-source-map-pytorch"]');
+  await waitFor('document.body.innerText.includes("PyTorch source and provenance map exported")', 'source provenance download result');
+  const downloaded = await waitForDownloadedJson('volk_ml_pytorch_source_export.json');
+  const downloadedBundle = downloaded.bundle;
+  if (downloadedBundle.type !== 'VolkSourceExportBundleV1' || downloadedBundle.framework !== 'pytorch') {
+    throw new Error(`Browser download did not contain the expected source bundle: ${JSON.stringify({ type: downloadedBundle.type, framework: downloadedBundle.framework })}`);
+  }
+  if (downloadedBundle.source !== sourceManifestArtifact.result.code
+    || JSON.stringify(downloadedBundle.manifest) !== JSON.stringify(sourceManifestArtifact.result.manifest)) {
+    throw new Error('Downloaded source/provenance bundle did not match the D1 compiler response.');
+  }
+  const semanticStateAfterMapDownload = await canvasAgent('getState');
+  if (comparableProject(semanticStateBeforeMapDownload.project) !== comparableProject(semanticStateAfterMapDownload.project)) throw new Error('Source provenance UI changed the workspace project.');
+  if (JSON.stringify(semanticStateBeforeMapDownload.execution.runtime) !== JSON.stringify(semanticStateAfterMapDownload.execution.runtime)) throw new Error('Source provenance UI changed runtime state.');
+  await record('localized-ui-source-map-uses-read-only-d1-export', 'PASS', {
+    visible: true,
+    downloadedBundleMatchesD1: true,
+    downloadBytes: fs.statSync(downloaded.filePath).size,
+    graphUnchanged: true,
+    runtimeUnchanged: true,
+  });
 
   if (browserErrors.length) throw new Error(`Browser console errors: ${JSON.stringify(browserErrors)}`);
   report.outcome = 'PASS';

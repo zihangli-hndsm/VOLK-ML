@@ -1,5 +1,5 @@
 import { summarizeAgentComponent } from './canvasAgent.js';
-import { compilePipelineToPyTorch, compilePipelineToTensorFlow } from './compiler.js';
+import { compileGraphWithSourceManifest, compilePipelineToPyTorch, compilePipelineToTensorFlow } from './compiler.js';
 import { createBuildDatasetContext, projectBuildDatasetContext } from './buildAgent/datasetContext.js';
 import { graphIdentityV1 } from './graph/identity.js';
 import {
@@ -130,8 +130,11 @@ function validatedRequest(value) {
     if (!Object.hasOwn(value.params, 'proposal')) fail('REQUEST_INVALID', { field: 'params.proposal', reason: 'required' });
   }
   if (value.method === 'exportGraph') {
-    rejectUnknownFields(value.params, ['framework'], 'REQUEST_INVALID', 'params');
+    rejectUnknownFields(value.params, ['framework', 'includeManifest'], 'REQUEST_INVALID', 'params');
     if (!['pytorch', 'tensorflow'].includes(value.params.framework)) fail('FRAMEWORK_UNSUPPORTED');
+    if (Object.hasOwn(value.params, 'includeManifest') && typeof value.params.includeManifest !== 'boolean') {
+      fail('REQUEST_INVALID', { field: 'params.includeManifest', reason: 'boolean-required' });
+    }
   }
   return value;
 }
@@ -468,7 +471,15 @@ export function createAgentApplicationApi({ getContext, submitProposal }) {
     }
     if (request.method === 'exportGraph') {
       const framework = request.params.framework;
-      const compiled = safeCompile(context.nodes, context.edges, framework);
+      let compiled;
+      try {
+        compiled = request.params.includeManifest === true
+          ? await compileGraphWithSourceManifest(context.nodes, context.edges, framework)
+          : safeCompile(context.nodes, context.edges, framework);
+      } catch (error) {
+        if (error instanceof AgentApplicationApiError) throw error;
+        fail(error?.translationKey === 'error.frameworkUnsupported' ? 'EXPORT_UNSUPPORTED' : 'EXPORT_FAILED');
+      }
       if (compiled.code.length > MAX_SOURCE_CODE_UNITS) fail('EXPORT_TOO_LARGE', { maxCodeUnits: MAX_SOURCE_CODE_UNITS });
       const fidelity = compiled.report.reduce((worst, item) => {
         const order = ['exact', 'adapted', 'approximate', 'unsupported'];
@@ -481,6 +492,7 @@ export function createAgentApplicationApi({ getContext, submitProposal }) {
         report: compiled.report.map((item) => ({ componentId: item.componentId, quality: item.quality })),
         fidelity,
         provenance: 'local-compiler',
+        ...(request.params.includeManifest === true ? { manifest: compiled.manifest } : {}),
         executed: false,
         downloaded: false,
       };

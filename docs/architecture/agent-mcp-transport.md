@@ -48,7 +48,7 @@ Tool names are stable and intentionally explicit:
 | `volk_submit_graph_patch_proposal` | `submitGraphPatchProposal` | preview-only patch |
 | `volk_inspect_proposal` | `inspectProposal` | live freshness and lifecycle |
 | `volk_inspect_results` | `inspectResults` | current browser-local result |
-| `volk_export_graph` | `exportGraph` | source-only local compiler |
+| `volk_export_graph` | `exportGraph` | source-only local compiler; optional `includeManifest: true` returns the bounded canonical source map |
 | `volk_request_run` | `run` | confirmation-required response |
 
 There is deliberately no Apply, set-parameter, load-project, set-dataset, or
@@ -112,6 +112,11 @@ PyTorch export, malformed/oversized containment, Run confirmation, semantic
 invalidation, cancelled/expired proposal withdrawal after polling resumes, and
 disconnect/deadline behavior. No fixture-only MCP server or duplicate
 workspace is used.
+
+The strict `volk_export_graph` input accepts `framework` and an optional
+boolean `includeManifest`. The latter uses the same D1 export projection and
+does not add a tool, Apply capability, or execution path; see
+[`source-export-manifest.md`](./source-export-manifest.md).
 
 The real external-Agent reference composes this same stdio server with the
 mounted browser bridge and learner-controlled B1/C2 previews; see

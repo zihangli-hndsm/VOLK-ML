@@ -446,7 +446,7 @@ function resolvedCompositionParameters(manifest, nodeParameters) {
   return Object.fromEntries(manifest.properties.map((property) => [property.key, nodeParameters[property.key] ?? property.default]));
 }
 
-export function expandComposite(node) {
+export function expandComposite(node, { idFactory } = {}) {
   const composition = node.data.manifest.composition;
   if (!composition) return null;
   const parentParameters = resolvedCompositionParameters(node.data.manifest, node.data.parameters ?? {});
@@ -461,7 +461,9 @@ export function expandComposite(node) {
       error.translationKey = 'error.compositeExpansion';
       throw error;
     }
-    const id = `${node.id}-${spec.key}-${crypto.randomUUID()}`;
+    const id = typeof idFactory === 'function'
+      ? idFactory({ kind: 'node', parentId: node.id, key: spec.key, index })
+      : `${node.id}-${spec.key}-${crypto.randomUUID()}`;
     idByKey.set(spec.key, id);
     return {
       id,
@@ -483,7 +485,9 @@ export function expandComposite(node) {
     };
   });
   const edges = composition.edges.map((edge, index) => ({
-    id: `${node.id}-internal-${index}-${crypto.randomUUID()}`,
+    id: typeof idFactory === 'function'
+      ? idFactory({ kind: 'edge', parentId: node.id, edge, index })
+      : `${node.id}-internal-${index}-${crypto.randomUUID()}`,
     source: idByKey.get(edge.source),
     sourceHandle: edge.sourceHandle,
     target: idByKey.get(edge.target),

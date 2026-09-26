@@ -266,7 +266,10 @@ function createMcpServer(bridge) {
   });
   const empty = z.object({}).strict();
   const proposal = z.object({ proposal: z.unknown() }).strict();
-  const framework = z.object({ framework: z.enum(['pytorch', 'tensorflow']) }).strict();
+  const framework = z.object({
+    framework: z.enum(['pytorch', 'tensorflow']),
+    includeManifest: z.boolean().optional(),
+  }).strict();
   const output = z.object({
     apiVersion: z.number(),
     requestId: z.string(),
@@ -282,7 +285,7 @@ function createMcpServer(bridge) {
     ['submitGraphPatchProposal', 'Stage a graph patch proposal for the existing learner preview; never Apply it.', proposal],
     ['inspectProposal', 'Inspect current proposal eligibility and bounded lifecycle metadata.', empty],
     ['inspectResults', 'Inspect current browser-local result freshness and safe scalar metrics.', empty],
-    ['exportGraph', 'Export source through the local compiler without execution or download.', framework],
+    ['exportGraph', 'Export source through the local compiler without execution or download; optionally include a bounded source map.', framework],
     ['run', 'Request a run; the mounted application always requires explicit learner confirmation.', empty],
   ];
   for (const [method, description, inputSchema] of definitions) {
