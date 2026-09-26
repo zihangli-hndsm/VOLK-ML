@@ -37,6 +37,7 @@ import {
 import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import { createAgentApplicationApi, createAgentApplicationResultBinding } from './core/agentApplicationApi.js';
 import { installAgentApplicationBridge } from './core/agentApplicationBridge.js';
+import { connectMcpBrowserBridgeFromLocation } from './core/mcpBrowserBridge.js';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
 import { createPlaygroundHost } from './core/playgroundHost';
 import { createTeachingDialogueProvider } from './core/exploration/teachingDialoguePilot.js';
@@ -1725,6 +1726,15 @@ function Workspace() {
     });
   }
   useEffect(() => installAgentApplicationBridge(agentApplicationApiRef.current, window), []);
+  useEffect(() => {
+    if (!import.meta.env.DEV) return undefined;
+    const stop = connectMcpBrowserBridgeFromLocation();
+    if (typeof stop.pause === 'function') window.__VOLK_ML_MCP_BRIDGE_TEST__ = Object.freeze({ pause: stop.pause, resume: stop.resume, stop });
+    return () => {
+      if (window.__VOLK_ML_MCP_BRIDGE_TEST__?.stop === stop) delete window.__VOLK_ML_MCP_BRIDGE_TEST__;
+      stop();
+    };
+  }, []);
   useEffect(() => {
     const forward = (method) => (...args) => agentAdapterRef.current[method](...args);
     const api = createCanvasAgentApi({

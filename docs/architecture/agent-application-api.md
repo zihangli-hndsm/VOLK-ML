@@ -75,14 +75,14 @@ Result metrics describe runtime output, not evidence of learner understanding
 or mastery. This API has no method to set parameters, edit a graph, load a
 project, set a dataset, apply a proposal, or execute a graph directly.
 
-## Compatibility and next transport
+## Compatibility and MCP transport
 
 Canvas Agent API v1 and its API version are unchanged. The application bridge
-does not wrap or expose the Canvas API object; a future MCP adapter should
-translate an explicitly allowed subset of these versioned requests and retain
-the same caller authentication and learner-confirmation requirements. This PR
-adds no MCP server, remote transport, provider integration, or authorization
-service.
+does not wrap or expose the Canvas API object. D2 adds the separate local MCP
+adapter documented in [`agent-mcp-transport.md`](./agent-mcp-transport.md); it
+translates only this API's allow-listed methods and retains the same caller
+binding, privacy, freshness, and learner-confirmation requirements. It is not a
+provider, cloud execution, persistence, or authorization service.
 
 The focused deterministic contract check is `npm run check:agent-application`.
 The headless Chrome integration check is

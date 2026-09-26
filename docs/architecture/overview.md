@@ -19,6 +19,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Application shell | `src/main.jsx` | React Flow canvas, mobile UI, project import/export, runner presentation |
 | Canvas Agent API | `src/core/canvasAgent.js`, `src/main.jsx` | Versioned in-page inspection, graph commands, execution status, source export, and project download |
 | Agent Application API | `src/core/agentApplicationApi.js`, `src/core/agentApplicationBridge.js`, `src/main.jsx` | Bounded application inspection, preview-only graph proposals, result provenance, source-only export, and confirmation-required run requests |
+| MCP transport | `src/core/mcpTransport.js`, `src/core/mcpBrowserBridge.js`, `scripts/volk-mcp-server.mjs` | Local official MCP stdio server and loopback session bridge backed by the mounted Agent Application API |
 | Visual language | `src/core/visualLanguage.js`, `src/components/VisualGlyph.jsx` | Stable stage colors, static canvas glyphs, animated teaching glyphs, architecture layout |
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
@@ -66,6 +67,11 @@ The separately versioned in-page Agent Application request boundary and its
 preview-only proposal authority are documented in
 [`agent-application-api.md`](./agent-application-api.md). It does not change
 Canvas Agent API v1.
+
+D2's local MCP transport is documented in
+[`agent-mcp-transport.md`](./agent-mcp-transport.md). It translates only the
+Agent Application API v1 methods over official MCP tools; it has no Apply or
+direct execution authority and is not a cloud or persistence boundary.
 
 Agent requests share the versioned, semantic boundary documented in
 [`ai-provider.md`](./ai-provider.md). Ask, Experiment Design, and World Edit
