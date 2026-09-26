@@ -177,10 +177,27 @@ export function connectMcpBrowserBridge({
   return stop;
 }
 
-export function connectMcpBrowserBridgeFromLocation(options = {}) {
-  const search = new URLSearchParams(globalThis.location?.search ?? '');
+export function consumeMcpBridgeCredentials(location = globalThis.location, history = globalThis.history) {
+  const search = new URLSearchParams(location?.search ?? '');
   const endpoint = search.get('mcpBridge');
   const token = search.get('mcpToken');
-  if (!endpoint || !token) return () => {};
+  if (!endpoint || !token) return null;
+  if (typeof location?.pathname !== 'string' || typeof history?.replaceState !== 'function') return null;
+  search.delete('mcpBridge');
+  search.delete('mcpToken');
+  const query = search.toString();
+  const cleanPath = `${location.pathname}${query ? `?${query}` : ''}${location.hash ?? ''}`;
+  try {
+    history.replaceState(history.state ?? null, '', cleanPath);
+  } catch {
+    return null;
+  }
+  return { endpoint, token };
+}
+
+export function connectMcpBrowserBridgeFromLocation(options = {}) {
+  const credentials = consumeMcpBridgeCredentials();
+  if (!credentials) return () => {};
+  const { endpoint, token } = credentials;
   return connectMcpBrowserBridge({ ...options, endpoint, token });
 }

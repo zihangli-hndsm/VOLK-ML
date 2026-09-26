@@ -62,7 +62,10 @@ the sole commit path. Run requests retain D1's
 The server listens on `127.0.0.1` only. A developer supplies
 `VOLK_MCP_SESSION_TOKEN` (at least 32 URL-safe characters) and a fixed local
 port. The browser receives the endpoint and token through a development URL;
-the token is not bundled, persisted, or printed by the server. The browser
+the bridge consumes both parameters synchronously and removes them from the
+current history entry before connecting. If the URL cannot be scrubbed, the
+browser declines the connection. The token is not bundled, persisted, or
+printed by the server. The browser
 bridge sends a one-time local nonce and Origin during `connect`. The server
 requires the same token, a local HTTP Origin, the bound session ID, and the
 bound Origin on every poll, response, heartbeat, and disconnect. Only one
@@ -109,3 +112,8 @@ PyTorch export, malformed/oversized containment, Run confirmation, semantic
 invalidation, cancelled/expired proposal withdrawal after polling resumes, and
 disconnect/deadline behavior. No fixture-only MCP server or duplicate
 workspace is used.
+
+The real external-Agent reference composes this same stdio server with the
+mounted browser bridge and learner-controlled B1/C2 previews; see
+[`agent-mcp-d3-reference.md`](agent-mcp-d3-reference.md). It adds no Apply or
+direct-execution tool to this transport.

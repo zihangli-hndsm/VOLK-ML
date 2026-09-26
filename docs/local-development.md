@@ -98,6 +98,28 @@ result freshness, PyTorch source export, malformed/oversized containment, the
 confirmation gate, and disconnect/deadline behavior. The server prints only a
 bounded readiness record to stderr; stdout remains the MCP protocol channel.
 
+### D3 real external-Agent reference
+
+The bounded Codex + mounted-browser workflow uses the same D2 server and the
+existing B1/C2 learner previews. It runs real PyTorch export through the
+isolated B2 Python environment, records only sanitized Agent/browser
+provenance, and makes explicit normal-UI Apply clicks as a clearly labelled
+automated learner. It reuses the locally logged-in Codex account and configured
+model without changing global Codex configuration. See
+[`architecture/agent-mcp-d3-reference.md`](architecture/agent-mcp-d3-reference.md)
+for prerequisites, the exact Agent task, privacy boundaries, and the one-shot
+acceptance command:
+
+```text
+npm run check:agent-application:d3
+npm run test:agent-application:d3
+```
+
+The first command is deterministic contract coverage only. The second is the
+actual bounded external-Agent/browser acceptance; it requires a logged-in
+Codex CLI, Chrome, and the isolated PyTorch environment and is not part of the
+offline default checks.
+
 ## Phase A architect iteration workflow
 
 Start the local frontend (and optional disposable backend) with:

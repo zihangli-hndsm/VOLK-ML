@@ -1,0 +1,590 @@
+{
+  "schema": "VOLK-ML-AgentApplicationD3AcceptanceV1",
+  "status": "PASS",
+  "date": "2026-09-26T16:24:23.110Z",
+  "source": {
+    "branch": "codex/agent-application-d3",
+    "baseCommit": "3d029342a476dfee09123efec5bd9612a10daa9d"
+  },
+  "toolchain": {
+    "codexCli": "codex-cli 0.158.0-alpha.2",
+    "configuredModelOverride": false,
+    "pythonVersion": "3.12.10",
+    "torchVersion": "2.14.0+cpu",
+    "pythonRuntimeEvidence": {
+      "status": "verified",
+      "pythonVersion": "3.12.10",
+      "torchVersion": "2.14.0+cpu",
+      "pythonExecutableSha256": "0b471133e110cfb53a061cad528ce8e517d7b9ac41a0a396c39ad795a487fc14"
+    },
+    "browser": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/153.0.0.0 Safari/537.36",
+    "mcpTransport": "existing D2 official stdio + loopback browser bridge"
+  },
+  "agent": {
+    "threadId": "01a0de86-23ed-7d30-b712-4a5ded2b93e2",
+    "eventCount": 39,
+    "malformedJsonLines": 0,
+    "completed": true,
+    "failed": false,
+    "processExitCode": 0,
+    "processSignal": null,
+    "processStarted": true,
+    "processStartErrorCode": null,
+    "stderrClassification": null,
+    "mcpToolNames": [
+      "volk_inspect_workspace",
+      "volk_list_capabilities",
+      "volk_list_components",
+      "volk_submit_graph_patch_proposal",
+      "volk_submit_graph_proposal"
+    ],
+    "commands": {
+      "inspectedD3Fixture": true,
+      "ranD3Exporter": true,
+      "usedPythonPath": true,
+      "usedTorchProposalHelper": true,
+      "usedPatchProposalHelper": true
+    },
+    "tokenUsage": {
+      "inputTokens": 503177,
+      "outputTokens": 2269,
+      "reasoningOutputTokens": 118
+    },
+    "eventProvenance": [
+      {
+        "eventType": "item.started",
+        "itemType": "command_execution",
+        "status": "in_progress",
+        "exitCode": null,
+        "inspectedD3Fixture": true,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "command_execution",
+        "status": "in_progress",
+        "exitCode": null,
+        "inspectedD3Fixture": true,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "command_execution",
+        "status": "completed",
+        "exitCode": 0,
+        "inspectedD3Fixture": true,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "command_execution",
+        "status": "completed",
+        "exitCode": 0,
+        "inspectedD3Fixture": true,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "command_execution",
+        "status": "in_progress",
+        "exitCode": null,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": true,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "command_execution",
+        "status": "completed",
+        "exitCode": 0,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": true,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "command_execution",
+        "status": "in_progress",
+        "exitCode": null,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": true,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "command_execution",
+        "status": "completed",
+        "exitCode": 0,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": true,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "command_execution",
+        "status": "in_progress",
+        "exitCode": null,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "command_execution",
+        "status": "in_progress",
+        "exitCode": null,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "command_execution",
+        "status": "in_progress",
+        "exitCode": null,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "command_execution",
+        "status": "completed",
+        "exitCode": 0,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "command_execution",
+        "status": "completed",
+        "exitCode": 0,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "command_execution",
+        "status": "completed",
+        "exitCode": 0,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_inspect_workspace",
+        "status": "in_progress"
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_inspect_workspace",
+        "status": "completed"
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_list_capabilities",
+        "status": "in_progress"
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_list_capabilities",
+        "status": "completed"
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_list_components",
+        "status": "in_progress"
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_list_components",
+        "status": "completed"
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_submit_graph_proposal",
+        "proposal": {
+          "kind": "whole-graph",
+          "proposalId": "workspace-proposal-v1-918c306232b59df5-132b",
+          "nodeCount": 5
+        },
+        "status": "in_progress"
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_submit_graph_proposal",
+        "proposal": {
+          "kind": "whole-graph",
+          "proposalId": "workspace-proposal-v1-918c306232b59df5-132b",
+          "nodeCount": 5
+        },
+        "status": "completed"
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_inspect_workspace",
+        "status": "in_progress"
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_inspect_workspace",
+        "status": "completed"
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_list_components",
+        "status": "in_progress"
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_list_components",
+        "status": "completed"
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "command_execution",
+        "status": "in_progress",
+        "exitCode": null,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": true
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "command_execution",
+        "status": "completed",
+        "exitCode": 0,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": true
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "command_execution",
+        "status": "in_progress",
+        "exitCode": null,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "command_execution",
+        "status": "completed",
+        "exitCode": 0,
+        "inspectedD3Fixture": false,
+        "ranD3Exporter": false,
+        "usedPythonPath": false,
+        "usedTorchProposalHelper": false,
+        "usedPatchProposalHelper": false
+      },
+      {
+        "eventType": "item.started",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_submit_graph_patch_proposal",
+        "proposal": {
+          "kind": "graph-patch",
+          "proposalId": "graph-patch-proposal-v1-cfb2269c73894968-1aba",
+          "operationCount": 1,
+          "operation": "UPDATE_PARAMETERS",
+          "targetNodeId": "torch-op-000",
+          "changedParameterKeys": [
+            "units"
+          ],
+          "hiddenUnitsChangedTo128": true
+        },
+        "status": "in_progress"
+      },
+      {
+        "eventType": "item.completed",
+        "itemType": "mcp_tool_call",
+        "tool": "volk_submit_graph_patch_proposal",
+        "proposal": {
+          "kind": "graph-patch",
+          "proposalId": "graph-patch-proposal-v1-cfb2269c73894968-1aba",
+          "operationCount": 1,
+          "operation": "UPDATE_PARAMETERS",
+          "targetNodeId": "torch-op-000",
+          "changedParameterKeys": [
+            "units"
+          ],
+          "hiddenUnitsChangedTo128": true
+        },
+        "status": "completed"
+      },
+      {
+        "eventType": "turn.completed",
+        "usage": {
+          "inputTokens": 503177,
+          "outputTokens": 2269,
+          "reasoningOutputTokens": 118
+        }
+      }
+    ]
+  },
+  "browser": {
+    "viewport": {
+      "width": 1344,
+      "height": 855
+    },
+    "beforeUnloadConfirmationsAccepted": 0,
+    "before": {
+      "identity": {
+        "semanticFingerprint": "graph-semantic-v1-ab13beec155b27d3-31",
+        "presentationFingerprint": "graph-layout-v1-7f2b496b8e5d1b79-22"
+      },
+      "nodeCount": 0,
+      "edgeCount": 0,
+      "nodes": []
+    },
+    "restorePromptHandling": {
+      "encountered": true,
+      "selectedStartFresh": true,
+      "choiceInputMethod": "cdp-mouse",
+      "occlusionNegativeControl": {
+        "target": "Build navigation behind restore dialog",
+        "rejectedAs": "obscured",
+        "inputDispatched": false
+      }
+    },
+    "bridgeCredentialsScrubbed": true,
+    "starterWorkspace": {
+      "graph": {
+        "identity": {
+          "semanticFingerprint": "graph-semantic-v1-ab13beec155b27d3-31",
+          "presentationFingerprint": "graph-layout-v1-7f2b496b8e5d1b79-22"
+        },
+        "nodeCount": 0,
+        "edgeCount": 0,
+        "nodes": []
+      },
+      "removedStarterNodeCount": 6,
+      "actor": "automated-learner",
+      "controls": [
+        "viewport-visible Delete component buttons via CDP mouse",
+        "viewport-visible explicit Delete confirmation via CDP mouse"
+      ]
+    },
+    "b1Preview": {
+      "visible": true,
+      "staged": true,
+      "readyForLearnerApply": true,
+      "graphUnchanged": true,
+      "learnerApplyButtonEnabled": true
+    },
+    "b1LearnerAction": {
+      "actor": "automated-learner",
+      "control": "data-graph-proposal-apply",
+      "clicked": true
+    },
+    "afterB1": {
+      "identity": {
+        "semanticFingerprint": "graph-semantic-v1-e74e11731d455224-bfe",
+        "presentationFingerprint": "graph-layout-v1-47d6efbc2a955f7c-125"
+      },
+      "nodeCount": 5,
+      "edgeCount": 4,
+      "nodes": [
+        {
+          "id": "torch-input-0",
+          "componentId": "tensor_input_node",
+          "operation": "tensor_input",
+          "parameters": {
+            "dtype": "float32"
+          }
+        },
+        {
+          "id": "torch-op-000",
+          "componentId": "dense_node",
+          "operation": "dense",
+          "parameters": {
+            "input_features": 4,
+            "units": 32,
+            "use_bias": true
+          }
+        },
+        {
+          "id": "torch-op-001",
+          "componentId": "relu_node",
+          "operation": "relu",
+          "parameters": {}
+        },
+        {
+          "id": "torch-op-002",
+          "componentId": "dense_node",
+          "operation": "dense",
+          "parameters": {
+            "input_features": 32,
+            "units": 2,
+            "use_bias": true
+          }
+        },
+        {
+          "id": "torch-output-0",
+          "componentId": "model_output_node",
+          "operation": "model_output",
+          "parameters": {}
+        }
+      ]
+    },
+    "b1Lifecycle": {
+      "closedAfterApply": true,
+      "historyStatus": "applied",
+      "firstDenseUnits": 32
+    },
+    "c2Preview": {
+      "visible": true,
+      "staged": true,
+      "readyForLearnerApply": true,
+      "graphUnchanged": true,
+      "learnerApplyButtonEnabled": true,
+      "targetNodeId": "torch-op-000",
+      "parameterKey": "units",
+      "before": 32,
+      "after": 128
+    },
+    "c2LearnerAction": {
+      "actor": "automated-learner",
+      "control": "data-graph-patch-apply",
+      "clicked": true
+    },
+    "afterC2": {
+      "identity": {
+        "semanticFingerprint": "graph-semantic-v1-e09aa7404421720e-bff",
+        "presentationFingerprint": "graph-layout-v1-47d6efbc2a955f7c-125"
+      },
+      "nodeCount": 5,
+      "edgeCount": 4,
+      "nodes": [
+        {
+          "id": "torch-input-0",
+          "componentId": "tensor_input_node",
+          "operation": "tensor_input",
+          "parameters": {
+            "dtype": "float32"
+          }
+        },
+        {
+          "id": "torch-op-000",
+          "componentId": "dense_node",
+          "operation": "dense",
+          "parameters": {
+            "input_features": 4,
+            "units": 128,
+            "use_bias": true
+          }
+        },
+        {
+          "id": "torch-op-001",
+          "componentId": "relu_node",
+          "operation": "relu",
+          "parameters": {}
+        },
+        {
+          "id": "torch-op-002",
+          "componentId": "dense_node",
+          "operation": "dense",
+          "parameters": {
+            "input_features": 32,
+            "units": 2,
+            "use_bias": true
+          }
+        },
+        {
+          "id": "torch-output-0",
+          "componentId": "model_output_node",
+          "operation": "model_output",
+          "parameters": {}
+        }
+      ]
+    },
+    "c2Lifecycle": {
+      "closedAfterApply": true,
+      "historyStatus": "applied",
+      "targetNodeId": "torch-op-000",
+      "finalUnits": 128
+    },
+    "screenshotStages": [
+      "before-b1",
+      "b1-preview",
+      "after-b1",
+      "c2-preview",
+      "after-c2"
+    ],
+    "restorePromptAbsentAtScreenshots": [
+      "before-b1",
+      "b1-preview",
+      "after-b1",
+      "c2-preview",
+      "after-c2"
+    ],
+    "screenshots": [
+      "docs\\acceptance\\assets\\agent-application-d3\\2026-09-26T16-24-23-106Z-before-b1.png",
+      "docs\\acceptance\\assets\\agent-application-d3\\2026-09-26T16-24-23-106Z-b1-preview.png",
+      "docs\\acceptance\\assets\\agent-application-d3\\2026-09-26T16-24-23-106Z-after-b1.png",
+      "docs\\acceptance\\assets\\agent-application-d3\\2026-09-26T16-24-23-106Z-c2-preview.png",
+      "docs\\acceptance\\assets\\agent-application-d3\\2026-09-26T16-24-23-106Z-after-c2.png"
+    ]
+  },
+  "privacy": {
+    "rawDatasetRowsStored": false,
+    "exportDocumentStored": false,
+    "fullProposalPayloadStored": false,
+    "rawAgentTextStored": false,
+    "commandsStored": false,
+    "sessionTokenStored": false
+  }
+}

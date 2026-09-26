@@ -186,6 +186,7 @@ async function startServices() {
   const bridgeUrl = `http://127.0.0.1:${ready.port}/v1/bridge`;
   await cdp.send('Page.navigate', { url: `${baseUrl}/?graphApplyTest=1&mcpBridge=${encodeURIComponent(bridgeUrl)}&mcpToken=${encodeURIComponent(token)}` });
   await waitFor('Boolean(window.__VOLK_ML_AGENT_APPLICATION__) && Boolean(document.querySelector("nav button"))', 'mounted D1 application bridge');
+  await waitFor('!new URLSearchParams(location.search).has("mcpBridge") && !new URLSearchParams(location.search).has("mcpToken")', 'one-time MCP URL credentials are scrubbed');
   const connectedDeadline = Date.now() + 15000;
   while (Date.now() < connectedDeadline) {
     const health = await (await fetch(`http://127.0.0.1:${ready.port}/health`)).json();

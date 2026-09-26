@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { consumeMcpBridgeCredentials } from '../src/core/mcpBrowserBridge.js';
 import {
   MCP_BRIDGE_PATH,
   MCP_LIMITS,
@@ -25,6 +26,19 @@ assert.equal(parseLocalBridgeEndpoint('http://127.0.0.1:5180/v1/bridge'), 'http:
 assert.equal(parseLocalBridgeEndpoint('http://127.0.0.1:5180/v1/bridge/'), 'http://127.0.0.1:5180/v1/bridge');
 assert.equal(parseLocalBridgeEndpoint('http://127.0.0.1:5180/other'), null);
 assert.equal(parseLocalBridgeEndpoint('http://evil.example:5180/v1/bridge'), null);
+const location = {
+  pathname: '/playground',
+  search: '?graphApplyTest=1&mcpBridge=http%3A%2F%2F127.0.0.1%3A5180%2Fv1%2Fbridge&mcpToken=test-session-value',
+  hash: '#workspace',
+};
+let replacedUrl = null;
+const credentials = consumeMcpBridgeCredentials(location, {
+  state: { preserved: true },
+  replaceState(state, _title, url) { replacedUrl = { state, url }; },
+});
+assert.deepEqual(credentials, { endpoint: 'http://127.0.0.1:5180/v1/bridge', token: 'test-session-value' });
+assert.deepEqual(replacedUrl, { state: { preserved: true }, url: '/playground?graphApplyTest=1#workspace' });
+assert.equal(consumeMcpBridgeCredentials(location, null), null, 'Credentials are not consumed if the URL cannot be scrubbed.');
 assert.equal(isValidSessionToken('0123456789abcdef0123456789abcdef'), true);
 assert.equal(isValidSessionToken('short'), false);
 assert.equal(isValidRequestId('mcp-request-1'), true);

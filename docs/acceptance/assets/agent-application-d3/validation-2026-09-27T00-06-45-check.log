@@ -1,0 +1,440 @@
+COMMAND=npm run check
+STARTED_UTC=2026-09-26T16:06:45.3706284Z
+
+> volk-ml@0.1.0 precheck
+> node scripts/check-agent-application-api.mjs && npm run check:agent-application:d3 && node scripts/check-mcp-transport.mjs && node scripts/check-graph-interop.mjs && node scripts/check-graph-patch.mjs && node scripts/check-graph-patch-apply.mjs && node scripts/check-torch-export-interop.mjs && node scripts/test-torch-export-extractor.mjs && node scripts/check-onnx-interop.mjs
+
+Agent Application API v1 checks passed.
+
+> volk-ml@0.1.0 check:agent-application:d3
+> node scripts/check-agent-application-d3.mjs && node scripts/test-agent-application-d3-python-attestation.mjs && node scripts/test-agent-application-d3-concurrency.mjs
+
+D3 reference checks passed: invocation isolation, allowlist, prompt bounds, detached B1/C2 semantics, JSONL redaction, and stubbed child setup.
+D3 Python attestation test passed: Python 3.12.10, PyTorch 2.14.0+cpu; mismatched binary proof rejected.
+{"status":"PASS","test":"D3 initial MCP inspection concurrency","parallelNegativeControl":{"calls":["volk_inspect_workspace","volk_list_capabilities","volk_list_components"],"rejectedTool":"volk_list_components","errorCode":"MCP_WORKSPACE_BUSY","browserDispatchCount":2},"sequentialPositiveControl":{"calls":["volk_inspect_workspace","volk_list_capabilities","volk_list_components"],"completedCount":3},"transportLimitPreserved":2,"modelCalls":0}
+MCP transport contract checks passed.
+Graph Interop B0 checks passed: identity, detached producers, fidelity, structured validation, capabilities, empty-workspace assessment, privacy, and no mutation.
+Graph Patch C1 checks passed: detached replay, base/result identities, current capabilities, bounded operations, custom definitions, strict rejection, and no workspace Apply path.
+Graph Patch Apply checks passed: occupied canonical graph, all operation-derived diff classes, detached preparation/commit, stale project and runtime guards, live registry revalidation, custom composite template/instance preservation, and layout-only model/runtime preservation.
+Torch Export B2 checks passed: metadata-only source, cross-runtime SHA-256 identity, reference MLP, source/report mutation rejection, graph-only Apply preservation, and PyTorch/TensorFlow mappings.
+PASS extractor contract: metadata fingerprint agrees across Python/JavaScript and CLI trust guard is enforced.
+PASS deterministic extractor seam: bounded ExportedProgram metadata produces a proposal without reading or serializing parameter values.
+SKIP optional PyTorch integration: PyTorch is not installed; dependency installation is intentionally omitted.
+SKIP ONNX ModelProto integration: optional ONNX/NumPy runtime is not installed.
+
+> volk-ml@0.1.0 check
+> node scripts/check-core.mjs && node scripts/check-build-agent.mjs && node scripts/check-exploration.mjs && node scripts/check-phase9-contracts.mjs && node scripts/check-semantic-events.mjs && node scripts/check-hypothesis-evidence-provenance.mjs && node scripts/check-curiosity-loop.mjs && node scripts/check-learner-inquiry.mjs && node scripts/check-inquiry-concept-cards.mjs && node scripts/check-inquiry-suggestions.mjs && node scripts/check-inquiry-guidance.mjs && node scripts/check-causal-inquiry-concept-pack.mjs && node scripts/check-inquiry-trajectory-evaluation.mjs && node scripts/check-playback-scheduler.mjs && node scripts/check-experiment-runtime.mjs && node scripts/check-world-builder.mjs && node scripts/check-world-composer.mjs && node scripts/check-guided-exploration.mjs && node scripts/check-exploration-agent.mjs && node scripts/check-pedagogical-experiment-design.mjs && node scripts/check-pedagogical-observation-loop.mjs && node scripts/check-exploration-threads.mjs && node scripts/check-big-idea-entrances.mjs && node scripts/check-training-microscope.mjs && node scripts/check-concept-cards.mjs && node scripts/check-learner-annotations.mjs && node scripts/check-learning-assistant.mjs && node scripts/check-experiment-design-handoff.mjs && node scripts/check-ai-provider-presets.mjs && node scripts/check-ai-diagnostics.mjs && node scripts/check-agent-request-contract.mjs && node scripts/check-ai-usage.mjs && node scripts/check-ui-architecture.mjs && node scripts/check-ui-layers.mjs && node scripts/check-contextual-tune.mjs && node scripts/check-play-quick-control.mjs && node scripts/check-ui-depth.mjs && node scripts/check-ui-agent-guide.mjs && node scripts/check-ui-surface-split.mjs && node scripts/check-ui-responsive.mjs && node scripts/check-ui-phenomenon.mjs && node scripts/check-ui-telemetry.mjs && node scripts/check-ui-experiment-bar.mjs && node scripts/check-ui-motion.mjs && node scripts/check-lumi-semantic-ui.mjs && node scripts/check-lumi-exploration-interaction.mjs && node scripts/check-lumi-journey.mjs && node scripts/check-journey-projection.mjs && node scripts/check-orchestration-runtime.mjs && node scripts/check-concept-graph.mjs && node scripts/check-hypotheses.mjs && node scripts/check-world-data-inquiry-loop.mjs && node scripts/check-explore-learning-surface.mjs && node scripts/check-playground-render.mjs && node scripts/check-post-ui7-playtest.mjs && node scripts/check-interpreter-reliability.mjs && node scripts/check-openai-responses.mjs && node scripts/check-volk-cloud.mjs && node scripts/check-director-prototype.mjs && node scripts/check-phase-a7.mjs && node scripts/check-lumi-embodied-companion.mjs && node scripts/check-phase-a82.mjs && node scripts/check-lumi-mounted-lifecycle.mjs && node scripts/check-lumi-visible-guidance.mjs && node scripts/check-teaching-dialogue-pilot.mjs && node scripts/check-teaching-dialogue-t7-driver.mjs && npm run test:provider:contract && npm run test:teaching:integration && node scripts/generate-examples.mjs --check
+
+Validated 41 usable components and tutorials, every architecture compiler mapping, both browser pipelines, platform services, localization, execution tiers, and 12 teaching examples.
+Build Agent A checks passed (4 executable blueprints).
+Exploration semantic checks passed: canonical registered World operations, legacy and Agent parity, grouped Undo/Redo, explicit split semantics, orthogonal comparison, and view isolation.
+Phase 9 cross-domain contracts passed
+Semantic event checks passed: bounded post-commit experiment/world/comparison events, gesture aggregation, observation bridging, rejection safety, JSON-safe payloads, and local-session reset.
+Hypothesis evidence provenance checks passed: stable bounded instances, explicit selection, historical references, unavailable-state handling, neutral graph/LUMI boundaries, and session-local safety.
+Curiosity loop checks passed: bounded registry, human-event provenance, unresolved reflections, safe opportunities, evidence guards, deterministic output, and provider-safe projection.
+Learner inquiry checks passed: bounded registry, deterministic candidate provenance, clean/mixed comparison recognition, evidence-gated distribution/generalization/stability, false-positive guards, and no-AI state projection.
+Inquiry Concept Card checks passed: deterministic candidate-only selection, one-card priority, session deduplication, factual why-now copy, existing Evidence navigation, no AI, and compact-safe markup.
+Inquiry suggestion checks passed: bounded deterministic support/capacity proposals, explicit holds and evidence, manual World parity, TeachingGoal planning/composition/dry-run/fidelity/runtime path, no mutation before execution, and forged-candidate rejection.
+Inquiry guidance checks passed: event-triggered deterministic opportunities, bounded cooldown/budget, strict AI selection contract, provider-safe context, and no runtime mutation authority.
+Causal inquiry concept-pack checks passed: bounded factual reasoning stages, explicit hypothesis/intervention/comparison/confound/repeat guards, no fabricated association or causal conclusion, and a non-executable Causal World prototype contract.
+Inquiry trajectory evaluation checks passed: bounded local process metrics, completed-action comparison/repeat rates, card/depth/suggestion signals, Thread follow-up counts, independent-exploration transition, no text/data retention, and runtime/presentation separation.
+Playback scheduler checks passed: defined timeline patch semantics, reduced-motion scheduling, sampled LR progress, and failure-safe dispatch handling.
+Experiment runtime checks passed: duplicate identity/lineage, semantic equality, independent World mutation, restore, clarity, control undo, seed policy, and KNN parity.
+World Builder checks passed: canonical train/test schema, deterministic uniform/gaussian/two-cluster generation, seed authority, desired-vs-realized dirty semantics, provenance, freeze, comparison, reset, serialization, and Agent/UI parity.
+World Composer checks passed: canonical recipe validation, primitive/preset materialization, deterministic substreams, noise/provenance, atomic lifecycle, comparison, fidelity, Agent proposal, and legacy compatibility.
+Guided Exploration checks passed: raw/derived observables, unavailable evidence, factual detectors, coverage mismatch, deterministic bounded Repeat, non-mutating active state, Agent inspection parity, and recipe registries.
+Exploration Agent checks passed: capability-grounded proposals, preview-only planning, controlled A/B execution, stale proposal rejection, fidelity, agent provenance, evidence focus, and adversarial validation.
+Pedagogical experiment checks passed: bounded designs, one-factor KNN class-separation, task-aware observables, preview-only proposals, grounded evidence, capability-checked follow-ups, test-support shift, local fallback, and unsupported curiosity handling.
+Pedagogical observation loop checks passed: deterministic observations, bounded exact next questions, Thread grounding, local fallback, AI-safe observation context, and protected prediction capture.
+Exploration thread checks passed: shared manual/Agent contract, compact references, deterministic historical evidence, condition identity, follow-up, resume, unavailable references, bounds, inspection parity, and JSON safety.
+Big Idea entrance checks passed: registry, localization, semantic initialization, deterministic seeds, Distribution Shift manual parity, Compare evidence, immediate divergence, explicit Threads, Model Capacity control, Agent inspection, Agent-off operation, and direct-entry regression.
+training microscope checks passed
+Concept card checks passed: bounded catalog, deterministic evidence signals, intervention priority, exact-fidelity gating, canonical IDs, session deduplication, no-AI rendering, and compact-safe presentation.
+Learner annotation checks passed: trusted provenance, stable anchors, bounded quotes/state, resolution, and strict projection.
+Learning assistant checks passed: bounded provider context, answer-only schema, no runtime authority, safe annotations, and bounded conversation history.
+Experiment design handoff checks passed: structured LUMI suggestions design locally, confirmation copy is never a task, and more-data proposals preserve controlled semantics.
+AI provider preset checks passed: explicit protocols, model catalog metadata, legacy compatibility, and no secret material.
+AI diagnostics checks passed: staged probing, structured-output failure classification, status mapping, and redacted diagnostics.
+Agent request contract checks passed: strict semantic projection, task modes/output sets, provider capability routing, Ask compatibility, bounded failure classification/repair, mode guards, and 12 business cases.
+AI usage checks passed: provider-reported normalization, unavailable/failure-safe accounting, privacy bounds, localized settings surface, and no external calls.
+UI architecture checks passed
+Layered UI checks passed: Play/Tune/Inspect hierarchy, grouped controls, manual World path, stable inspector sizing, Agent result hierarchy, responsive behavior, and reduced-motion seam.
+Contextual Tune checks passed: descriptor-driven primary controls, separate domain/importance metadata, progressive reachability, deterministic comparison markers, legacy fallback, accessibility, and runtime-safe presentation.
+Play quick control checks passed: bounded eligibility, deterministic context selection, ambiguity suppression, shared SET_CONTROL semantics, comparison truthfulness, World-only isolation, responsive-safe rendering, and AI-free behavior.
+UI-5 depth checks passed: progressive entrances, exclusive evidence/mechanism/inspector surfaces, runtime identity preservation, telemetry seam, and capability fallbacks.
+UI-6 Agent guide checks passed: quiet availability, structured depth/proposal outcomes, explicit execution, disabled fallback, one-overlay navigation, and DOM-independent presentation.
+UI-2.5 top-level surface checks passed
+UI-2 responsive and touch foundation checks passed
+UI-3 phenomenon checks passed: capability contract, runtime primitives, shared World gestures, compact Experiment identity, localization, and fallback behavior.
+UI-4 telemetry checks passed: commit-gated, human-only, deduplicated, semantic, and fail-open.
+UI-4 Experiment Bar checks passed: progressive A/B grammar, runtime actions, shared bounds, secondary actions, responsive selectors, clarity, and multi-experiment navigation.
+UI-7 motion checks passed: shared tokens, reduced motion, runtime-ordered presentation, primitive model response motion, focus behavior, bounded overlays, and animation-independent semantics.
+LUMI semantic UI checks passed: tokens, controlled presence/modes, grounded concept states, explicit illumination, evidence distinction, reduced motion, and localized guidance.
+LUMI exploration interaction checks passed: targets, attention, concept connection, intervention pulse, showcase stages, and authority boundaries.
+LUMI journey checks passed: event projection, chronology, concept connection, explicit illumination, frontier state, clearing, and authority boundaries.
+journey projection checks passed
+Orchestration Runtime v1 checks passed
+Concept graph checks passed: semantic projection, state colors, Distribution Shift path, evidence focus, frontier, deterministic edges, and authority boundaries.
+Hypothesis checks passed: explicit learner creation, bounded session state, evidence binding, graph projection, no automatic causal inference, and World isolation.
+World–Data inquiry loop checks passed: identity, sampling, provenance, comparison, learner prediction, view isolation, Agent parity, and sampling event boundaries.
+Explore learning surface checks passed: learner resampling, same-World comparison, clear MLP XOR source, live network structure, loss history, stale-state clearing, and responsive bands.
+Playground render smoke passed: 12 KNN snapshots, 8 LR snapshots, 21 MLP snapshots, first non-empty vote at revealed=1.
+Playground render smoke passed: {"knnSteps":12,"lrSteps":8,"mlpSteps":21,"firstVoteRevealed":1}
+Post-UI7 playtest checks passed: MLP explanation routing, hiddenUnits TeachingGoal schema, bounded repair, non-mutating AI interpretation, AI settings discoverability, supporting-visual separation, and Build More viewport containment.
+Interpreter reliability checks passed: canonical goal variants, planner-owned objectives, safe repair diagnostics, provider JSON-mode fallback, bounded exploration outcomes, and portal mobile More contract.
+OpenAI Responses checks passed: explicit native endpoint/request contract, strict schemas, deterministic output parsing/errors, MLP TeachingGoal planning, quiet Agent explanation, and runtime non-mutation.
+VOLK Cloud checks passed: URL abstraction, healthy/unavailable states, local runtime independence, health contract, and developer commands.
+director prototype checks passed
+Phase A.7 companion and Explore cleanup checks passed
+LUMI embodied companion checks passed
+Phase A.8.2 checks passed: 6 assertion-backed seed cases, 9 fixture provider calls, cross-domain hold guards, fidelity conflict, diagnostics boundary, and responsive presentation tokens.
+Mounted LUMI lifecycle wiring checks passed (static source assertions only); executable mounted coverage is provided by scripts/run-r148-browser.ps1.
+LUMI visible guidance checks passed
+{
+  "authoredCaseOutcomes": [
+    {
+      "id": "correct-reason",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "ASK_FOR_REASON",
+      "allowedMoves": [
+        "ELICIT_PREDICTION",
+        "ASK_FOR_REASON"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "prediction.ref must be episode.prediction",
+        "no Evidence may be invented"
+      ]
+    },
+    {
+      "id": "correct-no-reason",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "ELICIT_PREDICTION",
+      "allowedMoves": [
+        "ELICIT_PREDICTION",
+        "OFFER_HINT"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "unavailable reasoning stays unavailable"
+      ]
+    },
+    {
+      "id": "ambiguous-same-world",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "ASK_FOR_REASON",
+      "allowedMoves": [
+        "ASK_FOR_REASON",
+        "OFFER_HINT"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "same World identity and comparison are referenced"
+      ]
+    },
+    {
+      "id": "chinese-misconception",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "REQUEST_TEACH_BACK",
+      "allowedMoves": [
+        "REQUEST_TEACH_BACK",
+        "EXPLAIN_WITH_EVIDENCE"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "changed/held evidence refs are valid"
+      ]
+    },
+    {
+      "id": "english-mixed-paraphrase",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "EXPLAIN_WITH_EVIDENCE",
+      "allowedMoves": [
+        "EXPLAIN_WITH_EVIDENCE",
+        "REQUEST_TEACH_BACK"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "content key is localized and evidence refs are supplied"
+      ]
+    },
+    {
+      "id": "unavailable",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "ELICIT_PREDICTION",
+      "allowedMoves": [
+        "ELICIT_PREDICTION",
+        "ASK_FOR_REASON"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "only evidence.unavailable may be projected"
+      ]
+    },
+    {
+      "id": "unchanged",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "OFFER_HINT",
+      "allowedMoves": [
+        "OFFER_HINT",
+        "ASK_FOR_REASON"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "valid-weak status and weak line movement"
+      ]
+    },
+    {
+      "id": "mixed-factor",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "ASK_FOR_REASON",
+      "allowedMoves": [
+        "ASK_FOR_REASON",
+        "OFFER_HINT"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "changed factors include a non-sampling factor"
+      ]
+    },
+    {
+      "id": "hint-direct-choice",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "OFFER_HINT",
+      "allowedMoves": [
+        "OFFER_HINT",
+        "EXPLAIN_WITH_EVIDENCE"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "chosen move uses current context only"
+      ]
+    },
+    {
+      "id": "rejected-hypothesis",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "ELICIT_PREDICTION",
+      "allowedMoves": [
+        "ELICIT_PREDICTION",
+        "ASK_FOR_REASON"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "hypothesis refs must be supplied learner refs"
+      ]
+    },
+    {
+      "id": "delayed-stop-switch",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "ELICIT_PREDICTION",
+      "allowedMoves": [
+        "ELICIT_PREDICTION",
+        "STAY_SILENT",
+        "OFFER_HINT",
+        "EXPLAIN_WITH_EVIDENCE"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "request/context revision matches before apply"
+      ]
+    },
+    {
+      "id": "injection",
+      "status": "passed",
+      "origin": "local",
+      "callCount": 1,
+      "fallbackUsed": false,
+      "repairUsed": false,
+      "selectedMove": "ELICIT_PREDICTION",
+      "allowedMoves": [
+        "ELICIT_PREDICTION",
+        "STAY_SILENT",
+        "OFFER_HINT",
+        "EXPLAIN_WITH_EVIDENCE"
+      ],
+      "assertions": {
+        "selectedMoveAllowed": true,
+        "responseValid": true,
+        "noInventedHypothesis": true
+      },
+      "scores": {
+        "selectedMoveAllowed": 2,
+        "responseValid": 2,
+        "noInventedHypothesis": 2
+      },
+      "failureReasons": [],
+      "evidenceRequirements": [
+        "strict schema and supplied-ref checks pass"
+      ]
+    }
+  ]
+}
+Teaching dialogue pilot checks passed: authored 12-case registry, default-off flag, bounded context, strict response adapter, stale/injection rejection, local fallback, explicit opt-in, hypothesis lifecycle, transfer lockout, and no runtime mutation.
+Teaching dialogue T7 matrix driver checks passed: bounded 24-row execution, frozen contexts, safe failure categories, no credential/runtime exposure, and provider-boundary reuse.
+
+> volk-ml@0.1.0 test:provider:contract
+> node scripts/test-provider-contract.mjs
+
+{"version":1,"status":"passed","mode":"contract","externalRequests":0,"canonicalCalls":1,"schema":"volk_ml_teaching_dialogue_pilot_v1","safeChecks":["valid","malformed","invalid-type","cross-field","stale-reference","provider-errors","timeout","cancel","flag-off","busy-stale","production-absence"]}
+
+> volk-ml@0.1.0 test:teaching:integration
+> node scripts/test-teaching-integration.mjs
+
+{"version":1,"status":"passed","mode":"deterministic-app-integration","journey":["opt-in","prediction","reason","baseline-fit","resample","fit-b","compare","explanation","invalid-fallback","teach-back","summary","transfer-pause"],"providerCalls":5,"browser":"NOT APPLICABLE"}
+Examples check passed: 12 examples in sync.
+EXIT_CODE=0
+COMPLETED_UTC=2026-09-26T16:14:33.4509576Z

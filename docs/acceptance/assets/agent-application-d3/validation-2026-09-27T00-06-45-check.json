@@ -1,0 +1,8 @@
+{
+  "command": "npm run check",
+  "exitCode": 0,
+  "startedAtUtc": "2026-09-26T16:06:45.3706284Z",
+  "completedAtUtc": "2026-09-26T16:14:33.4552893Z",
+  "log": "docs/acceptance/assets/agent-application-d3/validation-2026-09-27T00-06-45-check.log",
+  "head": "3d029342a476dfee09123efec5bd9612a10daa9d"
+}
