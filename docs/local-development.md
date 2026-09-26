@@ -34,6 +34,70 @@ backend connected” or “Local mode — backend unavailable”. An unavailable
 backend does not block Explore, World manipulation, Experiment operations, or
 deterministic local Evidence.
 
+## D2 local MCP workspace connection
+
+D2 exposes the mounted workspace through the official MCP TypeScript SDK. The
+MCP server uses stdio for JSON-RPC and a loopback-only browser session to call
+the existing Agent Application API v1. It never receives a React object or a
+Canvas Agent callback, and the tool list has no Apply or direct Run tool.
+
+Use a fresh high-entropy session token of at least 32 URL-safe characters. Keep
+it in the process environment; do not put it in source, a project file, or a
+log. In PowerShell, for example:
+
+```text
+$env:VOLK_MCP_PORT = '5189'
+$env:VOLK_MCP_SESSION_TOKEN = '<fresh-url-safe-token>'
+npm run dev
+```
+
+Configure the external MCP client to spawn the server with the same working
+directory and environment:
+
+```text
+command: node
+args: scripts/volk-mcp-server.mjs
+cwd: C:\path\to\VOLK-ML
+```
+
+Then open the intended local workspace in the same development browser:
+
+```text
+http://127.0.0.1:5173/?mcpBridge=http%3A%2F%2F127.0.0.1%3A5189%2Fv1%2Fbridge&mcpToken=<same-token>
+```
+
+The browser bridge is development-only. It accepts only `http://localhost`,
+`http://127.0.0.1`, or `http://[::1]` endpoints, requires the configured
+session token and the page's local Origin, binds one browser nonce to one
+session, and expires an idle session after 20 seconds. The server listens only
+on `127.0.0.1`; a different website or process cannot attach without the token
+and the bound local Origin. A local process that has both is intentionally in
+scope for this developer-only connection, so use a fresh token and close the
+client when finished.
+
+The nine MCP tools are `volk_inspect_workspace`, `volk_list_components`,
+`volk_list_capabilities`, `volk_submit_graph_proposal`,
+`volk_submit_graph_patch_proposal`, `volk_inspect_proposal`,
+`volk_inspect_results`, `volk_export_graph`, and `volk_request_run`.
+Proposal tools open the existing B1/C2 previews; only the learner's current
+Apply button can commit. `volk_request_run` returns
+`USER_CONFIRMATION_REQUIRED`. Inspection remains row-free and omits free-form
+text/code parameters, credentials, browser handles, and presentation state.
+
+The focused D2 checks are:
+
+```text
+npm run check:mcp-transport
+npm run test:mcp:browser
+```
+
+The browser check starts a real Vite app, a real headless Chrome mounted to the
+canonical workspace, an official MCP stdio client/server pair, and exercises
+initialize/list-tools/call-tool, preview/cancel/Apply, stale-base rejection,
+result freshness, PyTorch source export, malformed/oversized containment, the
+confirmation gate, and disconnect/deadline behavior. The server prints only a
+bounded readiness record to stderr; stdout remains the MCP protocol channel.
+
 ## Phase A architect iteration workflow
 
 Start the local frontend (and optional disposable backend) with:

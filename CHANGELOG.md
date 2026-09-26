@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-26 — D2 local MCP workspace transport
+
+- Added an official MCP server that connects external MCP clients to the
+  mounted local VOLK workspace through the existing Agent Application API;
+  proposals still require the learner's current preview and Apply action.
+- Bound the development browser bridge to loopback, a session token, and the
+  mounted page Origin. Expired or cancelled calls are withdrawn before
+  delivery, dispatch requires a live request, late responses are rejected,
+  and proposal or Run tools gain no direct mutation authority.
+- Affected areas: `scripts/volk-mcp-server.mjs`,
+  `src/core/mcpBrowserBridge.js`, `src/core/mcpTransport.js`, mounted MCP
+  checks, package dependencies, local-development guidance, and architecture
+  documentation.
+- Validation: VOLK-Dev independently accepted the exact 12-file source
+  identity; real MCP queue and mounted browser regressions, D1/B1/C2/B2/B3
+  browser checks, full `npm run check` with real PyTorch/ONNX integrations,
+  production build, and `git diff --check` passed.
+- Limitations: the transport is development-only and loopback-only; it does
+  not provide a public remote authorization service or prove an unrestricted
+  external Agent workflow.
+
 ## 2026-09-26 — D1 Agent Application API v1
 
 - Added a bounded application-level agent surface for privacy-safe workspace
