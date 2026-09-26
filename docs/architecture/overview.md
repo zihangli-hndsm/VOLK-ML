@@ -30,6 +30,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
 | Framework-neutral compiler | `src/core/compiler.js` | VOLK IR, graph selection, compatibility report, PyTorch and TensorFlow generation |
+| Source provenance | `src/core/sourceExportManifest.js`, `src/core/sourceMapWriter.js` | Opt-in, bounded source maps rematerialized by the canonical compiler and exposed through the Agent Application API |
 | Graph interoperability | `src/core/graph/` | Detached proposal contracts, deterministic revalidation, explicit Apply, local Torch Export and ONNX adapters |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
 | Teaching datasets | `src/core/teachingDatasets.js` | Deterministic seeded datasets for example projects and playgrounds |
@@ -68,6 +69,12 @@ The separately versioned in-page Agent Application request boundary and its
 preview-only proposal authority are documented in
 [`agent-application-api.md`](./agent-application-api.md). It does not change
 Canvas Agent API v1.
+
+The canonical compiler's opt-in generated-source provenance contract is
+documented in [`source-export-manifest.md`](./source-export-manifest.md). It
+distinguishes the full semantic workspace graph from the compiler-selected
+subgraph and is available from D1/MCP without changing API v1 or granting
+execution authority.
 
 D2's local MCP transport is documented in
 [`agent-mcp-transport.md`](./agent-mcp-transport.md). It translates only the

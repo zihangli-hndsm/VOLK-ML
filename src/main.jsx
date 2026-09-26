@@ -35,7 +35,7 @@ import {
   validateAgentDataset,
 } from './core/canvasAgent';
 import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
-import { createAgentApplicationApi, createAgentApplicationResultBinding } from './core/agentApplicationApi.js';
+import { AGENT_APPLICATION_API_VERSION, createAgentApplicationApi, createAgentApplicationResultBinding } from './core/agentApplicationApi.js';
 import { installAgentApplicationBridge } from './core/agentApplicationBridge.js';
 import { connectMcpBrowserBridgeFromLocation } from './core/mcpBrowserBridge.js';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
@@ -1397,6 +1397,28 @@ function Workspace() {
     }
     catch (error) { setNotice(translateError(error, t)); }
   };
+  const exportSourceMap = async (framework) => {
+    try {
+      const api = agentApplicationApiRef.current;
+      if (!api) throw new Error('SOURCE_EXPORT_API_UNAVAILABLE');
+      const response = await api.request({
+        apiVersion: AGENT_APPLICATION_API_VERSION,
+        requestId: `source-map-${crypto.randomUUID()}`,
+        method: 'exportGraph',
+        params: { framework, includeManifest: true },
+      });
+      if (!response.ok || !response.result?.manifest) throw new Error('SOURCE_EXPORT_MANIFEST_UNAVAILABLE');
+      downloadText(`volk_ml_${framework}_source_export.json`, JSON.stringify({
+        type: 'VolkSourceExportBundleV1',
+        framework,
+        source: response.result.code,
+        manifest: response.result.manifest,
+      }, null, 2), 'application/json');
+      setNotice(t('compiler.sourceMapExported', { framework: t(`framework.${framework}`) }));
+    } catch {
+      setNotice(t('compiler.sourceMapFailed'));
+    }
+  };
   const expandSelectedComposite = () => {
     if (!selectedNode?.data.manifest.composition) return;
     try {
@@ -1928,7 +1950,7 @@ function Workspace() {
         <div className="flex items-center justify-between gap-2"><h2 className="text-lg font-black">{t('parameters.title')}</h2><button aria-label={t('common.close')} className="rounded-lg p-2 hover:bg-slate-100" onClick={() => setRightOpen(false)}>✕</button></div>
         <label className="mt-3 block text-xs font-bold text-slate-500">{t('project.name')}<input value={projectName} onChange={(event) => setProjectName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-200 bg-white p-2 text-sm font-bold text-slate-900 outline-none focus:border-blue-500" /></label>
         <label className="mt-3 flex items-center gap-3 text-xs text-slate-500"><span>{t('common.width')}</span><input type="range" min={RIGHT_PANEL_MIN} max={RIGHT_PANEL_MAX} value={RIGHT_PANEL_MIN + RIGHT_PANEL_MAX - rightWidth} aria-valuetext={`${rightWidth}px`} onChange={(event) => setRightWidth(RIGHT_PANEL_MIN + RIGHT_PANEL_MAX - Number(event.target.value))} className="min-w-0 flex-1 accent-blue-600" /><span>{rightWidth}px</span></label>
-        {selectedNode ? <div className="mt-4 space-y-5"><div className="rounded-2xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-600">{t(`category.${selectedNode.data.manifest.category}`)}</p><h3 className="break-words text-xl font-black text-slate-900">{t(selectedNode.data.label)}</h3><div className="mt-2 flex gap-2 text-[10px] font-bold uppercase"><span className="rounded-full bg-slate-900 px-2 py-1 text-white">{t('framework.pytorch')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.pytorch ?? 'unsupported'}`)}</span><span className="rounded-full bg-orange-100 px-2 py-1 text-orange-700">{t('framework.tensorflow')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</span></div></div>{selectedNode.data.manifest.properties.map((property) => <label key={property.key} className="block rounded-2xl border border-slate-200 bg-white p-4"><span className="block break-words text-sm font-bold text-slate-800">{t(property.label)}</span><PropertyControl property={property} value={selectedNode.data.parameters[property.key]} onChange={(value) => updateParameter(property.key, value)} /></label>)}{selectedNode.data.manifest.composition && <button onClick={expandSelectedComposite} className="w-full rounded-2xl bg-violet-600 px-4 py-3 font-bold text-white shadow-lg">{t('component.expand')}</button>}{selectedNode.data.compositeOrigin && <button onClick={collapseSelectedComposite} className="w-full rounded-2xl bg-violet-100 px-4 py-3 font-bold text-violet-700">{t('component.collapse')}</button>}<div className="grid grid-cols-2 gap-2"><button onClick={() => exportCode('pytorch')} className="rounded-2xl bg-slate-950 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-700">{t('compiler.exportPyTorch')}</button><button onClick={() => exportCode('tensorflow')} className="rounded-2xl bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-orange-600">{t('compiler.exportTensorFlow')}</button></div></div> : <p className="mt-6 text-sm text-slate-500">{t('parameters.empty')}</p>}
+        {selectedNode ? <div className="mt-4 space-y-5"><div className="rounded-2xl bg-blue-50 p-4"><p className="text-xs font-bold uppercase text-blue-600">{t(`category.${selectedNode.data.manifest.category}`)}</p><h3 className="break-words text-xl font-black text-slate-900">{t(selectedNode.data.label)}</h3><div className="mt-2 flex gap-2 text-[10px] font-bold uppercase"><span className="rounded-full bg-slate-900 px-2 py-1 text-white">{t('framework.pytorch')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.pytorch ?? 'unsupported'}`)}</span><span className="rounded-full bg-orange-100 px-2 py-1 text-orange-700">{t('framework.tensorflow')}: {t(`compatibility.${selectedNode.data.manifest.compatibility?.tensorflow ?? 'unsupported'}`)}</span></div></div>{selectedNode.data.manifest.properties.map((property) => <label key={property.key} className="block rounded-2xl border border-slate-200 bg-white p-4"><span className="block break-words text-sm font-bold text-slate-800">{t(property.label)}</span><PropertyControl property={property} value={selectedNode.data.parameters[property.key]} onChange={(value) => updateParameter(property.key, value)} /></label>)}{selectedNode.data.manifest.composition && <button onClick={expandSelectedComposite} className="w-full rounded-2xl bg-violet-600 px-4 py-3 font-bold text-white shadow-lg">{t('component.expand')}</button>}{selectedNode.data.compositeOrigin && <button onClick={collapseSelectedComposite} className="w-full rounded-2xl bg-violet-100 px-4 py-3 font-bold text-violet-700">{t('component.collapse')}</button>}<div className="grid grid-cols-2 gap-2"><button onClick={() => exportCode('pytorch')} className="rounded-2xl bg-slate-950 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-blue-700">{t('compiler.exportPyTorch')}</button><button onClick={() => exportCode('tensorflow')} className="rounded-2xl bg-orange-500 px-3 py-3 text-sm font-bold text-white shadow-lg transition hover:bg-orange-600">{t('compiler.exportTensorFlow')}</button><button data-testid="compiler-export-source-map-pytorch" onClick={() => exportSourceMap('pytorch')} className="rounded-2xl bg-indigo-100 px-3 py-3 text-sm font-bold text-indigo-800 shadow transition hover:bg-indigo-200">{t('compiler.exportSourceMap', { framework: t('framework.pytorch') })}</button><button data-testid="compiler-export-source-map-tensorflow" onClick={() => exportSourceMap('tensorflow')} className="rounded-2xl bg-indigo-100 px-3 py-3 text-sm font-bold text-indigo-800 shadow transition hover:bg-indigo-200">{t('compiler.exportSourceMap', { framework: t('framework.tensorflow') })}</button></div></div> : <p className="mt-6 text-sm text-slate-500">{t('parameters.empty')}</p>}
         <div className="absolute bottom-8 left-0 top-8 hidden w-2 cursor-col-resize touch-none lg:block" onPointerDown={(event) => startResize('right', event)} />
       </motion.aside>
     </main>

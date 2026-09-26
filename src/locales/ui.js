@@ -1290,6 +1290,9 @@ export const messages = {
   'compiler.exportPyTorch': { en: 'Export PyTorch', zh: '导出 PyTorch' },
   'compiler.exportTensorFlow': { en: 'Export TensorFlow', zh: '导出 TensorFlow' },
   'compiler.exported': { en: '{framework} code exported', zh: '已导出 {framework} 代码' },
+  'compiler.exportSourceMap': { en: 'Export {framework} source + provenance', zh: '导出 {framework} 代码与来源映射' },
+  'compiler.sourceMapExported': { en: '{framework} source and provenance map exported', zh: '已导出 {framework} 代码与来源映射' },
+  'compiler.sourceMapFailed': { en: 'The source and provenance map could not be exported.', zh: '无法导出代码与来源映射。' },
   'framework.pytorch': { en: 'PyTorch', zh: 'PyTorch' },
   'framework.tensorflow': { en: 'TensorFlow', zh: 'TensorFlow' },
 

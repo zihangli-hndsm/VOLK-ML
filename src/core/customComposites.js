@@ -325,9 +325,16 @@ export function rebuildCompositeInstance({ origin, groupNodes, edges }) {
   return { manifest, parameters, position: { x: minX, y: minY }, edges: deduplicated };
 }
 
-export function flattenCustomComposites(nodes, edges) {
+export function flattenCustomComposites(nodes, edges, { idFactory } = {}) {
   let expandedNodes = nodes;
   let expandedEdges = edges;
+  const trackOrigins = typeof idFactory === 'function';
+  if (trackOrigins) {
+    expandedEdges = edges.map((edge) => ({
+      ...edge,
+      runtimeSourceExportOrigin: { kind: 'workspace-edge', workspaceEdgeId: edge.id },
+    }));
+  }
   let remaining = expandedNodes.find((node) => node.data.manifest.customComposite);
   let expansionCount = 0;
   while (remaining) {
@@ -337,35 +344,72 @@ export function flattenCustomComposites(nodes, edges) {
       error.translationKey = 'error.compositeNesting';
       throw error;
     }
-    const expansion = expandComposite(remaining);
     const runtimeOwnerId = remaining.data.runtimeOwnerId ?? remaining.id;
+    const parentPath = remaining.data.runtimeCompositionPath ?? [];
+    const expansion = expandComposite(remaining, trackOrigins ? {
+      idFactory: (request) => idFactory({
+        ...request,
+        runtimeOwnerId,
+        parentPath,
+      }),
+    } : undefined);
     const unrelated = expandedEdges.filter((edge) => edge.source !== remaining.id && edge.target !== remaining.id);
     const redirected = [];
     expandedEdges.filter((edge) => edge.target === remaining.id).forEach((edge) => {
-      (expansion.inputs[edge.targetHandle] ?? []).forEach((target) => redirected.push({
+      (expansion.inputs[edge.targetHandle] ?? []).forEach((target, targetIndex) => redirected.push({
         ...edge,
-        id: `flatten-input-${crypto.randomUUID()}`,
+        id: trackOrigins
+          ? idFactory({ kind: 'boundary-input', runtimeOwnerId, parentPath, edgeId: edge.id, target, targetIndex })
+          : `flatten-input-${crypto.randomUUID()}`,
         target: target.nodeId,
         targetHandle: target.port,
+        ...(trackOrigins ? {
+          runtimeSourceExportOrigin: edge.runtimeSourceExportOrigin ?? { kind: 'workspace-edge', workspaceEdgeId: edge.id },
+        } : {}),
       }));
     });
     expandedEdges.filter((edge) => edge.source === remaining.id).forEach((edge) => {
       const source = expansion.outputs[edge.sourceHandle];
       if (source) redirected.push({
         ...edge,
-        id: `flatten-output-${crypto.randomUUID()}`,
+        id: trackOrigins
+          ? idFactory({ kind: 'boundary-output', runtimeOwnerId, parentPath, edgeId: edge.id, source })
+          : `flatten-output-${crypto.randomUUID()}`,
         source: source.nodeId,
         sourceHandle: source.port,
+        ...(trackOrigins ? {
+          runtimeSourceExportOrigin: edge.runtimeSourceExportOrigin ?? { kind: 'workspace-edge', workspaceEdgeId: edge.id },
+        } : {}),
       });
     });
+    const expansionEdges = trackOrigins ? expansion.edges.map((edge, index) => {
+      const definitionEdge = remaining.data.manifest.composition?.edges?.[index];
+      return {
+        ...edge,
+        runtimeSourceExportOrigin: {
+          kind: 'composite-edge',
+          instanceNodeId: runtimeOwnerId,
+          compositionPath: parentPath,
+          edgeIndex: index,
+          sourceKey: definitionEdge?.source ?? null,
+          sourceHandle: definitionEdge?.sourceHandle ?? null,
+          targetKey: definitionEdge?.target ?? null,
+          targetHandle: definitionEdge?.targetHandle ?? null,
+        },
+      };
+    }) : expansion.edges;
     expandedNodes = [
       ...expandedNodes.filter((node) => node.id !== remaining.id),
       ...expansion.nodes.map((node) => ({
         ...node,
-        data: { ...node.data, runtimeOwnerId },
+        data: {
+          ...node.data,
+          runtimeOwnerId,
+          ...(trackOrigins ? { runtimeCompositionPath: [...parentPath, node.data.compositionKey] } : {}),
+        },
       })),
     ];
-    expandedEdges = [...unrelated, ...expansion.edges, ...redirected];
+    expandedEdges = [...unrelated, ...expansionEdges, ...redirected];
     remaining = expandedNodes.find((node) => node.data.manifest.customComposite);
   }
   return { nodes: expandedNodes, edges: expandedEdges };
