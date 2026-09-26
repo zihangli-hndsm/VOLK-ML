@@ -2,6 +2,10 @@
 
 The Canvas Agent API lets trusted code inspect and operate a VOLK-ML workspace after the React editor has mounted. Version 1 is exposed as an in-page JavaScript capability:
 
+Application-level agent requests use the separate bounded
+[Agent Application API v1](./agent-application-api.md). That API does not wrap
+this object and cannot invoke Canvas Agent mutation or execution commands.
+
 ```js
 const bridge = globalThis.__VOLK_ML_AGENT__;
 const instances = bridge.listInstances();

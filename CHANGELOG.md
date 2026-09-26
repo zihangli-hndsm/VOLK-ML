@@ -1,5 +1,25 @@
 # Changelog
 
+## 2026-09-26 — D1 Agent Application API v1
+
+- Added a bounded application-level agent surface for privacy-safe workspace
+  inspection, capability discovery, preview-only graph proposals, result
+  provenance, source-only export, and confirmation-required run requests;
+  learner Apply remains the only workspace mutation path.
+- Preserved current browser results across layout-only graph patch Apply while
+  invalidating them for semantic graph changes, and redacted free-form graph
+  text/code values from application inspection and component metadata.
+- Affected areas: `src/core/agentApplicationApi.js`,
+  `src/core/agentApplicationBridge.js`, `src/main.jsx`, the D1 contract and
+  mounted-browser checks, and the agent-application architecture documents.
+- Validation: VOLK-Dev independently accepted this exact change set after
+  `npm run check:agent-application`, mounted D1 browser checks, full
+  `npm run check` (including real PyTorch/ONNX coverage), C2/B1/B2/B3 browser
+  checks, production build, `git diff --check`, and the changed-text
+  encoding/mojibake scan passed.
+- Limitations: the API remains in-page and local-first; execution and artifact
+  download stay learner-controlled, and no Cloud/provider authority is added.
+
 ## 2026-09-24 — B0.1 graph proposal trust and revalidation hardening
 
 - Detached graph proposals now revalidate embedded built-in contracts against
