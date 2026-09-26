@@ -31,6 +31,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
 | Framework-neutral compiler | `src/core/compiler.js` | VOLK IR, graph selection, compatibility report, PyTorch and TensorFlow generation |
 | Source provenance | `src/core/sourceExportManifest.js`, `src/core/sourceMapWriter.js` | Opt-in, bounded source maps rematerialized by the canonical compiler and exposed through the Agent Application API |
+| Controlled source re-import | `src/core/graph/sourceReimportProposal.js`, `scripts/propose-source-reimport.mjs` | Offline generated-PyTorch AST parsing into allowlisted detached C1 patches; never executes source |
 | Graph interoperability | `src/core/graph/` | Detached proposal contracts, deterministic revalidation, explicit Apply, local Torch Export and ONNX adapters |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
 | Teaching datasets | `src/core/teachingDatasets.js` | Deterministic seeded datasets for example projects and playgrounds |
@@ -75,6 +76,11 @@ documented in [`source-export-manifest.md`](./source-export-manifest.md). It
 distinguishes the full semantic workspace graph from the compiler-selected
 subgraph and is available from D1/MCP without changing API v1 or granting
 execution authority.
+
+The narrow, local-only E2 generated-source re-import path is documented in
+[`source-reimport.md`](./source-reimport.md). It parses generated PyTorch
+source without executing it and can only stage allowlisted graph edits through
+the existing C1/C2 proposal and explicit Apply boundary.
 
 D2's local MCP transport is documented in
 [`agent-mcp-transport.md`](./agent-mcp-transport.md). It translates only the

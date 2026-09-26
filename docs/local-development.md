@@ -34,6 +34,25 @@ backend connected” or “Local mode — backend unavailable”. An unavailable
 backend does not block Explore, World manipulation, Experiment operations, or
 deterministic local Evidence.
 
+## E2 generated-source re-import
+
+Controlled re-import is an optional, offline local tool. It uses Python's
+standard-library AST parser only; it does not install packages, execute edited
+code, or require a VOLK backend. Export a PyTorch source bundle with its
+provenance manifest from D1 or D2, save the current project JSON and both
+source versions, then run:
+
+```text
+npm run source:reimport -- --project project.volkml --original-source original.py --manifest manifest.json --edited-source edited.py --out proposal.json
+```
+
+The output is a detached graph patch and is created only if that filename does
+not already exist. A no-op creates no file. Stage the proposal through D1
+`submitGraphPatchProposal` or D2 `volk_submit_graph_patch_proposal`, review the
+existing C2 diff, and choose its normal Apply button to commit. See
+[`architecture/source-reimport.md`](architecture/source-reimport.md) for the
+supported edits, trust boundary, shape limits, and focused checks.
+
 ## D2 local MCP workspace connection
 
 D2 exposes the mounted workspace through the official MCP TypeScript SDK. The
