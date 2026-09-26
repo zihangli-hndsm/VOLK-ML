@@ -1,6 +1,7 @@
 import { validateProjectForWorkspace } from '../project.js';
 import {
   canonicalGraphSemanticsJsonV1,
+  MAX_GRAPH_COMPONENT_DEFINITIONS,
   projectGraphSemanticsV1,
 } from './identity.js';
 import {
@@ -54,6 +55,28 @@ function diagnostic(code, details = undefined) {
   return { ok: false, diagnostics: [{ code, ...(details ? { details } : {}) }] };
 }
 
+function referencedPatchComponentDefinitions(project) {
+  const definitionsById = new Map(project.customComponents
+    .filter((manifest) => typeof manifest?.id === 'string')
+    .map((manifest) => [manifest.id, manifest]));
+  const nodeManifests = new Map(project.graph.nodes
+    .filter((node) => typeof node?.data?.manifest?.id === 'string')
+    .map((node) => [node.data.manifest.id, node.data.manifest]));
+  const selected = new Map();
+  const pending = project.graph.nodes.map((node) => node.data.manifest.id);
+  while (pending.length && selected.size < MAX_GRAPH_COMPONENT_DEFINITIONS) {
+    const id = pending.pop();
+    if (selected.has(id)) continue;
+    const manifest = definitionsById.get(id) ?? nodeManifests.get(id);
+    if (!manifest?.customComposite) continue;
+    selected.set(id, manifest);
+    for (const child of manifest.composition?.nodes ?? []) {
+      if (definitionsById.has(child.componentId) || child.manifest?.customComposite === true) pending.push(child.componentId);
+    }
+  }
+  return [...selected.values()].sort((left, right) => left.id < right.id ? -1 : left.id > right.id ? 1 : 0);
+}
+
 export function graphPatchBaseFromProject(project) {
   return {
     nodes: project.graph.nodes.map((node) => ({
@@ -75,7 +98,10 @@ export function graphPatchBaseFromProject(project) {
       targetHandle: edge.targetHandle,
       ...(edge.type === undefined ? {} : { type: edge.type }),
     })),
-    componentDefinitions: project.customComponents,
+    // C1 graph snapshots carry only the definitions required to interpret
+    // nodes. C2 keeps the complete current catalogue from the project when it
+    // prepares and commits the learner's patch.
+    componentDefinitions: referencedPatchComponentDefinitions(project),
   };
 }
 

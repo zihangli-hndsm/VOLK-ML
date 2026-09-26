@@ -512,3 +512,13 @@ flow, localization, cancellation, stale-edit preservation, explicit keyboard
 Apply, and post-Apply run/export/save paths. `npm run check` includes the pure
 patch-Apply check. C2 does not increment the Canvas Agent or project API
 version, add a Cloud route, or change B1's empty-target behavior.
+
+E2's controlled generated-source re-import is a separate detached patch
+producer. It uses the same `GraphPatchProposalV1` and C2 lifecycle, and does
+not add an Apply path. For graph identity, `graphPatchBaseFromProject()` carries
+only custom definitions referenced by mounted graph nodes (including nested
+composite dependencies). C2 still starts from and retains the full current
+project catalogue when preparing and committing, so unused catalogue entries
+are not lost when an E2 patch changes the graph. See
+[`source-reimport.md`](./source-reimport.md) for offline parsing, the narrow
+allowlist, and canonical-source requirements.

@@ -76,3 +76,9 @@ npm run check:agent-application:d3
 npm run test:agent-application:browser
 npm run test:mcp:browser
 ```
+
+The separate controlled re-import adapter consumes this provenance only after
+re-materializing the canonical source and graph. Its stricter PyTorch-only
+allowlist, offline AST worker, and detached C1/C2 handoff are documented in
+[`source-reimport.md`](./source-reimport.md); exporting a manifest does not by
+itself enable arbitrary source import.

@@ -5,3 +5,4 @@ export * from './workspaceApply.js';
 export * from './workspacePatchApply.js';
 export * from './torchExportAdapter.js';
 export * from './onnxAdapter.js';
+export * from './sourceReimportProposal.js';
