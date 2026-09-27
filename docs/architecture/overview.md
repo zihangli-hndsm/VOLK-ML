@@ -24,6 +24,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Visual language | `src/core/visualLanguage.js`, `src/components/VisualGlyph.jsx` | Stable stage colors, static canvas glyphs, animated teaching glyphs, architecture layout |
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
 | Build Intent v1 | `src/core/buildAgent/buildIntent.js`, `src/components/buildAgent/LumiBuildIntentDialog.jsx` | Explicit, bounded request interpretation into a deterministic registered plan and detached proposal; never applies or runs a graph |
+| Existing-graph Edit Intent v1 | `src/core/graph/graphEditIntent.js`, `src/components/buildAgent/LumiGraphEditDialog.jsx` | Consent-gated bounded semantic graph projection into strict C1 patches; local construction and existing C2 review/Apply remain authoritative |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
 | Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
 | Browser runtime | `src/core/browserRuntime.js`, `src/core/browserExecutionContract.js` | One shared execution contract plus linear regression, KNN classification, small tabular MLP training, evaluation, prediction |
@@ -67,6 +68,12 @@ canonical before/after diff and an explicit stale-checked Apply; whole-graph
 proposals retain their separate empty-target rule. Local Torch Export and ONNX
 metadata-only adapters also target this proposal boundary; their trusted
 source extraction stays outside the browser.
+
+Existing-graph conversational edits are documented in the same graph
+interoperability contract. Edit Intent v1 accepts only registered C1 operations
+and routes them through the existing occupied-graph C2 diff and explicit Apply
+boundary; the optional provider receives a bounded semantic projection only
+after per-request learner consent.
 
 The separately versioned in-page Agent Application request boundary and its
 preview-only proposal authority are documented in

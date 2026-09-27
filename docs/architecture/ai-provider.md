@@ -1,6 +1,6 @@
 # Unified AI Provider Settings
 
-VOLK-ML exposes one application-level AI provider configuration for project explanation, the Playground Agent, and the optional F1 Build Intent interpreter. The configuration is volatile React state owned by the application shell. It is deliberately outside `workspaceStateRef`, `projectFromWorkspace`, project JSON, exports, URLs, browser storage, logs, and analytics.
+VOLK-ML exposes one application-level AI provider configuration for project explanation, the Playground Agent, and the optional F1 Build Intent and F2 Existing-graph Edit Intent interpreters. The configuration is volatile React state owned by the application shell. It is deliberately outside `workspaceStateRef`, `projectFromWorkspace`, project JSON, exports, URLs, browser storage, logs, and analytics.
 
 ## Boundary
 
@@ -14,10 +14,24 @@ protocol adapter registry
 provider gateway: complete({ system, messages, responseMode })
         ├─ Explanation: text response
         ├─ Playground Agent: typed TeachingGoal response
-        └─ Build Agent F1: strict Build Intent v1 decision
+        ├─ Build Agent F1: strict Build Intent v1 decision
+        └─ Existing graph F2: strict GraphEditIntentPlanV1 proposal
 ```
 
 The gateway normalizes every supported protocol to `{ text, provider, protocol, model }`. Feature layers may attach the shared `AgentRequestContractV1`; the gateway serializes its bounded semantic task mode, output set, request identity, and projected context into the provider instruction/messages. It never forwards DOM state, screenshots, telemetry, executable operations, credentials, or opaque application state. Protocol-specific headers, request bodies, and response extraction live only in `src/core/ai/providerRegistry.js`.
+
+F2 uses the same volatile gateway only after the learner affirmatively opts in
+for that interpretation. `createGraphEditContext()` creates request-scoped
+aliases and a size-bounded projection of graph topology, registered component
+semantics, safe scalar parameters, and graph identity. Raw graph IDs, custom
+node labels, project name, project data, trained results, viewport, selection,
+DOM, credentials, and chat history are excluded. The typed provider response is
+untrusted intent: local code resolves its aliases, builds canonical C1
+operations, validates them against the current project and registry, and hands
+only a detached patch proposal to the existing C2 preview. Provider output
+cannot apply, run, or mutate the graph. Declining consent uses the bounded
+deterministic local parser without a request; transport, schema, unsupported,
+and stale-response failures also leave the graph untouched.
 
 Supported protocol contracts are OpenAI-compatible, Anthropic-compatible, and Gemini-compatible. A custom endpoint may be supplied for any protocol. Remote endpoints are expected to use HTTPS; HTTP is surfaced as a warning and is intended only for trusted local development endpoints.
 
@@ -38,3 +52,17 @@ npm run test:agent-request:browser
 ```
 
 The command starts Vite, a CORS-enabled fixture at `127.0.0.1:4179`, and headless Chrome. It records bounded request metadata and writes `docs/acceptance/assets/agent-request-contract/browser-evidence.json`. The flow covers typed Ask output, a learner-confirmed Experiment proposal, an explicit World proposal application, malformed output fallback, pending-task consumption across rerender, explicit retry identity, and stale mode-switch suppression. The fixture never bypasses the provider gateway or injects post-validation runtime state.
+
+The mounted F2 provider and local-only paths are exercised with:
+
+```text
+npm run check:graph-edit-intent
+npm run test:graph-edit-intent:browser
+```
+
+The browser run uses the actual provider settings, consent control, graph-edit
+dialog, C1/C2 proposal pipeline, and C2 Apply button with a local HTTP fixture.
+It verifies request identity and semantic-only projection, proposal-only
+behavior, cancellation, explicit Apply, offline/no-consent operation, and
+mobile dialog containment. It writes a timestamped report and preview image
+under `docs/acceptance/assets/graph-edit-intent-f2/`.

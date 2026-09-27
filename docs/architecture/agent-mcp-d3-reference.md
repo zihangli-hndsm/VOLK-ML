@@ -104,16 +104,22 @@ Optional host-specific paths can be supplied for a single invocation:
 $env:VOLK_D3_PYTHON = 'D:\venvs\torch-export\Scripts\python.exe'
 $env:VOLK_D3_CODEX_PATH = 'C:\tools\codex.exe'
 $env:VOLK_D3_TEMP_ROOT = 'D:\VOLK-ML-d3-temp'
+$env:VOLK_D3_ARTIFACT_ROOT = 'D:\VOLK-ML-d3-evidence'
 npm run test:agent-application:d3
 ```
+
+`VOLK_D3_ARTIFACT_ROOT` optionally redirects the sanitized report and browser
+screenshots; when unset, they remain under
+`docs/acceptance/assets/agent-application-d3/`.
 
 The runner is bounded to one Codex invocation and one browser journey. It
 reports a safe reason and stops on missing authentication, unavailable quota,
 timeout, MCP startup failure, malformed Agent events, or failed proposal
 validation; it does not
-retry paid Agent work. A successful sanitized report is written under
-`docs/acceptance/assets/agent-application-d3/`. The full conversation, shell
-output, export document, proposal payloads, and MCP session token are never
+retry paid Agent work. A successful sanitized report and its screenshots are
+written under `VOLK_D3_ARTIFACT_ROOT` when configured, or under
+`docs/acceptance/assets/agent-application-d3/` by default. The full conversation,
+shell output, export document, proposal payloads, and MCP session token are never
 saved there. A passing run also saves five local browser screenshots for the
 empty target, B1 preview/acceptance, and C2 preview/acceptance alongside the
 sanitized JSONL provenance report.

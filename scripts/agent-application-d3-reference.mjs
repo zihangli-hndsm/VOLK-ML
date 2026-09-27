@@ -692,7 +692,10 @@ function findChrome() {
 }
 
 function artifactDirectory() {
-  return path.join(REPOSITORY_ROOT, 'docs', 'acceptance', 'assets', 'agent-application-d3');
+  const configuredDirectory = process.env.VOLK_D3_ARTIFACT_ROOT;
+  return configuredDirectory
+    ? path.resolve(configuredDirectory)
+    : path.join(REPOSITORY_ROOT, 'docs', 'acceptance', 'assets', 'agent-application-d3');
 }
 
 function safeMcpSummaries(agent) {
