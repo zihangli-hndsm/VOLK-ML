@@ -23,6 +23,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | External Agent reference | `scripts/agent-application-d3-reference.mjs`, `docs/architecture/agent-mcp-d3-reference.md` | Bounded real Codex + D2 MCP + mounted B1/C2 learner-acceptance workflow |
 | Visual language | `src/core/visualLanguage.js`, `src/components/VisualGlyph.jsx` | Stable stage colors, static canvas glyphs, animated teaching glyphs, architecture layout |
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
+| Build Intent v1 | `src/core/buildAgent/buildIntent.js`, `src/components/buildAgent/LumiBuildIntentDialog.jsx` | Explicit, bounded request interpretation into a deterministic registered plan and detached proposal; never applies or runs a graph |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
 | Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
 | Browser runtime | `src/core/browserRuntime.js`, `src/core/browserExecutionContract.js` | One shared execution contract plus linear regression, KNN classification, small tabular MLP training, evaluation, prediction |

@@ -1,6 +1,6 @@
 # Unified AI Provider Settings
 
-VOLK-ML exposes one application-level AI provider configuration for the project explanation dialog and the Playground Agent. The configuration is volatile React state owned by the application shell. It is deliberately outside `workspaceStateRef`, `projectFromWorkspace`, project JSON, exports, URLs, browser storage, logs, and analytics.
+VOLK-ML exposes one application-level AI provider configuration for project explanation, the Playground Agent, and the optional F1 Build Intent interpreter. The configuration is volatile React state owned by the application shell. It is deliberately outside `workspaceStateRef`, `projectFromWorkspace`, project JSON, exports, URLs, browser storage, logs, and analytics.
 
 ## Boundary
 
@@ -13,7 +13,8 @@ protocol adapter registry
         ↓
 provider gateway: complete({ system, messages, responseMode })
         ├─ Explanation: text response
-        └─ Playground Agent: typed TeachingGoal response
+        ├─ Playground Agent: typed TeachingGoal response
+        └─ Build Agent F1: strict Build Intent v1 decision
 ```
 
 The gateway normalizes every supported protocol to `{ text, provider, protocol, model }`. Feature layers may attach the shared `AgentRequestContractV1`; the gateway serializes its bounded semantic task mode, output set, request identity, and projected context into the provider instruction/messages. It never forwards DOM state, screenshots, telemetry, executable operations, credentials, or opaque application state. Protocol-specific headers, request bodies, and response extraction live only in `src/core/ai/providerRegistry.js`.
@@ -22,7 +23,7 @@ Supported protocol contracts are OpenAI-compatible, Anthropic-compatible, and Ge
 
 Changing protocol clears the previous API key. Clearing the key or configuration is immediate. Refreshing or closing the page clears all settings because no persistence mechanism is used.
 
-Explanation keeps its deterministic graph analysis and local fallback. The three Explore entry points use explicit task modes: Ask (`answer-with-optional-suggestion`), Experiment Design (`exploration-guidance`), and World Edit (`world-recipe-or-patch`). The existing deterministic planners remain the only execution authority; provider output is a proposal until the learner accepts it.
+Explanation keeps its deterministic graph analysis and local fallback. The three Explore entry points use explicit task modes: Ask (`answer-with-optional-suggestion`), Experiment Design (`exploration-guidance`), and World Edit (`world-recipe-or-patch`). Build Intent is mode-agnostic and does not extend the Explore task-mode registry. Its request projection, strict decision schema, and local planner are documented in [`build-agent.md`](./build-agent.md). The existing deterministic planners remain the only execution authority; provider suggestions are proposals until the learner accepts them.
 
 `src/core/ai/agentRequestContract.js` owns the reusable contract, semantic projection, safe failure categories, and logical request lifecycle. A logical request has one initial provider call and at most one validation repair. Network, authentication, rate-limit, timeout, and cancellation failures never trigger repair. Successful transport with malformed or semantically invalid JSON is reported as parse/answer validation rather than network/CORS. Optional Ask suggestions are layered on a valid answer body; an invalid suggestion is marked unavailable and cannot execute a runtime operation.
 

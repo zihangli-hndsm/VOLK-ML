@@ -65,6 +65,7 @@ import AccountDialog from './components/AccountDialog.jsx';
 import ExploreHome from './components/ExploreHome.jsx';
 import DirectorPrototype from './components/DirectorPrototype.jsx';
 import BuildToolbar from './components/BuildToolbar.jsx';
+import LumiBuildIntentDialog from './components/buildAgent/LumiBuildIntentDialog.jsx';
 import GraphProposalPreview from './components/graph/GraphProposalPreview.jsx';
 import GraphPatchPreview from './components/graph/GraphPatchPreview.jsx';
 import { WorkspaceGraphProposalContext } from './components/graph/WorkspaceGraphProposalContext.jsx';
@@ -555,6 +556,7 @@ function Workspace() {
   const [languageOpen, setLanguageOpen] = useState(false);
   const [dataOpen, setDataOpen] = useState(false);
   const [runnerOpen, setRunnerOpen] = useState(false);
+  const [lumiBuildIntentOpen, setLumiBuildIntentOpen] = useState(false);
   const [explanationOpen, setExplanationOpen] = useState(false);
   const [compositeOpen, setCompositeOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
@@ -1929,7 +1931,7 @@ function Workspace() {
     </header>
 
     {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenOnboarding={openPhaseAHandoff} onRestartOnboarding={openPhaseAHandoff} t={t} /> : <>
-      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} setRunnerOpen={setRunnerOpen} t={t} />
+      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} setRunnerOpen={setRunnerOpen} onOpenBuildIntent={() => setLumiBuildIntentOpen(true)} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
       <motion.aside initial={false} animate={{ x: leftOpen ? 0 : '-110%' }} style={{ width: `min(${leftWidth}px, calc(100vw - 24px))` }} className={`${asideBase} left-3 lg:transform-none ${leftOpen ? 'lg:block' : 'lg:hidden'}`}>
@@ -1969,6 +1971,7 @@ function Workspace() {
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => openExplorePlayground(id)} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} developmentMatrixDriver={developmentMatrixDriver} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
+    {surface === UI_SURFACES.BUILD && <LumiBuildIntentDialog open={lumiBuildIntentOpen} onClose={() => setLumiBuildIntentOpen(false)} nodes={nodes} edges={edges} dataset={dataset} t={t} />}
     <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />
     {surface === UI_SURFACES.BUILD && stagedGraphProposal?.type === GRAPH_PATCH_PROPOSAL_TYPE && <GraphPatchPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
     {surface === UI_SURFACES.BUILD && stagedGraphProposal && stagedGraphProposal.type !== GRAPH_PATCH_PROPOSAL_TYPE && <GraphProposalPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
