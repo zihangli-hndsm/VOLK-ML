@@ -22,7 +22,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | MCP transport | `src/core/mcpTransport.js`, `src/core/mcpBrowserBridge.js`, `scripts/volk-mcp-server.mjs` | Local official MCP stdio server and loopback session bridge backed by the mounted Agent Application API |
 | External Agent reference | `scripts/agent-application-d3-reference.mjs`, `docs/architecture/agent-mcp-d3-reference.md` | Bounded real Codex + D2 MCP + mounted B1/C2 learner-acceptance workflow |
 | Visual language | `src/core/visualLanguage.js`, `src/components/VisualGlyph.jsx` | Stable stage colors, static canvas glyphs, animated teaching glyphs, architecture layout |
-| Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
+| Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Six-depth, source-neutral canonical graph explanation, current-Run evidence gating, and an optional consented provider adapter |
 | Build Intent v1 | `src/core/buildAgent/buildIntent.js`, `src/components/buildAgent/LumiBuildIntentDialog.jsx` | Explicit, bounded request interpretation into a deterministic registered plan and detached proposal; never applies or runs a graph |
 | LUMI Result Reasoning v1 | `src/core/buildAgent/lumiResultReasoning.js`, `src/components/buildAgent/LumiResultReasoningPanel.jsx` | Current-result-gated Run reflection with bounded volatile history, deterministic local fallback, explicit-consent provider adapter, and inert F2/C2 suggestions |
 | Existing-graph Edit Intent v1 | `src/core/graph/graphEditIntent.js`, `src/components/buildAgent/LumiGraphEditDialog.jsx` | Consent-gated bounded semantic graph projection into strict C1 patches; local construction and existing C2 review/Apply remain authoritative |
@@ -53,6 +53,11 @@ The first declarative local-first inquiry episode is documented in
 [`inquiry-runtime.md`](./inquiry-runtime.md). It layers contract-owned inquiry
 state and deterministic evidence over the existing Playground host without
 creating a second experiment reducer.
+
+Build's six-depth **Explain this graph** contract is documented in
+[`graph-explanation.md`](./graph-explanation.md). It reads canonical graph
+semantics and current locally bound Run evidence; optional provider text is
+bounded, consent-gated, and cannot change workspace truth.
 
 The detached Build Agent A model-design boundary is documented in
 [`build-agent.md`](./build-agent.md). It plans registered graphs from local
