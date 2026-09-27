@@ -517,6 +517,54 @@ Apply, and post-Apply run/export/save paths. `npm run check` includes the pure
 patch-Apply check. C2 does not increment the Canvas Agent or project API
 version, add a Cloud route, or change B1's empty-target behavior.
 
+## F2 LUMI Existing-graph Edit Intent
+
+`src/core/graph/graphEditIntent.js` defines the strict, versioned
+`GraphEditIntentPlanV1` boundary for interpreting bounded requests about an
+existing Build graph. `LumiGraphEditDialog` is a producer only: it does not
+own a graph reducer, execution path, or Apply capability. Its available
+operations are exactly the supported C1 v1 set: `ADD_NODE`, `REMOVE_NODE`,
+`UPDATE_PARAMETERS`, `CONNECT`, `DISCONNECT`, and `MOVE_NODE`.
+`REPLACE_SUBGRAPH` remains explicitly unsupported rather than being treated as
+an opaque mutation.
+
+An interpretation context is built locally from the current project and
+registry. It assigns request-scoped opaque aliases to graph nodes, edges, and
+registered/available components, then sends only bounded topology, component
+operations and ports, parameter schemas, safe scalar parameter values, and
+graph identity. It excludes raw graph IDs, custom labels, project metadata,
+dataset contents, trained state, viewport, selection, DOM, credentials, and
+conversation history. Provider use is opt-in for each request; without that
+affirmative consent the deterministic local parser is used and no provider
+request is made. Provider output is strict `GraphEditIntentPlanV1` untrusted
+intent. The UI lifecycle rejects responses if the graph, custom definitions,
+registry, provider, or request has changed.
+
+Local plan compilation resolves aliases against the captured local context,
+generates operation/node/edge IDs, uses only current registered manifests or
+exact existing custom-composite definitions, validates component properties
+and typed connections through the C1 patch contract, and dry-runs ordered
+operations against the canonical graph. A node removal adds explicit
+disconnect operations before `REMOVE_NODE`. `MOVE_NODE` changes presentation
+identity only; semantic graph operations change semantic identity. Any invalid,
+ambiguous, unsupported, or stale result stops before proposal submission.
+
+The resulting detached proposal is staged through the same Build submission
+context as other graph edits and then shown by the C2 read-only before/after
+diff. Only the current C2 latest-snapshot revalidation and learner-selected
+Apply can commit it. Cancel preserves the graph; Apply does not run or train
+the graph. No Canvas Agent API or project version changes. The local parser
+supports simple unambiguous English and Chinese requests and returns a typed
+clarification rather than guessing. It is not a general-purpose natural
+language editor.
+
+Run `npm run check:graph-edit-intent` for schema, bounds, privacy, all-operation,
+local parsing, consent, custom-composite, and stale-plan checks. Run
+`npm run test:graph-edit-intent:browser` for the mounted provider-consent,
+semantic projection, proposal/cancel, local no-consent, C2 explicit Apply, and
+mobile/keyboard path. The browser fixture uses the existing protocol gateway;
+it does not inject a proposal or Apply action into application state.
+
 E2's controlled generated-source re-import is a separate detached patch
 producer. It uses the same `GraphPatchProposalV1` and C2 lifecycle, and does
 not add an Apply path. For graph identity, `graphPatchBaseFromProject()` carries

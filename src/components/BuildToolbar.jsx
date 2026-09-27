@@ -28,6 +28,8 @@ export default function BuildToolbar({
   onExploreCurrentSetup,
   setRunnerOpen,
   onOpenBuildIntent,
+  onOpenGraphEdit,
+  graphOccupied,
   t,
 }) {
   const torchExportImportRef = React.useRef(null);
@@ -42,7 +44,9 @@ export default function BuildToolbar({
       <button type="button" data-build-primary="blocks" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={onToggleLeft}>☰ <span className="hidden sm:inline">{t('nav.blocks')}</span></button>
       <button type="button" data-build-primary="parameters" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={onToggleRight}>⚙ <span className="hidden sm:inline">{t('nav.parameters')}</span></button>
       <button type="button" data-build-primary="run" className="rounded-xl bg-emerald-600 px-3 py-2 font-bold text-white" onClick={() => setRunnerOpen(true)}>▶ <span className="hidden sm:inline">{t('nav.run')}</span></button>
-      <button type="button" data-build-intent-open className="rounded-xl bg-indigo-100 px-3 py-2 font-bold text-indigo-800 hover:bg-indigo-200" onClick={onOpenBuildIntent}>✦ <span>{t('buildIntent.open')}</span></button>
+      {!graphOccupied
+        ? <button type="button" data-build-intent-open className="rounded-xl bg-indigo-100 px-3 py-2 font-bold text-indigo-800 hover:bg-indigo-200" onClick={onOpenBuildIntent}>✦ <span>{t('buildIntent.open')}</span></button>
+        : <button type="button" data-graph-edit-open className="rounded-xl bg-indigo-100 px-3 py-2 font-bold text-indigo-800 hover:bg-indigo-200" onClick={onOpenGraphEdit}>✦ <span>{t('graphEdit.open')}</span></button>}
       <BuildMoreDisclosure
         viewMode={viewMode}
         setViewMode={setViewMode}

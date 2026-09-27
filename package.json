@@ -25,6 +25,8 @@
     "test:build-intent:browser": "node scripts/build-intent-cdp-browser.mjs",
     "check:graph-interop": "node scripts/check-graph-interop.mjs",
     "check:graph-patch": "node scripts/check-graph-patch.mjs",
+    "check:graph-edit-intent": "node scripts/check-graph-edit-intent.mjs",
+    "test:graph-edit-intent:browser": "node scripts/graph-edit-intent-cdp-browser.mjs",
     "check:graph-patch-apply": "node scripts/check-graph-patch-apply.mjs",
     "check:source-reimport": "node scripts/check-source-reimport.mjs",
     "check:semantic-roundtrip": "node scripts/check-semantic-roundtrip.mjs",

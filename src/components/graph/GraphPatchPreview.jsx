@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef } from 'react';
 import { Background, ReactFlow } from '@xyflow/react';
 import { deriveGraphPatchDiff } from '../../core/graph/workspacePatchApply.js';
 import { validateGraphPatchProposal } from '../../core/graph/graphPatchProposal.js';
+import { GRAPH_EDIT_RATIONALE_CODE } from '../../core/graph/graphEditIntent.js';
 
 const changeKeys = ['existing', 'removed', 'changed', 'added'];
 const changeStyles = {
@@ -233,7 +234,7 @@ export default function GraphPatchPreview({ proposal, applyEligibility, onCancel
               <h3 className="font-black text-slate-900">{t('graphPatch.source')}</h3>
               <p className="mt-1 break-words text-xs text-slate-700">{t(safeSourceLabel(proposal.source.producer))}{proposal.source.provenance?.artifactId ? ` · ${proposal.source.provenance.artifactId}` : ''}</p>
               <h4 className="mt-3 text-xs font-bold text-slate-600">{t('graphPatch.rationale')}</h4>
-              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{proposal.rationale}</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{proposal.rationale === GRAPH_EDIT_RATIONALE_CODE ? t('graphEdit.patchRationale') : proposal.rationale}</p>
             </section>
             <section className="rounded-2xl border border-slate-200 p-4">
               <h3 className="font-black text-slate-900">{t('graphPatch.operations')}</h3>
