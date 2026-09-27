@@ -115,3 +115,57 @@ proposal, copies its graph without rematerializing it, and preserves its plan,
 dataset binding, rationale, limitations, and diagnostics. The generic graph
 identity utility is shared, while Build Agent retains its stricter exact
 semantic-and-layout comparison against the registered blueprint.
+
+## F1 LUMI Build Intent boundary
+
+Build Intent v1 accepts a bounded, single-line learner request and the same
+semantic-only dataset metadata projection. The versioned response is a strict
+union of `goal`, `clarification`, or `unsupported`; it does not accept graph
+operations, component IDs, executable text, weights, or Apply/Run instructions.
+`src/core/buildAgent/buildIntent.js` owns projection, validation, bounded
+provider execution, local MLP layer-count clarification, and explicit-family
+substitution checks. The optional provider call uses the existing volatile AI
+configuration and `createProviderGateway`; no new task mode or second gateway
+is introduced.
+
+The UI invokes interpretation only after the learner explicitly submits a
+request. The local planner resolves the validated goal against the current
+dataset and registered blueprint. The learner then chooses “Review graph
+proposal” to create and stage a detached proposal through the existing
+source-neutral workspace proposal boundary. The existing read-only preview is
+the only Apply surface; proposal creation and LUMI output never apply or run a
+graph. A current graph must be empty for this whole-graph path. VOLK-ML does
+not clear or replace an occupied graph, and the empty-target rule remains
+rechecked by the existing Apply contract.
+
+If the configured provider is unavailable, times out, returns malformed or
+unsupported output, or the dataset/provider configuration changes while a
+request is pending, the UI reports a bounded localized result and leaves
+project graph, dataset, model, and runtime untouched. Closing, cancelling, or
+reopening the dialog also invalidates its pending response. Provider requests
+contain the learner's short request plus task, schema names/types, and row
+counts. They exclude the local dataset fingerprint, all row/cell values,
+project graph, viewport, DOM, credentials, and runtime state. The disclosure
+is shown before the explicit Interpret action.
+
+The registered MLP blueprint currently means exactly two Dense layers total:
+one hidden Dense layer and one output layer. “Two-layer MLP” is clarified
+locally; the learner can explicitly select that interpretation. Depth
+classification is conservative across supported English and Chinese number
+forms, including large digit and cardinal counts: requests for more than one
+hidden layer or more than two Dense layers total are typed unsupported before
+contacting a provider. It does not clamp larger counts or reduce them to the
+registered blueprint.
+
+Explicitly requested numeric parameters are extracted from the bounded request
+and must match the provider's validated response exactly. Supported ranges are
+hidden width 1–128, training split 0.5–0.9, epochs 1–1000, and batch size
+1–512; conflicting, fractional integer, or out-of-range requests are rejected
+locally, and a provider response that changes an explicit value is rejected
+rather than silently rewritten. Omitted values may use the registered plan
+defaults.
+
+Before the learner reviews a proposal, the plan summary names the selected
+feature columns and target, train/test split, evaluation metrics, planning
+rationale, limitations, and applicable MLP width, epochs, and batch size. This
+summary is factual plan metadata; it does not apply or execute the graph.
