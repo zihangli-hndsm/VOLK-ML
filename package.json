@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "precheck": "node scripts/check-source-export-manifest.mjs && node scripts/check-agent-application-api.mjs && npm run check:agent-application:d3 && node scripts/check-mcp-transport.mjs && node scripts/check-graph-interop.mjs && node scripts/check-graph-patch.mjs && node scripts/check-graph-patch-apply.mjs && node scripts/check-source-reimport.mjs && node scripts/check-torch-export-interop.mjs && node scripts/test-torch-export-extractor.mjs && node scripts/check-onnx-interop.mjs",
+    "precheck": "node scripts/check-source-export-manifest.mjs && node scripts/check-agent-application-api.mjs && npm run check:agent-application:d3 && node scripts/check-mcp-transport.mjs && node scripts/check-graph-interop.mjs && node scripts/check-graph-patch.mjs && node scripts/check-graph-patch-apply.mjs && node scripts/check-source-reimport.mjs && node scripts/check-torch-export-interop.mjs && node scripts/check-semantic-roundtrip.mjs && node scripts/test-torch-export-extractor.mjs && node scripts/check-onnx-interop.mjs",
     "dev": "vite",
     "dev:backend": "node scripts/start-backend.mjs",
     "dev:all": "node scripts/dev-all.mjs",
@@ -25,6 +25,8 @@
     "check:graph-patch": "node scripts/check-graph-patch.mjs",
     "check:graph-patch-apply": "node scripts/check-graph-patch-apply.mjs",
     "check:source-reimport": "node scripts/check-source-reimport.mjs",
+    "check:semantic-roundtrip": "node scripts/check-semantic-roundtrip.mjs",
+    "test:semantic-roundtrip:torch": "node scripts/test-semantic-roundtrip.mjs",
     "source:reimport": "node scripts/propose-source-reimport.mjs",
     "test:source-reimport:browser": "node scripts/source-reimport-cdp-browser.mjs",
     "check:graph-apply": "node scripts/check-graph-apply.mjs",

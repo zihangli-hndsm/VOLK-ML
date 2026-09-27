@@ -307,9 +307,11 @@ function validateLineage(document) {
     }
     let expectedSpec;
     if (node.target === 'aten.linear.default') {
-      if (args.length !== 3 || !args[1] || args[1].kind !== 'input' || args[2] !== null && (!args[2] || args[2].kind !== 'input')) {
+      if ((args.length !== 2 && args.length !== 3) || !args[1] || args[1].kind !== 'input'
+        || (args.length === 3 && args[2] !== null && (!args[2] || args[2].kind !== 'input'))) {
         fail('TORCH_EXPORT_ARGUMENT_INVALID', 'Linear requires input, weight, and optional bias references.', path + '.args');
       }
+      const biasOperand = args.length === 2 ? null : args[2];
       if (args[1].id === userInput.id || args[1].id === args[0].id) fail('TORCH_EXPORT_ARGUMENT_INVALID', 'Linear weight must reference parameter state.', path + '.args[1]');
       const weightInput = inputsById.get(args[1].id);
       const weight = parametersById.get(args[1].id);
@@ -319,9 +321,9 @@ function validateLineage(document) {
       if (usedParameters.has(weight.id)) fail('TORCH_EXPORT_STATE_INVALID', 'Shared parameters are not supported.', path + '.args[1]');
       usedParameters.add(weight.id);
       let bias = null;
-      if (args[2] !== null) {
-        const biasInput = inputsById.get(args[2].id);
-        bias = parametersById.get(args[2].id);
+      if (biasOperand !== null) {
+        const biasInput = inputsById.get(biasOperand.id);
+        bias = parametersById.get(biasOperand.id);
         if (!biasInput || biasInput.kind !== 'PARAMETER' || !bias || bias.shape.length !== 1) {
           fail('TORCH_EXPORT_ARGUMENT_INVALID', 'Linear bias must resolve to a rank-one parameter.', path + '.args[2]');
         }
@@ -420,7 +422,7 @@ function nodeParameters(node, document) {
   return {
     input_features: weight.shape[1].value,
     units: weight.shape[0].value,
-    use_bias: node.args[2] !== null,
+    use_bias: node.args.length === 3 && node.args[2] !== null,
   };
 }
 
