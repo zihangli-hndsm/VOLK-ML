@@ -1,5 +1,65 @@
 # Changelog
 
+## 2026-09-28 — G1 declared technicality preference
+
+- Added a transparent, session-only technicality preference that chooses the
+  starting explanation depth while retaining all six manual depth overrides.
+  The preference describes the learner's requested presentation, not ability,
+  mastery, or readiness, and is never inferred.
+- Changing preference revokes one-request provider consent and cancels the
+  affected in-flight request; a late response is discarded. The local graph
+  explanation remains available.
+- Affected areas: `src/core/explanation.js`,
+  `src/components/ExplanationDialog.jsx`, `src/locales/ui.js`, the graph
+  explanation contract checks/browser smoke, and
+  `docs/architecture/graph-explanation.md`.
+- Validation: all three preference mappings and invalid-value rejection,
+  mounted delayed-response/consent-revocation/manual-override browser checks,
+  full `npm run check`, `npm run build`, source-copy/encoding scans, and
+  `git diff --check` passed.
+- Limitations: the provider response is exercised with a deterministic
+  browser fixture rather than a live external model; optional PyTorch/ONNX
+  runtime integrations are unavailable in this environment. Independent
+  VOLK-Dev acceptance remains pending.
+
+## 2026-09-28 — G1 one-request provider consent
+
+- Bound Explain's provider consent to one exact question/context and the
+  current in-memory provider configuration. Consent is consumed before a
+  request and revoked when question, depth, language, graph, dataset, model,
+  runtime, Run binding, or provider configuration changes; no preference is
+  persisted.
+- Added a mounted browser regression with a deterministic intercepted provider
+  fixture covering default-local behavior, one accepted request, one-use
+  consumption, and question/depth/provider-configuration invalidation.
+- Affected areas: `src/components/ExplanationDialog.jsx`,
+  `scripts/graph-explanation-cdp-browser.mjs`, and the graph-explanation
+  architecture documentation.
+- Validation: focused graph-explanation checks, mounted browser consent flow,
+  full `npm run check`, `npm run build`, and `git diff --check` passed.
+- Limitations: the provider test uses a deterministic browser fixture, not a
+  live external model; independent VOLK-Dev acceptance remains pending.
+
+## 2026-09-28 — G1 Explain this graph
+
+- Added a six-depth, local-first graph explanation surface for Phenomenon,
+  Evidence, Mechanism, Representation, Math, and Code. Current Run evidence is
+  shown only when bound to the current graph and dataset; provider explanations
+  require per-question consent and cannot mutate or execute the workspace.
+- Added a bounded, source-neutral explanation projection, strict correlated
+  provider response validation, deterministic local fallback, and architecture
+  documentation.
+- Affected areas: `src/core/explanation.js`,
+  `src/components/ExplanationDialog.jsx`, `src/locales/ui.js`, `src/main.jsx`,
+  explanation checks, and graph-explanation architecture documentation.
+- Validation: focused graph-explanation checks, six-depth browser smoke in
+  English/Chinese parallel and Chinese-only modes at 390px, full `npm run
+  check`, `npm run build`, localization/encoding scan, and `git diff --check`
+  passed.
+- Limitations: Code is a local PyTorch export preview and is not executed;
+  provider behavior was contract-tested without a live external model. Optional
+  PyTorch/ONNX integration checks remain skipped when those runtimes are absent.
+
 ## 2026-09-26 — D2 local MCP workspace transport
 
 - Added an official MCP server that connects external MCP clients to the

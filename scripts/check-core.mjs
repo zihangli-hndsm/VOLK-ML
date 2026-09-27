@@ -34,7 +34,7 @@ import {
   updateAgentNode,
   validateAgentDataset,
 } from '../src/core/canvasAgent.js';
-import { analyzeProject, askExplanationAgent } from '../src/core/explanation.js';
+import { analyzeProject, askExplanationAgent, buildGraphExplanationRequestV1 } from '../src/core/explanation.js';
 import { changeAiProtocol, endpointSafety } from '../src/core/ai/aiSettings.js';
 import { createProviderGateway, listProviderProtocols } from '../src/core/ai/providerRegistry.js';
 import { safeProjectFilename } from '../src/core/localProjects.js';
@@ -3076,13 +3076,17 @@ assert.throws(
       assert.equal(changeAiProtocol({ protocol: 'openai-compatible', apiKey: 'old-key', model: 'old' }, 'gemini-compatible').apiKey, '', 'changing protocol clears the previous key');
       assert.equal(endpointSafety('http://localhost:8787/v1').safe, true, 'local HTTP endpoints are explicitly allowed');
       assert.equal(endpointSafety('http://example.com/v1').safe, false, 'remote HTTP endpoints require HTTPS');
-      const explanation = await askExplanationAgent({
-        analysis: { nodeCount: 1, edgeCount: 0, missingInputs: [], stages: {}, steps: [], edges: [] },
-        question: 'What is this?', language: 'en',
-        config: { protocol: 'openai-compatible', model: 'test-model', apiKey: 'secret-key' },
-        gateway: createProviderGateway({ fetchImpl: async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: 'shared explanation' } }] }) }) }),
+      const explanationRequest = buildGraphExplanationRequestV1({
+        nodes: [], edges: [], depth: 'phenomenon', question: 'What is this?', language: 'en', requestId: 'explain-test',
       });
-      assert.equal(explanation, 'shared explanation', 'Explanation consumes the shared provider gateway');
+      const explanation = await askExplanationAgent({
+        request: explanationRequest,
+        config: { protocol: 'openai-compatible', model: 'test-model', apiKey: 'secret-key' },
+        gateway: createProviderGateway({ fetchImpl: async () => ({ ok: true, json: async () => ({ choices: [{ message: { content: JSON.stringify({
+          schemaVersion: 1, requestId: 'explain-test', depth: 'phenomenon', explanation: 'This graph has no components yet.', factIds: ['graph.node-count'],
+        }) } }] }) }) }),
+      });
+      assert.equal(explanation.explanation, 'This graph has no components yet.', 'Graph explanation consumes the shared provider gateway and validates its typed response');
 
       const contextFor = async (playgroundId) => {
         const hostForContext = createPlaygroundHost({ getDataset: () => null });
