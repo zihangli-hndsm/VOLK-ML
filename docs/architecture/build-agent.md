@@ -169,3 +169,14 @@ Before the learner reviews a proposal, the plan summary names the selected
 feature columns and target, train/test split, evaluation metrics, planning
 rationale, limitations, and applicable MLP width, epochs, and batch size. This
 summary is factual plan metadata; it does not apply or execute the graph.
+
+## F3 LUMI Result Reasoning
+
+The Build Run reflection, its current-result binding, bounded in-memory
+attempt history, provider disclosure/consent, response validation, and inert
+suggestion authority are documented in
+[`lumi-result-reasoning.md`](./lumi-result-reasoning.md). Result reasoning is
+not part of `BuildGoalV1`, `GraphProposalV1`, project persistence, or the
+Canvas Agent Application API. A selected graph-layout suggestion only opens
+the existing F2 typed Edit Intent and C2 proposal preview; explicit Apply
+remains a separate learner action.

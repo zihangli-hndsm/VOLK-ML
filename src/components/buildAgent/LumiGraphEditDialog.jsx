@@ -57,7 +57,7 @@ function localizeCandidate(candidate, context, language, t) {
   return { ...candidate, selectionKey: JSON.stringify(candidate), label };
 }
 
-export default function LumiGraphEditDialog({ open, onClose, nodes, edges, customComponents, language = 'en', hasStagedProposal = false, t }) {
+export default function LumiGraphEditDialog({ open, initialRequest = '', onClose, nodes, edges, customComponents, language = 'en', hasStagedProposal = false, t }) {
   const { config, gateway, isConfigured, openSettings } = useAiProvider();
   const submitProposal = useWorkspaceGraphProposalSubmission();
   const interpreter = useMemo(() => createLlmGraphEditIntentInterpreter({ gateway }), [gateway]);
@@ -114,13 +114,24 @@ export default function LumiGraphEditDialog({ open, onClose, nodes, edges, custo
   };
 
   useEffect(() => {
-    if (open) inputRef.current?.focus();
+    if (open) {
+      inputRef.current?.focus();
+      if (initialRequest) {
+        setRequest(initialRequest.slice(0, GRAPH_EDIT_MAX_REQUEST_LENGTH));
+        setConsent(false);
+        setStatus('idle');
+        setError('');
+        setOutcome(null);
+        setOutcomeContextStamp(null);
+        setSelectedCandidateKey('');
+      }
+    }
     else reset();
     return () => {
       generationRef.current += 1;
       abortRef.current?.abort();
     };
-  }, [open]);
+  }, [open, initialRequest]);
 
   useEffect(() => {
     const active = activeRequestRef.current;
