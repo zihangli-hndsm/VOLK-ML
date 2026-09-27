@@ -24,6 +24,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Visual language | `src/core/visualLanguage.js`, `src/components/VisualGlyph.jsx` | Stable stage colors, static canvas glyphs, animated teaching glyphs, architecture layout |
 | Project explanation | `src/core/explanation.js`, `src/components/ExplanationDialog.jsx` | Deterministic graph reading plus optional user-supplied conversational model API |
 | Build Intent v1 | `src/core/buildAgent/buildIntent.js`, `src/components/buildAgent/LumiBuildIntentDialog.jsx` | Explicit, bounded request interpretation into a deterministic registered plan and detached proposal; never applies or runs a graph |
+| LUMI Result Reasoning v1 | `src/core/buildAgent/lumiResultReasoning.js`, `src/components/buildAgent/LumiResultReasoningPanel.jsx` | Current-result-gated Run reflection with bounded volatile history, deterministic local fallback, explicit-consent provider adapter, and inert F2/C2 suggestions |
 | Existing-graph Edit Intent v1 | `src/core/graph/graphEditIntent.js`, `src/components/buildAgent/LumiGraphEditDialog.jsx` | Consent-gated bounded semantic graph projection into strict C1 patches; local construction and existing C2 review/Apply remain authoritative |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
 | Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
@@ -57,6 +58,12 @@ The detached Build Agent A model-design boundary is documented in
 [`build-agent.md`](./build-agent.md). It plans registered graphs from local
 semantic dataset context, while keeping proposal authority and execution
 separate from the Canvas Agent and Build workspace.
+
+Build Run history, deterministic result facts, and the optional typed LUMI
+interpretation boundary are documented in
+[`lumi-result-reasoning.md`](./lumi-result-reasoning.md). It uses only a
+current locally bound Run result; provider output cannot author values or
+execute the proposed F2/C2 graph action.
 
 The source-neutral detached graph proposal boundary and the distinction
 between graph-scoped and full-project interoperability are documented in

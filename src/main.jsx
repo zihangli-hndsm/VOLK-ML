@@ -36,6 +36,7 @@ import {
 } from './core/canvasAgent';
 import { runCanvasAgentExerciseSuite } from './core/agentExerciseSuite';
 import { AGENT_APPLICATION_API_VERSION, createAgentApplicationApi, createAgentApplicationResultBinding } from './core/agentApplicationApi.js';
+import { beginLumiRun, settleLumiRun } from './core/buildAgent/lumiResultReasoning.js';
 import { installAgentApplicationBridge } from './core/agentApplicationBridge.js';
 import { connectMcpBrowserBridgeFromLocation } from './core/mcpBrowserBridge.js';
 import { createPlaygroundAgentApi } from './core/playgroundAgent';
@@ -67,6 +68,7 @@ import DirectorPrototype from './components/DirectorPrototype.jsx';
 import BuildToolbar from './components/BuildToolbar.jsx';
 import LumiBuildIntentDialog from './components/buildAgent/LumiBuildIntentDialog.jsx';
 import LumiGraphEditDialog from './components/buildAgent/LumiGraphEditDialog.jsx';
+import LumiResultReasoningPanel from './components/buildAgent/LumiResultReasoningPanel.jsx';
 import GraphProposalPreview from './components/graph/GraphProposalPreview.jsx';
 import GraphPatchPreview from './components/graph/GraphPatchPreview.jsx';
 import { WorkspaceGraphProposalContext } from './components/graph/WorkspaceGraphProposalContext.jsx';
@@ -433,7 +435,7 @@ function PropertyControl({ property, value, onChange }) {
   return <><input className={property.type === 'slider' ? 'mt-3 w-full accent-blue-600' : inputClass} type={property.type === 'slider' ? 'range' : property.type === 'number' ? 'number' : 'text'} min={property.min} max={property.max} step={property.step} value={value} onChange={(event) => onChange(property.type === 'text' ? event.target.value : Number(event.target.value))} />{property.type === 'slider' && <span className="mt-2 block text-sm text-slate-500">{value}</span>}</>;
 }
 
-function RunnerDialog({ open, onClose, nodes, edges, dataset, model, runtime, onRun, onValidation, onOpenData, onExport }) {
+function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, model, runtime, resultBinding, runHistory, language, onSelectLumiSuggestion, onRun, onValidation, onOpenData, onExport }) {
   const { t } = useVividTranslation();
   const [inputs, setInputs] = useState({});
   const [prediction, setPrediction] = useState(null);
@@ -499,9 +501,10 @@ function RunnerDialog({ open, onClose, nodes, edges, dataset, model, runtime, on
       <TierPanel plan={executionPlan} onExport={onExport} />
       {visibleError && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">⚠ {visibleError}</div>}
       {needsDataset && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div className="mt-4"><LossChart values={losses} /></div><button disabled={running || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button></div>
+        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div id="runner-loss-chart" className="mt-4"><LossChart values={losses} /></div><button data-runner-execute type="button" disabled={running || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button></div>
         <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="font-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
       </div> : <div className="mt-5 rounded-3xl border border-dashed border-slate-300 p-8 text-center text-slate-500"><p className="text-3xl">⇧</p><p className="mt-3 font-bold">{t('tier.useHigherTier', { tier: executionPlan.recommendedTier })}</p><p className="mt-1 text-sm">{t('tier.designStillAvailable')}</p></div>}
+      <LumiResultReasoningPanel nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} runtime={runtime} resultBinding={resultBinding} runHistory={runHistory} language={language} onSelectSuggestion={onSelectLumiSuggestion} t={t} />
     </section>
   </div>;
 }
@@ -559,6 +562,7 @@ function Workspace() {
   const [runnerOpen, setRunnerOpen] = useState(false);
   const [lumiBuildIntentOpen, setLumiBuildIntentOpen] = useState(false);
   const [lumiGraphEditOpen, setLumiGraphEditOpen] = useState(false);
+  const [lumiGraphEditSeed, setLumiGraphEditSeed] = useState('');
   const [explanationOpen, setExplanationOpen] = useState(false);
   const [compositeOpen, setCompositeOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
@@ -583,6 +587,7 @@ function Workspace() {
   const [dataset, setDataset] = useState(null);
   const [model, setModel] = useState(null);
   const [runtime, setRuntime] = useState(idleRuntimeState);
+  const [runHistory, setRunHistory] = useState([]);
   const [pendingConnection, setPendingConnection] = useState(null);
   const [pendingDeletion, setPendingDeletion] = useState(null);
   const [notice, setNotice] = useState('');
@@ -594,6 +599,7 @@ function Workspace() {
   const [graphApplyTestBridge, setGraphApplyTestBridge] = useState(null);
   const proposalHistoryRef = useRef([]);
   const resultBindingRef = useRef(null);
+  const runHistoryRef = useRef(runHistory);
   const agentApplicationApiRef = useRef(null);
   const proposalSubmitAdapterRef = useRef(null);
   const GraphApplyTestBridgeComponent = graphApplyTestBridge;
@@ -1236,6 +1242,12 @@ function Workspace() {
     setRuntime(next);
     return next;
   }, []);
+  const updateRunHistory = useCallback((update) => {
+    const next = typeof update === 'function' ? update(runHistoryRef.current) : update;
+    runHistoryRef.current = next;
+    setRunHistory(next);
+    return next;
+  }, []);
   const setNodeStatus = useCallback((ids, status) => {
     const nextNodes = workspaceStateRef.current.nodes.map((node) => ids.includes(node.id)
       ? { ...node, data: { ...node.data, status } }
@@ -1262,6 +1274,12 @@ function Workspace() {
     resultBindingRef.current = null;
     const startedAt = new Date().toISOString();
     const startedWithSignature = canvasExecutionInputSignature(state.nodes, state.edges, state.dataset);
+    const runAttemptId = `run-${crypto.randomUUID()}`;
+    let runBinding = null;
+    try {
+      runBinding = createAgentApplicationResultBinding({ nodes: state.nodes, edges: state.edges, customComponents: state.customComponents, dataset: state.dataset });
+    } catch { /* Invalid inputs still produce a safe failed session-history entry. */ }
+    updateRunHistory((history) => beginLumiRun(history, { attemptId: runAttemptId, binding: runBinding, startedAt }));
     let currentNode = null;
     let validationNodeIds = [];
     setNodeStatus(state.nodes.map((node) => node.id), 'idle');
@@ -1321,6 +1339,12 @@ function Workspace() {
       } catch {
         resultBindingRef.current = null;
       }
+      updateRunHistory((history) => settleLumiRun(history, runAttemptId, {
+        status: 'succeeded',
+        model: persistableModel,
+        losses: persistableModel.lossHistory ?? [],
+        finishedAt: new Date().toISOString(),
+      }));
       setModel(persistableModel);
       updateRuntime((current) => ({
         ...current,
@@ -1337,6 +1361,11 @@ function Workspace() {
       }));
       return persistableModel;
     } catch (error) {
+      updateRunHistory((history) => settleLumiRun(history, runAttemptId, {
+        status: 'failed',
+        errorCode: typeof error?.code === 'string' ? error.code : 'RUN_FAILED',
+        finishedAt: new Date().toISOString(),
+      }));
       resultBindingRef.current = null;
       if (error?.code === 'WORKSPACE_CHANGED') {
         const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
@@ -1367,7 +1396,7 @@ function Workspace() {
       }
       throw error;
     }
-  }, [setNodeStatus, setNodes, updateRuntime]);
+  }, [setNodeStatus, setNodes, updateRunHistory, updateRuntime]);
   useEffect(() => {
     if (previousExecutionSignature.current === executionInputSignature) return;
     previousExecutionSignature.current = executionInputSignature;
@@ -1917,6 +1946,23 @@ function Workspace() {
 
   const activeExploreHost = activeExploreWorkspace?.host ?? null;
   const activeExploreAgent = activeExploreWorkspace?.agent ?? null;
+  const handleLumiResultSuggestion = useCallback((suggestionId) => {
+    if (suggestionId === 'inspect-loss') {
+      document.getElementById('runner-loss-chart')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+    if (suggestionId === 'review-graph-layout') {
+      const ordered = [...nodes].sort((left, right) => left.id.localeCompare(right.id));
+      const source = ordered[1];
+      const target = ordered[0];
+      const sourceName = source ? t(source.data.label) : '';
+      const targetName = target ? t(target.data.label) : '';
+      setLumiGraphEditSeed(sourceName && targetName
+        ? t('lumiResult.graphEditPrompt', { source: sourceName, target: targetName })
+        : t('lumiResult.graphEditPromptGeneric'));
+      setLumiGraphEditOpen(true);
+    }
+  }, [nodes, t]);
 
   const asideBase = 'fixed bottom-3 top-[76px] z-30 overflow-auto rounded-3xl border border-white/80 bg-white/95 p-4 shadow-2xl backdrop-blur transition-transform lg:static lg:z-auto lg:h-auto lg:rounded-3xl lg:bg-white/85 lg:shadow-xl';
   return <WorkspaceGraphProposalContext.Provider value={surface === UI_SURFACES.BUILD ? submitWorkspaceGraphProposal : null}><div className="flex h-[100dvh] flex-col overflow-hidden bg-gradient-to-br from-sky-50 via-white to-indigo-100">
@@ -1964,7 +2010,7 @@ function Workspace() {
     {pendingDeletion && <DeletionConfirmDialog summary={deletionSummary({ nodes, edges, pendingDeletion })} onCancel={() => setPendingDeletion(null)} onConfirm={confirmDeletion} t={t} />}
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
-    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} dataset={dataset} model={model} runtime={runtime} onRun={runBrowserGraph} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
+    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} model={model} runtime={runtime} resultBinding={resultBindingRef.current} runHistory={runHistory} language={primary} onSelectLumiSuggestion={handleLumiResultSuggestion} onRun={runBrowserGraph} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
     <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
     <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project, { languagePolicy: 'preserve-current' }); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}
@@ -1974,7 +2020,7 @@ function Workspace() {
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} developmentMatrixDriver={developmentMatrixDriver} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
     {surface === UI_SURFACES.BUILD && <LumiBuildIntentDialog open={lumiBuildIntentOpen} onClose={() => setLumiBuildIntentOpen(false)} nodes={nodes} edges={edges} dataset={dataset} t={t} />}
-    {surface === UI_SURFACES.BUILD && <LumiGraphEditDialog open={lumiGraphEditOpen} onClose={() => setLumiGraphEditOpen(false)} nodes={nodes} edges={edges} customComponents={customComponents} language={primary} hasStagedProposal={Boolean(stagedGraphProposal)} t={t} />}
+    {surface === UI_SURFACES.BUILD && <LumiGraphEditDialog open={lumiGraphEditOpen} initialRequest={lumiGraphEditSeed} onClose={() => { setLumiGraphEditOpen(false); setLumiGraphEditSeed(''); }} nodes={nodes} edges={edges} customComponents={customComponents} language={primary} hasStagedProposal={Boolean(stagedGraphProposal)} t={t} />}
     <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />
     {surface === UI_SURFACES.BUILD && stagedGraphProposal?.type === GRAPH_PATCH_PROPOSAL_TYPE && <GraphPatchPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
     {surface === UI_SURFACES.BUILD && stagedGraphProposal && stagedGraphProposal.type !== GRAPH_PATCH_PROPOSAL_TYPE && <GraphProposalPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
