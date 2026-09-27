@@ -145,15 +145,24 @@ const integration = spawnSync(python, ['-c', [
   'class Unsupported(torch.nn.Module):',
   '    def forward(self, x):',
   '        return torch.sin(x)',
+  'class NoBias(torch.nn.Module):',
+  '    def __init__(self):',
+  '        super().__init__()',
+  '        self.linear = torch.nn.Linear(8, 4, bias=False)',
+  '    def forward(self, x):',
+  '        return self.linear(x)',
   'model = ReferenceMLP().eval()',
   'with torch.no_grad():',
   '    model.first.weight.fill_(0.314159)',
   '    model.first.bias.fill_(0.271828)',
   'program = torch.export.export(model, (torch.zeros(2, 8),))',
   'metadata = extract_exported_program(program, model_identifier="reference-mlp-8-32-4")',
+  'no_bias_model = NoBias().eval()',
+  'no_bias_program = torch.export.export(no_bias_model, (torch.zeros(2, 8),))',
+  'no_bias_metadata = extract_exported_program(no_bias_program, model_identifier="no-bias-linear-8-4")',
   'unsupported_program = torch.export.export(Unsupported().eval(), (torch.zeros(2, 8),))',
   'unsupported = extract_exported_program(unsupported_program, model_identifier="unsupported-sin")',
-  'print(json.dumps({"torchVersion": str(torch.__version__), "metadata": metadata, "unsupported": unsupported}, separators=(",", ":")))',
+  'print(json.dumps({"torchVersion": str(torch.__version__), "metadata": metadata, "noBiasMetadata": no_bias_metadata, "unsupported": unsupported}, separators=(",", ":")))',
 ].join('\n'), path.resolve('tools/torch_export')], { encoding: 'utf8', maxBuffer: 2 * 1024 * 1024 });
 assert.equal(integration.status, 0, integration.stderr);
 const extracted = JSON.parse(integration.stdout);
@@ -188,6 +197,15 @@ const serializedProposal = JSON.stringify(proposal.proposal);
 assert.equal(serializedProposal.includes('0.314159'), false, 'Proposal source and graph exclude parameter values.');
 assert.equal(serializedProposal.includes('0.271828'), false, 'Proposal source and graph exclude bias values.');
 assert.equal(proposal.proposal.source.torchExportDocument.state.parameters.some((entry) => Object.hasOwn(entry, 'data')), false);
+
+assert.deepEqual(extracted.noBiasMetadata.graph.nodes.map((node) => node.args.length), [2],
+  'The real PyTorch ExportedProgram retains aten.linear(input, weight) when bias=False.');
+assert.equal(validateTorchExportDocument(extracted.noBiasMetadata).documentFingerprint,
+  extracted.noBiasMetadata.documentFingerprint);
+const noBiasProposal = createTorchExportGraphProposal(extracted.noBiasMetadata);
+assert.equal(noBiasProposal.ok, true, JSON.stringify(noBiasProposal.diagnostics));
+assert.equal(noBiasProposal.proposal.graph.nodes
+  .find((node) => node.data.manifest.id === 'dense_node').data.parameters.use_bias, false);
 
 const unsupported = createTorchExportGraphProposal(extracted.unsupported);
 assert.equal(unsupported.ok, false, 'An extracted-but-unmapped operator cannot produce a proposal.');

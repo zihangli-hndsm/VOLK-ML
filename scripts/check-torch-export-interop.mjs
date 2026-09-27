@@ -135,6 +135,13 @@ noBias.state.parameters = noBias.state.parameters.filter((parameter) => paramete
 seal(noBias);
 assert.equal(materializeTorchExportDocument(noBias).nodes[1].data.parameters.use_bias, false);
 
+const omittedBias = clone(noBias);
+omittedBias.graph.nodes[0].args.pop();
+seal(omittedBias);
+assert.equal(materializeTorchExportDocument(omittedBias).nodes[1].data.parameters.use_bias, false,
+  'A real aten.linear two-argument form maps to Dense without bias.');
+assert.equal(createTorchExportGraphProposal(omittedBias).ok, true);
+
 for (const [target, componentId, args] of [
   ['aten.sigmoid.default', 'sigmoid_node', [{ kind: 'node', id: 'n0' }]],
   ['aten.tanh.default', 'tanh_node', [{ kind: 'node', id: 'n0' }]],
@@ -177,6 +184,21 @@ expectDocumentFailure(unsupported, 'TORCH_EXPORT_OPERATOR_UNSUPPORTED');
 const wrongLinearArgs = seal(clone(fixture));
 wrongLinearArgs.graph.nodes[0].args[1] = { kind: 'input', id: 'i0' };
 expectDocumentFailure(wrongLinearArgs, 'TORCH_EXPORT_ARGUMENT_INVALID');
+
+for (const args of [
+  [{ kind: 'input', id: 'i0' }],
+  [
+    { kind: 'input', id: 'i0' },
+    { kind: 'input', id: 'p0' },
+    null,
+    null,
+  ],
+]) {
+  const invalidArity = clone(fixture);
+  invalidArity.graph.nodes[0].args = args;
+  seal(invalidArity);
+  expectDocumentFailure(invalidArity, 'TORCH_EXPORT_ARGUMENT_INVALID');
+}
 
 const badBiasShape = seal(clone(fixture));
 badBiasShape.graph.inputs.find((input) => input.id === 'p1').spec.shape[0].value = 31;

@@ -274,8 +274,12 @@ The current supported chain is one rank-2 input-to-output path with at least
 one Linear, no fanout, shared or unused parameters, mutation, buffer/constant
 execution, extra user inputs/outputs, or unsupported operators. The reference
 fixture is `Linear(8,32) → ReLU → Linear(32,4)`. The importer carries only
-architecture dimensions and bias-presence into editable Dense components;
-it never imports trained values or marks a model trained. Shape/dtype
+architecture dimensions and bias-presence into editable Dense components. For
+`aten.linear`, both the real no-bias two-argument form and a three-argument form
+with an explicit `null` bias map to `use_bias: false`; a referenced bias remains
+subject to the same parameter, shape, dtype, and uniqueness checks. Other
+argument arities remain invalid. It never imports trained values or marks a
+model trained. Shape/dtype
 relationships are recomputed and checked against each operator's metadata.
 Only static feature dimensions are materialized; symbolic batch constraints
 remain in source evidence and are reported as missing from the target graph.
@@ -522,3 +526,10 @@ project catalogue when preparing and committing, so unused catalogue entries
 are not lost when an E2 patch changes the graph. See
 [`source-reimport.md`](./source-reimport.md) for offline parsing, the narrow
 allowlist, and canonical-source requirements.
+
+E3 evaluates the bounded reverse path from canonical VOLK architecture through
+fresh compiler output, real `torch.export`, and the existing B2 adapter back to
+a detached Graph B. The evaluation normalizes IDs/layout only for cross-format
+comparison; it reports batch-range and weight loss and does not claim numerical
+equivalence. See [`semantic-roundtrip.md`](./semantic-roundtrip.md) for the
+metric, trust, supported-operation, and negative-case boundaries.
