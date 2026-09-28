@@ -44,6 +44,7 @@ import { createPlaygroundHost } from './core/playgroundHost';
 import { createTeachingDialogueProvider } from './core/exploration/teachingDialoguePilot.js';
 import { getBigIdeaEntrance } from './core/exploration/bigIdeaRegistry.js';
 import { compareExploreEnvironment, createBuildExploreBridge, createExploreEnvironmentIdentity, createExploreWorkspaceRecord, EXPLORE_WORKSPACE_LIFECYCLES } from './core/exploration/exploreWorkspace.js';
+import { createExploreBridgeSessionV1, inspectExploreCapacityBuild } from './core/exploration/buildCapacityBridge.js';
 import { UI_SURFACES } from './core/ui/uiArchitecture.js';
 import { createBuildPanelPresentation, toggleBuildPanel } from './core/ui/buildSurfacePresentation.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
@@ -65,6 +66,7 @@ import VisualGlyph from './components/VisualGlyph';
 import AiSettingsDialog from './components/AiSettingsDialog.jsx';
 import AccountDialog from './components/AccountDialog.jsx';
 import ExploreHome from './components/ExploreHome.jsx';
+import ExploreCapacityBridgeDialog from './components/ExploreCapacityBridgeDialog.jsx';
 import DirectorPrototype from './components/DirectorPrototype.jsx';
 import BuildToolbar from './components/BuildToolbar.jsx';
 import LumiBuildIntentDialog from './components/buildAgent/LumiBuildIntentDialog.jsx';
@@ -571,6 +573,8 @@ function Workspace() {
   const [playgroundOpen, setPlaygroundOpen] = useState(false);
   const [g2AttentionOpen, setG2AttentionOpen] = useState(false);
   const [g2ProjectSession, setG2ProjectSession] = useState(0);
+  const [exploreCapacityBridge, setExploreCapacityBridge] = useState(null);
+  const [exploreCapacityBridgeOpen, setExploreCapacityBridgeOpen] = useState(false);
   const [directorOpen, setDirectorOpen] = useState(false);
   const [playgroundId, setPlaygroundId] = useState(null);
   const [playgroundInitialTab, setPlaygroundInitialTab] = useState('model');
@@ -626,6 +630,8 @@ function Workspace() {
   const fileHandleRef = useRef(null);
   const lastDownloadSignature = useRef('');
   const workspaceStateRef = useRef(null);
+  const exploreCapacityBridgeRef = useRef(null);
+  const projectSessionIdRef = useRef(`project-session-${crypto.randomUUID()}`);
   const agentAdapterRef = useRef(null);
   const exploreWorkspacesRef = useRef(new Map());
   const exploreForkCounterRef = useRef(0);
@@ -704,6 +710,13 @@ function Workspace() {
   };
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
   const selectedNodes = nodes.filter((node) => node.selected);
+  const selectedCapacityNodeId = selectedNodes.length === 1 ? selectedNodes[0].id : null;
+  const canOpenExploreCapacityBridge = useMemo(() => {
+    if (!selectedCapacityNodeId) return false;
+    return inspectExploreCapacityBuild({ nodes, edges, dataset, customComponents }, {
+      selectedNodeId: selectedCapacityNodeId,
+    }).supported;
+  }, [nodes, edges, dataset, customComponents, selectedCapacityNodeId]);
   const availablePlugins = useMemo(() => [...pluginRegistry, ...customComponents], [customComponents]);
   const filteredPlugins = useMemo(() => availablePlugins.filter((plugin) => {
     const haystack = [plugin.category, ...Object.values(plugin.name), ...Object.values(plugin.description)].join(' ').toLowerCase();
@@ -943,6 +956,11 @@ function Workspace() {
       };
     });
     const restoredEdges = project.graph.edges.map((edge) => ({ ...edge, selected: false, type: 'deletable' }));
+    exploreCapacityBridgeRef.current?.dispose();
+    exploreCapacityBridgeRef.current = null;
+    setExploreCapacityBridge(null);
+    setExploreCapacityBridgeOpen(false);
+    projectSessionIdRef.current = `project-session-${crypto.randomUUID()}`;
     setG2ProjectSession((session) => session + 1);
     const nextRuntime = idleRuntimeState();
     workspaceStateRef.current = {
@@ -1954,6 +1972,46 @@ function Workspace() {
     }).catch((error) => setNotice(translateError(error, t)));
   }, [dataset, disposeEphemeralExploreWorkspaces, getExploreWorkspace, nodes, t]);
 
+  const openExploreCapacityBridge = useCallback((selectedNodeId, { newSession = false, requireSelection = true } = {}) => {
+    if (typeof selectedNodeId !== 'string' || !selectedNodeId) return;
+    const current = workspaceStateRef.current;
+    if (requireSelection) {
+      const selectedNow = current.nodes.filter((node) => node.selected);
+      if (selectedNow.length !== 1 || selectedNow[0].id !== selectedNodeId) return;
+    }
+    const build = {
+      nodes: current.nodes,
+      edges: current.edges,
+      dataset: current.dataset,
+      customComponents: current.customComponents,
+    };
+    const assessment = inspectExploreCapacityBuild(build, { selectedNodeId });
+    if (!assessment.supported) return;
+    const existing = exploreCapacityBridgeRef.current;
+    const existingSnapshot = existing?.getSnapshot();
+    if (!newSession
+      && existingSnapshot?.projectSessionId === projectSessionIdRef.current
+      && existingSnapshot.graphIdentity
+      && existingSnapshot.selectedHiddenNode?.nodeId === selectedNodeId) {
+      setExploreCapacityBridgeOpen(true);
+      return;
+    }
+    existing?.dispose();
+    const nextSession = createExploreBridgeSessionV1({
+      build,
+      selectedNodeId,
+      projectSessionId: projectSessionIdRef.current,
+    });
+    exploreCapacityBridgeRef.current = nextSession;
+    setExploreCapacityBridge(nextSession);
+    setExploreCapacityBridgeOpen(true);
+  }, []);
+
+  const closeExploreCapacityBridge = useCallback(() => {
+    exploreCapacityBridgeRef.current?.close();
+    setExploreCapacityBridgeOpen(false);
+  }, []);
+
   const activeExploreHost = activeExploreWorkspace?.host ?? null;
   const activeExploreAgent = activeExploreWorkspace?.agent ?? null;
   const handleLumiResultSuggestion = useCallback((suggestionId) => {
@@ -1979,7 +2037,7 @@ function Workspace() {
     <header data-top-level-surface={surface} className="z-40 flex min-h-[64px] items-center justify-between gap-3 border-b border-white/70 bg-white/90 px-3 py-2 shadow-sm backdrop-blur sm:px-5">
       <div className="flex min-w-0 items-center gap-3"><div className="shrink-0"><h1 className="text-xl font-black text-slate-950 sm:text-2xl">VOLK-ML</h1><p className="hidden truncate text-xs text-slate-600 xl:block">{t('app.tagline')}</p></div><span className="hidden text-xs font-bold text-slate-400 sm:inline">{autosavedAt ? t('project.autosaved') : t('project.unsaved')}</span>{SHOW_CLOUD_STATUS && <span data-cloud-status={cloudStatus.status} aria-live="polite" className={`hidden rounded-full px-2 py-1 text-[10px] font-black sm:inline ${cloudStatus.status === CLOUD_AVAILABILITY.AVAILABLE ? 'bg-emerald-100 text-emerald-800' : cloudStatus.status === CLOUD_AVAILABILITY.CHECKING ? 'bg-slate-100 text-slate-600' : 'bg-amber-100 text-amber-800'}`}>{t(`cloud.status.${cloudStatus.status}`)}</span>}</div>
       <nav aria-label={t('surface.navigation')} className="flex items-center gap-1.5 text-sm">
-        <button type="button" aria-pressed={surface === UI_SURFACES.EXPLORE} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.EXPLORE ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => { clearGraphProposal('cancelled'); setGraphApplyCommitDiagnostic(null); setSurface(UI_SURFACES.EXPLORE); }}>{t('ui.surface.explore')}</button>
+        <button type="button" aria-pressed={surface === UI_SURFACES.EXPLORE} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.EXPLORE ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => { closeExploreCapacityBridge(); clearGraphProposal('cancelled'); setGraphApplyCommitDiagnostic(null); setSurface(UI_SURFACES.EXPLORE); }}>{t('ui.surface.explore')}</button>
         <button type="button" aria-pressed={surface === UI_SURFACES.BUILD} className={`rounded-xl px-3 py-2 font-bold ${surface === UI_SURFACES.BUILD ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-700'}`} onClick={() => setSurface(UI_SURFACES.BUILD)}>{t('ui.surface.build')}</button>
         <div className="relative">
           <button type="button" aria-expanded={globalMoreOpen} aria-controls="global-more-actions" className="rounded-xl bg-slate-100 px-3 py-2 font-bold" onClick={() => setGlobalMoreOpen((value) => !value)}>⋯ <span className="hidden sm:inline">{t('surface.more')}</span></button>
@@ -1989,7 +2047,7 @@ function Workspace() {
     </header>
 
     {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenOnboarding={openPhaseAHandoff} onRestartOnboarding={openPhaseAHandoff} onOpenImportedAttention={() => setG2AttentionOpen(true)} t={t} /> : <>
-      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} setRunnerOpen={setRunnerOpen} graphOccupied={nodes.length > 0 || edges.length > 0} onOpenBuildIntent={() => setLumiBuildIntentOpen(true)} onOpenGraphEdit={() => setLumiGraphEditOpen(true)} t={t} />
+      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} onOpenExploreCapacityBridge={(nodeId) => openExploreCapacityBridge(nodeId)} canOpenExploreCapacityBridge={canOpenExploreCapacityBridge} selectedCapacityNodeId={selectedCapacityNodeId} setRunnerOpen={setRunnerOpen} graphOccupied={nodes.length > 0 || edges.length > 0} onOpenBuildIntent={() => setLumiBuildIntentOpen(true)} onOpenGraphEdit={() => setLumiGraphEditOpen(true)} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
       <motion.aside initial={false} animate={{ x: leftOpen ? 0 : '-110%' }} style={{ width: `min(${leftWidth}px, calc(100vw - 24px))` }} className={`${asideBase} left-3 lg:transform-none ${leftOpen ? 'lg:block' : 'lg:hidden'}`}>
@@ -2030,6 +2088,18 @@ function Workspace() {
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} developmentMatrixDriver={developmentMatrixDriver} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
     <ImportedAttentionExperience key={g2ProjectSession} open={g2AttentionOpen} onClose={() => setG2AttentionOpen(false)} localModelReference={localModelReferences[0] ?? null} onModelBound={(reference) => setLocalModelReferences([reference])} t={t} />
+    <ExploreCapacityBridgeDialog
+      open={surface === UI_SURFACES.BUILD && exploreCapacityBridgeOpen}
+      session={exploreCapacityBridge}
+      build={{ nodes, edges, dataset, customComponents }}
+      projectSessionId={projectSessionIdRef.current}
+      onClose={closeExploreCapacityBridge}
+      onStartNew={() => {
+        const selectedNodeId = exploreCapacityBridgeRef.current?.getSnapshot().selectedHiddenNode?.nodeId;
+        openExploreCapacityBridge(selectedNodeId, { newSession: true, requireSelection: false });
+      }}
+      t={t}
+    />
     {surface === UI_SURFACES.BUILD && <LumiBuildIntentDialog open={lumiBuildIntentOpen} onClose={() => setLumiBuildIntentOpen(false)} nodes={nodes} edges={edges} dataset={dataset} t={t} />}
     {surface === UI_SURFACES.BUILD && <LumiGraphEditDialog open={lumiGraphEditOpen} initialRequest={lumiGraphEditSeed} onClose={() => { setLumiGraphEditOpen(false); setLumiGraphEditSeed(''); }} nodes={nodes} edges={edges} customComponents={customComponents} language={primary} hasStagedProposal={Boolean(stagedGraphProposal)} t={t} />}
     <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />

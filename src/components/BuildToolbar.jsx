@@ -26,6 +26,9 @@ export default function BuildToolbar({
   importOnnx,
   onOpenExplorePlayground,
   onExploreCurrentSetup,
+  onOpenExploreCapacityBridge,
+  canOpenExploreCapacityBridge,
+  selectedCapacityNodeId,
   setRunnerOpen,
   onOpenBuildIntent,
   onOpenGraphEdit,
@@ -65,6 +68,9 @@ export default function BuildToolbar({
         onPickOnnx={() => onnxImportRef.current?.click()}
         onOpenExplorePlayground={onOpenExplorePlayground}
         onExploreCurrentSetup={onExploreCurrentSetup}
+        onOpenExploreCapacityBridge={onOpenExploreCapacityBridge}
+        canOpenExploreCapacityBridge={canOpenExploreCapacityBridge}
+        selectedCapacityNodeId={selectedCapacityNodeId}
         t={t}
       />
       <input
@@ -105,6 +111,9 @@ function BuildMoreDisclosure({
   onPickOnnx,
   onOpenExplorePlayground,
   onExploreCurrentSetup,
+  onOpenExploreCapacityBridge,
+  canOpenExploreCapacityBridge,
+  selectedCapacityNodeId,
   t,
 }) {
   const [open, setOpen] = React.useState(false);
@@ -150,6 +159,7 @@ function BuildMoreDisclosure({
     <button type="button" className={`${actionClass} ${dataset ? 'text-blue-700' : ''}`} onClick={() => { setDataOpen(true); close(); }}>▦ {t('nav.data')}</button>
     <button type="button" className={actionClass} onClick={() => { onOpenExplorePlayground?.('data-lab', { initialTab: 'data' }); close(); }}>▤ {t('nav.exploreData')}</button>
     <button type="button" className={actionClass} onClick={() => { onExploreCurrentSetup?.('data-lab'); close(); }}>✦ {t('nav.exploreCurrentSetup')}</button>
+    {canOpenExploreCapacityBridge && <button type="button" data-explore-capacity-bridge data-selected-node-id={selectedCapacityNodeId} className={actionClass} onClick={() => { onOpenExploreCapacityBridge?.(selectedCapacityNodeId); close(); }}>⇄ {t('nav.exploreCapacityBridge')}</button>}
     <button type="button" className={actionClass} onClick={() => { exportProject(); close(); }}>↓ JSON</button>
     <button type="button" className={actionClass} onClick={() => { close(); importRef.current?.click(); }}>↑ {t('nav.import')}</button>
     <button type="button" data-torch-export-import className={actionClass} onClick={() => { close(); onPickTorchExport?.(); }}>↑ {t('nav.importTorchExport')}</button>

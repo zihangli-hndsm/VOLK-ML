@@ -1,5 +1,34 @@
 # Changelog
 
+## 2026-09-28 — G2-bridge v1 Build→Explore capacity comparison
+
+- Added a visible Build → More route into an isolated local Explore comparison
+  for supported one-hidden-layer tabular MLP projects. Learners explicitly run
+  a fresh baseline and a fresh width variant with the same frozen dataset,
+  split, training settings, and deterministic seed; only the selected hidden
+  width and its derived next-layer input change.
+- Comparison metrics are bound to two unique current evaluator runs and remain
+  descriptive. The surface explains that width also changes initialization
+  shape, makes no “wider is better” claim, and never writes results into Build
+  or project JSON. In-memory sessions are lost on reload, become read-only and
+  stale after semantic source changes, and are disposed on project replacement.
+- Affected areas: `src/core/exploration/buildCapacityBridge.js`,
+  `src/components/ExploreCapacityBridgeDialog.jsx`, `src/components/BuildToolbar.jsx`,
+  `src/core/browserRuntime.js`, `src/main.jsx`, `src/locales/ui.js`,
+  bridge contract and mounted-browser checks, package scripts, and
+  `docs/architecture/build-explore-capacity-bridge.md`.
+- Validation: focused eligibility/lifecycle checks and mounted Chromium with
+  two actual Browser CPU L0 runs passed; the Build graph, dataset, and runtime
+  snapshot remained unchanged; layout-only edits preserved the result; a
+  semantic edit marked it stale; reload dropped the bridge session; project
+  replacement disposed it; no Cloud call was made. `npm run check`,
+  `npm run build`, encoding/mojibake scan, and `git diff --check` passed.
+- Limitations: only registered, single-hidden-layer L0 tabular MLP graphs are
+  eligible; sessions are volatile and no Cloud/Agent path is involved. Width
+  changes initialization tensor shape as well as parameter count and capacity,
+  so this is not a strict causal test. Optional default-Python PyTorch/ONNX
+  precheck integrations remain skipped when those packages are absent.
+
 ## 2026-09-28 — G2 response lifecycle and deterministic artifact identity
 
 - Keep the local G2 request deadline and caller cancellation active through
@@ -1436,3 +1465,10 @@
 - Affected areas: `src/components/ExploreImportedAttentionExperience.jsx`, Explore entry and `src/main.jsx`, local attention client/runtime contracts, `dev/g2_attention/`, model export/runtime setup scripts, `src/core/project.js`, `src/locales/ui.js`, G2 checks, example snapshots, and the imported-attention/overview/interop/tier architecture documentation.
 - Acceptance: G2 contract checks, real pinned-model export and HTTP runtime parity, Chromium browser flow (explicit import/run, measured matrices/evidence/concept, mobile layout, offline-runner containment), Episode 1 regression, full `npm run check`, `npm run build`, generated-example check, localization/encoding scan, and `git diff --check` passed.
 - Limitations: only the pinned 2-layer BERT-Tiny profile and fixed six-token pair are supported; the loopback process is not an OS sandbox. ONNX Runtime reports an output metadata shape warning for the Attention v25 probabilities although source parity and strict runtime checks confirm the actual normalized `[1,2,6,6]` outputs. The general precheck skipped optional default-Python PyTorch/ONNX integrations because they are not installed there; the dedicated G2 test used the pinned local runtime/export environment. The production build retains the existing large-bundle warning.
+
+## 2026-09-28 — G2-bridge v1 selected-node binding repair
+
+- Restricted the Build → Explore capacity entry to an exactly selected, eligible hidden Dense node. Session creation now requires and revalidates that exact node ID and canonical `dense_node` / `dense` identity; it never selects a Dense node implicitly. The session origin exposes the selected node identity, and the dialog retains it for in-session restart.
+- Affected areas: bridge eligibility/session contract, Build More selection gate and handler, localized bridge diagnostics, architecture docs, focused bridge checks, and mounted-browser acceptance.
+- Acceptance: no selection and a selected input node leave the entry unavailable; selecting the hidden Dense node exposes the entry and the resulting session records `build-hidden`. Two real Browser CPU runs, source immutability, layout preservation, semantic staleness, reload volatility, project replacement, recovery, no-Cloud behavior, full `npm run check`, production `npm run build`, and `git diff --check` passed. Optional default-Python PyTorch and ONNX/NumPy prechecks were skipped because those packages are absent.
+- Limitations: the bridge remains restricted to registered single-hidden-layer L0 tabular MLPs and volatile local sessions; width also changes initialization shape, so the comparison is descriptive rather than a strict causal test. No R0/exporter changes are included.
