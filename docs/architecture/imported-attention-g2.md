@@ -21,8 +21,9 @@ The accepted single-file ONNX profile is:
 | ONNX | Standard domain, opset 25, 70 nodes, exactly two `Attention` nodes |
 | Attention output | `qk_matmul_output_mode=3`, post-softmax probabilities |
 | Runtime | ONNX Runtime 1.30.0, `CPUExecutionProvider` only |
-| ONNX SHA-256 | `19b18790c5cc466d086ec473e91566bc3e852a74878fbae68f78d483a45c6cef` |
-| ONNX size | 17,650,030 bytes |
+| Current ONNX SHA-256 | `3ef55e4c13475e2b6cf4aec1f5002130412e9d58659e9e0943aeae863eba9cb1` |
+| Current ONNX size | 17,641,252 bytes |
+| Exact legacy alias | `19b18790c5cc466d086ec473e91566bc3e852a74878fbae68f78d483a45c6cef` (17,650,030 bytes) |
 
 The exporter is `tools/g2_attention/export_reference.py`. It uses a pinned
 Transformers/PyTorch/ONNX toolchain, checks the tokenizer's six IDs, exports the
@@ -48,9 +49,16 @@ npm run setup:g2-runtime
 ```
 
 The exporter downloads only the pinned model revision when `--model-dir` is
-omitted. Once the ONNX artifact exists, the actual Explore experience works
-offline; the runtime does not call Hugging Face, VOLK-Cloud, or another remote
-inference provider.
+omitted. It normalizes absolute checkout and Python-environment paths only in
+the nonsemantic `pkg.torch.onnx.stack_trace` debug metadata, preserving frame
+function and line information. This makes export bytes reproducible across
+checkout roots while SHA-256 remains the identity of the exact file bytes.
+Existing projects using the one exact legacy digest remain supported as an
+explicit alias; arbitrary hashes are still rejected, and both artifacts must
+pass the same pinned graph-profile and source/CPU parity validation. New
+exports use the current digest. Once the ONNX artifact exists, the actual
+Explore experience works offline; the runtime does not call Hugging Face,
+VOLK-Cloud, or another remote inference provider.
 
 ## Local execution boundary
 
@@ -63,6 +71,12 @@ the registered token-ID pair. It constructs the fixed all-visible mask and
 zero token types locally and returns logits and checked probability matrices.
 Responses are correlated and strictly validated by
 `src/services/localAttention/client.js` before the inquiry record is updated.
+Its per-request deadline and optional caller cancellation remain active until
+the complete response body has been consumed and the endpoint-specific
+response contract has passed validation. A timeout or close/cancel after
+headers but before a valid body therefore settles the request without exposing
+a partial result; the UI can leave its busy state, preserve the previous
+comparison and Evidence, and allow an explicit retry.
 
 This is loopback isolation and a narrow request contract, not an operating
 system sandbox: Python and ONNX Runtime execute with the current user's normal
@@ -85,6 +99,13 @@ records per-layer max deltas and logit deltas. A Concept Card is shown only when
 that detector evidence exists. Weak movement still leaves the comparison
 visible and does not surface the concept. Failed, timed-out, stale, malformed,
 or mismatched responses do not append events or alter the previous evidence.
+Each successful comparison receives unique A/B experiment identities derived
+from its validated request ID. Repeating the same fixed semantic condition
+retains comparison history but condition-level deduplication prevents duplicate
+Evidence. Loading or importing a project begins a fresh in-memory G2 inquiry
+session, even when the same model hash remains linked; any in-flight result is
+aborted and cannot populate the new session. The learner must explicitly run
+again to create current-session comparison or Evidence.
 
 Project v9 persists only `localModelReferences: [{ profileId, sha256 }]`. It
 does not embed the ONNX file or preserve its user path; another device must
@@ -123,18 +144,23 @@ snapshot directory and regenerated artifact:
 $env:VOLK_G2_PYTHON = Join-Path $env:LOCALAPPDATA 'VOLK\venvs\g2-attention-exporter\Scripts\python.exe'
 $env:VOLK_G2_MODEL_DIR = 'C:\path\to\pinned\checkpoint-snapshot'
 $env:VOLK_G2_REFERENCE_ONNX = "$env:LOCALAPPDATA\VOLK\models\bert-tiny-attention-v25.onnx"
+$env:VOLK_G2_LEGACY_ONNX = 'C:\path\to\previously-accepted\g2-export-test.onnx'
 npm run check:g2-imported-model
 npm run test:g2-imported-model:reference
 npm run test:g2-imported-model:browser
 ```
 
-The real reference test regenerates the ONNX file from the local checkpoint,
-asserts the exact registered hash, starts the production loopback server, sends
-the actual model bytes through the production client, and checks CPU logits,
-normalized attention outputs, semantic comparison, and Evidence. The browser
+The real reference test exports from two independent temporary checkout roots,
+asserts byte-for-byte reproducibility and the exact current hash, validates the
+exact registered legacy alias, starts the production loopback server, sends
+both actual model files through the production client, and checks pinned-source
+CPU logits, normalized attention outputs, semantic comparison, and Evidence. It
+does not overwrite either supplied artifact. The browser
 test covers file relinking, local hash-addressed cache persistence, project
 refresh and runner-restart recovery without inference, missing/corrupt cache
 recovery, hash-only project export, explicit Run/Compare, rendering, and
 runner-offline failure containment while preserving any existing truthful
-Evidence. This strict G2 profile does not make
+Evidence. It also verifies repeated-run identity and Evidence deduplication,
+plus stale-response cancellation and clean inquiry state after a same-hash
+project switch. This strict G2 profile does not make
 other ONNX opsets, model files, sequence models, or general L2 graphs executable.

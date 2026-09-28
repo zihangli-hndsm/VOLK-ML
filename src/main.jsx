@@ -570,6 +570,7 @@ function Workspace() {
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [playgroundOpen, setPlaygroundOpen] = useState(false);
   const [g2AttentionOpen, setG2AttentionOpen] = useState(false);
+  const [g2ProjectSession, setG2ProjectSession] = useState(0);
   const [directorOpen, setDirectorOpen] = useState(false);
   const [playgroundId, setPlaygroundId] = useState(null);
   const [playgroundInitialTab, setPlaygroundInitialTab] = useState('model');
@@ -942,6 +943,7 @@ function Workspace() {
       };
     });
     const restoredEdges = project.graph.edges.map((edge) => ({ ...edge, selected: false, type: 'deletable' }));
+    setG2ProjectSession((session) => session + 1);
     const nextRuntime = idleRuntimeState();
     workspaceStateRef.current = {
       ...workspaceStateRef.current,
@@ -2027,7 +2029,7 @@ function Workspace() {
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => openExplorePlayground(id)} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} developmentMatrixDriver={developmentMatrixDriver} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
-    <ImportedAttentionExperience open={g2AttentionOpen} onClose={() => setG2AttentionOpen(false)} localModelReference={localModelReferences[0] ?? null} onModelBound={(reference) => setLocalModelReferences([reference])} t={t} />
+    <ImportedAttentionExperience key={g2ProjectSession} open={g2AttentionOpen} onClose={() => setG2AttentionOpen(false)} localModelReference={localModelReferences[0] ?? null} onModelBound={(reference) => setLocalModelReferences([reference])} t={t} />
     {surface === UI_SURFACES.BUILD && <LumiBuildIntentDialog open={lumiBuildIntentOpen} onClose={() => setLumiBuildIntentOpen(false)} nodes={nodes} edges={edges} dataset={dataset} t={t} />}
     {surface === UI_SURFACES.BUILD && <LumiGraphEditDialog open={lumiGraphEditOpen} initialRequest={lumiGraphEditSeed} onClose={() => { setLumiGraphEditOpen(false); setLumiGraphEditSeed(''); }} nodes={nodes} edges={edges} customComponents={customComponents} language={primary} hasStagedProposal={Boolean(stagedGraphProposal)} t={t} />}
     <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />

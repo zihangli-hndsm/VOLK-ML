@@ -1,6 +1,13 @@
 export const G2_ATTENTION_API_VERSION = 'g2-local-v1';
 export const G2_ATTENTION_PROFILE_ID = 'bert-tiny-sst2-attention-v25-cpu-v1';
-export const G2_ATTENTION_PROFILE_SHA256 = '19b18790c5cc466d086ec473e91566bc3e852a74878fbae68f78d483a45c6cef';
+export const G2_ATTENTION_PROFILE_SHA256 = '3ef55e4c13475e2b6cf4aec1f5002130412e9d58659e9e0943aeae863eba9cb1';
+export const G2_ATTENTION_LEGACY_SHA256S = Object.freeze([
+  '19b18790c5cc466d086ec473e91566bc3e852a74878fbae68f78d483a45c6cef',
+]);
+export const G2_ATTENTION_ACCEPTED_SHA256S = Object.freeze([
+  G2_ATTENTION_PROFILE_SHA256,
+  ...G2_ATTENTION_LEGACY_SHA256S,
+]);
 export const G2_ATTENTION_MAX_MODEL_BYTES = 20 * 1024 * 1024;
 export const G2_ATTENTION_SEQUENCE_LENGTH = 6;
 export const G2_ATTENTION_HEADS = 2;
@@ -13,6 +20,10 @@ const exactKeys = (value, expected) => (
   && Object.keys(value).length === expected.length
   && expected.every((key) => Object.hasOwn(value, key))
 );
+
+export function isG2AttentionArtifactSha256(value) {
+  return G2_ATTENTION_ACCEPTED_SHA256S.includes(value);
+}
 
 export function validateImportedAttentionModel(file) {
   if (!file || typeof file.size !== 'number' || file.size < 1 || file.size > G2_ATTENTION_MAX_MODEL_BYTES) {
@@ -54,9 +65,10 @@ export function validateImportedAttentionImportResponse(value, { requestId, sha2
   if (!exactKeys(value, ['apiVersion', 'profileId', 'modelHash', 'requestId'])
     || value.apiVersion !== G2_ATTENTION_API_VERSION
     || value.profileId !== G2_ATTENTION_PROFILE_ID
-    || value.modelHash !== `sha256:${G2_ATTENTION_PROFILE_SHA256}`
+    || !isG2AttentionArtifactSha256(sha256)
+    || value.modelHash !== `sha256:${sha256}`
     || value.requestId !== requestId
-    || sha256 !== G2_ATTENTION_PROFILE_SHA256) {
+  ) {
     throw Object.assign(new Error('g2.responseInvalid'), { translationKey: 'g2.error.responseInvalid' });
   }
   return Object.freeze({ profileId: value.profileId, sha256: sha256 });
@@ -109,7 +121,7 @@ export function deriveImportedAttentionEvidence(comparison) {
 
 export function createImportedAttentionEvidenceDraft(evidence, { modelHash, experimentIds } = {}) {
   if (!evidence?.attentionChanged || typeof modelHash !== 'string' || !Array.isArray(experimentIds) || experimentIds.length !== 2) return null;
-  const conditionFingerprint = `g2:${modelHash}:${evidence.inputTokenIds.join('-')}`.slice(0, 96);
+  const conditionFingerprint = `g2:${G2_ATTENTION_PROFILE_ID}:${evidence.inputTokenIds.join('-')}`.slice(0, 96);
   return {
     type: 'observation.detected',
     actor: 'human',
