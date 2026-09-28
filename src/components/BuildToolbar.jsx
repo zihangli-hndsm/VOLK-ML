@@ -29,6 +29,7 @@ export default function BuildToolbar({
   onOpenExploreCapacityBridge,
   canOpenExploreCapacityBridge,
   selectedCapacityNodeId,
+  capacityBridgeRepair,
   setRunnerOpen,
   onOpenBuildIntent,
   onOpenGraphEdit,
@@ -71,6 +72,7 @@ export default function BuildToolbar({
         onOpenExploreCapacityBridge={onOpenExploreCapacityBridge}
         canOpenExploreCapacityBridge={canOpenExploreCapacityBridge}
         selectedCapacityNodeId={selectedCapacityNodeId}
+        capacityBridgeRepair={capacityBridgeRepair}
         t={t}
       />
       <input
@@ -114,6 +116,7 @@ function BuildMoreDisclosure({
   onOpenExploreCapacityBridge,
   canOpenExploreCapacityBridge,
   selectedCapacityNodeId,
+  capacityBridgeRepair,
   t,
 }) {
   const [open, setOpen] = React.useState(false);
@@ -160,6 +163,19 @@ function BuildMoreDisclosure({
     <button type="button" className={actionClass} onClick={() => { onOpenExplorePlayground?.('data-lab', { initialTab: 'data' }); close(); }}>▤ {t('nav.exploreData')}</button>
     <button type="button" className={actionClass} onClick={() => { onExploreCurrentSetup?.('data-lab'); close(); }}>✦ {t('nav.exploreCurrentSetup')}</button>
     {canOpenExploreCapacityBridge && <button type="button" data-explore-capacity-bridge data-selected-node-id={selectedCapacityNodeId} className={actionClass} onClick={() => { onOpenExploreCapacityBridge?.(selectedCapacityNodeId); close(); }}>⇄ {t('nav.exploreCapacityBridge')}</button>}
+    {capacityBridgeRepair && <div
+      data-explore-capacity-bridge-repair
+      data-selected-node-id={capacityBridgeRepair.selectedNodeId}
+      data-reason-code={capacityBridgeRepair.reasonCode}
+      data-repair-codes={capacityBridgeRepair.requiredSteps.join(',')}
+      role="status"
+      aria-live="polite"
+      className="max-w-xl rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-left text-sm leading-5 text-amber-950 sm:col-span-2"
+    >
+      <p className="font-black">{t('explore.capacity.repair.title')}</p>
+      {capacityBridgeRepair.requiredSteps.map((step) => <p key={step} className="mt-1">{t(`explore.capacity.repair.${step}`)}</p>)}
+      <p className="mt-2 text-xs font-semibold">{t('explore.capacity.repair.noRun')}</p>
+    </div>}
     <button type="button" className={actionClass} onClick={() => { exportProject(); close(); }}>↓ JSON</button>
     <button type="button" className={actionClass} onClick={() => { close(); importRef.current?.click(); }}>↑ {t('nav.import')}</button>
     <button type="button" data-torch-export-import className={actionClass} onClick={() => { close(); onPickTorchExport?.(); }}>↑ {t('nav.importTorchExport')}</button>

@@ -21,6 +21,16 @@ interactive predictor branch may remain attached. Custom components, other
 training roots, extra model branches/layers, incomplete data, and graphs above
 the browser L0 estimate are rejected with stable reason codes.
 
+When a selected hidden Dense belongs to a recognizable registered one-hidden-
+layer model path but the imported architecture has no dataset/training path, the
+Build → More menu shows a localized repair prompt instead of a bridge entry.
+The prompt names the missing Dataset → Train/Test Split and/or Supervised
+Trainer → evaluator connections. It is a projection of the current graph, not a
+repair proposal: it does not add components, choose a dataset, open a comparison
+session, or execute the model. This behavior applies identically to canonical,
+Torch Export, and normalized ONNX graphs; import still uses its own preview and
+explicit Apply boundary.
+
 `inspectExploreCapacityBuild(build, { selectedNodeId })` is a strict eligibility
 check over current Build state and the explicit selection. A ready
 `ExploreBridgeSessionV1` snapshots its supported graph, validated dataset,
@@ -69,3 +79,7 @@ Run `npm run check:build-explore-capacity-bridge` for contract, lifecycle, and
 real-runtime checks, and `npm run test:build-explore-capacity-bridge:browser`
 for the mounted browser path, which starts the app without a Cloud URL and
 executes both CPU runs from the visible Build → More action.
+Run `npm run test:build-explore-capacity-bridge:import-browser` with
+`ONNX_PYTHON` pointing to the configured ONNX/NumPy environment to verify real
+B2 Torch Export and B3 normalized ONNX preview/explicit-Apply paths, localized
+repair prompts, the unavailable Run boundary, and non-mutation after Apply.

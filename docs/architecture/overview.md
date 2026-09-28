@@ -138,6 +138,11 @@ The same document also describes the Director prototype and its clean Explore
 handoff. Director presentation state is replayable and semantically inert;
 Episode 1 remains the single source of inquiry truth.
 
+The [Build → Explore capacity bridge document](./build-explore-capacity-bridge.md)
+also specifies the imported-architecture repair prompt: an eligible selected
+hidden Dense can explain the missing dataset/training/evaluation path without
+creating a comparison session or mutating the imported graph.
+
 Phase A's Director opens a separate onboarding workspace; real learner actions
 use the existing host/event path, and an explicit question trigger promotes a
 clean Episode 1 session. Direct Episode entries remain available.

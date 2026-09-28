@@ -711,12 +711,14 @@ function Workspace() {
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
   const selectedNodes = nodes.filter((node) => node.selected);
   const selectedCapacityNodeId = selectedNodes.length === 1 ? selectedNodes[0].id : null;
-  const canOpenExploreCapacityBridge = useMemo(() => {
-    if (!selectedCapacityNodeId) return false;
+  const exploreCapacityBridgeAssessment = useMemo(() => {
+    if (!selectedCapacityNodeId) return null;
     return inspectExploreCapacityBuild({ nodes, edges, dataset, customComponents }, {
       selectedNodeId: selectedCapacityNodeId,
-    }).supported;
+    });
   }, [nodes, edges, dataset, customComponents, selectedCapacityNodeId]);
+  const canOpenExploreCapacityBridge = exploreCapacityBridgeAssessment?.supported === true;
+  const capacityBridgeRepair = exploreCapacityBridgeAssessment?.repair ?? null;
   const availablePlugins = useMemo(() => [...pluginRegistry, ...customComponents], [customComponents]);
   const filteredPlugins = useMemo(() => availablePlugins.filter((plugin) => {
     const haystack = [plugin.category, ...Object.values(plugin.name), ...Object.values(plugin.description)].join(' ').toLowerCase();
@@ -2047,7 +2049,7 @@ function Workspace() {
     </header>
 
     {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenOnboarding={openPhaseAHandoff} onRestartOnboarding={openPhaseAHandoff} onOpenImportedAttention={() => setG2AttentionOpen(true)} t={t} /> : <>
-      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} onOpenExploreCapacityBridge={(nodeId) => openExploreCapacityBridge(nodeId)} canOpenExploreCapacityBridge={canOpenExploreCapacityBridge} selectedCapacityNodeId={selectedCapacityNodeId} setRunnerOpen={setRunnerOpen} graphOccupied={nodes.length > 0 || edges.length > 0} onOpenBuildIntent={() => setLumiBuildIntentOpen(true)} onOpenGraphEdit={() => setLumiGraphEditOpen(true)} t={t} />
+      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} onOpenExploreCapacityBridge={(nodeId) => openExploreCapacityBridge(nodeId)} canOpenExploreCapacityBridge={canOpenExploreCapacityBridge} selectedCapacityNodeId={selectedCapacityNodeId} capacityBridgeRepair={capacityBridgeRepair} setRunnerOpen={setRunnerOpen} graphOccupied={nodes.length > 0 || edges.length > 0} onOpenBuildIntent={() => setLumiBuildIntentOpen(true)} onOpenGraphEdit={() => setLumiGraphEditOpen(true)} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
       <motion.aside initial={false} animate={{ x: leftOpen ? 0 : '-110%' }} style={{ width: `min(${leftWidth}px, calc(100vw - 24px))` }} className={`${asideBase} left-3 lg:transform-none ${leftOpen ? 'lg:block' : 'lg:hidden'}`}>

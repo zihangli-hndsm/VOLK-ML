@@ -183,6 +183,122 @@ function unsupported(reasonCode, details = {}) {
   return { supported: false, reasonCode, ...details };
 }
 
+function identifiableHiddenDensePath(build, selectedNodeId) {
+  const nodes = Array.isArray(build?.nodes) ? build.nodes : [];
+  const edges = Array.isArray(build?.edges) ? build.edges : [];
+  if (typeof selectedNodeId !== 'string' || !selectedNodeId
+    || !nodes.length
+    || (Array.isArray(build?.customComponents) && build.customComponents.length)
+    || !exactRegisteredComponents(nodes)
+    || nodes.some((node) => !node?.id || !node?.data?.manifest || !node?.data?.parameters)) return null;
+
+  const outputNodes = nodeIdByOp(nodes, 'model_output');
+  if (outputNodes.length !== 1) return null;
+  const chain = modelChain({ nodes, edges, outputNode: outputNodes[0] });
+  if (!chain) return null;
+  const denseNodes = chain.filter((node) => nodeOp(node) === 'dense');
+  const activationNodes = chain.filter((node) => HIDDEN_ACTIVATIONS.has(nodeOp(node)));
+  const softmaxNodes = chain.filter((node) => nodeOp(node) === 'softmax');
+  const modelOps = new Set(['tensor_input', 'dense', ...HIDDEN_ACTIVATIONS, 'softmax', 'model_output']);
+  const modelNodes = nodes.filter((node) => modelOps.has(nodeOp(node)));
+  if (denseNodes.length !== 2 || activationNodes.length !== 1 || softmaxNodes.length > 1
+    || modelNodes.length !== chain.length
+    || selectedNodeId !== denseNodes[0].id
+    || JSON.stringify(chain.map(nodeOp)) !== JSON.stringify([
+      'tensor_input', 'dense', nodeOp(activationNodes[0]), 'dense',
+      ...(softmaxNodes.length ? ['softmax'] : []), 'model_output',
+    ])) return null;
+
+  const allowedOps = new Set([
+    ...chain.map(nodeOp),
+    'tabular_data', 'train_test_split', 'supervised_trainer',
+    'mse_loss', 'cross_entropy_loss', 'sgd_optimizer', 'adam_optimizer',
+    'evaluate_regression', 'evaluate_classification', 'interactive_predictor',
+  ]);
+  if (nodes.some((node) => !allowedOps.has(nodeOp(node)))) return null;
+  const boundedSupportingOps = [
+    ['tabular_data'],
+    ['train_test_split'],
+    ['supervised_trainer'],
+    ['mse_loss', 'cross_entropy_loss'],
+    ['sgd_optimizer', 'adam_optimizer'],
+    ['evaluate_regression', 'evaluate_classification'],
+    ['interactive_predictor'],
+  ];
+  if (boundedSupportingOps.some((ops) => nodes.filter((node) => ops.includes(nodeOp(node))).length > 1)) return null;
+  const modelEdges = chain.slice(1).map((node, index) => ({
+    source: chain[index].id,
+    sourceHandle: chain[index].data.manifest.outputs[0]?.name,
+    target: node.id,
+    targetHandle: node.data.manifest.inputs[0]?.name,
+  }));
+  if (modelEdges.some((expected) => !edges.some((edge) => edge.source === expected.source
+    && edge.sourceHandle === expected.sourceHandle
+    && edge.target === expected.target
+    && edge.targetHandle === expected.targetHandle))) return null;
+  const modelNodeIds = new Set(chain.map((node) => node.id));
+  const internalModelEdges = edges.filter((edge) => modelNodeIds.has(edge.source) && modelNodeIds.has(edge.target));
+  if (internalModelEdges.length !== modelEdges.length) return null;
+  return { nodeId: selectedNodeId, registryIdentity: { componentId: 'dense_node', op: 'dense' } };
+}
+
+function hasCompleteCapacityTrainingPath(build) {
+  const nodes = Array.isArray(build?.nodes) ? build.nodes : [];
+  const edges = Array.isArray(build?.edges) ? build.edges : [];
+  const trainer = oneNode(nodes, 'supervised_trainer');
+  const split = oneNode(nodes, 'train_test_split');
+  const output = oneNode(nodes, 'model_output');
+  const lossNodes = nodes.filter((node) => ['mse_loss', 'cross_entropy_loss'].includes(nodeOp(node)));
+  const optimizerNodes = nodes.filter((node) => ['sgd_optimizer', 'adam_optimizer'].includes(nodeOp(node)));
+  const data = oneNode(nodes, 'tabular_data');
+  const expectedLossOp = build.dataset?.task === 'classification' ? 'cross_entropy_loss'
+    : build.dataset?.task === 'regression' ? 'mse_loss' : null;
+  const expectedEvaluatorOp = build.dataset?.task === 'classification' ? 'evaluate_classification'
+    : build.dataset?.task === 'regression' ? 'evaluate_regression' : null;
+  const evaluators = nodes.filter((node) => ['evaluate_regression', 'evaluate_classification'].includes(nodeOp(node)));
+  if (!trainer || !split || !output || !data || !expectedLossOp || !expectedEvaluatorOp
+    || lossNodes.length !== 1 || nodeOp(lossNodes[0]) !== expectedLossOp
+    || optimizerNodes.length !== 1 || evaluators.length !== 1 || nodeOp(evaluators[0]) !== expectedEvaluatorOp) return false;
+  const trainerInputs = [
+    ['model', output.id, 'model'],
+    ['dataset', split.id, 'split'],
+    ['loss', lossNodes[0].id, 'loss'],
+    ['optimizer', optimizerNodes[0].id, 'optimizer'],
+  ];
+  if (trainerInputs.some(([targetHandle, source, sourceHandle]) => {
+    const edge = incomingEdge(edges, trainer.id, targetHandle);
+    return edge?.source !== source || edge?.sourceHandle !== sourceHandle;
+  })) return false;
+  const dataEdge = edges.find((edge) => edge.source === data.id && edge.sourceHandle === 'dataset'
+    && edge.target === split.id && edge.targetHandle === 'dataset');
+  if (!dataEdge || !build?.dataset) return false;
+  return edges.some((edge) => edge.source === trainer.id
+    && edge.sourceHandle === 'trained_model'
+    && edge.target === evaluators[0].id
+    && edge.targetHandle === 'trained_model');
+}
+
+function repairProjection(build, selectedNodeId, inspection) {
+  if (inspection.supported || !identifiableHiddenDensePath(build, selectedNodeId)) return null;
+  const nodes = Array.isArray(build?.nodes) ? build.nodes : [];
+  const edges = Array.isArray(build?.edges) ? build.edges : [];
+  const data = oneNode(nodes, 'tabular_data');
+  const split = oneNode(nodes, 'train_test_split');
+  const hasDatasetPipeline = Boolean(build?.dataset && data && split
+    && edges.some((edge) => edge.source === data.id && edge.sourceHandle === 'dataset'
+      && edge.target === split.id && edge.targetHandle === 'dataset'));
+  const requiredSteps = [];
+  if (!hasDatasetPipeline) requiredSteps.push('DATASET_PIPELINE_REQUIRED');
+  if (!hasCompleteCapacityTrainingPath(build)) requiredSteps.push('TRAINING_EVALUATION_PATH_REQUIRED');
+  if (!requiredSteps.length || !['DATASET_MISSING', 'UNSUPPORTED_TRAINER', 'UNSUPPORTED_GRAPH_BRANCH', 'L0_GRAPH_UNSUPPORTED'].includes(inspection.reasonCode)) return null;
+  return {
+    selectedNodeId,
+    registryIdentity: { componentId: 'dense_node', op: 'dense' },
+    reasonCode: inspection.reasonCode,
+    requiredSteps,
+  };
+}
+
 /** Strict eligibility for the existing browser L0 executor's one-hidden-layer tabular MLP. */
 function inspectExploreCapacityBuildInternal(build = {}, { selectedNodeId = null } = {}) {
   const nodes = Array.isArray(build.nodes) ? build.nodes : [];
@@ -304,8 +420,10 @@ function inspectExploreCapacityBuildInternal(build = {}, { selectedNodeId = null
 
 /** Return only bounded semantic metadata; input rows stay outside the session projection. */
 export function inspectExploreCapacityBuild(build = {}, options = {}) {
-  const { source: _privateSource, ...publicAssessment } = inspectExploreCapacityBuildInternal(build, options);
-  return publicAssessment;
+  const inspection = inspectExploreCapacityBuildInternal(build, options);
+  const { source: _privateSource, ...publicAssessment } = inspection;
+  const repair = repairProjection(build, options.selectedNodeId, inspection);
+  return repair ? { ...publicAssessment, repair } : publicAssessment;
 }
 
 function makeCapacityVariant(source, hiddenNodeId, outputNodeId, width) {
