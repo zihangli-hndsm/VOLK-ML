@@ -24,6 +24,7 @@ const diagnosticKeys = new Set([
   'GRAPH_PATCH_AUTHORITY_INVALID',
   'GRAPH_PATCH_CAPABILITY_SNAPSHOT_MISMATCH',
   'GRAPH_PATCH_VERSION_UNSUPPORTED',
+  'EXPLORE_TO_BUILD_SOURCE_STALE',
 ]);
 
 function diagnosticKey(diagnostic) {
@@ -165,7 +166,43 @@ function safeSourceLabel(producer) {
   })[producer] ?? 'graphPatch.producer.unknown';
 }
 
-export default function GraphPatchPreview({ proposal, applyEligibility, onCancel, onApply, t }) {
+function metricValue(value) {
+  return Number.isFinite(value) ? String(Number(value.toPrecision(7))) : '';
+}
+
+function ExploreToBuildDetails({ proposal, t }) {
+  if (!proposal) return null;
+  const { source, runs, measurements, change, derivedChanges } = proposal;
+  return <section className="space-y-3 rounded-2xl border border-indigo-200 bg-indigo-50/60 p-4" data-explore-to-build-source data-session-id={source.sessionId} data-comparison-id={source.comparisonId} data-source-run-ids={source.runIds.join(',')}>
+    <div>
+      <h3 className="font-black text-slate-950">{t('graphPatch.exploreToBuild.heading')}</h3>
+      <p className="mt-1 break-words text-xs leading-5 text-slate-700">{t('graphPatch.exploreToBuild.source', { sessionId: source.sessionId, comparisonId: source.comparisonId })}</p>
+    </div>
+    <div className="grid gap-2 md:grid-cols-2">
+      <p className="rounded-xl bg-white/85 p-3 text-xs leading-5 text-slate-800">{t('graphPatch.exploreToBuild.width', { nodeId: change.nodeId, before: change.from, after: change.to })}</p>
+      {derivedChanges.map((item) => <p key={item.nodeId} className="rounded-xl bg-white/85 p-3 text-xs leading-5 text-slate-800">{t('graphPatch.exploreToBuild.derived', { nodeId: item.nodeId, before: item.from, after: item.to })}</p>)}
+      <p className="rounded-xl bg-white/85 p-3 text-xs leading-5 text-slate-800">{t('graphPatch.exploreToBuild.dataset', { task: t(`buildIntent.task.${source.dataset.task}`), features: source.dataset.features.join(', '), target: source.dataset.target })}</p>
+      <p className="rounded-xl bg-white/85 p-3 text-xs leading-5 text-slate-800">{t('graphPatch.exploreToBuild.split', { seed: source.split.seed, trainRatio: source.split.trainRatio, trainRows: source.split.trainRows, testRows: source.split.testRows })}</p>
+      <p className="rounded-xl bg-white/85 p-3 text-xs leading-5 text-slate-800">{t('graphPatch.exploreToBuild.training', { seed: source.training.seed, epochs: source.training.epochs, batchSize: source.training.batchSize, loss: source.training.loss, optimizer: source.training.optimizer.op })}</p>
+      <p className="rounded-xl bg-white/85 p-3 text-xs leading-5 text-slate-800">{t('graphPatch.exploreToBuild.runPair', { baseline: runs[0].runId, variant: runs[1].runId })}</p>
+    </div>
+    <div className="overflow-x-auto rounded-xl border border-indigo-100 bg-white">
+      <table className="w-full min-w-[20rem] text-left text-xs" data-explore-to-build-measurements>
+        <thead className="bg-indigo-50 text-slate-600"><tr><th className="px-3 py-2">{t('explore.capacity.metric')}</th><th className="px-3 py-2">{t('explore.capacity.baseline')}</th><th className="px-3 py-2">{t('explore.capacity.variant')}</th><th className="px-3 py-2">{t('explore.capacity.delta')}</th></tr></thead>
+        <tbody>{measurements.metrics.map((item) => <tr key={item.metric} className="border-t border-slate-100" data-explore-to-build-measurement={item.metric} data-baseline={item.baseline} data-variant={item.variant} data-delta={item.delta}>
+          <th scope="row" className="px-3 py-2 font-bold">{t(`explore.capacity.metric.${item.metric}`)}</th>
+          <td className="px-3 py-2 font-mono tabular-nums">{metricValue(item.baseline)}</td>
+          <td className="px-3 py-2 font-mono tabular-nums">{metricValue(item.variant)}</td>
+          <td className="px-3 py-2 font-mono tabular-nums">{metricValue(item.delta)}</td>
+        </tr>)}</tbody>
+      </table>
+    </div>
+    <p className="rounded-xl bg-white/85 p-3 text-xs leading-5 text-slate-700">{t('graphPatch.exploreToBuild.pairedOnly')}</p>
+    <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-5 text-amber-950">{t('graphPatch.exploreToBuild.afterApply')}</p>
+  </section>;
+}
+
+export default function GraphPatchPreview({ proposal, exploreToBuildProposal = null, applyEligibility, onCancel, onApply, t }) {
   const cancelRef = useRef(null);
   const checked = useMemo(() => validateGraphPatchProposal(proposal), [proposal]);
   const diff = useMemo(() => (checked.valid
@@ -229,12 +266,14 @@ export default function GraphPatchPreview({ proposal, applyEligibility, onCancel
             <section className="space-y-2" aria-labelledby="graph-patch-edge-diff"><h3 id="graph-patch-edge-diff" className="font-black text-slate-900">{t('graphPatch.edgeDiff')}</h3><ChangeGroups changes={diff.edges} kind="edge" t={t} /></section>
           </div>
 
+          <ExploreToBuildDetails proposal={exploreToBuildProposal} t={t} />
+
           <div className="grid gap-3 lg:grid-cols-2">
             <section className="rounded-2xl border border-slate-200 p-4">
               <h3 className="font-black text-slate-900">{t('graphPatch.source')}</h3>
               <p className="mt-1 break-words text-xs text-slate-700">{t(safeSourceLabel(proposal.source.producer))}{proposal.source.provenance?.artifactId ? ` · ${proposal.source.provenance.artifactId}` : ''}</p>
               <h4 className="mt-3 text-xs font-bold text-slate-600">{t('graphPatch.rationale')}</h4>
-              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{proposal.rationale === GRAPH_EDIT_RATIONALE_CODE ? t('graphEdit.patchRationale') : proposal.rationale}</p>
+              <p className="mt-1 whitespace-pre-wrap break-words text-sm text-slate-800">{proposal.rationale === GRAPH_EDIT_RATIONALE_CODE ? t('graphEdit.patchRationale') : proposal.rationale === 'g3:paired-capacity-transfer-v1' ? t('graphPatch.exploreToBuild.rationale') : proposal.rationale}</p>
             </section>
             <section className="rounded-2xl border border-slate-200 p-4">
               <h3 className="font-black text-slate-900">{t('graphPatch.operations')}</h3>

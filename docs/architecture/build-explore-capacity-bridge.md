@@ -73,6 +73,40 @@ request, or Agent authority in this bridge. The fixed BERT-Tiny Attention v25
 reference remains a separate G2 experience and is not used as this graph's
 model.
 
+## Explore → Build v1 configuration transfer (G3)
+
+After a completed, successful G2 pair, **Use this configuration in Build** may
+create a volatile `ExploreToBuildProposalV1` from that session's private source
+snapshot and its two actual `executeBrowserGraph()` run records. The proposal
+binds the comparison, both run IDs, exact metric provenance and values, project
+session, semantic graph, registered hidden-layer identity, dataset, split, and
+training settings. Positive, zero, and negative observed metric deltas are all
+valid; the exact pair is descriptive, not Evidence and not a general claim
+that the wider model is better.
+
+The only transferred changes are the selected `Dense.units` and its derived
+downstream `Dense.input_features`. The proposal is converted to the existing
+detached `GraphPatchProposalV1`, then uses the existing C2 read-only preview,
+freshness checks, explicit learner Apply, and commit. Cancelling or closing
+the preview leaves Build unchanged. Preview and Apply both revalidate against
+the still-live G2 session and current source; stale, replaced, edited, failed,
+or incomplete sources cannot be applied. Duplicate staging resolves to the
+same deterministic proposal identity and does not create another run.
+
+Apply changes configuration only. It does not execute Build, write G2 run
+records or measurements into the project, or change Evidence. The learner
+must explicitly open Build Run and execute separately; the resulting Build
+attempt has its own identity and result history. This v1 transfer does not
+persist project metadata, add an Undo action, or depend on Cloud. The preview
+states that after Apply the learner can manually Run and that Undo is
+unavailable.
+
+The contract and focused tamper/replay checks are in
+`src/core/exploration/exploreToBuildProposal.js` and
+`scripts/check-explore-to-build.mjs`. The mounted G2/G3 browser path is
+`scripts/build-explore-capacity-bridge-cdp-browser.mjs`; run it with
+`npm run test:explore-to-build:browser`.
+
 ## Verification
 
 Run `npm run check:build-explore-capacity-bridge` for contract, lifecycle, and

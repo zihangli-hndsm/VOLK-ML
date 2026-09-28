@@ -404,6 +404,13 @@ graph.
 
 ## C1 detached graph patches
 
+G3's Explore → Build configuration transfer is a source adapter over this C1
+contract, not a second graph-mutation path. It builds an allowlisted two-node
+`UPDATE_PARAMETERS` proposal from actual paired G2 records and then relies on
+the same C2 preview, freshness validation, explicit Apply, and commit boundary.
+See [`build-explore-capacity-bridge.md`](./build-explore-capacity-bridge.md)
+for its source-binding and measurement-claim limits.
+
 GraphPatchProposalV1 describes an ordered, bounded patch against one detached
 graph snapshot. Its implementation is src/core/graph/graphPatchProposal.js;
 the contract is exported from src/core/graph/index.js. A patch carries the

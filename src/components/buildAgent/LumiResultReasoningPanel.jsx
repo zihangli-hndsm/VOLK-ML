@@ -143,7 +143,7 @@ export default function LumiResultReasoningPanel({
         const freshness = record.status === 'succeeded'
           ? record.attemptId === currentAttemptId ? 'current' : 'historical'
           : record.status;
-        return <div key={record.attemptId} className="rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs" data-run-history-status={record.status} data-run-history-freshness={freshness}>
+        return <div key={record.attemptId} className="rounded-xl border border-indigo-100 bg-white px-3 py-2 text-xs" data-run-history-status={record.status} data-run-history-freshness={freshness} data-run-history-attempt-id={record.attemptId}>
         <span className="font-bold">{t('lumiResult.runOrdinal', { number: Math.max(1, runHistory.length - Math.min(runHistory.length, 8) + index + 1) })}</span>
         <span className="ml-2 text-slate-600">{safeHistoryStatus(record, currentAttemptId, t)}</span>
         {record.status === 'failed' && record.errorCode && <span className="ml-2 font-mono text-slate-400">{record.errorCode}</span>}
