@@ -184,7 +184,7 @@ function unsupported(reasonCode, details = {}) {
 }
 
 /** Strict eligibility for the existing browser L0 executor's one-hidden-layer tabular MLP. */
-function inspectExploreCapacityBuildInternal(build = {}) {
+function inspectExploreCapacityBuildInternal(build = {}, { selectedNodeId = null } = {}) {
   const nodes = Array.isArray(build.nodes) ? build.nodes : [];
   const edges = Array.isArray(build.edges) ? build.edges : [];
   const dataset = build.dataset ?? null;
@@ -239,6 +239,12 @@ function inspectExploreCapacityBuildInternal(build = {}) {
 
   const hiddenNode = denseNodes[0];
   const outputDense = denseNodes[1];
+  if (typeof selectedNodeId !== 'string' || !selectedNodeId) {
+    return unsupported('HIDDEN_DENSE_SELECTION_REQUIRED');
+  }
+  if (selectedNodeId !== hiddenNode.id) {
+    return unsupported('SELECTED_NODE_NOT_HIDDEN_DENSE');
+  }
   const splitNode = oneNode(nodes, 'train_test_split');
   const evaluator = oneNode(nodes, dataset.task === 'classification' ? 'evaluate_classification' : 'evaluate_regression');
   const activeIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
@@ -297,8 +303,8 @@ function inspectExploreCapacityBuildInternal(build = {}) {
 }
 
 /** Return only bounded semantic metadata; input rows stay outside the session projection. */
-export function inspectExploreCapacityBuild(build = {}) {
-  const { source: _privateSource, ...publicAssessment } = inspectExploreCapacityBuildInternal(build);
+export function inspectExploreCapacityBuild(build = {}, options = {}) {
+  const { source: _privateSource, ...publicAssessment } = inspectExploreCapacityBuildInternal(build, options);
   return publicAssessment;
 }
 
@@ -321,7 +327,7 @@ function validateVariant(source, width) {
   }
   if (width === source.baselineWidth) return { valid: false, reasonCode: 'VARIANT_WIDTH_MUST_DIFFER', min: HIDDEN_WIDTH_MIN, max: HIDDEN_WIDTH_MAX };
   const variant = makeCapacityVariant(source.source, source.hiddenNodeId, source.outputNodeId, width);
-  const assessment = inspectExploreCapacityBuildInternal(variant);
+  const assessment = inspectExploreCapacityBuildInternal(variant, { selectedNodeId: source.hiddenNodeId });
   if (!assessment.supported) {
     return {
       valid: false,
@@ -381,11 +387,12 @@ function yieldToBrowser(signal) {
  */
 export function createExploreBridgeSessionV1({
   build,
+  selectedNodeId = null,
   projectSessionId = makeId('project-session'),
   createId = makeId,
   runBrowserGraph = executeBrowserGraph,
 } = {}) {
-  const inspection = inspectExploreCapacityBuildInternal(build);
+  const inspection = inspectExploreCapacityBuildInternal(build, { selectedNodeId });
   const source = inspection.supported ? {
     nodes: clone(inspection.source.nodes),
     edges: clone(inspection.source.edges),
@@ -409,6 +416,8 @@ export function createExploreBridgeSessionV1({
       projectSessionId,
       graphFingerprint: inspection.graphFingerprint,
       datasetFingerprint: inspection.datasetFingerprint,
+      selectedNodeId: inspection.hiddenNodeId,
+      registryIdentity: inspection.hiddenNodeRegistryIdentity,
     } : { kind: 'build-project-snapshot', projectSessionId },
     graphIdentity: inspection.supported ? { semanticFingerprint: inspection.graphFingerprint } : null,
     selectedHiddenNode: inspection.supported ? {
@@ -499,7 +508,7 @@ export function createExploreBridgeSessionV1({
         setState({ lifecycle: 'stale', reasonCode: 'PROJECT_SESSION_CHANGED', activeRun: null });
         return true;
       }
-      const current = inspectExploreCapacityBuildInternal(currentBuild);
+      const current = inspectExploreCapacityBuildInternal(currentBuild, { selectedNodeId: inspection.hiddenNodeId ?? selectedNodeId });
       if (!inspection.supported || !current.supported
         || current.graphFingerprint !== inspection.graphFingerprint
         || current.datasetFingerprint !== inspection.datasetFingerprint

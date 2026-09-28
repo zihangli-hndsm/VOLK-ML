@@ -64,6 +64,7 @@ export default function ExploreCapacityBridgeDialog({
     <section
       data-explore-capacity-bridge
       data-lifecycle={lifecycle}
+      data-selected-hidden-node-id={snapshot.selectedHiddenNode?.nodeId ?? ''}
       className="flex max-h-[calc(100dvh-1rem)] w-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl sm:max-h-[calc(100dvh-2.5rem)]"
       role="dialog"
       aria-modal="true"

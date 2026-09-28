@@ -185,6 +185,8 @@ export const messages = {
   'explore.capacity.metric.accuracy': { en: 'Accuracy', zh: '准确率' },
   'explore.capacity.metric.macroF1': { en: 'Macro F1', zh: '宏平均 F1' },
   'explore.capacity.reason.DATASET_MISSING': { en: 'Choose a dataset before exploring this model.', zh: '请先选择数据集，再探索此模型。' },
+  'explore.capacity.reason.HIDDEN_DENSE_SELECTION_REQUIRED': { en: 'Select the eligible hidden Dense layer in Build before opening this comparison.', zh: '请先在构建中选择符合条件的隐藏 Dense 层，再打开此比较。' },
+  'explore.capacity.reason.SELECTED_NODE_NOT_HIDDEN_DENSE': { en: 'Select the hidden Dense layer in this model path; the output layer cannot start this comparison.', zh: '请选择此模型路径中的隐藏 Dense 层；输出层不能启动此比较。' },
   'explore.capacity.reason.CUSTOM_COMPONENTS_UNSUPPORTED': { en: 'This comparison currently requires only registered VOLK components and no custom components.', zh: '当前比较仅支持 VOLK 已注册组件，不支持自定义组件。' },
   'explore.capacity.reason.GRAPH_INVALID': { en: 'The current graph or dataset could not be identified safely.', zh: '无法安全识别当前模型图或数据集。' },
   'explore.capacity.reason.MULTIPLE_TRAINING_ROOTS': { en: 'Use one supported training path at a time.', zh: '一次只能使用一条受支持的训练路径。' },

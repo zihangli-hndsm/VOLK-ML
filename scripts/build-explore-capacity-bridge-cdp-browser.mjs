@@ -141,9 +141,29 @@ try {
   }
 
   await click('(() => { const buttons = [...document.querySelectorAll("header nav button[aria-pressed]")]; const buildButton = buttons.find((button) => button.getAttribute("aria-pressed") === "false" && button.textContent.trim().toLowerCase().includes("build")); if (!buildButton) return false; buildButton.click(); return true; })()', 'Build surface');
+  await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => api.selectNode(null))`, true);
   await click('(() => { const button = document.querySelector("button[aria-controls=build-more-actions]"); if (!button) return false; button.click(); return true; })()', 'Build More actions');
+  if (await evaluate('Boolean(document.querySelector("button[data-explore-capacity-bridge]"))')) {
+    throw new Error('The capacity-bridge entry must be unavailable when no Build node is selected.');
+  }
+  await click('(() => { const button = document.querySelector("button[aria-controls=build-more-actions]"); if (!button) return false; button.click(); return true; })()', 'close Build More actions after no-selection check');
+  await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => api.selectNode("build-input"))`, true);
+  await click('(() => { const button = document.querySelector("button[aria-controls=build-more-actions]"); if (!button) return false; button.click(); return true; })()', 'Build More actions for non-hidden selection');
+  if (await evaluate('Boolean(document.querySelector("button[data-explore-capacity-bridge]"))')) {
+    throw new Error('Selecting a non-hidden model node must not expose the capacity-bridge entry.');
+  }
+  await click('(() => { const button = document.querySelector("button[aria-controls=build-more-actions]"); if (!button) return false; button.click(); return true; })()', 'close Build More actions after non-hidden check');
+  await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => api.selectNode("build-hidden"))`, true);
+  await click('(() => { const button = document.querySelector("button[aria-controls=build-more-actions]"); if (!button) return false; button.click(); return true; })()', 'Build More actions for selected hidden Dense');
+  const entryIdentity = await evaluate(`(() => {
+    const button = document.querySelector("button[data-explore-capacity-bridge]");
+    return button?.dataset.selectedNodeId ?? null;
+  })()`);
+  if (entryIdentity !== 'build-hidden') throw new Error(`The bridge entry did not bind the exact selected hidden node: ${entryIdentity}`);
   await click('(() => { const button = document.querySelector("button[data-explore-capacity-bridge]"); if (!button) return false; button.click(); return true; })()', 'Explore capacity bridge entry');
   await waitFor('Boolean(document.querySelector("[data-explore-capacity-bridge][data-lifecycle=ready]"))', 'eligible bridge session');
+  const sessionOrigin = await evaluate('document.querySelector("[data-explore-capacity-bridge][data-lifecycle=ready]")?.dataset.selectedHiddenNodeId ?? null');
+  if (sessionOrigin !== 'build-hidden') throw new Error(`Explore session origin did not retain the selected hidden node: ${sessionOrigin}`);
 
   const sourceBefore = await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => { const state = api.getState(); const project = api.getProject(); return JSON.stringify({ graph: project.graph, data: project.data, runtime: state.execution.runtime }); })`, true);
   await click('(() => { const button = document.querySelector("[data-capacity-run]"); if (!button || button.disabled) return false; button.click(); return true; })()', 'explicit comparison run');
@@ -185,9 +205,11 @@ try {
     project.customComponents = [];
     project.trainedModel = null;
     await api.loadProject(project);
+    await api.selectNode("build-hidden");
     return api.getState().canvas.nodes.length;
   })`, true);
   if (reloadedFixture !== build.nodes.length) throw new Error('Could not restore the browser Build fixture for post-reload session check.');
+  await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => api.selectNode("build-hidden"))`, true);
   await click('(() => { const buttons = [...document.querySelectorAll("header nav button[aria-pressed]")]; const buildButton = buttons.find((button) => button.getAttribute("aria-pressed") === "false" && button.textContent.trim().toLowerCase().includes("build")); if (!buildButton) return false; buildButton.click(); return true; })()', 'Build surface after reload');
   await click('(() => { const button = document.querySelector("button[aria-controls=build-more-actions]"); if (!button) return false; button.click(); return true; })()', 'Build More actions after reload');
   await click('(() => { const button = document.querySelector("button[data-explore-capacity-bridge]"); if (!button) return false; button.click(); return true; })()', 'new bridge after reload');
@@ -195,17 +217,14 @@ try {
   if (await evaluate('Boolean(document.querySelector("[data-capacity-results]"))')) throw new Error('Reload recreated previous comparison results.');
   await evaluate(`window.__VOLK_ML_AGENT__.open().then(async (api) => { const project = api.getProject(); project.name = "Bridge project switch fixture"; await api.loadProject(project); return true; })`, true);
   await waitFor('!document.querySelector("[data-explore-capacity-bridge]")', 'bridge disposal after project replacement');
+  await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => api.selectNode("build-hidden"))`, true);
 
+  await click('(() => { const button = document.querySelector("button[aria-controls=build-more-actions]"); if (!button) return false; button.click(); return true; })()', 'Build More actions after project replacement');
+  await click('(() => { const button = document.querySelector("button[data-explore-capacity-bridge]"); if (!button) return false; button.click(); return true; })()', 'new bridge after project replacement');
+  await waitFor('Boolean(document.querySelector("[data-explore-capacity-bridge][data-lifecycle=ready]"))', 'new session after project replacement');
   const unsupportedNodeId = await evaluate(`window.__VOLK_ML_AGENT__.open().then(async (api) => (await api.addNode({ componentId: "dense_node", id: "bridge-extra-hidden" })).nodeId)`, true);
   if (unsupportedNodeId !== 'bridge-extra-hidden') throw new Error('Could not create the unsupported-graph refresh fixture.');
-  await click('(() => { const button = document.querySelector("button[aria-controls=build-more-actions]"); if (!button) return false; button.click(); return true; })()', 'Build More actions for unsupported refresh');
-  await click('(() => { const button = document.querySelector("button[data-explore-capacity-bridge]"); if (!button) return false; button.click(); return true; })()', 'unsupported graph bridge entry');
-  await waitFor('Boolean(document.querySelector("[data-explore-capacity-bridge] [data-capacity-reason]"))', 'actionable unsupported/stale bridge state');
-  const unsupportedReason = await evaluate('document.querySelector("[data-explore-capacity-bridge] [data-capacity-reason]")?.innerText ?? ""');
-  if (!unsupportedReason.toLowerCase().includes('additional or disconnected branch')
-    && !unsupportedReason.toLowerCase().includes('build graph')) {
-    throw new Error(`Unsupported/stale graph did not receive its localized reason: ${unsupportedReason}`);
-  }
+  await waitFor('Boolean(document.querySelector("[data-explore-capacity-bridge][data-lifecycle=stale]"))', 'stale session after adding an unsupported graph branch');
   await evaluate(`window.__VOLK_ML_AGENT__.open().then(async (api) => { await api.removeNode("bridge-extra-hidden"); return true; })`, true);
   await waitFor('Boolean(document.querySelector("[data-explore-capacity-bridge][data-lifecycle=stale]"))', 'stale unsupported session after graph repair');
   await click('(() => { const button = document.querySelector("[data-capacity-new-session]"); if (!button) return false; button.click(); return true; })()', 're-evaluate repaired Build graph');
@@ -213,7 +232,7 @@ try {
 
   if (cloudPolicyRequests.length) throw new Error(`The local-only bridge unexpectedly called Cloud: ${cloudPolicyRequests.join(', ')}`);
   if (browserErrors.length) throw new Error(`Browser raised runtime exceptions: ${browserErrors.slice(-5).join(' | ')}`);
-  console.log('Mounted Build→Explore bridge browser checks passed (two real Browser CPU runs; source unchanged; layout preserved; semantic edit stale; reload drops session; project replacement disposes it; no Cloud call).');
+  console.log('Mounted Build→Explore bridge browser checks passed (selection-bound entry; no-selection/non-hidden blocked; two real Browser CPU runs; source unchanged; layout preserved; semantic edit stale; reload drops session; project replacement disposes it; no Cloud call).');
 } finally {
   cdp?.close();
   stopProcess(chromeProcess);

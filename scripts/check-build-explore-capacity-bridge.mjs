@@ -9,11 +9,17 @@ import {
 } from '../src/core/exploration/buildCapacityBridge.js';
 
 const check = (condition, message) => assert.ok(condition, message);
+const inspect = (candidate, selectedNodeId = 'build-hidden') => inspectExploreCapacityBuild(candidate, { selectedNodeId });
+const createSession = (options = {}) => createExploreBridgeSessionV1({ selectedNodeId: 'build-hidden', ...options });
 
 const build = makeBuildExploreCapacityFixture({ privateRowMarker: true });
 const buildBefore = JSON.stringify(build);
 const actualRunTestRows = [];
-const assessment = inspectExploreCapacityBuild(build);
+assert.equal(inspectExploreCapacityBuild(build).reasonCode, 'HIDDEN_DENSE_SELECTION_REQUIRED', 'An unselected graph cannot silently choose its first Dense layer.');
+assert.equal(inspect(build, 'build-head').reasonCode, 'SELECTED_NODE_NOT_HIDDEN_DENSE', 'Selecting the output Dense layer cannot substitute for the hidden layer.');
+assert.equal(inspect(build, 'build-input').reasonCode, 'SELECTED_NODE_NOT_HIDDEN_DENSE', 'Selecting another registered node is rejected.');
+assert.equal(createExploreBridgeSessionV1({ build }).getSnapshot().reasonCode, 'HIDDEN_DENSE_SELECTION_REQUIRED');
+const assessment = inspect(build);
 check(assessment.supported, `Canonical Build MLP should be eligible, received ${assessment.reasonCode}.`);
 assert.equal(assessment.recommendedTier, 'L0');
 assert.equal(assessment.baselineWidth, 2);
@@ -22,7 +28,7 @@ assert.equal(BROWSER_MLP_SEED, DEFAULT_KNN_SEED, 'MLP initialization, shuffle, a
 check(!JSON.stringify(assessment).includes('bridge-private-'), 'Public eligibility projection must not expose raw dataset values.');
 
 const actualRunInputs = [];
-const initial = createExploreBridgeSessionV1({
+const initial = createSession({
   build,
   projectSessionId: 'project-1',
   runBrowserGraph: async (input) => {
@@ -35,6 +41,12 @@ const initial = createExploreBridgeSessionV1({
 assert.equal(initial.getSnapshot().type, 'ExploreBridgeSessionV1');
 assert.equal(initial.getSnapshot().lifecycle, 'ready');
 assert.equal(initial.getSnapshot().capacity.variantWidth, 4);
+assert.deepEqual(initial.getSnapshot().selectedHiddenNode, {
+  nodeId: 'build-hidden',
+  registryIdentity: { componentId: 'dense_node', op: 'dense' },
+});
+assert.equal(initial.getSnapshot().provenance.selectedNodeId, 'build-hidden');
+assert.deepEqual(initial.getSnapshot().provenance.registryIdentity, { componentId: 'dense_node', op: 'dense' });
 check(!JSON.stringify(initial.getSnapshot()).includes('bridge-private-'), 'Session snapshots must not retain raw examples.');
 check(!Object.hasOwn(initial.getSnapshot().split, 'trainRowIds') && !Object.hasOwn(initial.getSnapshot().split, 'testRowIds'), 'Session snapshots retain only split counts and a stable identity.');
 assert.equal(initial.setVariantWidth(2), 'VARIANT_WIDTH_MUST_DIFFER');
@@ -42,14 +54,14 @@ assert.equal(initial.setVariantWidth(0), 'VARIANT_WIDTH_OUT_OF_RANGE');
 assert.equal(initial.setVariantWidth(4), null);
 
 const unsupportedBuild = { ...build, customComponents: [{ id: 'custom-layer' }] };
-assert.equal(inspectExploreCapacityBuild(unsupportedBuild).reasonCode, 'CUSTOM_COMPONENTS_UNSUPPORTED');
-assert.equal(inspectExploreCapacityBuild({ ...build, dataset: null }).reasonCode, 'DATASET_MISSING');
+assert.equal(inspect(unsupportedBuild).reasonCode, 'CUSTOM_COMPONENTS_UNSUPPORTED');
+assert.equal(inspect({ ...build, dataset: null }).reasonCode, 'DATASET_MISSING');
 const extraRoot = structuredClone(build);
 extraRoot.nodes.push({
   ...structuredClone(extraRoot.nodes.find((node) => node.data.manifest.op === 'supervised_trainer')),
   id: 'second-trainer',
 });
-assert.equal(inspectExploreCapacityBuild(extraRoot).reasonCode, 'MULTIPLE_TRAINING_ROOTS');
+assert.equal(inspect(extraRoot).reasonCode, 'MULTIPLE_TRAINING_ROOTS');
 const multipleHidden = structuredClone(build);
 const extraHidden = structuredClone(multipleHidden.nodes.find((node) => node.id === 'build-head'));
 extraHidden.id = 'build-extra-hidden';
@@ -61,27 +73,27 @@ multipleHidden.edges.push(
   { ...reluToHead, id: 'extra-hidden-in', target: 'build-extra-hidden' },
   { ...reluToHead, id: 'extra-hidden-out', source: 'build-extra-hidden' },
 );
-assert.equal(inspectExploreCapacityBuild(multipleHidden).reasonCode, 'UNSUPPORTED_MODEL_PATH');
+assert.equal(inspect(multipleHidden).reasonCode, 'UNSUPPORTED_MODEL_PATH');
 const extraTopology = structuredClone(build);
 extraTopology.nodes.push({
   ...structuredClone(extraTopology.nodes.find((node) => node.data.manifest.op === 'dense')),
   id: 'unconnected-dense',
 });
-assert.equal(inspectExploreCapacityBuild(extraTopology).reasonCode, 'UNSUPPORTED_GRAPH_BRANCH');
+assert.equal(inspect(extraTopology).reasonCode, 'UNSUPPORTED_GRAPH_BRANCH');
 const alteredPort = structuredClone(build);
 alteredPort.edges.find((edge) => edge.source === 'build-input').sourceHandle = 'invented-output';
-assert.equal(inspectExploreCapacityBuild(alteredPort).reasonCode, 'L0_GRAPH_UNSUPPORTED');
+assert.equal(inspect(alteredPort).reasonCode, 'L0_GRAPH_UNSUPPORTED');
 const alteredManifest = structuredClone(build);
 alteredManifest.nodes.find((node) => node.id === 'build-hidden').data.manifest.properties
   .find((property) => property.key === 'units').max = 999999;
-assert.equal(inspectExploreCapacityBuild(alteredManifest).reasonCode, 'CUSTOM_COMPONENTS_UNSUPPORTED');
+assert.equal(inspect(alteredManifest).reasonCode, 'CUSTOM_COMPONENTS_UNSUPPORTED');
 const largeDataset = validateAgentDataset({
   ...build.dataset,
   rows: Array.from({ length: 1020 }, (_, index) => ({ ...build.dataset.rows[index % build.dataset.rows.length] })),
 });
 const budgetBuild = { ...build, dataset: largeDataset };
-check(inspectExploreCapacityBuild(budgetBuild).supported, 'The baseline should remain within the L0 budget for the variant budget check.');
-const budgetSession = createExploreBridgeSessionV1({ build: budgetBuild });
+check(inspect(budgetBuild).supported, 'The baseline should remain within the L0 budget for the variant budget check.');
+const budgetSession = createSession({ build: budgetBuild });
 assert.equal(budgetSession.setVariantWidth(4096), 'VARIANT_EXCEEDS_L0_BUDGET');
 
 const result = await initial.runComparison();
@@ -117,9 +129,9 @@ assert.equal(result.comparison.interpretation, 'descriptive-capacity-comparison'
 assert.equal(JSON.stringify(build), buildBefore, 'Comparison must not mutate the source Build project.');
 
 const regressionBuild = makeBuildExploreCapacityFixture({ task: 'regression' });
-const regressionAssessment = inspectExploreCapacityBuild(regressionBuild);
+const regressionAssessment = inspect(regressionBuild);
 check(regressionAssessment.supported && regressionAssessment.task === 'regression', 'The same strict bridge contract should accept the supported regression task.');
-const regressionSession = createExploreBridgeSessionV1({ build: regressionBuild });
+const regressionSession = createSession({ build: regressionBuild });
 const regressionResult = await regressionSession.runComparison();
 assert.equal(regressionResult.runs.length, 2);
 check(Number.isFinite(regressionResult.comparison.metrics.rmse.delta), 'Regression metrics must come from the current paired evaluator runs.');
@@ -133,10 +145,10 @@ changedGraph.nodes.find((node) => node.id === 'build-hidden').data.parameters.us
 assert.equal(initial.reconcileSource(changedGraph, 'project-1'), true);
 assert.equal(initial.getSnapshot().reasonCode, 'SOURCE_CHANGED');
 
-const reloadSession = createExploreBridgeSessionV1({ build, projectSessionId: 'project-1' });
+const reloadSession = createSession({ build, projectSessionId: 'project-1' });
 assert.equal(reloadSession.getSnapshot().lifecycle, 'ready', 'Reload starts a new in-memory session.');
 assert.equal(reloadSession.getSnapshot().comparison, null, 'Completed comparison is not persisted into project/session storage.');
-const closed = createExploreBridgeSessionV1({ build, projectSessionId: 'project-1' });
+const closed = createSession({ build, projectSessionId: 'project-1' });
 await closed.runComparison();
 const retainedComparison = closed.getSnapshot().comparison;
 closed.close();
@@ -151,7 +163,7 @@ assert.equal(closed.getSnapshot().lifecycle, 'stale', 'Closing a stale session m
 
 let fakeCall = 0;
 let shouldFailVariant = true;
-const retrying = createExploreBridgeSessionV1({
+const retrying = createSession({
   build,
   runBrowserGraph: async ({ nodes }) => {
     fakeCall += 1;
@@ -171,7 +183,7 @@ assert.equal(retried.comparison.metrics.accuracy.delta, -0.5, 'Metric deltas rem
 assert.notEqual(retried.runs[0].runId, retried.runs[1].runId);
 
 let malformedRuntimeCall = 0;
-const malformedRuntime = createExploreBridgeSessionV1({
+const malformedRuntime = createSession({
   build,
   runBrowserGraph: async () => {
     malformedRuntimeCall += 1;
@@ -186,7 +198,7 @@ assert.equal(malformedRuntime.getSnapshot().comparison, null, 'A result with no 
 
 let releaseBaseline;
 let controlledCalls = 0;
-const deferredRun = createExploreBridgeSessionV1({
+const deferredRun = createSession({
   build,
   runBrowserGraph: () => {
     controlledCalls += 1;
@@ -206,7 +218,7 @@ assert.equal(deferredRun.getSnapshot().lifecycle, 'ready', 'A late cancelled res
 assert.equal(deferredRun.getSnapshot().comparison, null);
 
 let releaseSwitch;
-const switching = createExploreBridgeSessionV1({
+const switching = createSession({
   build,
   projectSessionId: 'project-before',
   runBrowserGraph: () => new Promise((resolve) => { releaseSwitch = resolve; }),

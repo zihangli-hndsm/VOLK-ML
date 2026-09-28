@@ -44,7 +44,7 @@ import { createPlaygroundHost } from './core/playgroundHost';
 import { createTeachingDialogueProvider } from './core/exploration/teachingDialoguePilot.js';
 import { getBigIdeaEntrance } from './core/exploration/bigIdeaRegistry.js';
 import { compareExploreEnvironment, createBuildExploreBridge, createExploreEnvironmentIdentity, createExploreWorkspaceRecord, EXPLORE_WORKSPACE_LIFECYCLES } from './core/exploration/exploreWorkspace.js';
-import { createExploreBridgeSessionV1 } from './core/exploration/buildCapacityBridge.js';
+import { createExploreBridgeSessionV1, inspectExploreCapacityBuild } from './core/exploration/buildCapacityBridge.js';
 import { UI_SURFACES } from './core/ui/uiArchitecture.js';
 import { createBuildPanelPresentation, toggleBuildPanel } from './core/ui/buildSurfacePresentation.js';
 import { createDeletionRequest, deletionSummary } from './core/deletionConfirmation.js';
@@ -710,6 +710,13 @@ function Workspace() {
   };
   const selectedNode = nodes.find((node) => node.id === selectedId) ?? null;
   const selectedNodes = nodes.filter((node) => node.selected);
+  const selectedCapacityNodeId = selectedNodes.length === 1 ? selectedNodes[0].id : null;
+  const canOpenExploreCapacityBridge = useMemo(() => {
+    if (!selectedCapacityNodeId) return false;
+    return inspectExploreCapacityBuild({ nodes, edges, dataset, customComponents }, {
+      selectedNodeId: selectedCapacityNodeId,
+    }).supported;
+  }, [nodes, edges, dataset, customComponents, selectedCapacityNodeId]);
   const availablePlugins = useMemo(() => [...pluginRegistry, ...customComponents], [customComponents]);
   const filteredPlugins = useMemo(() => availablePlugins.filter((plugin) => {
     const haystack = [plugin.category, ...Object.values(plugin.name), ...Object.values(plugin.description)].join(' ').toLowerCase();
@@ -1965,24 +1972,34 @@ function Workspace() {
     }).catch((error) => setNotice(translateError(error, t)));
   }, [dataset, disposeEphemeralExploreWorkspaces, getExploreWorkspace, nodes, t]);
 
-  const openExploreCapacityBridge = useCallback(({ newSession = false } = {}) => {
+  const openExploreCapacityBridge = useCallback((selectedNodeId, { newSession = false, requireSelection = true } = {}) => {
+    if (typeof selectedNodeId !== 'string' || !selectedNodeId) return;
+    const current = workspaceStateRef.current;
+    if (requireSelection) {
+      const selectedNow = current.nodes.filter((node) => node.selected);
+      if (selectedNow.length !== 1 || selectedNow[0].id !== selectedNodeId) return;
+    }
+    const build = {
+      nodes: current.nodes,
+      edges: current.edges,
+      dataset: current.dataset,
+      customComponents: current.customComponents,
+    };
+    const assessment = inspectExploreCapacityBuild(build, { selectedNodeId });
+    if (!assessment.supported) return;
     const existing = exploreCapacityBridgeRef.current;
     const existingSnapshot = existing?.getSnapshot();
     if (!newSession
       && existingSnapshot?.projectSessionId === projectSessionIdRef.current
-      && existingSnapshot.graphIdentity) {
+      && existingSnapshot.graphIdentity
+      && existingSnapshot.selectedHiddenNode?.nodeId === selectedNodeId) {
       setExploreCapacityBridgeOpen(true);
       return;
     }
     existing?.dispose();
-    const current = workspaceStateRef.current;
     const nextSession = createExploreBridgeSessionV1({
-      build: {
-        nodes: current.nodes,
-        edges: current.edges,
-        dataset: current.dataset,
-        customComponents: current.customComponents,
-      },
+      build,
+      selectedNodeId,
       projectSessionId: projectSessionIdRef.current,
     });
     exploreCapacityBridgeRef.current = nextSession;
@@ -2030,7 +2047,7 @@ function Workspace() {
     </header>
 
     {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenOnboarding={openPhaseAHandoff} onRestartOnboarding={openPhaseAHandoff} onOpenImportedAttention={() => setG2AttentionOpen(true)} t={t} /> : <>
-      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} onOpenExploreCapacityBridge={() => openExploreCapacityBridge()} setRunnerOpen={setRunnerOpen} graphOccupied={nodes.length > 0 || edges.length > 0} onOpenBuildIntent={() => setLumiBuildIntentOpen(true)} onOpenGraphEdit={() => setLumiGraphEditOpen(true)} t={t} />
+      <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} onOpenExploreCapacityBridge={(nodeId) => openExploreCapacityBridge(nodeId)} canOpenExploreCapacityBridge={canOpenExploreCapacityBridge} selectedCapacityNodeId={selectedCapacityNodeId} setRunnerOpen={setRunnerOpen} graphOccupied={nodes.length > 0 || edges.length > 0} onOpenBuildIntent={() => setLumiBuildIntentOpen(true)} onOpenGraphEdit={() => setLumiGraphEditOpen(true)} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
       <motion.aside initial={false} animate={{ x: leftOpen ? 0 : '-110%' }} style={{ width: `min(${leftWidth}px, calc(100vw - 24px))` }} className={`${asideBase} left-3 lg:transform-none ${leftOpen ? 'lg:block' : 'lg:hidden'}`}>
@@ -2077,7 +2094,10 @@ function Workspace() {
       build={{ nodes, edges, dataset, customComponents }}
       projectSessionId={projectSessionIdRef.current}
       onClose={closeExploreCapacityBridge}
-      onStartNew={() => openExploreCapacityBridge({ newSession: true })}
+      onStartNew={() => {
+        const selectedNodeId = exploreCapacityBridgeRef.current?.getSnapshot().selectedHiddenNode?.nodeId;
+        openExploreCapacityBridge(selectedNodeId, { newSession: true, requireSelection: false });
+      }}
       t={t}
     />
     {surface === UI_SURFACES.BUILD && <LumiBuildIntentDialog open={lumiBuildIntentOpen} onClose={() => setLumiBuildIntentOpen(false)} nodes={nodes} edges={edges} dataset={dataset} t={t} />}
