@@ -1,5 +1,26 @@
 # Changelog
 
+## 2026-09-28 — G2 hash-verified local model recovery
+
+- Added a same-origin IndexedDB cache for the pinned G2 model, separate from
+  project persistence. The cache rechecks the profile, size, and SHA-256 before
+  restoring model bytes to the loopback runner after a page refresh or runner
+  restart; recovery never runs inference or creates Evidence.
+- Missing or corrupt cache state fails closed and offers the existing relink
+  flow. Project JSON/downloads remain hash-only, and a storage failure clearly
+  warns that the currently loaded model may need relinking after refresh.
+- Affected areas: `src/core/localModelCache.js`,
+  `src/components/ExploreImportedAttentionExperience.jsx`,
+  `src/locales/ui.js`, G2 contract/browser tests, and
+  `docs/architecture/imported-attention-g2.md`.
+- Validation: G2 contract and Episode 1 checks, real pinned-model reference
+  parity, browser refresh/runner restart/missing/corrupt/offline lifecycle,
+  hash-only project export, B3 ONNX browser regression, full `npm run check`,
+  `npm run build`, localization/encoding scan, and `git diff --check` passed.
+- Limitations: browser storage is origin-local and may be unavailable, cleared,
+  or evicted; in those cases the learner must relink. Independent VOLK-Dev
+  acceptance is pending; this repair has not been pushed.
+
 ## 2026-09-28 — G1 declared technicality preference
 
 - Added a transparent, session-only technicality preference that chooses the

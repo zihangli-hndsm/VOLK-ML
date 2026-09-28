@@ -5,6 +5,7 @@ import {
   G2_INPUT_IDS_A,
   G2_INPUT_IDS_B,
 } from '../core/playground/importedAttention/profile.js';
+import { loadG2LocalModelArtifact, saveG2LocalModelArtifact } from '../core/localModelCache.js';
 import { createLocalModelReference } from '../core/localModelReferences.js';
 import { localAttentionClient } from '../services/localAttention/client.js';
 
@@ -18,6 +19,7 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
   const [busy, setBusy] = useState(false);
   const fileInputRef = useRef(null);
   const requestControllerRef = useRef(null);
+  const restoreAttemptRef = useRef(null);
   const requestGenerationRef = useRef(0);
   const eventStoreRef = useRef(null);
   if (!eventStoreRef.current) eventStoreRef.current = createImportedAttentionEventStore();
@@ -25,12 +27,74 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
   useEffect(() => {
     if (!open) return undefined;
     let active = true;
-    const controller = new AbortController();
-    localAttentionClient.health({ signal: controller.signal })
-      .then((health) => { if (active) setRunner({ ...health, status: 'available' }); })
-      .catch(() => { if (active) setRunner({ status: 'offline', modelLoaded: false, modelHash: null }); });
-    return () => { active = false; controller.abort(); };
-  }, [open]);
+    let timer = null;
+    let inFlight = false;
+    let controller = null;
+    const reference = localModelReference;
+    const linkedHash = reference?.sha256 ? `sha256:${reference.sha256}` : null;
+
+    const checkRunner = async () => {
+      if (!active || inFlight) return;
+      inFlight = true;
+      controller = new AbortController();
+      try {
+        const health = await localAttentionClient.health({ signal: controller.signal });
+        if (!active) return;
+        const isLinkedModelLoaded = Boolean(linkedHash && health.modelLoaded && health.modelHash === linkedHash);
+        setRunner({ ...health, status: 'available' });
+        if (isLinkedModelLoaded) {
+          setActiveModelHash(linkedHash);
+          restoreAttemptRef.current = null;
+          return;
+        }
+
+        setActiveModelHash(null);
+        if (!reference) return;
+
+        const attemptKey = `${reference.profileId}:${reference.sha256}:${health.modelHash ?? 'empty'}`;
+        if (restoreAttemptRef.current === attemptKey) return;
+        restoreAttemptRef.current = attemptKey;
+        setRunner({ ...health, status: 'checking', modelLoaded: false, modelHash: null });
+        setErrorKey(null);
+        const cachedFile = await loadG2LocalModelArtifact(reference);
+        if (!active) return;
+        if (!cachedFile) {
+          setRunner({ ...health, status: 'available', modelLoaded: false, modelHash: null });
+          return;
+        }
+        const binding = await localAttentionClient.importModel(cachedFile, { signal: controller.signal });
+        if (!active) return;
+        if (binding.profileId !== reference.profileId || binding.sha256 !== reference.sha256) {
+          throw Object.assign(new Error('g2.error.modelCacheCorrupt'), { translationKey: 'g2.error.modelCacheCorrupt' });
+        }
+        setActiveModelHash(binding.modelHash);
+        setRunner({ status: 'available', modelLoaded: true, modelHash: binding.modelHash });
+        setErrorKey(null);
+        restoreAttemptRef.current = null;
+      } catch (error) {
+        if (!active || error?.name === 'AbortError') return;
+        if (error?.translationKey === 'g2.error.runtimeUnavailable' || error?.translationKey === 'g2.error.requestTimeout') {
+          setActiveModelHash(null);
+          setRunner({ status: 'offline', modelLoaded: false, modelHash: null });
+          return;
+        }
+        setActiveModelHash(null);
+        setRunner((current) => ({ ...current, status: 'available', modelLoaded: false, modelHash: null }));
+        setErrorKey(error?.translationKey ?? 'g2.error.modelCacheUnavailable');
+      } finally {
+        inFlight = false;
+        controller = null;
+        if (active) timer = window.setTimeout(checkRunner, 1500);
+      }
+    };
+
+    checkRunner();
+    return () => {
+      active = false;
+      if (timer !== null) window.clearTimeout(timer);
+      controller?.abort();
+    };
+  }, [open, localModelReference?.profileId, localModelReference?.sha256]);
 
   useEffect(() => () => {
     requestGenerationRef.current += 1;
@@ -67,7 +131,13 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
       const reference = createLocalModelReference({ profileId: binding.profileId, sha256: binding.sha256 });
       setActiveModelHash(binding.modelHash);
       setRunner({ status: 'available', modelLoaded: true, modelHash: binding.modelHash });
+      restoreAttemptRef.current = null;
       onModelBound?.(reference);
+      try {
+        await saveG2LocalModelArtifact(file, reference);
+      } catch (cacheError) {
+        if (generation === requestGenerationRef.current) setErrorKey(cacheError?.translationKey ?? 'g2.error.modelCacheUnavailable');
+      }
     } catch (error) {
       if (generation === requestGenerationRef.current && error?.name !== 'AbortError') {
         setErrorKey(error?.translationKey ?? 'g2.error.runtimeUnavailable');
@@ -104,7 +174,8 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
   }
 
   const linkedHash = localModelReference?.sha256 ? `sha256:${localModelReference.sha256}` : null;
-  const modelReady = Boolean(activeModelHash && activeModelHash === linkedHash && runner.modelLoaded);
+  const modelReady = Boolean(activeModelHash && activeModelHash === linkedHash
+    && runner.modelLoaded && runner.modelHash === linkedHash);
   return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/65 p-2 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="g2-title" data-g2-imported-attention>
     <section className="flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
       <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6">
@@ -126,7 +197,7 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
           </div>
           <div className="flex flex-wrap gap-2 md:justify-end">
             <input ref={fileInputRef} type="file" accept=".onnx,application/onnx" className="sr-only" aria-label={t('g2.import.choose')} data-g2-model-input onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; importSelectedModel(file); }} />
-            <button type="button" disabled={busy} onClick={() => fileInputRef.current?.click()} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-800 disabled:opacity-50" data-g2-import-model>{t(localModelReference ? 'g2.import.relink' : 'g2.import.choose')}</button>
+            <button type="button" disabled={busy || runner.status === 'checking'} onClick={() => fileInputRef.current?.click()} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-800 disabled:opacity-50" data-g2-import-model>{t(localModelReference ? 'g2.import.relink' : 'g2.import.choose')}</button>
             <button type="button" disabled={!modelReady || busy} onClick={runComparison} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50" data-g2-run-comparison>{busy ? t('g2.working') : t('g2.compare')}</button>
           </div>
         </section>

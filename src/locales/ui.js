@@ -2252,6 +2252,8 @@ export const messages = {
   'g2.error.modelFileTypeInvalid': { en: 'Choose an .onnx file.', zh: '请选择 .onnx 文件。' },
   'g2.error.responseInvalid': { en: 'The local runner returned an invalid or stale result. Nothing was added to the inquiry record.', zh: '本地运行器返回了无效或过期结果。未将其加入探究记录。' },
   'g2.error.modelProfileMismatch': { en: 'This file does not match the pinned G2 model artifact. No model was loaded.', zh: '此文件与固定的 G2 模型不匹配。未加载模型。' },
+  'g2.error.modelCacheCorrupt': { en: 'The saved local model copy is missing or does not match its verified hash. Nothing was loaded; choose the matching file again.', zh: '已保存的本地模型副本缺失或与校验哈希不匹配。未加载模型；请重新选择匹配的文件。' },
+  'g2.error.modelCacheUnavailable': { en: 'The verified model could not be kept in this browser. It is available only for this session; relinking may be needed after refresh.', zh: '此浏览器无法保存已校验的模型。模型仅在本次会话可用；刷新后可能需要重新关联。' },
   'g2.error.runtimeUnavailable': { en: 'The local model runner could not complete the request. The experience remains unchanged.', zh: '本地模型运行器无法完成请求。当前体验未改变。' },
   'g2.error.requestTimeout': { en: 'The local model request timed out. The experience remains unchanged.', zh: '本地模型请求超时。当前体验未改变。' },
   'g2.pair.heading': { en: 'One token changes; the model stays fixed', zh: '只改变一个 token；模型保持不变' },

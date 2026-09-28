@@ -13,6 +13,7 @@ import {
 import { commitImportedAttentionComparison, createImportedAttentionEventStore } from '../src/core/playground/importedAttention/semanticEvents.js';
 import { validateProjectForWorkspace, PROJECT_VERSION } from '../src/core/project.js';
 import { createLocalModelReference, validateLocalModelReferences } from '../src/core/localModelReferences.js';
+import { g2LocalModelCacheKey } from '../src/core/localModelCache.js';
 
 const modelHash = `sha256:${G2_ATTENTION_PROFILE_SHA256}`;
 const flatRow = (index) => Array.from({ length: 6 }, (_, column) => column === index ? 1 : 0);
@@ -42,6 +43,9 @@ assert.deepEqual(G2_INPUT_IDS_A.map((id, index) => id === G2_INPUT_IDS_B[index])
 assert.equal(validateLocalModelReferences([createLocalModelReference({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 })]), true);
 assert.equal(validateLocalModelReferences([{ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256, filename: 'private-name.onnx' }]), false);
 assert.equal(validateLocalModelReferences([{ profileId: G2_ATTENTION_PROFILE_ID, sha256: '0'.repeat(64) }]), false);
+assert.equal(g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 }), `${G2_ATTENTION_PROFILE_ID}:${G2_ATTENTION_PROFILE_SHA256}`, 'Local model cache is content-addressed only for the registered profile hash.');
+assert.throws(() => g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: '0'.repeat(64) }), /g2.modelProfileMismatch/);
+assert.throws(() => g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256, filename: 'private.onnx' }), /g2.modelProfileMismatch/);
 
 const oldProject = validateProjectForWorkspace({ format: 'VOLK-ML', version: 8, name: 'Old project', graph: { nodes: [], edges: [] } });
 assert.deepEqual(oldProject.localModelReferences, [], 'Version 8 projects migrate with no local artifact references.');

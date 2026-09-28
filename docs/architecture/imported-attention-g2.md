@@ -92,6 +92,25 @@ relink the exact hash-matching local artifact before execution. The project
 migration from v8 supplies an empty reference list. G2 references are artifact
 metadata only and do not carry Explore session state into the Build graph.
 
+On the same browser origin, a separate IndexedDB database stores the verified
+artifact as a Blob under the registered `profileId:sha256` key. The cache
+record contains only the profile identity, digest, and bytes; it never records
+the selected filename or path. A manual file selection is hashed before the
+local runner import and saved to IndexedDB only after that import succeeds.
+Each recovery read checks the record shape, size, and SHA-256 again before
+re-importing it into the loopback runner. A missing record presents the
+existing explicit relink path. A malformed or mismatched record is discarded,
+fails closed, and asks for relinking. If browser storage is unavailable or
+full, the current imported session remains usable and the UI explains that a
+refresh may require relinking.
+
+The cache is local browser storage, not project persistence: model bytes never
+enter project JSON/downloads, cloud providers, synchronization, or the local
+project store. Restoring a project hash reference or reloading a cached model
+only prepares the runner; neither action runs inference, creates comparison
+results, nor appends semantic events or Evidence. The learner must still press
+**Run and compare A / B** to execute the fixed comparison.
+
 ## Development and acceptance
 
 `npm run dev:g2` starts Vite and the local runner. It uses the environment's
@@ -113,7 +132,9 @@ The real reference test regenerates the ONNX file from the local checkpoint,
 asserts the exact registered hash, starts the production loopback server, sends
 the actual model bytes through the production client, and checks CPU logits,
 normalized attention outputs, semantic comparison, and Evidence. The browser
-test covers file relinking, explicit Run/Compare, rendering, project metadata,
-and runner-offline failure containment while preserving any existing truthful
+test covers file relinking, local hash-addressed cache persistence, project
+refresh and runner-restart recovery without inference, missing/corrupt cache
+recovery, hash-only project export, explicit Run/Compare, rendering, and
+runner-offline failure containment while preserving any existing truthful
 Evidence. This strict G2 profile does not make
 other ONNX opsets, model files, sequence models, or general L2 graphs executable.
