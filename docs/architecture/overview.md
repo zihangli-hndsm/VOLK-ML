@@ -39,6 +39,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Graph interoperability | `src/core/graph/` | Detached proposal contracts, deterministic revalidation, explicit Apply, local Torch Export and ONNX adapters |
 | G2 imported attention | `src/core/playground/importedAttention/`, `src/services/localAttention/`, `dev/g2_attention/` | One strict local BERT-Tiny ONNX Attention v25 profile with CPU execution and bounded semantic evidence |
 | Build→Explore capacity bridge v1 | `src/core/exploration/buildCapacityBridge.js`, `src/components/ExploreCapacityBridgeDialog.jsx` | Detached, local-only comparison of two fresh existing L0 runs, opened only for the explicitly selected eligible hidden Dense node, with semantic staleness and no project persistence |
+| Explore→Build configuration transfer v1 | `src/core/exploration/exploreToBuildProposal.js`, existing C1/C2 graph-patch boundary | Source-bound proposal from the actual paired G2 runs; previews only the hidden Dense width and derived output input width, then requires explicit Apply and a separate Build Run |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
 | Teaching datasets | `src/core/teachingDatasets.js` | Deterministic seeded datasets for example projects and playgrounds |
 | Example quality | `src/core/exampleQuality.js` | Pure teaching-contract checks (class balance, leakage, nonlinearity, R²) |
@@ -142,6 +143,11 @@ The [Build → Explore capacity bridge document](./build-explore-capacity-bridge
 also specifies the imported-architecture repair prompt: an eligible selected
 hidden Dense can explain the missing dataset/training/evaluation path without
 creating a comparison session or mutating the imported graph.
+
+The same document specifies G3's reverse Explore → Build configuration handoff.
+It reuses the actual G2 paired-run records as descriptive source data and the
+existing detached C1 proposal/C2 preview and Apply path; it does not transfer
+Evidence, execute Build, or persist a comparison into the project.
 
 Phase A's Director opens a separate onboarding workspace; real learner actions
 use the existing host/event path, and an explicit question trigger promotes a

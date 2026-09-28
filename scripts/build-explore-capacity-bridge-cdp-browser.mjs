@@ -186,12 +186,104 @@ try {
   const sourceAfter = await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => { const state = api.getState(); const project = api.getProject(); return JSON.stringify({ graph: project.graph, data: project.data, runtime: state.execution.runtime }); })`, true);
   if (sourceBefore !== sourceAfter) throw new Error('Bridge training changed the active Build graph, dataset, or Build runtime result.');
 
+  const originalHiddenPosition = await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => api.getProject().graph.nodes.find((node) => node.id === "build-hidden").position)`, true);
   const layoutMoved = await evaluate(`window.__VOLK_ML_AGENT__.open().then(async (api) => { await api.updateNode("build-hidden", { position: { x: 777, y: 555 } }); return true; })`, true);
   if (!layoutMoved) throw new Error('Could not exercise layout-only source reconciliation.');
   await waitFor('Boolean(document.querySelector("[data-explore-capacity-bridge][data-lifecycle=completed]"))', 'completed state preserved after layout-only change');
-  const semanticChanged = await evaluate(`window.__VOLK_ML_AGENT__.open().then(async (api) => { await api.updateNode("build-hidden", { parameters: { use_bias: false } }); return true; })`, true);
-  if (!semanticChanged) throw new Error('Could not exercise semantic source invalidation.');
-  await waitFor('Boolean(document.querySelector("[data-explore-capacity-bridge][data-lifecycle=stale]"))', 'stale comparison after graph semantics changed');
+  await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => api.updateNode("build-hidden", { position: ${JSON.stringify(originalHiddenPosition)} }))`, true);
+  await waitFor('Boolean(document.querySelector("[data-explore-capacity-bridge][data-lifecycle=completed]"))', 'completed state after restoring source layout');
+  const restoredSource = await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => { const state = api.getState(); const project = api.getProject(); return JSON.stringify({ graph: project.graph, data: project.data, runtime: state.execution.runtime }); })`, true);
+  if (restoredSource !== sourceAfter) throw new Error('Restoring layout did not restore the exact pre-transfer C2 source state.');
+
+  await click('(() => { const button = document.querySelector("[data-capacity-use-project]"); if (!button) return false; button.click(); return true; })()', 'stage the source-bound Explore→Build proposal');
+  await waitFor('Boolean(document.querySelector("[data-graph-patch-preview] [data-explore-to-build-source]"))', 'G3 C2 preview');
+  const preview = await evaluate(`(() => {
+    const source = document.querySelector("[data-explore-to-build-source]");
+    const changedNodes = [...document.querySelectorAll('[data-patch-diff-group="node-changed"] [data-patch-item]')].map((item) => item.dataset.patchItem).sort();
+    const changedEdges = document.querySelectorAll('[data-patch-diff-group="edge-changed"] [data-patch-item]').length;
+    const metrics = [...document.querySelectorAll('[data-explore-to-build-measurement]')].map((row) => ({ metric: row.dataset.exploreToBuildMeasurement, baseline: Number(row.dataset.baseline), variant: Number(row.dataset.variant), delta: Number(row.dataset.delta) }));
+    const operations = [...document.querySelectorAll('[data-graph-patch-preview] ol li')].map((item) => item.innerText);
+    return {
+      comparisonId: source?.dataset.comparisonId,
+      runIds: source?.dataset.sourceRunIds?.split(',') ?? [],
+      changedNodes,
+      changedEdges,
+      metrics,
+      operations,
+      existingNodes: document.querySelectorAll('[data-patch-diff-group="node-existing"] [data-patch-item]').length,
+      applyEnabled: !document.querySelector('[data-graph-patch-apply]')?.disabled,
+      pairedNote: document.querySelector('[data-explore-to-build-source]')?.innerText ?? '',
+    };
+  })()`);
+  if (!preview.comparisonId?.startsWith('capacity-comparison-')
+    || preview.runIds.length !== 2
+    || preview.runIds.some((runId) => !runId.startsWith('capacity-run-'))
+    || preview.changedNodes.join(',') !== 'build-head,build-hidden'
+    || preview.changedEdges !== 0
+    || preview.metrics.length < 1
+    || preview.metrics.some((metric) => ![metric.baseline, metric.variant, metric.delta].every(Number.isFinite)
+      || metric.delta !== metric.variant - metric.baseline)
+    || preview.operations.length !== 2
+    || !preview.operations.some((line) => line.includes('build-hidden') && line.includes('units'))
+    || !preview.operations.some((line) => line.includes('build-head') && line.includes('input_features'))
+    || preview.existingNodes !== build.nodes.length - 2
+    || !preview.applyEnabled) {
+    throw new Error(`G3 preview did not show the exact paired source and bounded two-node change: ${JSON.stringify(preview)}`);
+  }
+  const g3PreviewSource = await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => { const state = api.getState(); const project = api.getProject(); return JSON.stringify({ graph: project.graph, data: project.data, runtime: state.execution.runtime }); })`, true);
+  if (g3PreviewSource !== sourceAfter) throw new Error('Opening G3 preview mutated the Build graph, data, or runtime.');
+
+  await click('(() => { const button = document.querySelector("[data-graph-patch-cancel]"); if (!button) return false; button.click(); return true; })()', 'cancel the first G3 preview');
+  await waitFor('!document.querySelector("[data-graph-patch-preview]")', 'G3 preview cancellation');
+  const cancelledSource = await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => { const state = api.getState(); const project = api.getProject(); return JSON.stringify({ graph: project.graph, data: project.data, runtime: state.execution.runtime }); })`, true);
+  if (cancelledSource !== sourceAfter || !await evaluate('Boolean(document.querySelector("[data-explore-capacity-bridge][data-lifecycle=completed] [data-capacity-results]"))')) {
+    throw new Error('Cancelling G3 must preserve both the Build workspace and the completed source comparison.');
+  }
+
+  await click('(() => { const button = document.querySelector("[data-capacity-use-project]"); if (!button) return false; button.click(); return true; })()', 'reopen the G3 preview for explicit Apply');
+  await waitFor('Boolean(document.querySelector("[data-graph-patch-preview] [data-explore-to-build-source] [data-explore-to-build-measurements]"))', 'reopened G3 paired measurements');
+  const replayedPreview = await evaluate('({ count: document.querySelectorAll("[data-graph-patch-preview]").length, runIds: document.querySelector("[data-explore-to-build-source]")?.dataset.sourceRunIds ?? "" })');
+  if (replayedPreview.count !== 1 || replayedPreview.runIds !== preview.runIds.join(',')) {
+    throw new Error(`Reopening G3 must stage one proposal from the same actual pair: ${JSON.stringify(replayedPreview)}`);
+  }
+  const beforeApply = await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => { const project = api.getProject(); const state = api.getState(); return { graph: project.graph, data: project.data, runtime: state.execution.runtime, model: project.trainedModel }; })`, true);
+  await click('(() => { const button = document.querySelector("[data-graph-patch-apply]"); if (!button || button.disabled) return false; button.click(); button.click(); return true; })()', 'Apply the G3 proposal and exercise duplicate-Apply containment');
+  await waitFor('!document.querySelector("[data-graph-patch-preview]")', 'explicit G3 Apply completion');
+  const afterApply = await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => { const project = api.getProject(); const state = api.getState(); return { graph: project.graph, data: project.data, runtime: state.execution.runtime, model: project.trainedModel }; })`, true);
+  const oldHidden = beforeApply.graph.nodes.find((node) => node.id === 'build-hidden').data.parameters;
+  const newHidden = afterApply.graph.nodes.find((node) => node.id === 'build-hidden').data.parameters;
+  const oldOutput = beforeApply.graph.nodes.find((node) => node.id === 'build-head').data.parameters;
+  const newOutput = afterApply.graph.nodes.find((node) => node.id === 'build-head').data.parameters;
+  const hiddenChangedKeys = [...new Set([...Object.keys(oldHidden), ...Object.keys(newHidden)])].filter((key) => oldHidden[key] !== newHidden[key]);
+  const outputChangedKeys = [...new Set([...Object.keys(oldOutput), ...Object.keys(newOutput)])].filter((key) => oldOutput[key] !== newOutput[key]);
+  const otherNodesBefore = beforeApply.graph.nodes.filter((node) => !['build-hidden', 'build-head'].includes(node.id));
+  const otherNodesAfter = afterApply.graph.nodes.filter((node) => !['build-hidden', 'build-head'].includes(node.id));
+  if (hiddenChangedKeys.join(',') !== 'units'
+    || outputChangedKeys.join(',') !== 'input_features'
+    || newHidden.units !== newOutput.input_features
+    || JSON.stringify(otherNodesBefore) !== JSON.stringify(otherNodesAfter)
+    || JSON.stringify(beforeApply.graph.edges) !== JSON.stringify(afterApply.graph.edges)
+    || JSON.stringify(beforeApply.data) !== JSON.stringify(afterApply.data)
+    || afterApply.runtime.status !== 'idle'
+    || afterApply.model !== null
+    || preview.runIds.some((runId) => JSON.stringify(afterApply).includes(runId))
+    || JSON.stringify(afterApply).includes(preview.comparisonId)) {
+    throw new Error('G3 Apply changed an out-of-scope field, persisted Explore measurements, or executed Build.');
+  }
+  await waitFor('Boolean(document.querySelector("[data-explore-capacity-bridge][data-lifecycle=stale]"))', 'source G2 session invalidated after applied semantic configuration change');
+  await click('(() => { const button = document.querySelector("[data-explore-capacity-bridge] footer button:last-child"); if (!button) return false; button.click(); return true; })()', 'close stale G2 source dialog after Apply');
+  await waitFor('!document.querySelector("[data-explore-capacity-bridge]")', 'close stale source session dialog');
+  await click('(() => { const button = document.querySelector("[data-build-primary=run]"); if (!button) return false; button.click(); return true; })()', 'open Build Run explicitly after G3 Apply');
+  await waitFor('Boolean(document.querySelector("[data-runner-execute]"))', 'Build Run dialog after explicit open');
+  await click('(() => { const button = document.querySelector("[data-runner-execute]"); if (!button || button.disabled) return false; button.click(); return true; })()', 'execute the separately applied Build graph');
+  await waitFor('Boolean(document.querySelector("[data-run-history-status=succeeded][data-run-history-freshness=current][data-run-history-attempt-id]"))', 'distinct Build run history result', 60000);
+  const buildRun = await evaluate(`window.__VOLK_ML_AGENT__.open().then((api) => ({ runtime: api.getState().execution.runtime, model: api.getProject().trainedModel, attemptId: document.querySelector('[data-run-history-status="succeeded"][data-run-history-freshness="current"]')?.dataset.runHistoryAttemptId ?? null }))`, true);
+  if (!buildRun.attemptId?.startsWith('run-')
+    || preview.runIds.includes(buildRun.attemptId)
+    || buildRun.runtime.status !== 'succeeded'
+    || !buildRun.model) {
+    throw new Error(`The explicit Build Run must create a distinct successful Build attempt: ${JSON.stringify(buildRun)}`);
+  }
 
   await cdp.send('Page.reload', { ignoreCache: true });
   await waitFor('Boolean(document.querySelector("header nav button[aria-pressed]"))', 'app navigation after reload');
@@ -232,7 +324,7 @@ try {
 
   if (cloudPolicyRequests.length) throw new Error(`The local-only bridge unexpectedly called Cloud: ${cloudPolicyRequests.join(', ')}`);
   if (browserErrors.length) throw new Error(`Browser raised runtime exceptions: ${browserErrors.slice(-5).join(' | ')}`);
-  console.log('Mounted Build→Explore bridge browser checks passed (selection-bound entry; no-selection/non-hidden blocked; two real Browser CPU runs; source unchanged; layout preserved; semantic edit stale; reload drops session; project replacement disposes it; no Cloud call).');
+  console.log(`Mounted G2→G3 browser checks passed (two real Browser CPU runs ${preview.runIds.join(', ')}; layout-only session preserved; exact paired measurements previewed; cancel left Build unchanged; explicit Apply changed only Dense.units/input_features; G2 session became stale; separate Build Run ${buildRun.attemptId} succeeded; reload drops volatile state; project replacement disposes it; no Cloud call).`);
 } finally {
   cdp?.close();
   stopProcess(chromeProcess);

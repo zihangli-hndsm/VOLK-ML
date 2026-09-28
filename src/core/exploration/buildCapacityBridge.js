@@ -5,6 +5,10 @@ import { estimateExecutionPlan } from '../runtimeTiers.js';
 import { artifactFingerprintJsonV1 } from '../graph/artifactFingerprint.js';
 import { graphSemanticFingerprintV1 } from '../graph/identity.js';
 import { deterministicShuffle, stratifiedSplit } from '../knnMath.js';
+import {
+  createExploreToBuildProposalV1 as createExploreToBuildProposal,
+  revalidateExploreToBuildProposalV1,
+} from './exploreToBuildProposal.js';
 
 export const EXPLORE_BRIDGE_SESSION_TYPE = 'ExploreBridgeSessionV1';
 export const EXPLORE_BRIDGE_SESSION_VERSION = 1;
@@ -638,6 +642,38 @@ export function createExploreBridgeSessionV1({
       }
       return false;
     },
+    createExploreToBuildProposalV1({ currentBuild, currentProjectSessionId = projectSessionId } = {}) {
+      if (disposed || state.lifecycle !== 'completed' || !state.comparison) {
+        return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_SOURCE_INVALID' };
+      }
+      this.reconcileSource(currentBuild, currentProjectSessionId);
+      if (state.lifecycle !== 'completed') return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_SOURCE_STALE' };
+      const current = inspectExploreCapacityBuildInternal(currentBuild, {
+        selectedNodeId: inspection.hiddenNodeId ?? selectedNodeId,
+      });
+      return createExploreToBuildProposal({
+        sessionSnapshot: detachedSnapshot(state),
+        sourceInspection: inspection,
+        currentInspection: current,
+        currentProjectSessionId,
+      });
+    },
+    validateExploreToBuildProposalV1(proposal, { currentBuild, currentProjectSessionId = projectSessionId } = {}) {
+      if (disposed || state.lifecycle !== 'completed' || !state.comparison) {
+        return { valid: false, reasonCode: 'EXPLORE_TO_BUILD_SOURCE_INVALID' };
+      }
+      // This path is used while deriving C2 preview eligibility during render.
+      // Rebuild against current facts without publishing a G2 lifecycle update.
+      const current = inspectExploreCapacityBuildInternal(currentBuild, {
+        selectedNodeId: inspection.hiddenNodeId ?? selectedNodeId,
+      });
+      return revalidateExploreToBuildProposalV1(proposal, {
+        sessionSnapshot: detachedSnapshot(state),
+        sourceInspection: inspection,
+        currentInspection: current,
+        currentProjectSessionId,
+      });
+    },
     async runComparison() {
       if (activePromise) return activePromise;
       if (!inspection.supported || !source) throw new Error(state.reasonCode ?? 'SOURCE_UNSUPPORTED');
@@ -682,9 +718,23 @@ export function createExploreBridgeSessionV1({
         return {
           runId,
           role,
+          status: 'succeeded',
           width,
           graphFingerprint,
           task: inspection.task,
+          configuration: {
+            width,
+            graphSemanticFingerprint: graphFingerprint,
+            datasetFingerprint: inspection.datasetFingerprint,
+            splitIdentity: inspection.split.identity,
+            trainingIdentity: inspection.trainingConfigFingerprint,
+            seed: inspection.seed,
+            epochs: inspection.trainerSettings.epochs,
+            batchSize: inspection.trainerSettings.batch_size,
+            shuffle: inspection.trainerSettings.shuffle,
+            loss: inspection.lossOp,
+            optimizer: clone(inspection.optimizer),
+          },
           metrics,
           metricProvenance: {
             source: 'executeBrowserGraph',

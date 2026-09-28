@@ -603,6 +603,9 @@ function Workspace() {
   const [stagedGraphProposal, setStagedGraphProposal] = useState(null);
   const stagedGraphProposalRef = useRef(null);
   stagedGraphProposalRef.current = stagedGraphProposal;
+  const [stagedExploreToBuild, setStagedExploreToBuild] = useState(null);
+  const stagedExploreToBuildRef = useRef(null);
+  stagedExploreToBuildRef.current = stagedExploreToBuild;
   const [graphApplyCommitDiagnostic, setGraphApplyCommitDiagnostic] = useState(null);
   const graphApplyCommitInProgressRef = useRef(false);
   const [graphApplyTestBridge, setGraphApplyTestBridge] = useState(null);
@@ -744,6 +747,11 @@ function Workspace() {
   const stageGraphProposal = useCallback((proposal) => {
     const previous = stagedGraphProposalRef.current;
     if (previous && previous.proposalId !== proposal.proposalId) recordProposalLifecycle(proposalHistoryRef, previous, 'superseded');
+    const stagedTransfer = stagedExploreToBuildRef.current;
+    if (stagedTransfer?.proposal?.graphPatchProposal?.proposalId !== proposal.proposalId) {
+      stagedExploreToBuildRef.current = null;
+      setStagedExploreToBuild(null);
+    }
     stagedGraphProposalRef.current = proposal;
     setStagedGraphProposal(proposal);
     recordProposalLifecycle(proposalHistoryRef, proposal, 'staged');
@@ -753,6 +761,8 @@ function Workspace() {
     if (previous) recordProposalLifecycle(proposalHistoryRef, previous, status);
     stagedGraphProposalRef.current = null;
     setStagedGraphProposal(null);
+    stagedExploreToBuildRef.current = null;
+    setStagedExploreToBuild(null);
   }, []);
   const submitWorkspaceGraphProposal = useCallback((candidate) => {
     if (!graphProposalSubmissionAllowedRef.current) return { ok: false, diagnostics: [{ code: 'GRAPH_APPLY_BUILD_WORKSPACE_REQUIRED' }] };
@@ -774,6 +784,33 @@ function Workspace() {
     return { ok: true, proposalId: checked.proposal.proposalId };
   }, [stageGraphProposal, t]);
   proposalSubmitAdapterRef.current = submitWorkspaceGraphProposal;
+  const useExploreCapacityInProject = useCallback(() => {
+    const session = exploreCapacityBridgeRef.current;
+    const current = workspaceStateRef.current;
+    const currentBuild = {
+      nodes: current.nodes,
+      edges: current.edges,
+      dataset: current.dataset,
+      customComponents: current.customComponents,
+    };
+    const created = session?.createExploreToBuildProposalV1({
+      currentBuild,
+      currentProjectSessionId: projectSessionIdRef.current,
+    });
+    if (!created?.ok) {
+      setNotice(t('explore.capacity.transferBlocked'));
+      return;
+    }
+    const transfer = { proposal: created.proposal, session };
+    stagedExploreToBuildRef.current = transfer;
+    setStagedExploreToBuild(transfer);
+    const submitted = submitWorkspaceGraphProposal(created.proposal.graphPatchProposal);
+    if (!submitted.ok) {
+      stagedExploreToBuildRef.current = null;
+      setStagedExploreToBuild(null);
+      setNotice(t('explore.capacity.transferBlocked'));
+    }
+  }, [submitWorkspaceGraphProposal, t]);
   const importTorchExportDocument = useCallback(async (event) => {
     const input = event.currentTarget;
     const file = input.files?.[0];
@@ -823,6 +860,23 @@ function Workspace() {
   const graphApplyEligibility = useMemo(() => {
     if (!stagedGraphProposal) return null;
     const state = workspaceStateRef.current;
+    const transfer = stagedExploreToBuild;
+    const g3Patch = stagedGraphProposal.source?.provenance?.artifactId === 'g3-explore-to-build-v1';
+    if (g3Patch) {
+      const currentBuild = {
+        nodes: state.nodes,
+        edges: state.edges,
+        dataset: state.dataset,
+        customComponents: state.customComponents,
+      };
+      const sourceValid = Boolean(transfer
+        && transfer.proposal?.graphPatchProposal?.proposalId === stagedGraphProposal.proposalId
+        && transfer.session?.validateExploreToBuildProposalV1(transfer.proposal, {
+          currentBuild,
+          currentProjectSessionId: projectSessionIdRef.current,
+        })?.valid);
+      if (!sourceValid) return { ok: false, diagnostics: [{ code: 'EXPLORE_TO_BUILD_SOURCE_STALE' }] };
+    }
     const prepare = stagedGraphProposal.type === GRAPH_PATCH_PROPOSAL_TYPE
       ? prepareWorkspaceGraphPatchApply
       : prepareWorkspaceGraphApply;
@@ -845,6 +899,7 @@ function Workspace() {
     dataset,
     model,
     runtime,
+    stagedExploreToBuild,
   ]);
   const graphApplyEligibilityForPreview = graphApplyCommitDiagnostic && graphApplyEligibility
     ? { ...graphApplyEligibility, ok: false, diagnostics: [graphApplyCommitDiagnostic] }
@@ -857,10 +912,26 @@ function Workspace() {
       const prepare = isPatch ? prepareWorkspaceGraphPatchApply : prepareWorkspaceGraphApply;
       const commit = isPatch ? commitWorkspaceGraphPatchApply : commitWorkspaceGraphApply;
       const latestState = workspaceStateRef.current;
-      const prepared = prepare(stagedGraphProposal, {
+      let prepared = prepare(stagedGraphProposal, {
         currentProject: projectFromWorkspace(latestState),
         runtime: latestState.runtime,
       });
+      const stagedTransfer = stagedExploreToBuildRef.current;
+      const g3Patch = stagedGraphProposal.source?.provenance?.artifactId === 'g3-explore-to-build-v1';
+      if (prepared.ok && g3Patch) {
+        const sourceValid = Boolean(stagedTransfer
+          && stagedTransfer.proposal?.graphPatchProposal?.proposalId === stagedGraphProposal.proposalId
+          && stagedTransfer.session?.validateExploreToBuildProposalV1(stagedTransfer.proposal, {
+            currentBuild: {
+              nodes: latestState.nodes,
+              edges: latestState.edges,
+              dataset: latestState.dataset,
+              customComponents: latestState.customComponents,
+            },
+            currentProjectSessionId: projectSessionIdRef.current,
+          })?.valid);
+        if (!sourceValid) prepared = { ok: false, diagnostics: [{ code: 'EXPLORE_TO_BUILD_SOURCE_STALE' }] };
+      }
       const committed = prepared.ok
         ? commit(prepared, {
           currentProject: projectFromWorkspace(workspaceStateRef.current),
@@ -2096,6 +2167,7 @@ function Workspace() {
       build={{ nodes, edges, dataset, customComponents }}
       projectSessionId={projectSessionIdRef.current}
       onClose={closeExploreCapacityBridge}
+      onUseInProject={useExploreCapacityInProject}
       onStartNew={() => {
         const selectedNodeId = exploreCapacityBridgeRef.current?.getSnapshot().selectedHiddenNode?.nodeId;
         openExploreCapacityBridge(selectedNodeId, { newSession: true, requireSelection: false });
@@ -2105,7 +2177,7 @@ function Workspace() {
     {surface === UI_SURFACES.BUILD && <LumiBuildIntentDialog open={lumiBuildIntentOpen} onClose={() => setLumiBuildIntentOpen(false)} nodes={nodes} edges={edges} dataset={dataset} t={t} />}
     {surface === UI_SURFACES.BUILD && <LumiGraphEditDialog open={lumiGraphEditOpen} initialRequest={lumiGraphEditSeed} onClose={() => { setLumiGraphEditOpen(false); setLumiGraphEditSeed(''); }} nodes={nodes} edges={edges} customComponents={customComponents} language={primary} hasStagedProposal={Boolean(stagedGraphProposal)} t={t} />}
     <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />
-    {surface === UI_SURFACES.BUILD && stagedGraphProposal?.type === GRAPH_PATCH_PROPOSAL_TYPE && <GraphPatchPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
+    {surface === UI_SURFACES.BUILD && stagedGraphProposal?.type === GRAPH_PATCH_PROPOSAL_TYPE && <GraphPatchPreview proposal={stagedGraphProposal} exploreToBuildProposal={stagedExploreToBuild?.proposal ?? null} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
     {surface === UI_SURFACES.BUILD && stagedGraphProposal && stagedGraphProposal.type !== GRAPH_PATCH_PROPOSAL_TYPE && <GraphProposalPreview proposal={stagedGraphProposal} applyEligibility={graphApplyEligibilityForPreview} onCancel={cancelGraphProposalPreview} onApply={applyStagedGraphProposal} t={t} />}
     {surface === UI_SURFACES.BUILD && GraphApplyTestBridgeComponent && <GraphApplyTestBridgeComponent />}
   </div></WorkspaceGraphProposalContext.Provider>;

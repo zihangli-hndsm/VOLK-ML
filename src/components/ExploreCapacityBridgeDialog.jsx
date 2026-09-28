@@ -8,6 +8,7 @@ export default function ExploreCapacityBridgeDialog({
   build,
   projectSessionId,
   onClose,
+  onUseInProject,
   onStartNew,
   t,
 }) {
@@ -151,6 +152,7 @@ export default function ExploreCapacityBridgeDialog({
               </table>
             </div> : <p className="mt-4 text-sm text-slate-700">{t('explore.capacity.metricsUnavailable')}</p>}
             <p className="mt-4 text-xs leading-5 text-slate-600">{t('explore.capacity.metricSource')}</p>
+            <p className="mt-2 rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs leading-5 text-indigo-950">{t('explore.capacity.useInProjectNote')}</p>
           </section>}
         </>}
       </div>
@@ -161,6 +163,7 @@ export default function ExploreCapacityBridgeDialog({
           : canRun && <button type="button" data-capacity-run ref={!snapshot.dataset ? firstFocusRef : undefined} onClick={() => { session.runComparison().catch(() => {}); }} className="rounded-xl bg-indigo-600 px-4 py-2 font-bold text-white focus:outline-none focus:ring-2 focus:ring-indigo-500">{t(lifecycle === 'failed' ? 'explore.capacity.retry' : 'explore.capacity.run')}</button>}
         {canStartNew
           && <button type="button" data-capacity-new-session onClick={onStartNew} className="rounded-xl bg-indigo-100 px-4 py-2 font-bold text-indigo-900 focus:outline-none focus:ring-2 focus:ring-indigo-500">{t('explore.capacity.newComparison')}</button>}
+        {lifecycle === 'completed' && <button type="button" data-capacity-use-project onClick={onUseInProject} className="rounded-xl bg-emerald-700 px-4 py-2 font-bold text-white focus:outline-none focus:ring-2 focus:ring-emerald-500">{t('explore.capacity.useInProject')}</button>}
         <button type="button" onClick={onClose} className="rounded-xl bg-slate-100 px-4 py-2 font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-slate-500">{t('common.close')}</button>
       </footer>
     </section>
