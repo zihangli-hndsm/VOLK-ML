@@ -12,6 +12,11 @@ import { flattenCustomComposites } from './customComposites.js';
 import { analyzeBrowserExecutionGraph, profileBrowserDataset } from './browserExecutionContract.js';
 import { createLinearRegressionTrainer, stepLinearRegressionTrainer } from './linearRegressionMath.js';
 
+// The current L0 MLP contract uses one explicit deterministic seed for split,
+// initialization, and epoch shuffling. Explore comparisons record this value
+// so both capacity branches can prove their matched randomness policy.
+export const BROWSER_MLP_SEED = DEFAULT_KNN_SEED;
+
 function resolvePort(manifest, direction, handleId) {
   const ports = direction === 'output' ? manifest.outputs : manifest.inputs;
   return ports.find((port) => port.name === handleId) ?? (ports.length === 1 ? ports[0] : null);
@@ -98,7 +103,7 @@ function forwardNeural(layers, input) {
   return { values, trace };
 }
 
-function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss, onYield }) {
+function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss, onYield, seed = BROWSER_MLP_SEED }) {
   const sourceDataset = split.dataset;
   const inputSize = sourceDataset.featureColumns.length;
   if (architecture.inputSize !== inputSize) throw localizedError('error.browserMlpShape');
@@ -110,7 +115,7 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
     layer.op === 'dense'
       ? {
         ...layer,
-        ...initializeDense(layer.input_features, layer.units, layer.use_bias, 2026 + index),
+        ...initializeDense(layer.input_features, layer.units, layer.use_bias, seed + index),
         adam: {
           weights: Array.from({ length: layer.units }, () => Array.from({ length: layer.input_features }, () => ({ m: 0, v: 0 }))),
           bias: Array.from({ length: layer.units }, () => ({ m: 0, v: 0 })),
@@ -216,7 +221,7 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
   return (async () => {
     for (let epoch 
 = 0; epoch < epochs; epoch += 1) {
-      const examples = trainer.shuffle ? deterministicShuffle(normalizedTrain, 2026 + epoch) : normalizedTrain;
+      const examples = trainer.shuffle ? deterministicShuffle(normalizedTrain, seed + epoch) : normalizedTrain;
       let epochLoss = 0;
       for (let start = 0; start < examples.length; start += batchSize) {
         const batch = examples.slice(start, start + batchSize);

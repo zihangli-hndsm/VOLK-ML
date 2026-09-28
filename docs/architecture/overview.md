@@ -38,6 +38,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Semantic round-trip evaluation | `scripts/semantic-roundtrip-core.mjs`, `scripts/test-semantic-roundtrip.mjs` | Test-only structural evaluation of canonical VOLK → generated PyTorch → real torch.export → existing B2 adapter → VOLK |
 | Graph interoperability | `src/core/graph/` | Detached proposal contracts, deterministic revalidation, explicit Apply, local Torch Export and ONNX adapters |
 | G2 imported attention | `src/core/playground/importedAttention/`, `src/services/localAttention/`, `dev/g2_attention/` | One strict local BERT-Tiny ONNX Attention v25 profile with CPU execution and bounded semantic evidence |
+| Build→Explore capacity bridge v1 | `src/core/exploration/buildCapacityBridge.js`, `src/components/ExploreCapacityBridgeDialog.jsx` | Detached, local-only comparison of two fresh existing L0 runs for one supported tabular MLP, with semantic staleness and no project persistence |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
 | Teaching datasets | `src/core/teachingDatasets.js` | Deterministic seeded datasets for example projects and playgrounds |
 | Example quality | `src/core/exampleQuality.js` | Pure teaching-contract checks (class balance, leakage, nonlinearity, R²) |
@@ -64,6 +65,11 @@ The detached Build Agent A model-design boundary is documented in
 [`build-agent.md`](./build-agent.md). It plans registered graphs from local
 semantic dataset context, while keeping proposal authority and execution
 separate from the Canvas Agent and Build workspace.
+
+The bounded Build→Explore capacity comparison is documented in
+[`build-explore-capacity-bridge.md`](./build-explore-capacity-bridge.md). It
+reuses the current Browser L0 executor on a detached in-memory snapshot and
+does not merge Explore results back into Build.
 
 Build Run history, deterministic result facts, and the optional typed LUMI
 interpretation boundary are documented in
