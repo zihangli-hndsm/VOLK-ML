@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { messages } from '../src/locales/ui.js';
 import {
   G2_ATTENTION_API_VERSION,
+  G2_ATTENTION_LEGACY_SHA256S,
   G2_ATTENTION_PROFILE_ID,
   G2_ATTENTION_PROFILE_SHA256,
   G2_INPUT_IDS_A,
@@ -41,9 +42,12 @@ const responseFor = ({ inputIdsA = [...G2_INPUT_IDS_A], inputIdsB = [...G2_INPUT
 assert.equal(PROJECT_VERSION, 9, 'The local artifact hash reference has its own project migration.');
 assert.deepEqual(G2_INPUT_IDS_A.map((id, index) => id === G2_INPUT_IDS_B[index]), [true, true, true, true, false, true]);
 assert.equal(validateLocalModelReferences([createLocalModelReference({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 })]), true);
+const legacyReference = createLocalModelReference({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_LEGACY_SHA256S[0] });
+assert.equal(validateLocalModelReferences([legacyReference]), true, 'Only the explicitly registered exact-byte legacy alias remains importable.');
 assert.equal(validateLocalModelReferences([{ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256, filename: 'private-name.onnx' }]), false);
 assert.equal(validateLocalModelReferences([{ profileId: G2_ATTENTION_PROFILE_ID, sha256: '0'.repeat(64) }]), false);
 assert.equal(g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 }), `${G2_ATTENTION_PROFILE_ID}:${G2_ATTENTION_PROFILE_SHA256}`, 'Local model cache is content-addressed only for the registered profile hash.');
+assert.equal(g2LocalModelCacheKey(legacyReference), `${G2_ATTENTION_PROFILE_ID}:${G2_ATTENTION_LEGACY_SHA256S[0]}`, 'Legacy cache keys retain their exact artifact identity.');
 assert.throws(() => g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: '0'.repeat(64) }), /g2.modelProfileMismatch/);
 assert.throws(() => g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256, filename: 'private.onnx' }), /g2.modelProfileMismatch/);
 
@@ -60,6 +64,12 @@ validateImportedAttentionImportResponse({
   modelHash,
   requestId: 'g2-request-0001',
 }, { requestId: 'g2-request-0001', sha256: G2_ATTENTION_PROFILE_SHA256 });
+validateImportedAttentionImportResponse({
+  apiVersion: G2_ATTENTION_API_VERSION,
+  profileId: G2_ATTENTION_PROFILE_ID,
+  modelHash: `sha256:${G2_ATTENTION_LEGACY_SHA256S[0]}`,
+  requestId: 'g2-legacy-import-0001',
+}, { requestId: 'g2-legacy-import-0001', sha256: G2_ATTENTION_LEGACY_SHA256S[0] });
 assert.throws(() => validateImportedAttentionImportResponse({
   apiVersion: G2_ATTENTION_API_VERSION,
   profileId: G2_ATTENTION_PROFILE_ID,
@@ -103,6 +113,19 @@ assert.deepEqual(committed.semanticEvents.events.map((event) => event.type), ['c
 assert.equal(committed.semanticEvents.evidenceInstances.length, 1);
 assert.equal(committed.semanticEvents.evidenceInstances[0].available, true);
 assert.equal(JSON.stringify(committed.semanticEvents).includes('this movie'), false, 'Event history never retains the displayed text sample.');
+const repeatedRun = commitImportedAttentionComparison(eventStore, { ...strong, requestId: 'g2-request-0002' });
+assert.deepEqual(repeatedRun.semanticEvents.events.map((event) => event.type), ['comparison.completed', 'observation.detected', 'comparison.completed']);
+assert.deepEqual(repeatedRun.semanticEvents.events[0].experimentIds, ['g2-a-g2-request-0001', 'g2-b-g2-request-0001']);
+assert.deepEqual(repeatedRun.semanticEvents.events[2].experimentIds, ['g2-a-g2-request-0002', 'g2-b-g2-request-0002'], 'Every committed comparison has distinct per-run experiment identity.');
+assert.equal(repeatedRun.semanticEvents.evidenceInstances.length, 1, 'Repeated runs of the same semantic condition do not duplicate Evidence.');
+const repeatedLegacyRun = commitImportedAttentionComparison(eventStore, {
+  ...strong,
+  requestId: 'g2-legacy-run-0001',
+  modelHash: `sha256:${G2_ATTENTION_LEGACY_SHA256S[0]}`,
+});
+assert.equal(repeatedLegacyRun.semanticEvents.events.at(-1).type, 'comparison.completed');
+assert.deepEqual(repeatedLegacyRun.semanticEvents.events.at(-1).experimentIds, ['g2-a-g2-legacy-run-0001', 'g2-b-g2-legacy-run-0001']);
+assert.equal(repeatedLegacyRun.semanticEvents.evidenceInstances.length, 1, 'The exact legacy alias has the same condition-level Evidence identity.');
 assert.equal(JSON.stringify(oldProject).includes('model.safetensors'), false, 'Project migration contains no model bytes or local paths.');
 
 const weakStore = createImportedAttentionEventStore();

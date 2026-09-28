@@ -212,7 +212,7 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
           <p className="mt-2 text-xs text-slate-500">{t('g2.pair.fixedSettings')}</p>
         </section>
         {comparison && evidence && <>
-          <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4" data-g2-evidence data-g2-event-count={semanticEvents.events.length}>
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4" data-g2-evidence data-g2-event-count={semanticEvents.events.length} data-g2-run-id={comparison.requestId} data-g2-experiment-ids={(semanticEvents.events.filter((event) => event.type === 'comparison.completed').at(-1)?.experimentIds ?? []).join(',')} data-g2-evidence-instance-count={semanticEvents.evidenceInstances.length}>
             <h3 className="font-black text-emerald-950">{t('g2.evidence.heading')}</h3>
             <p className="mt-1 text-sm leading-5 text-emerald-900">{t(evidence.attentionChanged ? 'g2.evidence.attentionChanged' : 'g2.evidence.noAttentionChange')}</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">

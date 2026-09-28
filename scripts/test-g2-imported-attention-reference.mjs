@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
 import os from 'node:os';
 import { createHash } from 'node:crypto';
@@ -7,11 +7,12 @@ import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createLocalAttentionClient } from '../src/services/localAttention/client.js';
-import { G2_ATTENTION_PROFILE_SHA256, validateImportedAttentionCompareResponse } from '../src/core/playground/importedAttention/profile.js';
+import { G2_ATTENTION_LEGACY_SHA256S, G2_ATTENTION_PROFILE_SHA256, validateImportedAttentionCompareResponse } from '../src/core/playground/importedAttention/profile.js';
 import { commitImportedAttentionComparison, createImportedAttentionEventStore } from '../src/core/playground/importedAttention/semanticEvents.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const modelPath = process.env.VOLK_G2_REFERENCE_ONNX;
+const legacyModelPath = process.env.VOLK_G2_LEGACY_ONNX;
 const modelDirectory = process.env.VOLK_G2_MODEL_DIR;
 const python = process.env.VOLK_G2_PYTHON;
 const pythonPath = process.env.VOLK_G2_PYTHONPATH;
@@ -21,27 +22,39 @@ const pythonEnvironment = {
   PYTHONIOENCODING: 'utf-8',
   ...(pythonPath ? { PYTHONPATH: [pythonPath, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) } : {}),
 };
-if (!modelPath || !modelDirectory || !python) {
-  throw new Error('Set VOLK_G2_REFERENCE_ONNX, VOLK_G2_MODEL_DIR, and VOLK_G2_PYTHON to the real artifact, pinned checkpoint files, and Python 3.12 exporter/runtime.');
+if (!modelPath || !legacyModelPath || !modelDirectory || !python) {
+  throw new Error('Set VOLK_G2_REFERENCE_ONNX, VOLK_G2_LEGACY_ONNX, VOLK_G2_MODEL_DIR, and VOLK_G2_PYTHON to the regenerated artifact, registered legacy artifact, pinned checkpoint, and Python 3.12 exporter/runtime.');
 }
 
 const exportDirectory = mkdtempSync(path.join(os.tmpdir(), 'volk-g2-reference-'));
-const regeneratedPath = path.join(exportDirectory, 'reference.onnx');
+const checkoutA = path.join(exportDirectory, 'checkout-a');
+const checkoutB = path.join(exportDirectory, 'checkout-b');
+const exportPaths = [checkoutA, checkoutB].map((checkoutRoot, index) => {
+  const script = path.join(checkoutRoot, 'tools', 'g2_attention', 'export_reference.py');
+  const output = path.join(exportDirectory, `reference-${index + 1}.onnx`);
+  mkdirSync(path.dirname(script), { recursive: true });
+  copyFileSync(path.join(root, 'tools/g2_attention/export_reference.py'), script);
+  return { script, output };
+});
 try {
-  execFileSync(python, [
-    path.join(root, 'tools/g2_attention/export_reference.py'),
-    '--model-dir', modelDirectory,
-    '--output', regeneratedPath,
-  ], { cwd: root, env: pythonEnvironment, stdio: 'inherit' });
-  const regeneratedDigest = createHash('sha256').update(readFileSync(regeneratedPath)).digest('hex');
+  for (const [index, item] of exportPaths.entries()) {
+    const args = [item.script, '--model-dir', modelDirectory, '--output', item.output];
+    if (index === 0) args.push('--validate-artifact', legacyModelPath);
+    execFileSync(python, args, { cwd: path.dirname(path.dirname(path.dirname(item.script))), env: pythonEnvironment, stdio: 'inherit' });
+  }
+  const regeneratedBytes = readFileSync(exportPaths[0].output);
+  const regeneratedDigest = createHash('sha256').update(regeneratedBytes).digest('hex');
+  const secondRootDigest = createHash('sha256').update(readFileSync(exportPaths[1].output)).digest('hex');
   const importedDigest = createHash('sha256').update(readFileSync(modelPath)).digest('hex');
   assert.equal(regeneratedDigest, G2_ATTENTION_PROFILE_SHA256, 'Pinned source checkpoint deterministically regenerates the registered profile hash.');
+  assert.equal(secondRootDigest, regeneratedDigest, 'Two separate checkout roots produce byte-identical ONNX artifacts.');
   assert.equal(importedDigest, regeneratedDigest, 'The HTTP test imports the newly regenerated source-verified model.');
 } catch (error) {
   rmSync(exportDirectory, { recursive: true, force: true });
   throw error;
 }
-const bytes = readFileSync(regeneratedPath);
+const bytes = readFileSync(exportPaths[0].output);
+const legacyBytes = readFileSync(legacyModelPath);
 const availablePort = await new Promise((resolve, reject) => {
   const server = net.createServer();
   server.once('error', reject);
@@ -81,6 +94,19 @@ try {
     size: bytes.byteLength,
     async arrayBuffer() { return bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength); },
   };
+  const legacyFile = {
+    name: path.basename(legacyModelPath),
+    size: legacyBytes.byteLength,
+    async arrayBuffer() { return legacyBytes.buffer.slice(legacyBytes.byteOffset, legacyBytes.byteOffset + legacyBytes.byteLength); },
+  };
+  const legacyBinding = await client.importModel(legacyFile);
+  assert.equal(legacyBinding.sha256, G2_ATTENTION_LEGACY_SHA256S[0], 'The production client accepts only the exact registered legacy digest.');
+  assert.equal(legacyBinding.modelHash, `sha256:${G2_ATTENTION_LEGACY_SHA256S[0]}`);
+  const legacyComparison = await client.compare({ modelHash: legacyBinding.modelHash });
+  const legacyCommitted = commitImportedAttentionComparison(createImportedAttentionEventStore(), legacyComparison);
+  assert.ok(legacyCommitted.evidence?.attentionChanged, 'The exact legacy artifact retains the accepted comparison semantics.');
+  assert.equal((await client.health()).modelHash, legacyBinding.modelHash);
+
   const binding = await client.importModel(localFile);
   assert.equal(binding.sha256, G2_ATTENTION_PROFILE_SHA256);
   assert.equal(binding.modelHash, `sha256:${G2_ATTENTION_PROFILE_SHA256}`);
@@ -127,6 +153,8 @@ try {
     task: 'G2 real local imported attention runtime',
     modelBytes: bytes.byteLength,
     modelHash: binding.modelHash,
+    legacyModelBytes: legacyBytes.byteLength,
+    legacyModelHash: legacyBinding.modelHash,
     cpuOnly: true,
     logits: { a: comparison.sampleA.logits, b: comparison.sampleB.logits },
     attentionMaxDelta: committed.evidence.layerDeltas.map((entry) => entry.maxAbsoluteDelta),

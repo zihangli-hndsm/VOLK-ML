@@ -5,6 +5,7 @@ import {
   G2_ATTENTION_PROFILE_SHA256,
   G2_INPUT_IDS_A,
   G2_INPUT_IDS_B,
+  isG2AttentionArtifactSha256,
   sha256Hex,
   validateImportedAttentionCompareResponse,
   validateImportedAttentionImportResponse,
@@ -18,6 +19,14 @@ function runtimeError(code) {
   const error = new Error(code);
   error.code = code;
   error.translationKey = `g2.error.${code}`;
+  return error;
+}
+
+function callerAbortError(reason) {
+  if (reason && typeof reason === 'object' && reason.name === 'AbortError') return reason;
+  const error = new Error('Local model request was cancelled.');
+  error.name = 'AbortError';
+  if (reason !== undefined) error.cause = reason;
   return error;
 }
 
@@ -45,32 +54,51 @@ export function createLocalAttentionClient({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   cryptoApi = globalThis.crypto,
 } = {}) {
-  const request = async (url, init, signal) => {
+  const request = async (url, init, signal, validateResponse) => {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort('timeout'), timeoutMs);
+    let timedOut = false;
+    const timeout = setTimeout(() => {
+      timedOut = true;
+      controller.abort('timeout');
+    }, timeoutMs);
     const abort = () => controller.abort(signal?.reason ?? 'aborted');
+    let rejectOnAbort;
+    const abortPromise = new Promise((_, reject) => { rejectOnAbort = reject; });
+    const onRequestAbort = () => rejectOnAbort(controller.signal.reason);
     if (signal?.aborted) abort();
     else signal?.addEventListener('abort', abort, { once: true });
+    controller.signal.addEventListener('abort', onRequestAbort, { once: true });
+    if (controller.signal.aborted) onRequestAbort();
+
+    const responseOperation = (async () => {
+      const response = await fetchImpl(url, { ...init, signal: controller.signal, mode: 'cors', credentials: 'omit' });
+      const value = await parseResponse(response);
+      return validateResponse(value);
+    })();
     try {
-      return await fetchImpl(url, { ...init, signal: controller.signal, mode: 'cors', credentials: 'omit' });
+      return await Promise.race([responseOperation, abortPromise]);
     } catch (error) {
+      if (signal?.aborted) throw callerAbortError(signal.reason);
+      if (timedOut) throw runtimeError('requestTimeout');
+      if (error?.translationKey) throw error;
       if (controller.signal.aborted) throw runtimeError('requestTimeout');
       throw runtimeError('runtimeUnavailable');
     } finally {
       clearTimeout(timeout);
       signal?.removeEventListener('abort', abort);
+      controller.signal.removeEventListener('abort', onRequestAbort);
     }
   };
 
   return Object.freeze({
     async health({ signal } = {}) {
-      const response = await request(`${baseUrl}/health`, { headers: { Accept: 'application/json' } }, signal);
-      const value = await parseResponse(response);
-      if (value?.apiVersion !== G2_ATTENTION_API_VERSION || value?.profileId !== G2_ATTENTION_PROFILE_ID
-        || value?.provider !== 'CPUExecutionProvider' || value?.status !== 'ok') {
-        throw runtimeError('responseInvalid');
-      }
-      return Object.freeze({ available: true, modelLoaded: value.modelLoaded === true, modelHash: value.modelHash ?? null });
+      return request(`${baseUrl}/health`, { headers: { Accept: 'application/json' } }, signal, (value) => {
+        if (value?.apiVersion !== G2_ATTENTION_API_VERSION || value?.profileId !== G2_ATTENTION_PROFILE_ID
+          || value?.provider !== 'CPUExecutionProvider' || value?.status !== 'ok') {
+          throw runtimeError('responseInvalid');
+        }
+        return Object.freeze({ available: true, modelLoaded: value.modelLoaded === true, modelHash: value.modelHash ?? null });
+      });
     },
 
     async importModel(file, { signal } = {}) {
@@ -78,9 +106,9 @@ export function createLocalAttentionClient({
       if (!file.size || file.size > G2_ATTENTION_MAX_MODEL_BYTES) throw runtimeError('modelSizeInvalid');
       const bytes = await file.arrayBuffer();
       const digest = await sha256Hex(bytes, cryptoApi);
-      if (digest !== G2_ATTENTION_PROFILE_SHA256) throw runtimeError('modelProfileMismatch');
+      if (!isG2AttentionArtifactSha256(digest)) throw runtimeError('modelProfileMismatch');
       const id = requestId();
-      const response = await request(`${baseUrl}/v1/model/import`, {
+      return request(`${baseUrl}/v1/model/import`, {
         method: 'POST',
         headers: {
           Accept: 'application/json',
@@ -89,14 +117,15 @@ export function createLocalAttentionClient({
           'X-VOLK-Request-Id': id,
         },
         body: bytes,
-      }, signal);
-      const validated = validateImportedAttentionImportResponse(await parseResponse(response), { requestId: id, sha256: digest });
-      return Object.freeze({ ...validated, modelHash: `sha256:${digest}` });
+      }, signal, (value) => {
+        const validated = validateImportedAttentionImportResponse(value, { requestId: id, sha256: digest });
+        return Object.freeze({ ...validated, modelHash: `sha256:${digest}` });
+      });
     },
 
     async compare({ modelHash, inputIdsA = G2_INPUT_IDS_A, inputIdsB = G2_INPUT_IDS_B, signal } = {}) {
       const id = requestId();
-      const response = await request(`${baseUrl}/v1/compare`, {
+      return request(`${baseUrl}/v1/compare`, {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -106,13 +135,12 @@ export function createLocalAttentionClient({
           inputIdsA,
           inputIdsB,
         }),
-      }, signal);
-      return validateImportedAttentionCompareResponse(await parseResponse(response), {
+      }, signal, (value) => validateImportedAttentionCompareResponse(value, {
         requestId: id,
         modelHash,
         inputIdsA,
         inputIdsB,
-      });
+      }));
     },
   });
 }

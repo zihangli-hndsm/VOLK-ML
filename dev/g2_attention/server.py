@@ -19,7 +19,9 @@ import onnxruntime as ort
 
 API_VERSION = "g2-local-v1"
 PROFILE_ID = "bert-tiny-sst2-attention-v25-cpu-v1"
-PROFILE_SHA256 = "19b18790c5cc466d086ec473e91566bc3e852a74878fbae68f78d483a45c6cef"
+PROFILE_SHA256 = "3ef55e4c13475e2b6cf4aec1f5002130412e9d58659e9e0943aeae863eba9cb1"
+LEGACY_PROFILE_SHA256S = frozenset({"19b18790c5cc466d086ec473e91566bc3e852a74878fbae68f78d483a45c6cef"})
+ACCEPTED_PROFILE_SHA256S = LEGACY_PROFILE_SHA256S | {PROFILE_SHA256}
 MAX_MODEL_BYTES = 20 * 1024 * 1024
 MAX_JSON_BYTES = 16 * 1024
 ALLOWED_ORIGINS = {"http://localhost:5173", "http://127.0.0.1:5173"}
@@ -45,7 +47,7 @@ class AttentionRuntime:
         if not model_bytes or len(model_bytes) > MAX_MODEL_BYTES:
             raise ProfileError("MODEL_SIZE_INVALID")
         digest = hashlib.sha256(model_bytes).hexdigest()
-        if digest != PROFILE_SHA256:
+        if digest not in ACCEPTED_PROFILE_SHA256S:
             raise ProfileError("MODEL_PROFILE_MISMATCH", 422)
         try:
             model = onnx.load_model_from_string(model_bytes)

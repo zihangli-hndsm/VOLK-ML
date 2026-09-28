@@ -1,7 +1,7 @@
 import {
   G2_ATTENTION_MAX_MODEL_BYTES,
   G2_ATTENTION_PROFILE_ID,
-  G2_ATTENTION_PROFILE_SHA256,
+  isG2AttentionArtifactSha256,
   sha256Hex,
 } from './playground/importedAttention/profile.js';
 
@@ -18,7 +18,7 @@ function validateReference(reference) {
     : [];
   if (!reference || typeof reference !== 'object' || Array.isArray(reference)
     || keys.length !== 2 || !keys.includes('profileId') || !keys.includes('sha256')
-    || reference.profileId !== G2_ATTENTION_PROFILE_ID || reference.sha256 !== G2_ATTENTION_PROFILE_SHA256) {
+    || reference.profileId !== G2_ATTENTION_PROFILE_ID || !isG2AttentionArtifactSha256(reference.sha256)) {
     throw cacheError('modelProfileMismatch');
   }
 }

@@ -7,12 +7,16 @@ export function createImportedAttentionEventStore() {
 
 export function commitImportedAttentionComparison(eventStore, comparison) {
   const evidence = deriveImportedAttentionEvidence(comparison);
-  if (!eventStore || !evidence) {
+  const runIdentity = typeof comparison?.requestId === 'string'
+    && /^g2-[A-Za-z0-9_-]{8,80}$/.test(comparison.requestId)
+    ? comparison.requestId
+    : null;
+  if (!eventStore || !evidence || !runIdentity) {
     return { evidence: null, semanticEvents: eventStore?.snapshot?.() ?? null };
   }
   const experimentIds = [
-    `g2-a-${comparison.modelHash.slice(-12)}`,
-    `g2-b-${comparison.modelHash.slice(-12)}`,
+    `g2-a-${runIdentity}`,
+    `g2-b-${runIdentity}`,
   ];
   const drafts = [
     {

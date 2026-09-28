@@ -1,5 +1,38 @@
 # Changelog
 
+## 2026-09-28 — G2 response lifecycle and deterministic artifact identity
+
+- Keep the local G2 request deadline and caller cancellation active through
+  complete response-body parsing and strict contract validation. A stalled,
+  partial, late, or cancelled response cannot clear busy state incorrectly or
+  replace committed comparison/Evidence; an explicit retry remains available.
+- Normalize only machine-specific absolute paths in ONNX stack-trace debug
+  metadata so pinned exports are byte-identical across checkout roots. The
+  current exact-byte profile hash is `3ef55e4c13475e2b6cf4aec1f5002130412e9d58659e9e0943aeae863eba9cb1`;
+  the previous accepted artifact remains one explicit exact-hash alias.
+- Give each successful comparison unique A/B run identities while deduplicating
+  Evidence for the same semantic condition. Project application starts a clean
+  in-memory G2 inquiry session and invalidates pending/stale results, even when
+  the same model hash remains linked. No project/session load executes a run.
+- Affected areas: `src/services/localAttention/client.js`,
+  `src/core/playground/importedAttention/`, `src/core/localModelCache.js`,
+  `src/core/localModelReferences.js`, `src/components/ExploreImportedAttentionExperience.jsx`,
+  `src/main.jsx`, `dev/g2_attention/server.py`,
+  `tools/g2_attention/export_reference.py`, G2/R0 regression scripts, and
+  `docs/architecture/imported-attention-g2.md`.
+- Validation: pinned source export from two independent temporary roots was
+  byte-identical; real HTTP import/comparison verified both exact hashes with
+  CPU ONNX Runtime and pinned-source parity. Mounted Chromium checks passed for
+  valid import, repeated-run identity/Evidence deduplication, stalled-body
+  close/cancel/retry, same-hash project switch while a response was pending,
+  fresh explicit run, offline containment, and compact rendering. The response
+  lifecycle test, `npm run check`, `npm run build`, encoding scan, and
+  `git diff --check` passed.
+- Limitations: optional default-Python PyTorch/ONNX precheck integrations remain
+  skipped because those packages are intentionally absent there; the dedicated
+  pinned G2 Python environment exercised the real PyTorch/ONNX/ORT path.
+  Independent VOLK-Dev acceptance is pending.
+
 ## 2026-09-28 — G2 hash-verified local model recovery
 
 - Added a same-origin IndexedDB cache for the pinned G2 model, separate from

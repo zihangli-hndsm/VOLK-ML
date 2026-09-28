@@ -321,7 +321,7 @@ try {
   const project = await currentProject();
   assert.equal(project.localModelReferences?.length, 1, 'Only a bounded local profile/hash reference is saved.');
   assert.equal(project.localModelReferences[0].profileId, 'bert-tiny-sst2-attention-v25-cpu-v1');
-  assert.equal(project.localModelReferences[0].sha256, '19b18790c5cc466d086ec473e91566bc3e852a74878fbae68f78d483a45c6cef');
+  assert.equal(project.localModelReferences[0].sha256, G2_ATTENTION_PROFILE_SHA256);
   assert.equal(JSON.stringify(project.localModelReferences).includes(path.basename(artifactPath)), false, 'Project state never retains the selected path or filename.');
   const cacheSummary = await cacheRecordSummary();
   assert.deepEqual(cacheSummary.keys, ['bytes', 'profileId', 'sha256'], 'The cache stores only identity and verified bytes, with no original filename or path.');
@@ -394,6 +394,41 @@ try {
   assert.equal(runtimeRouteStatuses('/v1/compare').at(-1), 200, 'The explicit comparison returns successfully from the real local runner.');
   assert.equal(await evaluate('document.querySelector("[data-g2-evidence]")?.getAttribute("data-g2-event-count")'), '2');
   assert.equal(await evaluate('Boolean(document.querySelector("[data-g2-concept-eligible]"))'), true, 'The concept is surfaced only after measured attention movement.');
+  const firstRun = await evaluate(`(() => { const node=document.querySelector('[data-g2-evidence]'); return {
+    runId:node?.getAttribute('data-g2-run-id'), experimentIds:node?.getAttribute('data-g2-experiment-ids'),
+    evidenceInstances:node?.getAttribute('data-g2-evidence-instance-count'),
+  }; })()`);
+  assert.ok(firstRun.runId && firstRun.experimentIds, 'A committed comparison exposes its semantic per-run identity.');
+  await click('[data-g2-run-comparison]');
+  await waitForRuntimeRouteCount('/v1/compare', 2);
+  await waitFor('document.querySelector("[data-g2-evidence]")?.getAttribute("data-g2-event-count") === "3"', 'repeat comparison semantic events');
+  const repeatedRun = await evaluate(`(() => { const node=document.querySelector('[data-g2-evidence]'); return {
+    runId:node?.getAttribute('data-g2-run-id'), experimentIds:node?.getAttribute('data-g2-experiment-ids'),
+    evidenceInstances:node?.getAttribute('data-g2-evidence-instance-count'),
+  }; })()`);
+  assert.notEqual(repeatedRun.runId, firstRun.runId, 'A repeated successful comparison receives a distinct run identity.');
+  assert.notEqual(repeatedRun.experimentIds, firstRun.experimentIds, 'Repeated comparison experiment IDs are unique per run.');
+  assert.equal(repeatedRun.evidenceInstances, '1', 'Repeating the same condition does not duplicate Evidence.');
+  report.steps.push({ id: 'repeat-comparison-has-distinct-experiment-identities-with-condition-deduped-evidence', status: 'PASS' });
+
+  const switchedProject = await evaluate(`window.__VOLK_ML_AGENT__.open().then(async(api)=>{
+    const project=await api.getProject();
+    return api.loadProject({...project,name:(project.name||'Project')+' - G2 session switch'});
+  })`, true);
+  assert.ok(switchedProject?.name, 'The supported project-load API completed the same-hash session switch.');
+  await waitFor('Boolean(document.querySelector("[data-g2-imported-attention]")) && !document.querySelector("[data-g2-evidence]") && document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status") === "available" && document.querySelector("[data-g2-run-comparison]")?.disabled === false', 'G2 state invalidation after project switch');
+  assert.equal((await currentProject()).localModelReferences?.[0]?.sha256, modelReference.sha256, 'The project switch preserves the identical artifact reference.');
+  assert.equal(await runtimeRouteCount('/v1/compare'), 2, 'Project loading itself does not execute inference.');
+  await click('[data-g2-run-comparison]');
+  await waitForRuntimeRouteCount('/v1/compare', 3);
+  await waitFor('document.querySelector("[data-g2-evidence]")?.getAttribute("data-g2-event-count") === "2"', 'explicit inference after clean project session');
+  const freshSessionRun = await evaluate(`(() => { const node=document.querySelector('[data-g2-evidence]'); return {
+    runId:node?.getAttribute('data-g2-run-id'), experimentIds:node?.getAttribute('data-g2-experiment-ids'),
+    evidenceInstances:node?.getAttribute('data-g2-evidence-instance-count'),
+  }; })()`);
+  assert.notEqual(freshSessionRun.runId, repeatedRun.runId, 'The new project session creates new run identities only after explicit learner action.');
+  assert.equal(freshSessionRun.evidenceInstances, '1', 'Evidence is rebuilt from the explicit result in the clean project session.');
+  report.steps.push({ id: 'same-hash-project-switch-clears-session-evidence-and-requires-explicit-inference', status: 'PASS' });
   const results = await evaluate(`(() => ({
     grids: document.querySelectorAll('[data-g2-evidence] ~ section [role="grid"]').length,
     tokens: document.querySelector('[data-g2-imported-attention]')?.innerText.includes('good') && document.querySelector('[data-g2-imported-attention]')?.innerText.includes('bad'),
