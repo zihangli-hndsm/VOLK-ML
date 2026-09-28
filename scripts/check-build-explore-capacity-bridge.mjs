@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { BROWSER_MLP_SEED, executeBrowserGraph } from '../src/core/browserRuntime.js';
 import { DEFAULT_KNN_SEED } from '../src/core/knnMath.js';
 import { makeBuildExploreCapacityFixture } from './build-explore-capacity-bridge-fixture.mjs';
 import { validateAgentDataset } from '../src/core/canvasAgent.js';
+import { createTorchExportGraphProposal } from '../src/core/graph/workspaceProposal.js';
 import {
   createExploreBridgeSessionV1,
   inspectExploreCapacityBuild,
@@ -26,6 +28,33 @@ assert.equal(assessment.baselineWidth, 2);
 assert.equal(assessment.seed, 2026);
 assert.equal(BROWSER_MLP_SEED, DEFAULT_KNN_SEED, 'MLP initialization, shuffle, and data split use the same declared deterministic seed.');
 check(!JSON.stringify(assessment).includes('bridge-private-'), 'Public eligibility projection must not expose raw dataset values.');
+
+const importedTorchProposal = createTorchExportGraphProposal(JSON.parse(readFileSync(new URL('../fixtures/torch-export/linear-relu.json', import.meta.url), 'utf8')));
+assert.equal(importedTorchProposal.ok, true, 'The production B2 proposal adapter accepts the canonical import fixture.');
+const importedTorchBuild = {
+  nodes: importedTorchProposal.proposal.graph.nodes,
+  edges: importedTorchProposal.proposal.graph.edges,
+  dataset: null,
+  customComponents: [],
+};
+const importedHidden = importedTorchBuild.nodes.find((node) => node.data.manifest.op === 'dense');
+const importedInspection = inspectExploreCapacityBuild(importedTorchBuild, { selectedNodeId: importedHidden.id });
+assert.equal(importedInspection.supported, false, 'A metadata-only B2 architecture cannot be treated as a runnable experiment.');
+assert.equal(importedInspection.reasonCode, 'DATASET_MISSING');
+assert.deepEqual(importedInspection.repair, {
+  selectedNodeId: importedHidden.id,
+  registryIdentity: { componentId: 'dense_node', op: 'dense' },
+  reasonCode: 'DATASET_MISSING',
+  requiredSteps: ['DATASET_PIPELINE_REQUIRED', 'TRAINING_EVALUATION_PATH_REQUIRED'],
+});
+assert.equal(inspectExploreCapacityBuild(importedTorchBuild).repair, undefined, 'No current node selection cannot receive a layer-specific repair prompt.');
+assert.equal(inspectExploreCapacityBuild(importedTorchBuild, { selectedNodeId: importedTorchBuild.nodes.find((node) => node.data.manifest.op === 'model_output').id }).repair, undefined, 'The output layer is not mislabeled as a hidden layer.');
+const branchedImportedBuild = structuredClone(importedTorchBuild);
+const extraImportedDense = structuredClone(branchedImportedBuild.nodes.find((node) => node.data.manifest.op === 'dense'));
+extraImportedDense.id = 'unconnected-imported-dense';
+branchedImportedBuild.nodes.push(extraImportedDense);
+assert.equal(inspectExploreCapacityBuild(branchedImportedBuild, { selectedNodeId: importedHidden.id }).repair, undefined, 'A branched or ambiguous imported graph is not given a false single-path repair prompt.');
+assert.equal(createExploreBridgeSessionV1({ build: importedTorchBuild, selectedNodeId: importedHidden.id }).getSnapshot().graphIdentity, null);
 
 const actualRunInputs = [];
 const initial = createSession({
