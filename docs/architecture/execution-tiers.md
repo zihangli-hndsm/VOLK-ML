@@ -13,6 +13,12 @@
 
 Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines, plus a deliberately small browser-CPU MLP: tabular data, a Tensor Input, sequential Dense layers with ReLU/Sigmoid/Tanh/Softmax activations, Model Output, MSE or cross-entropy loss, SGD or Adam, and Supervised Trainer. L1–L3 expose design/export guidance.
 
+G2 adds one isolated local-CPU exception outside the generic graph executor:
+the pinned BERT-Tiny ONNX Attention v25 profile described in
+[`imported-attention-g2.md`](./imported-attention-g2.md). It is not general L2
+availability, cannot execute arbitrary imported ONNX, and does not change the
+L0 graph executor or component tier claims.
+
 The browser MLP supports numeric tabular data and one sequential input/output path only. Classification needs one Softmax output per class and cross-entropy; regression needs one output and MSE. Trainer updates are true mini-batch updates: gradients are accumulated for `batch_size` examples before one SGD (including momentum) or Adam update. CNN, sequence, attention, normalization, Dropout, custom loss, AdamW, multi-input/output architectures, and non-tabular bindings remain export-only. Supervised Trainer is L0 when used with this supported subset and remains exportable to local Python for its wider source-generation contract.
 
 ## Estimator inputs

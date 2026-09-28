@@ -2,8 +2,9 @@ import { localizedError } from '../i18n.js';
 import { componentById } from './components.js';
 import { assessConnection } from './connections.js';
 import { flattenCustomComposites } from './customComposites.js';
+import { validateLocalModelReferences } from './localModelReferences.js';
 
-export const PROJECT_VERSION = 8;
+export const PROJECT_VERSION = 9;
 
 const oldSamplePositions = {
   'pipeline-data': { x: 40, y: 180 },
@@ -30,6 +31,7 @@ export function projectContentSignature(project) {
     customComponents: project.customComponents,
     data: project.data,
     trainedModel: project.trainedModel,
+    localModelReferences: project.localModelReferences ?? [],
   });
 }
 
@@ -97,6 +99,7 @@ export function migrateProject(project) {
     ...migrated,
     name: migrated.name || 'Sample Project',
     customComponents: migrated.customComponents ?? [],
+    localModelReferences: migrated.localModelReferences ?? [],
     version: PROJECT_VERSION,
   };
 }
@@ -424,6 +427,7 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
 export function validateProjectForWorkspace(rawProject) {
   const project = migrateProject(rawProject);
   if (typeof project.name !== 'string' || !Array.isArray(project.customComponents)) invalidProject();
+  if (!validateLocalModelReferences(project.localModelReferences)) invalidProject();
   if (project.language !== undefined && (
     !project.language
     || typeof project.language !== 'object'
