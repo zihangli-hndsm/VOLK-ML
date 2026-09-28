@@ -1,0 +1,7 @@
+-r requirements-runtime.txt
+huggingface_hub==1.33.0
+onnxscript==0.7.2
+safetensors==0.8.0
+tokenizers==0.23.2
+transformers==5.17.0
+torch==2.14.0+cpu

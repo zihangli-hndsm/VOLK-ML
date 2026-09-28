@@ -395,6 +395,13 @@ post-Apply compiler use in Chromium. Set `ONNX_PYTHON` (or `PYTHON`) to the
 ONNX-enabled Python executable when running these checks; if it is explicitly configured,
 the tests fail rather than silently skipping a missing or broken runtime.
 
+G2's separate runtime is not an extension of this metadata-only adapter. It
+accepts only the pinned local BERT-Tiny ONNX Attention v25 artifact and runs it
+through the bounded loopback CPU service. See
+[`imported-attention-g2.md`](./imported-attention-g2.md). B3 still stages an
+editable graph without trained weights, and no G2 results are applied to that
+graph.
+
 ## C1 detached graph patches
 
 GraphPatchProposalV1 describes an ordered, bounded patch against one detached

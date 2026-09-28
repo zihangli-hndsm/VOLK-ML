@@ -1,7 +1,7 @@
 import BigIdeaEntrancePanel from './BigIdeaEntrancePanel.jsx';
 import { listPlaygrounds } from '../core/playgrounds/registry.js';
 
-export default function ExploreHome({ onOpenBigIdea, onOpenPlayground, onOpenDirector, onOpenOnboarding, onRestartOnboarding, t }) {
+export default function ExploreHome({ onOpenBigIdea, onOpenPlayground, onOpenDirector, onOpenOnboarding, onRestartOnboarding, onOpenImportedAttention, t }) {
   const debug = import.meta.env?.DEV === true && new URLSearchParams(window.location.search).get('directorDebug') === '1';
   return <main data-explore-home className="min-h-0 flex-1 overflow-auto px-3 py-5 sm:px-5 sm:py-8">
     <div className="mx-auto flex max-w-6xl flex-col gap-6">
@@ -19,6 +19,11 @@ export default function ExploreHome({ onOpenBigIdea, onOpenPlayground, onOpenDir
             <span className="mt-1 block text-sm leading-6 text-slate-600">{t('director.entryBody')}</span>
           </button>
           <BigIdeaEntrancePanel variant="home" onOpen={onOpenBigIdea} t={t} />
+          <button type="button" data-g2-imported-attention-entry onClick={onOpenImportedAttention} className="mt-4 w-full rounded-2xl border border-cyan-200 bg-cyan-50/80 p-4 text-left shadow-sm transition hover:border-cyan-400 hover:shadow-md focus:outline-none focus:ring-2 focus:ring-cyan-500">
+            <span className="block text-xs font-black uppercase tracking-[0.16em] text-cyan-800">{t('g2.entry.eyebrow')}</span>
+            <span className="mt-1 block text-lg font-black text-slate-950">{t('g2.entry.title')}</span>
+            <span className="mt-1 block text-sm leading-6 text-slate-600">{t('g2.entry.body')}</span>
+          </button>
         </div>
       </section>
 

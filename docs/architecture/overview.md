@@ -37,6 +37,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Controlled source re-import | `src/core/graph/sourceReimportProposal.js`, `scripts/propose-source-reimport.mjs` | Offline generated-PyTorch AST parsing into allowlisted detached C1 patches; never executes source |
 | Semantic round-trip evaluation | `scripts/semantic-roundtrip-core.mjs`, `scripts/test-semantic-roundtrip.mjs` | Test-only structural evaluation of canonical VOLK → generated PyTorch → real torch.export → existing B2 adapter → VOLK |
 | Graph interoperability | `src/core/graph/` | Detached proposal contracts, deterministic revalidation, explicit Apply, local Torch Export and ONNX adapters |
+| G2 imported attention | `src/core/playground/importedAttention/`, `src/services/localAttention/`, `dev/g2_attention/` | One strict local BERT-Tiny ONNX Attention v25 profile with CPU execution and bounded semantic evidence |
 | Workload guidance | `src/core/runtimeTiers.js` | Parameter/operation estimates and L0–L3 recommendation |
 | Teaching datasets | `src/core/teachingDatasets.js` | Deterministic seeded datasets for example projects and playgrounds |
 | Example quality | `src/core/exampleQuality.js` | Pure teaching-contract checks (class balance, leakage, nonlinearity, R²) |
@@ -91,6 +92,12 @@ The separately versioned in-page Agent Application request boundary and its
 preview-only proposal authority are documented in
 [`agent-application-api.md`](./agent-application-api.md). It does not change
 Canvas Agent API v1.
+
+G2's separate imported-model execution profile is documented in
+[`imported-attention-g2.md`](./imported-attention-g2.md). It runs only the
+pinned local BERT-Tiny ONNX artifact, keeps model bytes outside project JSON,
+and does not alter the synthetic sequence playground or metadata-only B3
+importer.
 
 The canonical compiler's opt-in generated-source provenance contract is
 documented in [`source-export-manifest.md`](./source-export-manifest.md). It
@@ -154,12 +161,13 @@ flowchart TD
 - Canvas nodes retain their manifest and user parameters.
 - The mounted workspace exposes a serializable canvas snapshot and validated commands through `globalThis.__VOLK_ML_AGENT__`; it does not expose React internals or create a network listener.
 - Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
-- Project JSON version 8 stores the project name, graph, custom composite definitions, workspace preferences, dataset, and trained L0 model. Browser MLP persistence keeps inference layers, normalization, labels, and metrics while omitting optimizer moment state; imported models are validated against their Trainer graph and dataset before use.
-- `PROJECT_VERSION` in `src/core/project.js` is currently `8`.
+- Project JSON version 9 stores the project name, graph, custom composite definitions, workspace preferences, dataset, trained L0 model, and a bounded list of allowlisted local imported-model profile/hash references. Browser MLP persistence keeps inference layers, normalization, labels, and metrics while omitting optimizer moment state; imported models are validated against their Trainer graph and dataset before use.
+- `PROJECT_VERSION` in `src/core/project.js` is currently `9`; version 8 migrates with an empty local-model reference list.
 - Import first migrates legacy graph contracts, then resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
 - Version 5 migrates legacy KNN `model` edges to `trained_model`; obsolete visualization-only `boundary` edges are removed because the current KNN runtime no longer produces a mesh.
 - Version 6 adds the project name and reusable custom-composite catalog.
 - Version 7 moves only the untouched built-in sample graph to wider coordinates so enlarged component cards do not overlap; user-arranged graphs keep their positions.
+- Version 9 adds validated local model profile/hash references; it never stores model bytes, selected filenames, or local filesystem paths.
 
 ## Visual workspace
 

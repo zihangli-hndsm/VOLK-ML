@@ -53,6 +53,7 @@ import { commitWorkspaceGraphPatchApply, prepareWorkspaceGraphPatchApply } from 
 import { createOnnxGraphProposal, createTorchExportGraphProposal, validateWorkspaceGraphProposal } from './core/graph/workspaceProposal.js';
 import { MAX_ONNX_DOCUMENT_CODE_UNITS } from './core/graph/onnxAdapter.js';
 import { MAX_TORCH_EXPORT_DOCUMENT_CODE_UNITS } from './core/graph/torchExportAdapter.js';
+import ImportedAttentionExperience from './components/ExploreImportedAttentionExperience.jsx';
 import ArchitectureView from './components/ArchitectureView';
 import ComponentLibrary from './components/ComponentLibrary';
 import CompositeDialog from './components/CompositeDialog';
@@ -184,6 +185,7 @@ function projectFromWorkspace(state) {
     customComponents: state.customComponents,
     data: state.dataset,
     trainedModel: state.model,
+    localModelReferences: state.localModelReferences ?? [],
   };
 }
 
@@ -567,6 +569,7 @@ function Workspace() {
   const [compositeOpen, setCompositeOpen] = useState(false);
   const [examplesOpen, setExamplesOpen] = useState(false);
   const [playgroundOpen, setPlaygroundOpen] = useState(false);
+  const [g2AttentionOpen, setG2AttentionOpen] = useState(false);
   const [directorOpen, setDirectorOpen] = useState(false);
   const [playgroundId, setPlaygroundId] = useState(null);
   const [playgroundInitialTab, setPlaygroundInitialTab] = useState('model');
@@ -585,6 +588,7 @@ function Workspace() {
   const [autosavedAt, setAutosavedAt] = useState(null);
   const [persistenceRevision, setPersistenceRevision] = useState(0);
   const [dataset, setDataset] = useState(null);
+  const [localModelReferences, setLocalModelReferences] = useState([]);
   const [model, setModel] = useState(null);
   const [runtime, setRuntime] = useState(idleRuntimeState);
   const [runHistory, setRunHistory] = useState([]);
@@ -693,6 +697,7 @@ function Workspace() {
     customComponents,
     dataset,
     model,
+    localModelReferences,
     runtime,
     selectedId,
   };
@@ -712,7 +717,8 @@ function Workspace() {
     customComponents,
     data: dataset,
     trainedModel: model,
-  }), [projectName, nodes, edges, dataset, customComponents, model]);
+    localModelReferences,
+  }), [projectName, nodes, edges, dataset, customComponents, model, localModelReferences]);
   const executionInputSignature = useMemo(
     () => canvasExecutionInputSignature(nodes, edges, dataset),
     [nodes, edges, dataset],
@@ -951,6 +957,7 @@ function Workspace() {
       customComponents: project.customComponents ?? [],
       dataset: project.data ?? null,
       model: project.trainedModel ?? null,
+      localModelReferences: project.localModelReferences ?? [],
       runtime: nextRuntime,
       selectedId: restoredNodes[0]?.id ?? null,
     };
@@ -966,6 +973,7 @@ function Workspace() {
     if (Number.isFinite(project.workspace?.leftWidth)) setLeftWidth(project.workspace.leftWidth);
     if (Number.isFinite(project.workspace?.rightWidth)) setRightWidth(project.workspace.rightWidth);
     setDataset(project.data ?? null);
+    setLocalModelReferences(project.localModelReferences ?? []);
     setModel(project.trainedModel ?? null);
     setRuntime(nextRuntime);
     pendingFitRef.current = true;
@@ -1978,7 +1986,7 @@ function Workspace() {
       </nav>
     </header>
 
-    {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenOnboarding={openPhaseAHandoff} onRestartOnboarding={openPhaseAHandoff} t={t} /> : <>
+    {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenOnboarding={openPhaseAHandoff} onRestartOnboarding={openPhaseAHandoff} onOpenImportedAttention={() => setG2AttentionOpen(true)} t={t} /> : <>
       <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onExploreCurrentSetup={openExploreFromBuild} setRunnerOpen={setRunnerOpen} graphOccupied={nodes.length > 0 || edges.length > 0} onOpenBuildIntent={() => setLumiBuildIntentOpen(true)} onOpenGraphEdit={() => setLumiGraphEditOpen(true)} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>
@@ -2019,6 +2027,7 @@ function Workspace() {
     {tutorialManifest && <Suspense fallback={<div className="fixed inset-0 z-[70] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('tutorial.loading')}</div></div>}><TutorialDialog manifest={tutorialManifest} dataset={dataset} onOpenPlayground={(id) => openExplorePlayground(id)} onClose={() => setTutorialManifest(null)} t={t} /></Suspense>}
     {exploreRecovery && <div className="fixed inset-0 z-[85] grid place-items-center bg-slate-950/60 p-4" role="dialog" aria-modal="true" aria-labelledby="explore-recovery-title"><section className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"><h2 id="explore-recovery-title" className="text-xl font-black">{t('explore.workspace.recoveryTitle')}</h2><p className="mt-2 text-sm leading-6 text-slate-600">{t('explore.workspace.recoveryBody')}</p><div className="mt-5 grid gap-2 sm:grid-cols-2"><button type="button" className="rounded-2xl bg-blue-600 px-4 py-3 font-bold text-white" onClick={async () => { try { await exploreRecovery.host.restartBigIdeaEntrance({ id: exploreRecovery.id }); setExploreWorkspaceKey(exploreRecovery.key); setPlaygroundId(exploreRecovery.expected.playgroundId); setPlaygroundInitialTab(exploreRecovery.expected.playgroundId === 'data-lab' ? 'data' : 'model'); setExploreRecovery(null); setPlaygroundOpen(true); } catch (error) { setNotice(translateError(error, t)); } }}>{t('explore.workspace.restore')}</button><button type="button" className="rounded-2xl bg-slate-100 px-4 py-3 font-bold text-slate-700" onClick={() => setExploreRecovery(null)}>{t('common.close')}</button></div></section></div>}
     <PlaygroundDialog open={playgroundOpen} playgroundId={playgroundId} initialTab={playgroundInitialTab} host={activeExploreHost} agent={activeExploreAgent} developmentMatrixDriver={developmentMatrixDriver} preserveSession={activeExploreWorkspace?.record.lifecycle === EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT} strictOpen onClose={closeExploreWorkspace} t={t} />
+    <ImportedAttentionExperience open={g2AttentionOpen} onClose={() => setG2AttentionOpen(false)} localModelReference={localModelReferences[0] ?? null} onModelBound={(reference) => setLocalModelReferences([reference])} t={t} />
     {surface === UI_SURFACES.BUILD && <LumiBuildIntentDialog open={lumiBuildIntentOpen} onClose={() => setLumiBuildIntentOpen(false)} nodes={nodes} edges={edges} dataset={dataset} t={t} />}
     {surface === UI_SURFACES.BUILD && <LumiGraphEditDialog open={lumiGraphEditOpen} initialRequest={lumiGraphEditSeed} onClose={() => { setLumiGraphEditOpen(false); setLumiGraphEditSeed(''); }} nodes={nodes} edges={edges} customComponents={customComponents} language={primary} hasStagedProposal={Boolean(stagedGraphProposal)} t={t} />}
     <DirectorPrototype open={directorOpen} onClose={() => setDirectorOpen(false)} onStartExploration={openPhaseAHandoff} t={t} />
