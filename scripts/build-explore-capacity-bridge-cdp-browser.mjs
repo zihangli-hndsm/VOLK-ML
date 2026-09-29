@@ -284,6 +284,20 @@ try {
     || !buildRun.model) {
     throw new Error(`The explicit Build Run must create a distinct successful Build attempt: ${JSON.stringify(buildRun)}`);
   }
+  const execution = buildRun.runtime.execution;
+  if (execution?.schemaVersion !== 1
+    || execution.status !== 'succeeded'
+    || !execution.requestId?.startsWith('execution-')
+    || execution.runId !== buildRun.attemptId
+    || typeof execution.projectSessionId !== 'string'
+    || execution.providerId !== 'browser-cpu'
+    || execution.adapterId !== 'volk-browser-runtime'
+    || execution.provenance !== 'live-local'
+    || execution.graphIdentity?.kind !== 'graph'
+    || typeof execution.graphIdentity.fingerprint !== 'string'
+    || execution.artifactIdentity !== null) {
+    throw new Error(`The Browser CPU run must expose its accepted graph-bound ExecutionResultV1 without a companion or artifact identity: ${JSON.stringify(execution)}`);
+  }
 
   await cdp.send('Page.reload', { ignoreCache: true });
   await waitFor('Boolean(document.querySelector("header nav button[aria-pressed]"))', 'app navigation after reload');

@@ -2,13 +2,14 @@ import assert from 'node:assert/strict';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { execFileSync, spawn } from 'node:child_process';
 import os from 'node:os';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import net from 'node:net';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createLocalAttentionClient } from '../src/services/localAttention/client.js';
 import { G2_ATTENTION_LEGACY_SHA256S, G2_ATTENTION_PROFILE_SHA256, validateImportedAttentionCompareResponse } from '../src/core/playground/importedAttention/profile.js';
-import { commitImportedAttentionComparison, createImportedAttentionEventStore } from '../src/core/playground/importedAttention/semanticEvents.js';
+import { commitImportedAttentionExecution, createImportedAttentionEventStore } from '../src/core/playground/importedAttention/semanticEvents.js';
+import { createG2ExecutionRequestV1, createG2ExecutionResultV1, g2CurrentExecutionIdentityV1 } from '../src/core/playground/importedAttention/executionAdapter.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const modelPath = process.env.VOLK_G2_REFERENCE_ONNX;
@@ -16,8 +17,10 @@ const legacyModelPath = process.env.VOLK_G2_LEGACY_ONNX;
 const modelDirectory = process.env.VOLK_G2_MODEL_DIR;
 const python = process.env.VOLK_G2_PYTHON;
 const pythonPath = process.env.VOLK_G2_PYTHONPATH;
+const connectionCode = randomBytes(32).toString('base64url');
 const pythonEnvironment = {
   ...process.env,
+  VOLK_G2_RUNNER_TOKEN: connectionCode,
   PYTHONUTF8: '1',
   PYTHONIOENCODING: 'utf-8',
   ...(pythonPath ? { PYTHONPATH: [pythonPath, process.env.PYTHONPATH].filter(Boolean).join(path.delimiter) } : {}),
@@ -73,15 +76,45 @@ let childOutput = '';
 child.stdout.on('data', (chunk) => { childOutput += chunk.toString(); });
 child.stderr.on('data', (chunk) => { childOutput += chunk.toString(); });
 const baseUrl = `http://127.0.0.1:${availablePort}`;
-const client = createLocalAttentionClient({ baseUrl, timeoutMs: 20_000 });
+const fetchFromExploreOrigin = (url, init = {}) => {
+  const headers = new Headers(init.headers ?? {});
+  headers.set('Origin', 'http://127.0.0.1:5173');
+  return fetch(url, { ...init, headers });
+};
+const client = createLocalAttentionClient({ baseUrl, timeoutMs: 20_000, fetchImpl: fetchFromExploreOrigin });
+let runtimeProviderVersion = null;
 
 async function waitForHealth() {
   const deadline = Date.now() + 15_000;
   while (Date.now() < deadline) {
     if (child.exitCode !== null) throw new Error(`G2 runner exited before health: ${childOutput}`);
-    try { return await client.health(); } catch { await new Promise((resolve) => setTimeout(resolve, 150)); }
+    try {
+      const health = await client.health({ token: connectionCode });
+      runtimeProviderVersion = health.providerVersion;
+      return health;
+    } catch { await new Promise((resolve) => setTimeout(resolve, 150)); }
   }
   throw new Error(`G2 runner did not become healthy: ${childOutput}`);
+}
+
+function commitExecution(eventStore, comparison) {
+  const startedAt = new Date().toISOString();
+  const request = createG2ExecutionRequestV1({
+    projectSessionId: 'g2-reference-project-session',
+    modelHash: comparison.modelHash,
+    requestId: comparison.requestId,
+    providerVersion: runtimeProviderVersion,
+    approvedAt: startedAt,
+  });
+  const executionResult = createG2ExecutionResultV1({
+    request, comparison, providerVersion: runtimeProviderVersion, startedAt, finishedAt: new Date().toISOString(),
+  });
+  const current = g2CurrentExecutionIdentityV1({
+    projectSessionId: 'g2-reference-project-session',
+    modelHash: comparison.modelHash,
+    providerVersion: runtimeProviderVersion,
+  });
+  return commitImportedAttentionExecution(eventStore, executionResult, request, current);
 }
 
 try {
@@ -99,20 +132,20 @@ try {
     size: legacyBytes.byteLength,
     async arrayBuffer() { return legacyBytes.buffer.slice(legacyBytes.byteOffset, legacyBytes.byteOffset + legacyBytes.byteLength); },
   };
-  const legacyBinding = await client.importModel(legacyFile);
+  const legacyBinding = await client.importModel(legacyFile, { token: connectionCode });
   assert.equal(legacyBinding.sha256, G2_ATTENTION_LEGACY_SHA256S[0], 'The production client accepts only the exact registered legacy digest.');
   assert.equal(legacyBinding.modelHash, `sha256:${G2_ATTENTION_LEGACY_SHA256S[0]}`);
-  const legacyComparison = await client.compare({ modelHash: legacyBinding.modelHash });
-  const legacyCommitted = commitImportedAttentionComparison(createImportedAttentionEventStore(), legacyComparison);
+  const legacyComparison = await client.compare({ modelHash: legacyBinding.modelHash, providerVersion: runtimeProviderVersion, token: connectionCode });
+  const legacyCommitted = commitExecution(createImportedAttentionEventStore(), legacyComparison);
   assert.ok(legacyCommitted.evidence?.attentionChanged, 'The exact legacy artifact retains the accepted comparison semantics.');
-  assert.equal((await client.health()).modelHash, legacyBinding.modelHash);
+  assert.equal((await client.health({ token: connectionCode })).modelHash, legacyBinding.modelHash);
 
-  const binding = await client.importModel(localFile);
+  const binding = await client.importModel(localFile, { token: connectionCode });
   assert.equal(binding.sha256, G2_ATTENTION_PROFILE_SHA256);
   assert.equal(binding.modelHash, `sha256:${G2_ATTENTION_PROFILE_SHA256}`);
-  assert.equal((await client.health()).modelLoaded, true);
+  assert.equal((await client.health({ token: connectionCode })).modelLoaded, true);
 
-  const comparison = await client.compare({ modelHash: binding.modelHash });
+  const comparison = await client.compare({ modelHash: binding.modelHash, providerVersion: runtimeProviderVersion, token: connectionCode });
   assert.equal(comparison.sampleA.logits.length, 2);
   assert.equal(comparison.sampleB.logits.length, 2);
   for (const sample of [comparison.sampleA, comparison.sampleB]) {
@@ -126,7 +159,7 @@ try {
     }
   }
   const eventStore = createImportedAttentionEventStore();
-  const committed = commitImportedAttentionComparison(eventStore, comparison);
+  const committed = commitExecution(eventStore, comparison);
   assert.ok(committed.evidence?.attentionChanged, 'Real pinned model must produce measurable attention movement for the accepted pair.');
   assert.equal(committed.semanticEvents.events[0].type, 'comparison.completed');
   assert.equal(committed.semanticEvents.events[1].type, 'observation.detected');
@@ -135,7 +168,7 @@ try {
   const corrupt = Uint8Array.from(bytes);
   corrupt[corrupt.length - 1] ^= 0x01;
   const corruptedFile = { ...localFile, async arrayBuffer() { return corrupt.buffer; } };
-  await assert.rejects(client.importModel(corruptedFile), (error) => error.translationKey === 'g2.error.modelProfileMismatch');
+  await assert.rejects(client.importModel(corruptedFile, { token: connectionCode }), (error) => error.translationKey === 'g2.error.modelProfileMismatch');
   assert.equal(eventStore.snapshot().evidenceInstances.length, 1, 'A rejected re-import cannot erase or replace truthful evidence.');
 
   const incomplete = { ...comparison, sampleB: { ...comparison.sampleB, logits: [Number.NaN, 0] } };
@@ -143,6 +176,7 @@ try {
   assert.throws(() => validateImportedAttentionCompareResponse(incomplete, {
     requestId: comparison.requestId,
     modelHash: binding.modelHash,
+    providerVersion: runtimeProviderVersion,
     inputIdsA: comparison.inputIdsA,
     inputIdsB: comparison.inputIdsB,
   }));

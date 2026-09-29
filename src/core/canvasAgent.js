@@ -352,6 +352,7 @@ export function createCanvasAgentSnapshot({
         activeNodeIds: copy(runtime?.activeNodeIds ?? []),
         losses: copy(runtime?.losses ?? []),
         result: copy(runtime?.result ?? null),
+        execution: copy(runtime?.execution ?? null),
         error: copy(runtime?.error ?? null),
         startedAt: runtime?.startedAt ?? null,
         finishedAt: runtime?.finishedAt ?? null,

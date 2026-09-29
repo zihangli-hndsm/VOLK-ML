@@ -29,6 +29,7 @@ Source compilation does not imply browser executability. L1–L3 currently guide
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
 | Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
 | Browser runtime | `src/core/browserRuntime.js`, `src/core/browserExecutionContract.js` | One shared execution contract plus linear regression, KNN classification, small tabular MLP training, evaluation, prediction |
+| Execution Contract v1 | `src/core/execution/executionContract.js` | Bounded execution request/result identity, provider provenance, explicit-action binding, budgets, and stale/failure acceptance gate |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
@@ -107,6 +108,10 @@ G2's separate imported-model execution profile is documented in
 pinned local BERT-Tiny ONNX artifact, keeps model bytes outside project JSON,
 and does not alter the synthetic sequence playground or metadata-only B3
 importer.
+
+The shared Browser CPU/G2 local result boundary is documented in
+[`execution-contract.md`](./execution-contract.md). It rejects unbounded,
+failed, cancelled, or stale results before runtime consumers can commit them.
 
 The canonical compiler's opt-in generated-source provenance contract is
 documented in [`source-export-manifest.md`](./source-export-manifest.md). It

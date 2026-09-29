@@ -103,7 +103,17 @@ function forwardNeural(layers, input) {
   return { values, trace };
 }
 
-function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss, onYield, seed = BROWSER_MLP_SEED }) {
+function throwIfExecutionAborted(signal) {
+  if (!signal?.aborted) return;
+  const timedOut = signal.reason === 'deadline';
+  const error = new Error(timedOut ? 'Browser execution deadline elapsed.' : 'Browser execution was cancelled.');
+  error.name = 'AbortError';
+  error.code = timedOut ? 'EXECUTION_TIMEOUT' : 'EXECUTION_CANCELLED';
+  error.translationKey = timedOut ? 'runner.executionTimeout' : 'runner.executionCancelled';
+  throw error;
+}
+
+function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss, onYield, signal, seed = BROWSER_MLP_SEED }) {
   const sourceDataset = split.dataset;
   const inputSize = sourceDataset.featureColumns.length;
   if (architecture.inputSize !== inputSize) throw localizedError('error.browserMlpShape');
@@ -219,11 +229,12 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
     requireFiniteTrainingState(layers);
   };
   return (async () => {
-    for (let epoch 
-= 0; epoch < epochs; epoch += 1) {
+    for (let epoch = 0; epoch < epochs; epoch += 1) {
+      throwIfExecutionAborted(signal);
       const examples = trainer.shuffle ? deterministicShuffle(normalizedTrain, seed + epoch) : normalizedTrain;
       let epochLoss = 0;
       for (let start = 0; start < examples.length; start += batchSize) {
+        throwIfExecutionAborted(signal);
         const batch = examples.slice(start, start + batchSize);
         const gradients = emptyGradients();
         batch.forEach((sample) => { epochLoss += accumulateSampleGradients(sample, gradients); });
@@ -236,6 +247,7 @@ function trainBrowserMlp({ architecture, split, loss, optimizer, trainer, onLoss
       if (epoch % Math.max(1, Math.floor(epochs / 50)) === 0 || epoch === epochs - 1) {
         onLoss([...history]);
         await onYield();
+        throwIfExecutionAborted(signal);
       }
     }
     const inferenceLayers = layers.map(({ adam, sgd, ...layer }) => layer);
@@ -371,6 +383,7 @@ export async function executeBrowserGraph({
   onNodeStatus = () => {},
   onLoss = () => {},
   onYield = () => Promise.resolve(),
+  signal = null,
 }) {
   const flattened = flattenCustomComposites(nodes, edges);
   const plan = compileExecutionGraph(flattened.nodes, flattened.edges);
@@ -390,6 +403,7 @@ export async function executeBrowserGraph({
   };
 
   for (const node of plan.order) {
+    throwIfExecutionAborted(signal);
     onNodeStatus([node.data.runtimeOwnerId ?? node.id], 'running');
     const manifestId = node.data.manifest.id;
     const manifestOp = node.data.manifest.op;
@@ -453,6 +467,7 @@ export async function executeBrowserGraph({
         },
         onLoss,
         onYield,
+        signal,
       });
       finalModel = output;
     } else if (manifestId === 'linear_regression_node') {
@@ -472,6 +487,7 @@ export async function executeBrowserGraph({
       const epochs = node.data.parameters.epochs;
       let previousLoss = null;
       for (let epoch = 0; epoch < epochs; epoch += 1) {
+        throwIfExecutionAborted(signal);
         const step = stepLinearRegressionTrainer(trainer, { weights, bias, learningRate: spec.learningRate });
         if (!Number.isFinite(step.lossNormalized)
           || step.normalizedParameters.weights.some((value) => !Number.isFinite(value))
@@ -490,6 +506,7 @@ export async function executeBrowserGraph({
         if (epoch % Math.max(1, Math.floor(epochs / 50)) === 0 || epoch === epochs - 1) {
           onLoss([...history]);
           await onYield();
+          throwIfExecutionAborted(signal);
         }
       }
       output = {
@@ -605,6 +622,8 @@ export async function executeBrowserGraph({
     }
     outputs.set(node.id, output);
     onNodeStatus([node.data.runtimeOwnerId ?? node.id], 'success');
+    await onYield();
+    throwIfExecutionAborted(signal);
   }
   if (!finalModel) throw localizedError('error.noTrainedModel');
   return finalModel;

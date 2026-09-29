@@ -19,6 +19,11 @@ the pinned BERT-Tiny ONNX Attention v25 profile described in
 availability, cannot execute arbitrary imported ONNX, and does not change the
 L0 graph executor or component tier claims.
 
+Both Browser CPU runs and this exact G2 path use the shared bounded local
+request/result acceptance gate documented in
+[`execution-contract.md`](./execution-contract.md). It does not make remote
+tiers or arbitrary providers available.
+
 The browser MLP supports numeric tabular data and one sequential input/output path only. Classification needs one Softmax output per class and cross-entropy; regression needs one output and MSE. Trainer updates are true mini-batch updates: gradients are accumulated for `batch_size` examples before one SGD (including momentum) or Adam update. CNN, sequence, attention, normalization, Dropout, custom loss, AdamW, multi-input/output architectures, and non-tabular bindings remain export-only. Supervised Trainer is L0 when used with this supported subset and remains exportable to local Python for its wider source-generation contract.
 
 ## Estimator inputs

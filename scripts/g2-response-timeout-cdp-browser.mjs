@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -22,11 +22,11 @@ if (!artifactPath || !fs.existsSync(artifactPath)) {
   throw new Error('Set VOLK_G2_REFERENCE_ONNX to the pinned G2 ONNX artifact before running the response lifecycle browser check.');
 }
 assert.ok(fs.existsSync(chrome), `Chrome executable exists: ${chrome}`);
+const connectionCode = randomBytes(32).toString('base64url');
 
 const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type, X-VOLK-API-Version, X-VOLK-Request-Id',
+  'Access-Control-Allow-Headers': 'Accept, Content-Type, X-VOLK-API-Version, X-VOLK-Request-Id, X-VOLK-Local-Authorization',
   'Access-Control-Max-Age': '300',
 };
 const deferred = () => {
@@ -45,6 +45,7 @@ const makeSample = (firstRow, logits) => ({
 });
 const responseFor = (request) => ({
   apiVersion: G2_ATTENTION_API_VERSION,
+  providerVersion: request.providerVersion,
   profileId: G2_ATTENTION_PROFILE_ID,
   modelHash: request.modelHash,
   requestId: request.requestId,
@@ -63,10 +64,30 @@ const serverState = {
   importHash: null,
 };
 const localServer = createServer(async (request, response) => {
+  const origin = request.headers.origin;
+  if (origin === appUrl) {
+    response.setHeader('Access-Control-Allow-Origin', origin);
+    response.setHeader('Vary', 'Origin');
+  }
   for (const [name, value] of Object.entries(corsHeaders)) response.setHeader(name, value);
   if (request.method === 'OPTIONS') {
+    if (origin !== appUrl || request.headers.host !== '127.0.0.1:8765') {
+      response.writeHead(403);
+      response.end();
+      return;
+    }
     response.writeHead(204);
     response.end();
+    return;
+  }
+  if (request.headers.host !== '127.0.0.1:8765' || origin !== appUrl) {
+    response.writeHead(403, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: { code: 'ORIGIN_NOT_ALLOWED' } }));
+    return;
+  }
+  if (request.headers['x-volk-local-authorization'] !== connectionCode) {
+    response.writeHead(401, { 'content-type': 'application/json' });
+    response.end(JSON.stringify({ error: { code: 'AUTHORIZATION_INVALID' } }));
     return;
   }
   if (request.method === 'GET' && request.url === '/health') {
@@ -75,6 +96,10 @@ const localServer = createServer(async (request, response) => {
       apiVersion: G2_ATTENTION_API_VERSION,
       profileId: G2_ATTENTION_PROFILE_ID,
       provider: 'CPUExecutionProvider',
+      providerVersion: '1.30.0',
+      adapterId: 'onnxruntime-cpu',
+      executionContractVersion: 1,
+      maxConcurrentRequests: 1,
       status: 'ok',
       modelLoaded: serverState.loaded,
       modelHash: serverState.modelHash,
@@ -233,6 +258,21 @@ async function click(selector) {
   await sleep(100);
 }
 
+async function connectG2Runner() {
+  const entered = await evaluate(`(() => {
+    const input = document.querySelector('[data-g2-connection-code]');
+    if (!input) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, ${JSON.stringify(connectionCode)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  assert.equal(entered, true, 'The local runner connection code field is available.');
+  await click('[data-g2-connect-runner]');
+  await waitFor('document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status")==="available"', 'authorized test runner connection');
+}
+
 async function uploadModel(filePath) {
   const documentNode = await cdp.send('DOM.getDocument');
   const { nodeId } = await cdp.send('DOM.querySelector', { nodeId: documentNode.root.nodeId, selector: '[data-g2-model-input]' });
@@ -249,7 +289,7 @@ function closeProcess(child) {
 
 try {
   await new Promise((resolve) => localServer.listen(8765, '127.0.0.1', resolve));
-  assert.equal((await fetch('http://127.0.0.1:8765/health').then((response) => response.status)), 200);
+  assert.equal((await fetch('http://127.0.0.1:8765/health', { headers: { Origin: appUrl, 'X-VOLK-Local-Authorization': connectionCode } }).then((response) => response.status)), 200);
   viteProcess = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5179', '--strictPort'], {
     cwd: root, env: process.env, windowsHide: true, stdio: 'ignore',
   });
@@ -264,7 +304,7 @@ try {
   await waitFor('Boolean(document.querySelector("[data-explore-home]"))', 'Explore Home');
   await click('[data-g2-imported-attention-entry]');
   await waitFor('Boolean(document.querySelector("[data-g2-imported-attention]"))', 'G2 surface');
-  await waitFor('document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status")==="available"', 'local test runner health');
+  await connectG2Runner();
   await click('[data-g2-import-model]');
   await uploadModel(artifactPath);
   await waitFor('document.querySelector("[data-g2-run-comparison]")?.disabled===false', 'verified fixture import');
@@ -331,6 +371,7 @@ try {
     return api.loadProject({...project,name:(project.name||'Project')+' - cancel G2 session'});
   })`, true);
   assert.ok(loadedProject?.name, 'The same-hash project switch uses the supported project API.');
+  await connectG2Runner();
   await waitForSignal(serverState.stalls.get(5).closed.promise, 'project switch aborts the in-flight response body');
   await waitForSignal(serverState.stalls.get(5).late.promise, 'late response attempt after project switch');
   await waitFor('Boolean(document.querySelector("[data-g2-imported-attention]")) && !document.querySelector("[data-g2-evidence]") && document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status") === "available" && document.querySelector("[data-g2-run-comparison]")?.disabled === false', 'clean G2 session after project switch');

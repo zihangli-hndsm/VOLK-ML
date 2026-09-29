@@ -50,6 +50,7 @@
     "check:g2-imported-model": "node scripts/check-g2-imported-attention.mjs",
     "test:g2-response-body:lifecycle": "node scripts/test-g2-response-body-lifecycle.mjs && node scripts/check-r0-check-routing.mjs",
     "test:g2-response-body:browser": "node scripts/g2-response-timeout-cdp-browser.mjs",
+    "test:g2-port-binding": "node scripts/test-g2-port-binding.mjs",
     "test:g2-imported-model:reference": "node scripts/test-g2-imported-attention-reference.mjs",
     "test:g2-imported-model:browser": "node scripts/g2-imported-attention-cdp-browser.mjs",
     "test:torch-export:extractor": "node scripts/test-torch-export-extractor.mjs",

@@ -1,22 +1,28 @@
 import { useEffect, useRef, useState } from 'react';
-import { createImportedAttentionEventStore, commitImportedAttentionComparison } from '../core/playground/importedAttention/semanticEvents.js';
+import { createImportedAttentionEventStore, commitImportedAttentionExecution } from '../core/playground/importedAttention/semanticEvents.js';
+import { createG2ExecutionRequestV1, createG2ExecutionResultV1, g2CurrentExecutionIdentityV1 } from '../core/playground/importedAttention/executionAdapter.js';
+import { createExecutionResultV1 } from '../core/execution/executionContract.js';
 import {
   G2_ATTENTION_SEQUENCE_LENGTH,
   G2_INPUT_IDS_A,
   G2_INPUT_IDS_B,
 } from '../core/playground/importedAttention/profile.js';
-import { loadG2LocalModelArtifact, saveG2LocalModelArtifact } from '../core/localModelCache.js';
+import { clearG2LocalModelCache, loadG2LocalModelArtifact, saveG2LocalModelArtifact } from '../core/localModelCache.js';
 import { createLocalModelReference } from '../core/localModelReferences.js';
 import { localAttentionClient } from '../services/localAttention/client.js';
 
-export default function ImportedAttentionExperience({ open, onClose, localModelReference = null, onModelBound, t }) {
-  const [runner, setRunner] = useState({ status: 'checking', modelLoaded: false, modelHash: null });
+export default function ImportedAttentionExperience({ open, onClose, localModelReference = null, projectSessionId, onModelBound, t }) {
+  const [runner, setRunner] = useState({ status: 'disconnected', modelLoaded: false, modelHash: null, providerVersion: null });
+  const [connectionCode, setConnectionCode] = useState('');
+  const [runnerToken, setRunnerToken] = useState('');
   const [activeModelHash, setActiveModelHash] = useState(null);
   const [comparison, setComparison] = useState(null);
   const [evidence, setEvidence] = useState(null);
   const [semanticEvents, setSemanticEvents] = useState({ events: [], evidenceInstances: [] });
   const [errorKey, setErrorKey] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [executionResult, setExecutionResult] = useState(null);
+  const [cacheNoticeKey, setCacheNoticeKey] = useState(null);
   const fileInputRef = useRef(null);
   const requestControllerRef = useRef(null);
   const restoreAttemptRef = useRef(null);
@@ -26,6 +32,13 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
 
   useEffect(() => {
     if (!open) return undefined;
+    if (!runnerToken) {
+      setRunner((current) => current.status === 'disconnected'
+        ? current
+        : { status: 'disconnected', modelLoaded: false, modelHash: null, providerVersion: null });
+      setActiveModelHash(null);
+      return undefined;
+    }
     let active = true;
     let timer = null;
     let inFlight = false;
@@ -38,7 +51,7 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
       inFlight = true;
       controller = new AbortController();
       try {
-        const health = await localAttentionClient.health({ signal: controller.signal });
+        const health = await localAttentionClient.health({ token: runnerToken, signal: controller.signal });
         if (!active) return;
         const isLinkedModelLoaded = Boolean(linkedHash && health.modelLoaded && health.modelHash === linkedHash);
         setRunner({ ...health, status: 'available' });
@@ -62,7 +75,7 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
           setRunner({ ...health, status: 'available', modelLoaded: false, modelHash: null });
           return;
         }
-        const binding = await localAttentionClient.importModel(cachedFile, { signal: controller.signal });
+        const binding = await localAttentionClient.importModel(cachedFile, { token: runnerToken, signal: controller.signal });
         if (!active) return;
         if (binding.profileId !== reference.profileId || binding.sha256 !== reference.sha256) {
           throw Object.assign(new Error('g2.error.modelCacheCorrupt'), { translationKey: 'g2.error.modelCacheCorrupt' });
@@ -73,13 +86,20 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
         restoreAttemptRef.current = null;
       } catch (error) {
         if (!active || error?.name === 'AbortError') return;
+        if (error?.translationKey === 'g2.error.authorizationInvalid') {
+          setRunnerToken('');
+          setActiveModelHash(null);
+          setRunner({ status: 'disconnected', modelLoaded: false, modelHash: null, providerVersion: null });
+          setErrorKey('g2.error.authorizationInvalid');
+          return;
+        }
         if (error?.translationKey === 'g2.error.runtimeUnavailable' || error?.translationKey === 'g2.error.requestTimeout') {
           setActiveModelHash(null);
-          setRunner({ status: 'offline', modelLoaded: false, modelHash: null });
+          setRunner((current) => ({ ...current, status: 'offline', modelLoaded: false, modelHash: null }));
           return;
         }
         setActiveModelHash(null);
-        setRunner((current) => ({ ...current, status: 'available', modelLoaded: false, modelHash: null }));
+        setRunner((current) => ({ ...current, status: 'offline', modelLoaded: false, modelHash: null }));
         setErrorKey(error?.translationKey ?? 'g2.error.modelCacheUnavailable');
       } finally {
         inFlight = false;
@@ -94,7 +114,7 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
       if (timer !== null) window.clearTimeout(timer);
       controller?.abort();
     };
-  }, [open, localModelReference?.profileId, localModelReference?.sha256]);
+  }, [open, runnerToken, projectSessionId, localModelReference?.profileId, localModelReference?.sha256]);
 
   useEffect(() => () => {
     requestGenerationRef.current += 1;
@@ -117,6 +137,45 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
 
   if (!open) return null;
 
+  async function connectRunner() {
+    const token = connectionCode.trim();
+    setBusy(true);
+    setErrorKey(null);
+    try {
+      const health = await localAttentionClient.health({ token });
+      setRunner({ ...health, status: 'available' });
+      setRunnerToken(token);
+      setConnectionCode('');
+      restoreAttemptRef.current = null;
+    } catch (error) {
+      setRunner({ status: 'offline', modelLoaded: false, modelHash: null, providerVersion: null });
+      setErrorKey(error?.translationKey ?? 'g2.error.runtimeUnavailable');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function disconnectRunner() {
+    requestGenerationRef.current += 1;
+    requestControllerRef.current?.abort();
+    setRunnerToken('');
+    setRunner({ status: 'disconnected', modelLoaded: false, modelHash: null, providerVersion: null });
+    setActiveModelHash(null);
+    setBusy(false);
+    setErrorKey(null);
+    restoreAttemptRef.current = null;
+  }
+
+  async function clearLocalCache() {
+    setCacheNoticeKey(null);
+    try {
+      await clearG2LocalModelCache();
+      setCacheNoticeKey('g2.cache.cleared');
+    } catch (error) {
+      setCacheNoticeKey(error?.translationKey ?? 'g2.error.modelCacheUnavailable');
+    }
+  }
+
   async function importSelectedModel(file) {
     if (!file) return;
     const generation = ++requestGenerationRef.current;
@@ -126,11 +185,11 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
     setBusy(true);
     setErrorKey(null);
     try {
-      const binding = await localAttentionClient.importModel(file, { signal: controller.signal });
+      const binding = await localAttentionClient.importModel(file, { token: runnerToken, signal: controller.signal });
       if (generation !== requestGenerationRef.current) return;
       const reference = createLocalModelReference({ profileId: binding.profileId, sha256: binding.sha256 });
       setActiveModelHash(binding.modelHash);
-      setRunner({ status: 'available', modelLoaded: true, modelHash: binding.modelHash });
+      setRunner((current) => ({ ...current, status: 'available', modelLoaded: true, modelHash: binding.modelHash }));
       restoreAttemptRef.current = null;
       onModelBound?.(reference);
       try {
@@ -149,24 +208,83 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
   }
 
   async function runComparison() {
-    if (!activeModelHash || busy) return;
+    if (!activeModelHash || !runnerToken || busy) return;
     const generation = ++requestGenerationRef.current;
     requestControllerRef.current?.abort();
     const controller = new AbortController();
     requestControllerRef.current = controller;
     setBusy(true);
     setErrorKey(null);
+    const startedAt = new Date().toISOString();
+    const executionRequestId = `g2-${crypto.randomUUID()}`;
+    let executionRequest = null;
     try {
-      const result = await localAttentionClient.compare({ modelHash: activeModelHash, signal: controller.signal });
+      executionRequest = createG2ExecutionRequestV1({
+        projectSessionId,
+        modelHash: activeModelHash,
+        requestId: executionRequestId,
+        providerVersion: runner.providerVersion,
+        approvedAt: startedAt,
+      });
+      const comparisonResult = await localAttentionClient.compare({
+        modelHash: activeModelHash,
+        providerVersion: runner.providerVersion,
+        requestId: executionRequestId,
+        token: runnerToken,
+        signal: controller.signal,
+      });
       if (generation !== requestGenerationRef.current) return;
-      const committed = commitImportedAttentionComparison(eventStoreRef.current, result);
-      if (!committed.evidence) throw Object.assign(new Error('g2.error.responseInvalid'), { translationKey: 'g2.error.responseInvalid' });
-      setComparison(result);
+      const resultEnvelope = createG2ExecutionResultV1({
+        request: executionRequest,
+        comparison: comparisonResult,
+        providerVersion: comparisonResult.providerVersion,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+      });
+      const currentIdentity = g2CurrentExecutionIdentityV1({
+        projectSessionId,
+        modelHash: activeModelHash,
+        providerVersion: comparisonResult.providerVersion,
+      });
+      const committed = commitImportedAttentionExecution(
+        eventStoreRef.current,
+        resultEnvelope,
+        executionRequest,
+        currentIdentity,
+      );
+      if (!committed.evidence) {
+        const staleEnvelope = createExecutionResultV1({
+          request: executionRequest,
+          runId: executionRequestId,
+          status: 'stale',
+          providerVersion: runner.providerVersion,
+          startedAt,
+          finishedAt: new Date().toISOString(),
+          diagnostics: [committed.reason === 'stale' ? 'RESULT_IDENTITY_STALE' : 'RESULT_REJECTED'],
+        });
+        setExecutionResult(staleEnvelope);
+        setErrorKey('g2.error.responseInvalid');
+        return;
+      }
+      setExecutionResult(resultEnvelope);
+      setComparison(comparisonResult);
       setEvidence(committed.evidence);
       setSemanticEvents(committed.semanticEvents);
     } catch (error) {
       if (generation === requestGenerationRef.current && error?.name !== 'AbortError') {
         setErrorKey(error?.translationKey ?? 'g2.error.runtimeUnavailable');
+        if (executionRequest) {
+          const status = error?.code === 'requestTimeout' ? 'timed-out' : 'failed';
+          setExecutionResult(createExecutionResultV1({
+            request: executionRequest,
+            runId: executionRequestId,
+            status,
+            providerVersion: runner.providerVersion,
+            startedAt,
+            finishedAt: new Date().toISOString(),
+            diagnostics: [String(error?.code ?? 'RUN_FAILED').replace(/[^A-Z0-9._-]/gi, '_').toUpperCase().slice(0, 64)],
+          }));
+        }
       }
     } finally {
       if (generation === requestGenerationRef.current) setBusy(false);
@@ -193,12 +311,19 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
             <p className="mt-1 text-sm leading-5 text-slate-600">{t('g2.import.description')}</p>
             <p className="mt-2 break-all font-mono text-[11px] text-slate-500">{linkedHash ? t('g2.import.linkedHash', { hash: linkedHash }) : t('g2.import.noModel')}</p>
             <p className="mt-1 text-xs font-bold text-slate-500" data-g2-runner-status={runner.status}>{t(`g2.status.${runner.status}`)}</p>
+            <p className="mt-2 text-xs leading-5 text-slate-600">{t('g2.connection.lifecycle')}</p>
+            {!runnerToken && <div className="mt-3 flex max-w-xl flex-wrap gap-2">
+              <label className="sr-only" htmlFor="g2-runner-code">{t('g2.connection.codeLabel')}</label>
+              <input id="g2-runner-code" type="password" autoComplete="off" value={connectionCode} onChange={(event) => setConnectionCode(event.target.value)} placeholder={t('g2.connection.codePlaceholder')} aria-label={t('g2.connection.codeLabel')} data-g2-connection-code className="min-w-0 flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" />
+              <button type="button" disabled={busy || connectionCode.trim().length < 32} onClick={connectRunner} className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-black text-indigo-800 disabled:opacity-50" data-g2-connect-runner>{busy ? t('g2.working') : t('g2.connection.connect')}</button>
+            </div>}
+            {runnerToken && <button type="button" disabled={busy} onClick={disconnectRunner} className="mt-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 disabled:opacity-50" data-g2-disconnect-runner>{t('g2.connection.disconnect')}</button>}
             {errorKey && <p className="mt-2 rounded-xl bg-rose-50 p-2 text-sm font-bold text-rose-800" role="alert">{t(errorKey)}</p>}
           </div>
           <div className="flex flex-wrap gap-2 md:justify-end">
             <input ref={fileInputRef} type="file" accept=".onnx,application/onnx" className="sr-only" aria-label={t('g2.import.choose')} data-g2-model-input onChange={(event) => { const file = event.target.files?.[0]; event.target.value = ''; importSelectedModel(file); }} />
-            <button type="button" disabled={busy || runner.status === 'checking'} onClick={() => fileInputRef.current?.click()} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-800 disabled:opacity-50" data-g2-import-model>{t(localModelReference ? 'g2.import.relink' : 'g2.import.choose')}</button>
-            <button type="button" disabled={!modelReady || busy} onClick={runComparison} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50" data-g2-run-comparison>{busy ? t('g2.working') : t('g2.compare')}</button>
+            <button type="button" disabled={!runnerToken || busy || runner.status === 'checking'} onClick={() => fileInputRef.current?.click()} className="rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-black text-slate-800 disabled:opacity-50" data-g2-import-model>{t(localModelReference ? 'g2.import.relink' : 'g2.import.choose')}</button>
+            <button type="button" disabled={!modelReady || !runnerToken || busy} onClick={runComparison} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50" data-g2-run-comparison data-g2-execution-status={executionResult?.status ?? 'none'}>{busy ? t('g2.working') : t('g2.compare')}</button>
           </div>
         </section>
         {localModelReference && !modelReady && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900">{t('g2.import.relinkRequired')}</p>}
@@ -210,6 +335,14 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
             <TokenSequence title={t('g2.pair.sampleB')} tokens={['CLS', 'this', 'movie', 'was', 'bad', 'SEP']} tokenIds={G2_INPUT_IDS_B} t={t} />
           </div>
           <p className="mt-2 text-xs text-slate-500">{t('g2.pair.fixedSettings')}</p>
+        </section>
+        <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4" data-g2-cache-policy>
+          <div className="min-w-0">
+            <h3 className="text-sm font-black text-slate-900">{t('g2.cache.heading')}</h3>
+            <p className="mt-1 text-xs leading-5 text-slate-600">{t('g2.cache.capacity')}</p>
+            {cacheNoticeKey && <p className="mt-1 text-xs font-bold text-slate-700" role="status">{t(cacheNoticeKey)}</p>}
+          </div>
+          <button type="button" onClick={clearLocalCache} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700" data-g2-clear-cache>{t('g2.cache.clear')}</button>
         </section>
         {comparison && evidence && <>
           <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4" data-g2-evidence data-g2-event-count={semanticEvents.events.length} data-g2-run-id={comparison.requestId} data-g2-experiment-ids={(semanticEvents.events.filter((event) => event.type === 'comparison.completed').at(-1)?.experimentIds ?? []).join(',')} data-g2-evidence-instance-count={semanticEvents.evidenceInstances.length}>

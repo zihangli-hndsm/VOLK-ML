@@ -1,4 +1,4 @@
-export const G2_ATTENTION_API_VERSION = 'g2-local-v1';
+export const G2_ATTENTION_API_VERSION = 'g2-local-v2';
 export const G2_ATTENTION_PROFILE_ID = 'bert-tiny-sst2-attention-v25-cpu-v1';
 export const G2_ATTENTION_PROFILE_SHA256 = '3ef55e4c13475e2b6cf4aec1f5002130412e9d58659e9e0943aeae863eba9cb1';
 export const G2_ATTENTION_LEGACY_SHA256S = Object.freeze([
@@ -74,9 +74,10 @@ export function validateImportedAttentionImportResponse(value, { requestId, sha2
   return Object.freeze({ profileId: value.profileId, sha256: sha256 });
 }
 
-export function validateImportedAttentionCompareResponse(value, { requestId, modelHash, inputIdsA, inputIdsB } = {}) {
-  if (!exactKeys(value, ['apiVersion', 'profileId', 'modelHash', 'requestId', 'inputIdsA', 'inputIdsB', 'sampleA', 'sampleB'])
+export function validateImportedAttentionCompareResponse(value, { requestId, modelHash, providerVersion, inputIdsA, inputIdsB } = {}) {
+  if (!exactKeys(value, ['apiVersion', 'providerVersion', 'profileId', 'modelHash', 'requestId', 'inputIdsA', 'inputIdsB', 'sampleA', 'sampleB'])
     || value.apiVersion !== G2_ATTENTION_API_VERSION
+    || value.providerVersion !== providerVersion
     || value.profileId !== G2_ATTENTION_PROFILE_ID
     || value.modelHash !== modelHash
     || value.requestId !== requestId
