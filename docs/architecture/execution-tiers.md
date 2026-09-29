@@ -111,9 +111,12 @@ and every selected component has a browser backend
 and the graph contains a complete supported execution topology
 ```
 
-WebGPU detection does not make generic L1 fitting runnable: there is no WebGPU
-trainer. The bounded MLP inference adapter is a request-specific exception and
-does not change the generic fit estimator.
+WebGPU detection does not make generic L1 fitting runnable: the general tier
+estimator and `executionTiers[].available` remain unchanged. Two narrow
+request-specific exceptions are intentionally separate: bounded inference for
+an already-fitted tabular MLP, and H1-T WebGPU fitting for a supported
+sequential tabular MLP after its dedicated explicit Runner action. H1-T is not
+a general-purpose L1 trainer and does not make other graph families runnable.
 
 In `src/main.jsx`, tier estimation is based on nodes participating in at least one edge. This prevents an unconnected experimental component from blocking an otherwise valid L0 pipeline.
 

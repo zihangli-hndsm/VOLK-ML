@@ -11,6 +11,7 @@ import {
 import { flattenCustomComposites } from './customComposites.js';
 import { analyzeBrowserExecutionGraph, profileBrowserDataset } from './browserExecutionContract.js';
 import { createLinearRegressionTrainer, stepLinearRegressionTrainer } from './linearRegressionMath.js';
+import { trainBrowserWebGpuMlp } from './execution/browserWebGpuMlpTraining.js';
 
 // The current L0 MLP contract uses one explicit deterministic seed for split,
 // initialization, and epoch shuffling. Explore comparisons record this value
@@ -398,7 +399,12 @@ export async function executeBrowserGraph({
   onLoss = () => {},
   onYield = () => Promise.resolve(),
   signal = null,
+  trainingProvider = 'browser-cpu',
+  webGpu = undefined,
 }) {
+  if (!['browser-cpu', 'browser-webgpu'].includes(trainingProvider)) {
+    throw Object.assign(new Error('EXECUTION_PROVIDER_UNSUPPORTED'), { code: 'EXECUTION_PROVIDER_UNSUPPORTED' });
+  }
   const flattened = flattenCustomComposites(nodes, edges);
   const plan = compileExecutionGraph(flattened.nodes, flattened.edges);
   if (!dataset) throw localizedError('error.datasetMissing');
@@ -472,7 +478,7 @@ export async function executeBrowserGraph({
         momentum: node.data.parameters.momentum,
       };
     } else if (manifestOp === 'supervised_trainer') {
-      output = await trainBrowserMlp({
+      const trainingInput = {
         architecture: inputValue(node, 'model'), split: inputValue(node, 'dataset'),
         loss: inputValue(node, 'loss'), optimizer: inputValue(node, 'optimizer'),
         trainer: {
@@ -482,7 +488,10 @@ export async function executeBrowserGraph({
         onLoss,
         onYield,
         signal,
-      });
+      };
+      output = trainingProvider === 'browser-webgpu'
+        ? await trainBrowserWebGpuMlp({ ...trainingInput, gpu: webGpu })
+        : await trainBrowserMlp(trainingInput);
       finalModel = output;
     } else if (manifestId === 'linear_regression_node') {
       output = {

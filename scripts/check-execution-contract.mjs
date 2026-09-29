@@ -170,10 +170,29 @@ const webgpuRequest = createExecutionRequestV1({
 });
 assert.equal(assessExecutionCapabilityV1({
   providerId: 'browser-webgpu', graphIdentity: webgpuRequest.graphIdentity, mode: 'inference',
-}).status, 'supported', 'WebGPU is registered only for explicit graph-bound inference.');
+}).status, 'supported', 'WebGPU inference remains an explicit graph-bound operation.');
+const webgpuFitRequest = createExecutionRequestV1({
+  ...webgpuRequest,
+  requestId: 'exec-webgpu-fit-001',
+  providerId: 'browser-webgpu-mlp-training',
+  inputIdentity: digest({ dataset: 'local-tabular-fixture' }),
+  configIdentity: digest({ training: 'browser-webgpu-mlp-training-wgsl-v1' }),
+  mode: 'fit',
+  budget: { maxDurationMs: 120_000, maxInputBytes: 20 * 1024 * 1024, maxOutputBytes: 256 * 1024 },
+});
+assert.equal(assessExecutionCapabilityV1({
+  providerId: 'browser-webgpu-mlp-training', graphIdentity: webgpuFitRequest.graphIdentity, mode: 'fit',
+}).status, 'supported', 'H1-T registers a separate graph-bound WebGPU MLP fit profile.');
+assert.equal(webgpuFitRequest.adapterId, 'volk-browser-webgpu-mlp-training');
+assert.equal(assessExecutionCapabilityV1({
+  providerId: 'browser-webgpu', graphIdentity: webgpuRequest.graphIdentity, mode: 'fit',
+}).status, 'unsupported', 'The accepted inference provider remains inference-only.');
+assert.equal(assessExecutionCapabilityV1({
+  providerId: 'browser-webgpu-mlp-training', graphIdentity: webgpuFitRequest.graphIdentity, mode: 'inference',
+}).status, 'unsupported', 'The H1-T provider remains fit-only.');
 assert.throws(() => createExecutionRequestV1({
-  ...webgpuRequest, providerId: 'browser-webgpu', mode: 'fit',
-}), /EXECUTION_APPROVAL_INVALID|EXECUTION_MODE_UNSUPPORTED/, 'WebGPU cannot claim MLP training.');
+  ...webgpuFitRequest, mode: 'compare',
+}), /EXECUTION_APPROVAL_INVALID|EXECUTION_MODE_UNSUPPORTED/, 'WebGPU training cannot claim unrelated execution modes.');
 const webgpuResult = createExecutionResultV1({
   request: webgpuRequest,
   runId: 'run-webgpu-001',
