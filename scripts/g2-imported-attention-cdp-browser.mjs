@@ -3,6 +3,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { randomBytes } from 'node:crypto';
+import { request as httpRequest } from 'node:http';
 import {
   G2_LOCAL_MODEL_CACHE_DATABASE,
   G2_LOCAL_MODEL_CACHE_STORE,
@@ -21,8 +23,10 @@ if (!artifactPath || !fs.existsSync(artifactPath) || !python) {
 const chrome = process.env.VOLK_CHROME_PATH ?? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 assert.ok(fs.existsSync(chrome), `Chrome executable exists: ${chrome}`);
 const tempProfile = fs.mkdtempSync(path.join(os.tmpdir(), 'volk-g2-chrome-'));
+const connectionCode = randomBytes(32).toString('base64url');
 const childEnv = {
   ...process.env,
+  VOLK_G2_RUNNER_TOKEN: connectionCode,
   PYTHONUTF8: '1',
   PYTHONIOENCODING: 'utf-8',
   ...(process.env.VOLK_G2_PYTHONPATH
@@ -54,7 +58,10 @@ async function waitForRuntimeStopped(timeoutMs = 8_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      await fetch('http://127.0.0.1:8765/health', { signal: AbortSignal.timeout(300) });
+      await fetch('http://127.0.0.1:8765/health', {
+        headers: { Origin: baseUrl, 'X-VOLK-Local-Authorization': connectionCode },
+        signal: AbortSignal.timeout(300),
+      });
     } catch {
       return;
     }
@@ -67,7 +74,9 @@ async function waitForHttp(url, timeoutMs = 20_000) {
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const response = await fetch(url);
+      const response = await fetch(url, url.endsWith('/health') ? {
+        headers: { Origin: baseUrl, 'X-VOLK-Local-Authorization': connectionCode },
+      } : undefined);
       if (response.ok) return response;
     } catch {}
     await new Promise((resolve) => setTimeout(resolve, 150));
@@ -133,7 +142,11 @@ async function waitFor(expression, label, timeoutMs = 15_000) {
     if (await evaluate(expression)) return;
     await sleep(100);
   }
-  const state = await evaluate('({url:location.href,text:document.body?.innerText?.slice(0,1200)})');
+  const state = await evaluate(`({url:location.href,text:document.body?.innerText?.slice(0,1600),
+    g2Status:document.querySelector('[data-g2-runner-status]')?.getAttribute('data-g2-runner-status'),
+    alert:document.querySelector('[role=alert]')?.innerText,
+    importDisabled:document.querySelector('[data-g2-import-model]')?.disabled,
+    compareDisabled:document.querySelector('[data-g2-run-comparison]')?.disabled})`);
   throw new Error(`Timed out waiting for ${label}: ${JSON.stringify(state)}`);
 }
 
@@ -141,6 +154,36 @@ async function click(selector) {
   const clicked = await evaluate(`(() => { const element=document.querySelector(${JSON.stringify(selector)}); if (!element || element.disabled) return false; element.click(); return true; })()`);
   assert.equal(clicked, true, `Can click ${selector}.`);
   await sleep(120);
+}
+
+function rawHttpStatus({ host = '127.0.0.1:8765', origin = baseUrl, token = connectionCode, method = 'GET', path: requestPath = '/health', headers = {} } = {}) {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest('http://127.0.0.1:8765', {
+      method,
+      path: requestPath,
+      headers: { Host: host, Origin: origin, 'X-VOLK-Local-Authorization': token, ...headers },
+    }, (response) => {
+      response.resume();
+      response.once('end', () => resolve(response.statusCode));
+    });
+    request.once('error', reject);
+    request.end();
+  });
+}
+
+async function connectG2Runner(expectedStatus = 'available', code = connectionCode) {
+  const entered = await evaluate(`(() => {
+    const input = document.querySelector('[data-g2-connection-code]');
+    if (!input) return false;
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+    setter.call(input, ${JSON.stringify(code)});
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    return true;
+  })()`);
+  assert.equal(entered, true, 'The local runner connection code field is available.');
+  await click('[data-g2-connect-runner]');
+  await waitFor(`document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status") === ${JSON.stringify(expectedStatus)}`, `local runner state ${expectedStatus}`);
 }
 
 async function uploadModel(filePath) {
@@ -287,7 +330,9 @@ async function restartRuntime() {
 }
 
 try {
-  const healthBefore = await fetch('http://127.0.0.1:8765/health').catch(() => null);
+  const healthBefore = await fetch('http://127.0.0.1:8765/health', {
+    headers: { Origin: baseUrl, 'X-VOLK-Local-Authorization': connectionCode },
+  }).catch(() => null);
   assert.equal(healthBefore, null, 'The browser acceptance owns its local runner port.');
   runtimeProcess = startRuntime();
   viteProcess = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5173', '--strictPort'], {
@@ -297,6 +342,26 @@ try {
   const health = await healthResponse.json();
   assert.equal(health.provider, 'CPUExecutionProvider');
   assert.equal(health.modelLoaded, false);
+  const wrongCodeResponse = await fetch('http://127.0.0.1:8765/health', {
+    headers: { Origin: baseUrl, 'X-VOLK-Local-Authorization': connectionCode.slice(0, -1) + (connectionCode.endsWith('x') ? 'y' : 'x') },
+  });
+  assert.equal(wrongCodeResponse.status, 401, 'The actual companion rejects an invalid per-process connection code.');
+  const wrongOriginResponse = await fetch('http://127.0.0.1:8765/health', {
+    headers: { Origin: 'https://untrusted.example', 'X-VOLK-Local-Authorization': connectionCode },
+  });
+  assert.equal(wrongOriginResponse.status, 403, 'The actual companion rejects an unregistered browser origin.');
+  assert.equal(await rawHttpStatus({ host: 'localhost:8765' }), 403, 'The actual companion rejects DNS-rebound or non-canonical Host requests.');
+  const allowedPreflight = await fetch('http://127.0.0.1:8765/v1/compare', {
+    method: 'OPTIONS',
+    headers: { Origin: baseUrl, 'Access-Control-Request-Method': 'POST', 'Access-Control-Request-Headers': 'content-type,x-volk-local-authorization' },
+  });
+  assert.equal(allowedPreflight.status, 204, 'The actual companion allows only the browser preflight used by the local client.');
+  const rejectedPreflight = await fetch('http://127.0.0.1:8765/v1/compare', {
+    method: 'OPTIONS',
+    headers: { Origin: baseUrl, 'Access-Control-Request-Method': 'DELETE', 'Access-Control-Request-Headers': 'content-type,x-volk-local-authorization' },
+  });
+  assert.equal(rejectedPreflight.status, 403, 'The actual companion rejects unsupported preflight methods.');
+  report.steps.push({ id: 'loopback-authorization-host-origin-and-preflight-boundary', status: 'PASS' });
   chromeProcess = spawn(chrome, [
     '--headless=new', '--disable-gpu', '--remote-debugging-port=9227', '--window-size=1440,1000',
     `--user-data-dir=${tempProfile}`, 'about:blank',
@@ -311,7 +376,9 @@ try {
   await waitFor('Boolean(document.querySelector("[data-explore-home]"))', 'Explore Home');
   await click('[data-g2-imported-attention-entry]');
   await waitFor('Boolean(document.querySelector("[data-g2-imported-attention]"))', 'G2 imported-attention surface');
-  await waitFor('document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status") === "available"', 'local CPU runner health');
+  await connectG2Runner('offline', connectionCode.slice(0, -1) + (connectionCode.endsWith('x') ? 'y' : 'x'));
+  assert.equal(await evaluate('document.querySelector("[role=alert]")?.innerText.includes("authorization") || Boolean(document.querySelector("[role=alert]"))'), true, 'A wrong local connection code is rejected without enabling model actions.');
+  await connectG2Runner();
   assert.equal(await evaluate('document.querySelector("[data-g2-run-comparison]")?.disabled'), true, 'No comparison can run before a model is linked.');
   assert.equal(await evaluate('Boolean(document.querySelector("[data-g2-evidence]"))'), false, 'Opening the G2 surface creates no evidence.');
   await click('[data-g2-import-model]');
@@ -379,6 +446,7 @@ try {
   await restoreSavedProject();
   await click('[data-g2-imported-attention-entry]');
   await waitFor('Boolean(document.querySelector("[data-g2-imported-attention]"))', 'G2 after browser refresh');
+  await connectG2Runner();
   await waitForRuntimeRouteCount('/v1/model/import', importsBeforeRefresh + 1);
   await waitFor('document.querySelector("[data-g2-run-comparison]")?.disabled === false', 'cached artifact reimport after browser refresh');
   assert.equal(await evaluate('Boolean(document.querySelector("[data-g2-evidence]"))'), false, 'Page refresh and cached model reimport do not run inference or create evidence.');
@@ -416,6 +484,7 @@ try {
     return api.loadProject({...project,name:(project.name||'Project')+' - G2 session switch'});
   })`, true);
   assert.ok(switchedProject?.name, 'The supported project-load API completed the same-hash session switch.');
+  await connectG2Runner();
   await waitFor('Boolean(document.querySelector("[data-g2-imported-attention]")) && !document.querySelector("[data-g2-evidence]") && document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status") === "available" && document.querySelector("[data-g2-run-comparison]")?.disabled === false', 'G2 state invalidation after project switch');
   assert.equal((await currentProject()).localModelReferences?.[0]?.sha256, modelReference.sha256, 'The project switch preserves the identical artifact reference.');
   assert.equal(await runtimeRouteCount('/v1/compare'), 2, 'Project loading itself does not execute inference.');
@@ -499,6 +568,10 @@ try {
   await waitFor('document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status") === "offline"', 'offline runner status');
   assert.equal(await evaluate('document.querySelector("[data-g2-run-comparison]")?.disabled'), true, 'Offline state cannot submit an experiment.');
   assert.deepEqual(await evaluate('({text:document.querySelector("[data-g2-evidence]")?.innerText,eventCount:document.querySelector("[data-g2-evidence]")?.getAttribute("data-g2-event-count"),concept:Boolean(document.querySelector("[data-g2-concept-eligible]"))})'), evidenceBeforeOffline, 'Offline re-entry preserves existing deterministic evidence without adding or altering it.');
+  await click('[data-g2-clear-cache]');
+  await waitFor('document.querySelector("[data-g2-cache-policy]")?.innerText.includes("local model cache was cleared")', 'learner-facing cache clear confirmation');
+  assert.equal(await cacheRecordSummary(), null, 'The learner-facing cache control removes the local artifact bytes.');
+  assert.deepEqual(await evaluate('({text:document.querySelector("[data-g2-evidence]")?.innerText,eventCount:document.querySelector("[data-g2-evidence]")?.getAttribute("data-g2-event-count"),concept:Boolean(document.querySelector("[data-g2-concept-eligible]"))})'), evidenceBeforeOffline, 'Clearing local bytes cannot change prior semantic evidence.');
   const browserRequests = await evaluate('performance.getEntriesByType("resource").map((entry)=>entry.name)');
   assert.equal(browserRequests.some((url) => /\/v0\/lumi\/respond|127\.0\.0\.1:8010|localhost:8010/i.test(url)), false, 'G2 sends no Cloud policy or inference request.');
   report.steps.push({ id: 'offline-runner-fails-closed-without-cloud-and-without-fabricated-evidence', status: 'PASS' });

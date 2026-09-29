@@ -14,6 +14,22 @@ import {
 
 const DEFAULT_BASE_URL = 'http://127.0.0.1:8765';
 const DEFAULT_TIMEOUT_MS = 30_000;
+const MAX_RESPONSE_BYTES = 64 * 1024;
+const AUTH_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
+
+const ERROR_CODE_MAP = Object.freeze({
+  AUTHORIZATION_REQUIRED: 'authorizationRequired',
+  AUTHORIZATION_INVALID: 'authorizationInvalid',
+  HOST_NOT_ALLOWED: 'connectionRejected',
+  ORIGIN_NOT_ALLOWED: 'connectionRejected',
+  API_VERSION_UNSUPPORTED: 'companionIncompatible',
+  RUNNER_BUSY: 'runnerBusy',
+  REQUEST_BODY_TIMEOUT: 'requestTimeout',
+  INFERENCE_TIMEOUT: 'requestTimeout',
+  REQUEST_SIZE_INVALID: 'modelSizeInvalid',
+  MODEL_PROFILE_MISMATCH: 'modelProfileMismatch',
+  PROVIDER_VERSION_MISMATCH: 'companionIncompatible',
+});
 
 function runtimeError(code) {
   const error = new Error(code);
@@ -34,16 +50,50 @@ function requestId() {
   return `g2-${globalThis.crypto.randomUUID()}`;
 }
 
-async function parseResponse(response) {
-  let value;
+async function readBoundedJson(response) {
+  const declaredLength = Number(response.headers?.get?.('content-length'));
+  if (Number.isFinite(declaredLength) && declaredLength > MAX_RESPONSE_BYTES) throw runtimeError('responseInvalid');
+  if (response.body?.getReader) {
+    const reader = response.body.getReader();
+    const chunks = [];
+    let byteLength = 0;
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        byteLength += value.byteLength;
+        if (byteLength > MAX_RESPONSE_BYTES) {
+          await reader.cancel();
+          throw runtimeError('responseInvalid');
+        }
+        chunks.push(value);
+      }
+    } finally {
+      reader.releaseLock?.();
+    }
+    const bytes = new Uint8Array(byteLength);
+    let offset = 0;
+    for (const chunk of chunks) {
+      bytes.set(chunk, offset);
+      offset += chunk.byteLength;
+    }
+    try { return JSON.parse(new TextDecoder().decode(bytes)); } catch { throw runtimeError('responseInvalid'); }
+  }
   try {
-    value = await response.json();
-  } catch {
+    const bytes = await response.arrayBuffer();
+    if (bytes.byteLength > MAX_RESPONSE_BYTES) throw runtimeError('responseInvalid');
+    return JSON.parse(new TextDecoder().decode(bytes));
+  } catch (error) {
+    if (error?.translationKey) throw error;
     throw runtimeError('responseInvalid');
   }
+}
+
+async function parseResponse(response) {
+  const value = await readBoundedJson(response);
   if (!response.ok) {
     const code = value?.error?.code;
-    throw runtimeError(code === 'MODEL_PROFILE_MISMATCH' ? 'modelProfileMismatch' : 'runtimeUnavailable');
+    throw runtimeError(ERROR_CODE_MAP[code] ?? 'runtimeUnavailable');
   }
   return value;
 }
@@ -54,7 +104,8 @@ export function createLocalAttentionClient({
   timeoutMs = DEFAULT_TIMEOUT_MS,
   cryptoApi = globalThis.crypto,
 } = {}) {
-  const request = async (url, init, signal, validateResponse) => {
+  const request = async (url, init, signal, validateResponse, token) => {
+    if (typeof token !== 'string' || !AUTH_TOKEN_PATTERN.test(token)) throw runtimeError('authorizationRequired');
     const controller = new AbortController();
     let timedOut = false;
     const timeout = setTimeout(() => {
@@ -71,7 +122,9 @@ export function createLocalAttentionClient({
     if (controller.signal.aborted) onRequestAbort();
 
     const responseOperation = (async () => {
-      const response = await fetchImpl(url, { ...init, signal: controller.signal, mode: 'cors', credentials: 'omit' });
+      const headers = new Headers(init.headers ?? {});
+      headers.set('X-VOLK-Local-Authorization', token);
+      const response = await fetchImpl(url, { ...init, headers, signal: controller.signal, mode: 'cors', credentials: 'omit' });
       const value = await parseResponse(response);
       return validateResponse(value);
     })();
@@ -91,17 +144,31 @@ export function createLocalAttentionClient({
   };
 
   return Object.freeze({
-    async health({ signal } = {}) {
+    async health({ token, signal } = {}) {
       return request(`${baseUrl}/health`, { headers: { Accept: 'application/json' } }, signal, (value) => {
         if (value?.apiVersion !== G2_ATTENTION_API_VERSION || value?.profileId !== G2_ATTENTION_PROFILE_ID
-          || value?.provider !== 'CPUExecutionProvider' || value?.status !== 'ok') {
-          throw runtimeError('responseInvalid');
+          || value?.provider !== 'CPUExecutionProvider' || value?.adapterId !== 'onnxruntime-cpu'
+          || value?.executionContractVersion !== 1 || typeof value?.providerVersion !== 'string'
+          || !/^\d+\.\d+\.\d+$/.test(value.providerVersion) || value?.status !== 'ok'
+          || value?.maxConcurrentRequests !== 1) {
+          throw runtimeError('companionIncompatible');
         }
-        return Object.freeze({ available: true, modelLoaded: value.modelLoaded === true, modelHash: value.modelHash ?? null });
-      });
+        return Object.freeze({
+          available: true,
+          modelLoaded: value.modelLoaded === true,
+          modelHash: value.modelHash ?? null,
+          apiVersion: value.apiVersion,
+          profileId: value.profileId,
+          provider: value.provider,
+          providerVersion: value.providerVersion,
+          adapterId: value.adapterId,
+          executionContractVersion: value.executionContractVersion,
+          maxConcurrentRequests: value.maxConcurrentRequests,
+        });
+      }, token);
     },
 
-    async importModel(file, { signal } = {}) {
+    async importModel(file, { token, signal } = {}) {
       validateImportedAttentionModel(file);
       if (!file.size || file.size > G2_ATTENTION_MAX_MODEL_BYTES) throw runtimeError('modelSizeInvalid');
       const bytes = await file.arrayBuffer();
@@ -120,16 +187,19 @@ export function createLocalAttentionClient({
       }, signal, (value) => {
         const validated = validateImportedAttentionImportResponse(value, { requestId: id, sha256: digest });
         return Object.freeze({ ...validated, modelHash: `sha256:${digest}` });
-      });
+      }, token);
     },
 
-    async compare({ modelHash, inputIdsA = G2_INPUT_IDS_A, inputIdsB = G2_INPUT_IDS_B, signal } = {}) {
-      const id = requestId();
+    async compare({ modelHash, providerVersion, inputIdsA = G2_INPUT_IDS_A, inputIdsB = G2_INPUT_IDS_B, requestId: requestedId = null, token, signal } = {}) {
+      const id = requestedId ?? requestId();
+      if (typeof id !== 'string' || !/^g2-[A-Za-z0-9_-]{8,120}$/.test(id)
+        || typeof providerVersion !== 'string' || !/^\d+\.\d+\.\d+$/.test(providerVersion)) throw runtimeError('responseInvalid');
       return request(`${baseUrl}/v1/compare`, {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify({
           apiVersion: G2_ATTENTION_API_VERSION,
+          providerVersion,
           requestId: id,
           modelHash,
           inputIdsA,
@@ -138,9 +208,10 @@ export function createLocalAttentionClient({
       }, signal, (value) => validateImportedAttentionCompareResponse(value, {
         requestId: id,
         modelHash,
+        providerVersion,
         inputIdsA,
         inputIdsB,
-      }));
+      }), token);
     },
   });
 }

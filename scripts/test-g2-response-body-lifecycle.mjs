@@ -10,6 +10,7 @@ import {
 } from '../src/core/playground/importedAttention/profile.js';
 
 const modelHash = `sha256:${G2_ATTENTION_PROFILE_SHA256}`;
+const connectionCode = 'g2-test-connection-code-012345678901234567890123456';
 const deferred = () => {
   let resolve;
   const promise = new Promise((done) => { resolve = done; });
@@ -28,6 +29,7 @@ function sample(firstRow) {
 function comparisonResponse(request) {
   return {
     apiVersion: G2_ATTENTION_API_VERSION,
+    providerVersion: request.providerVersion,
     profileId: G2_ATTENTION_PROFILE_ID,
     modelHash: request.modelHash,
     requestId: request.requestId,
@@ -91,25 +93,32 @@ function enqueue(mode) {
 }
 
 await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+const fetchFromExploreOrigin = (url, init = {}) => {
+  const headers = new Headers(init.headers ?? {});
+  headers.set('Origin', 'http://127.0.0.1:5173');
+  return fetch(url, { ...init, headers });
+};
 const client = createLocalAttentionClient({
   baseUrl: `http://127.0.0.1:${server.address().port}`,
   timeoutMs: 100,
+  fetchImpl: fetchFromExploreOrigin,
 });
+const comparisonInput = { modelHash, providerVersion: '1.30.0', token: connectionCode };
 
 try {
   const bodyTimeout = enqueue('stalled-body');
-  const stalledBodyRequest = client.compare({ modelHash });
+  const stalledBodyRequest = client.compare(comparisonInput);
   await bodyTimeout.headers.promise;
   await assert.rejects(stalledBodyRequest, (error) => error.code === 'requestTimeout');
   await bodyTimeout.closed.promise;
 
   const partialJson = enqueue('partial-json');
-  await assert.rejects(client.compare({ modelHash }), (error) => error.code === 'responseInvalid');
+  await assert.rejects(client.compare(comparisonInput), (error) => error.code === 'responseInvalid');
   await partialJson.closed.promise;
 
   const callerCancelled = enqueue('late-after-cancel');
   const abortController = new AbortController();
-  const cancelledRequest = client.compare({ modelHash, signal: abortController.signal });
+  const cancelledRequest = client.compare({ ...comparisonInput, signal: abortController.signal });
   await callerCancelled.headers.promise;
   abortController.abort('caller-cancelled-after-headers');
   await assert.rejects(cancelledRequest, (error) => error.name === 'AbortError');
@@ -117,11 +126,11 @@ try {
   await callerCancelled.lateWrite.promise;
 
   const beforeHeaders = enqueue('timeout-before-headers');
-  await assert.rejects(client.compare({ modelHash }), (error) => error.code === 'requestTimeout');
+  await assert.rejects(client.compare(comparisonInput), (error) => error.code === 'requestTimeout');
   await beforeHeaders.lateWrite.promise;
 
   const retry = enqueue('valid');
-  const validated = await client.compare({ modelHash });
+  const validated = await client.compare(comparisonInput);
   await retry.closed.promise;
   assert.equal(validated.requestId.startsWith('g2-'), true);
   assert.equal(validated.modelHash, modelHash);

@@ -91,6 +91,21 @@ export async function deleteG2LocalModelArtifact(reference) {
   }
 }
 
+export async function clearG2LocalModelCache() {
+  const database = await openCache();
+  try {
+    const transaction = database.transaction(G2_LOCAL_MODEL_CACHE_STORE, 'readwrite');
+    const complete = transactionResult(transaction);
+    transaction.objectStore(G2_LOCAL_MODEL_CACHE_STORE).clear();
+    await complete;
+  } catch (error) {
+    if (error?.translationKey) throw error;
+    throw cacheError('modelCacheUnavailable');
+  } finally {
+    database.close();
+  }
+}
+
 export async function saveG2LocalModelArtifact(file, reference) {
   const key = g2LocalModelCacheKey(reference);
   if (!file || typeof file.arrayBuffer !== 'function' || !Number.isInteger(file.size)
@@ -106,7 +121,9 @@ export async function saveG2LocalModelArtifact(file, reference) {
   try {
     const transaction = database.transaction(G2_LOCAL_MODEL_CACHE_STORE, 'readwrite');
     const complete = transactionResult(transaction);
-    transaction.objectStore(G2_LOCAL_MODEL_CACHE_STORE).put({
+    const store = transaction.objectStore(G2_LOCAL_MODEL_CACHE_STORE);
+    store.clear();
+    store.put({
       profileId: reference.profileId,
       sha256: reference.sha256,
       bytes: new Blob([bytes], { type: 'application/octet-stream' }),
