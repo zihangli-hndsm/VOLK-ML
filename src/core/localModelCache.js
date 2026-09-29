@@ -4,6 +4,7 @@ import {
   isG2AttentionArtifactSha256,
   sha256Hex,
 } from './playground/importedAttention/profile.js';
+import { G2_ATTENTION_EXPORT_MANIFEST } from './playground/importedAttention/profileManifest.js';
 
 export const G2_LOCAL_MODEL_CACHE_DATABASE = 'volk-g2-local-model-cache-v1';
 export const G2_LOCAL_MODEL_CACHE_STORE = 'artifacts';
@@ -16,8 +17,14 @@ function validateReference(reference) {
   const keys = reference && typeof reference === 'object' && !Array.isArray(reference)
     ? Object.keys(reference)
     : [];
+  const hasBaseIdentity = keys.includes('profileId') && keys.includes('sha256');
+  const hasKnownManifest = keys.length === 3 && keys.includes('manifestId')
+    && reference?.manifestId === G2_ATTENTION_EXPORT_MANIFEST.manifestId
+    && reference?.sha256 === G2_ATTENTION_EXPORT_MANIFEST.artifact.sha256;
+  const hasLegacyIdentity = keys.length === 2
+    && reference?.sha256 !== G2_ATTENTION_EXPORT_MANIFEST.artifact.sha256;
   if (!reference || typeof reference !== 'object' || Array.isArray(reference)
-    || keys.length !== 2 || !keys.includes('profileId') || !keys.includes('sha256')
+    || !hasBaseIdentity || (!hasLegacyIdentity && !hasKnownManifest)
     || reference.profileId !== G2_ATTENTION_PROFILE_ID || !isG2AttentionArtifactSha256(reference.sha256)) {
     throw cacheError('modelProfileMismatch');
   }

@@ -25,6 +25,7 @@ export default function BuildToolbar({
   importTorchExport,
   importOnnx,
   onOpenExplorePlayground,
+  onOpenG2ForNode,
   onExploreCurrentSetup,
   onOpenExploreCapacityBridge,
   canOpenExploreCapacityBridge,
@@ -38,6 +39,13 @@ export default function BuildToolbar({
 }) {
   const torchExportImportRef = React.useRef(null);
   const onnxImportRef = React.useRef(null);
+  const selectedAttentionNode = selectedNodes.length === 1
+    && selectedNodes[0]?.data?.manifest?.id === 'multihead_attention_node'
+    ? selectedNodes[0]
+    : null;
+  const canOpenG2Binding = selectedAttentionNode?.data?.parameters?.embed_dim === 128
+    && selectedAttentionNode?.data?.parameters?.num_heads === 2
+    && selectedAttentionNode?.data?.parameters?.dropout === 0;
   return <section data-build-toolbar aria-label={t('surface.buildToolbar')} className="z-30 border-b border-white/70 bg-white/80 px-3 py-3 shadow-sm backdrop-blur sm:px-5">
     <div className="mx-auto flex max-w-[1800px] flex-wrap items-center gap-2">
       <label className="mr-auto min-w-0 basis-full sm:basis-auto">
@@ -51,6 +59,7 @@ export default function BuildToolbar({
       {!graphOccupied
         ? <button type="button" data-build-intent-open className="rounded-xl bg-indigo-100 px-3 py-2 font-bold text-indigo-800 hover:bg-indigo-200" onClick={onOpenBuildIntent}>✦ <span>{t('buildIntent.open')}</span></button>
         : <button type="button" data-graph-edit-open className="rounded-xl bg-indigo-100 px-3 py-2 font-bold text-indigo-800 hover:bg-indigo-200" onClick={onOpenGraphEdit}>✦ <span>{t('graphEdit.open')}</span></button>}
+      {selectedAttentionNode && <button type="button" data-g2-bind-selected-node={selectedAttentionNode.id} title={t('g2.binding.anchorRequirement')} disabled={!canOpenG2Binding} className="rounded-xl border border-cyan-300 bg-cyan-50 px-3 py-2 text-sm font-bold text-cyan-950 disabled:cursor-not-allowed disabled:opacity-50" onClick={() => onOpenG2ForNode?.(selectedAttentionNode.id)}>{t('g2.binding.inspectSelectedNode')}</button>}
       <BuildMoreDisclosure
         viewMode={viewMode}
         setViewMode={setViewMode}

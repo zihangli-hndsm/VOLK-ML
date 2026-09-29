@@ -11,10 +11,15 @@ import {
   isG2AttentionArtifactSha256,
 } from './profile.js';
 
-export function createG2ExecutionRequestV1({ projectSessionId, modelHash, requestId, providerVersion, approvedAt } = {}) {
+export function createG2ExecutionRequestV1({ projectSessionId, modelHash, requestId, providerVersion, approvedAt, artifactBindingId = null } = {}) {
   if (typeof modelHash !== 'string' || !modelHash.startsWith('sha256:')
     || !isG2AttentionArtifactSha256(modelHash.slice('sha256:'.length))) {
     throw Object.assign(new TypeError('G2 artifact identity is invalid.'), { code: 'EXECUTION_ARTIFACT_IDENTITY_INVALID' });
+  }
+  if (artifactBindingId !== null
+    && (typeof artifactBindingId !== 'string' || artifactBindingId.length > 128
+      || !/^artifact-binding-v1-[a-f0-9]{16}-[a-f0-9]{1,8}$/.test(artifactBindingId))) {
+    throw Object.assign(new TypeError('G2 artifact correspondence identity is invalid.'), { code: 'G2_ARTIFACT_BINDING_INVALID' });
   }
   const sha256 = modelHash.slice('sha256:'.length);
   const inputIdentity = executionIdentityDigestV1({
@@ -29,6 +34,9 @@ export function createG2ExecutionRequestV1({ projectSessionId, modelHash, reques
     profileId: G2_ATTENTION_PROFILE_ID,
     provider: 'CPUExecutionProvider',
     providerVersion,
+    artifactMapping: artifactBindingId
+      ? { kind: 'operator-correspondence', bindingId: artifactBindingId }
+      : { kind: 'standalone-not-mapped-to-build' },
   });
   return createExecutionRequestV1({
     requestId,
@@ -43,12 +51,13 @@ export function createG2ExecutionRequestV1({ projectSessionId, modelHash, reques
   });
 }
 
-export function g2CurrentExecutionIdentityV1({ projectSessionId, modelHash, providerVersion } = {}) {
+export function g2CurrentExecutionIdentityV1({ projectSessionId, modelHash, providerVersion, artifactBindingId = null } = {}) {
   const request = createG2ExecutionRequestV1({
     projectSessionId,
     modelHash,
     requestId: 'g2-identity-probe-0001',
     providerVersion,
+    artifactBindingId,
     approvedAt: '2026-01-01T00:00:00.000Z',
   });
   return {

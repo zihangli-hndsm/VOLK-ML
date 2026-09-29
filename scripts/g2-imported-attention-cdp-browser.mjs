@@ -11,6 +11,7 @@ import {
   g2LocalModelCacheKey,
 } from '../src/core/localModelCache.js';
 import { G2_ATTENTION_PROFILE_ID, G2_ATTENTION_PROFILE_SHA256 } from '../src/core/playground/importedAttention/profile.js';
+import { G2_ATTENTION_EXPORT_MANIFEST } from '../src/core/playground/importedAttention/profileManifest.js';
 
 const root = process.cwd();
 const baseUrl = 'http://127.0.0.1:5173';
@@ -38,7 +39,7 @@ let runtimeProcess;
 let chromeProcess;
 let cdp;
 const report = { task: 'VOLK-ML G2 imported attention browser acceptance', steps: [] };
-const modelReference = { profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 };
+const modelReference = { profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256, manifestId: G2_ATTENTION_EXPORT_MANIFEST.manifestId };
 const modelCacheKey = g2LocalModelCacheKey(modelReference);
 const runtimeArgs = [path.join(root, 'dev/g2_attention/server.py')];
 
@@ -153,6 +154,17 @@ async function waitFor(expression, label, timeoutMs = 15_000) {
 async function click(selector) {
   const clicked = await evaluate(`(() => { const element=document.querySelector(${JSON.stringify(selector)}); if (!element || element.disabled) return false; element.click(); return true; })()`);
   assert.equal(clicked, true, `Can click ${selector}.`);
+  await sleep(120);
+}
+
+async function clickNavigation(label) {
+  const clicked = await evaluate(`(() => {
+    const button=Array.from(document.querySelectorAll('nav button')).find((item)=>item.innerText.trim()===${JSON.stringify(label)});
+    if (!button) return false;
+    button.click();
+    return true;
+  })()`);
+  assert.equal(clicked, true, `Can navigate to ${label}.`);
   await sleep(120);
 }
 
@@ -389,6 +401,7 @@ try {
   assert.equal(project.localModelReferences?.length, 1, 'Only a bounded local profile/hash reference is saved.');
   assert.equal(project.localModelReferences[0].profileId, 'bert-tiny-sst2-attention-v25-cpu-v1');
   assert.equal(project.localModelReferences[0].sha256, G2_ATTENTION_PROFILE_SHA256);
+  assert.equal(project.localModelReferences[0].manifestId, G2_ATTENTION_EXPORT_MANIFEST.manifestId, 'The project persists only the registered manifest reference alongside the artifact digest.');
   assert.equal(JSON.stringify(project.localModelReferences).includes(path.basename(artifactPath)), false, 'Project state never retains the selected path or filename.');
   const cacheSummary = await cacheRecordSummary();
   assert.deepEqual(cacheSummary.keys, ['bytes', 'profileId', 'sha256'], 'The cache stores only identity and verified bytes, with no original filename or path.');
@@ -417,7 +430,7 @@ try {
   assert.ok(exportedFile, 'Project export downloads a portable JSON file.');
   const exportedProjectText = fs.readFileSync(path.join(downloadPath, exportedFile), 'utf8');
   const exportedProject = JSON.parse(exportedProjectText);
-  assert.deepEqual(exportedProject.localModelReferences, [modelReference], 'Export contains only the allowlisted profile/hash reference.');
+  assert.deepEqual(exportedProject.localModelReferences, [modelReference], 'Export contains only the allowlisted profile/hash/manifest reference.');
   assert.equal(exportedProjectText.includes(path.basename(artifactPath)), false, 'Export does not retain the original local filename.');
   assert.equal(exportedProjectText.includes(Buffer.from(fs.readFileSync(artifactPath)).toString('base64')), false, 'Export contains no model bytes.');
   report.steps.push({ id: 'import-caches-verified-bytes-locally-and-project-export-keeps-hash-only-reference', status: 'PASS', cacheBytes: cacheSummary.size, projectExportBytes: downloadResult.bytes });
@@ -479,25 +492,91 @@ try {
   assert.equal(repeatedRun.evidenceInstances, '1', 'Repeating the same condition does not duplicate Evidence.');
   report.steps.push({ id: 'repeat-comparison-has-distinct-experiment-identities-with-condition-deduped-evidence', status: 'PASS' });
 
+  await click('[data-g2-imported-attention] header button');
+  await waitFor('!document.querySelector("[data-g2-imported-attention]")', 'G2 closes before Build anchor flow');
+  await clickNavigation('Build');
+  const anchorNodeId = await evaluate(`window.__VOLK_ML_AGENT__.open().then(async(api)=>{
+    const result=await api.addNode({
+      componentId:'multihead_attention_node',
+      id:'g2-browser-selected-attention-anchor',
+      parameters:{embed_dim:128,num_heads:2,dropout:0},
+    });
+    return result.nodeId;
+  })`, true);
+  assert.equal(anchorNodeId, 'g2-browser-selected-attention-anchor', 'The real Build workspace accepts a canonical MHA node for the G2 correspondence.');
+  const anchorSelector = `[data-g2-bind-selected-node="${anchorNodeId}"]`;
+  await waitFor(`Boolean(document.querySelector(${JSON.stringify(anchorSelector)}))`, 'selected eligible Build attention anchor');
+  await click(anchorSelector);
+  await waitFor('document.querySelector("[data-g2-binding-status]")?.getAttribute("data-g2-binding-status") === "bound"', 'operator correspondence bound to selected Build node');
+  const originalBindingId = await evaluate('document.querySelector("[data-g2-artifact-binding]")?.getAttribute("data-g2-binding-id")');
+  const evidenceBeforeSemanticMutation = await evaluate(`(() => {
+    const node=document.querySelector('[data-g2-evidence]');
+    return node ? {
+      runId:node.getAttribute('data-g2-run-id'),
+      bindingId:node.getAttribute('data-g2-binding-id'),
+      eventCount:node.getAttribute('data-g2-event-count'),
+      evidenceInstances:node.getAttribute('data-g2-evidence-instance-count'),
+      text:node.innerText,
+    } : null;
+  })()`);
+  assert.ok(originalBindingId, 'A bound comparison receives a deterministic artifact-binding identity.');
+  assert.equal(await evaluate('document.querySelector("[data-g2-run-comparison]")?.disabled'), false, 'A valid selected-node correspondence permits an explicit local comparison.');
+
+  await evaluate(`window.__VOLK_ML_AGENT__.open().then((api)=>api.updateNode(${JSON.stringify(anchorNodeId)}, { position:{x:777,y:555} }))`, true);
+  await waitFor(`document.querySelector("[data-g2-binding-status]")?.getAttribute("data-g2-binding-status") === "bound" && document.querySelector("[data-g2-artifact-binding]")?.getAttribute("data-g2-binding-id") === ${JSON.stringify(originalBindingId)}`, 'layout-only graph update preserves semantic correspondence');
+  await evaluate(`window.__VOLK_ML_AGENT__.open().then((api)=>api.updateNode(${JSON.stringify(anchorNodeId)}, { parameters:{num_heads:4} }))`, true);
+  await waitFor('document.querySelector("[data-g2-binding-status]")?.getAttribute("data-g2-binding-status") === "invalid"', 'semantic Build mutation invalidates the correspondence');
+  assert.equal(await evaluate('document.querySelector("[data-g2-run-comparison]")?.disabled'), true, 'A semantically stale Build graph cannot launch a G2 comparison.');
+  assert.deepEqual(await evaluate(`(() => {
+    const node=document.querySelector('[data-g2-evidence]');
+    return node ? {
+      runId:node.getAttribute('data-g2-run-id'),
+      bindingId:node.getAttribute('data-g2-binding-id'),
+      eventCount:node.getAttribute('data-g2-event-count'),
+      evidenceInstances:node.getAttribute('data-g2-evidence-instance-count'),
+      text:node.innerText,
+    } : null;
+  })()`), evidenceBeforeSemanticMutation, 'Binding invalidation neither manufactures nor changes any existing comparison evidence.');
+  assert.equal(await runtimeRouteCount('/v1/compare'), 2, 'A stale correspondence never reaches the local comparison endpoint.');
+  await evaluate(`window.__VOLK_ML_AGENT__.open().then((api)=>api.updateNode(${JSON.stringify(anchorNodeId)}, { parameters:{num_heads:2} }))`, true);
+  await waitFor(`document.querySelector("[data-g2-binding-status]")?.getAttribute("data-g2-binding-status") === "bound" && document.querySelector("[data-g2-artifact-binding]")?.getAttribute("data-g2-binding-id") === ${JSON.stringify(originalBindingId)}`, 'restored canonical Build semantics recover the exact correspondence');
+  await click('[data-g2-run-comparison]');
+  await waitForRuntimeRouteCount('/v1/compare', 3);
+  await waitFor('Boolean(document.querySelector("[data-g2-evidence]"))', 'Evidence from explicit Build-anchored G2 comparison', 25_000);
+  const boundEvidence = await evaluate(`(() => ({
+    bindingId:document.querySelector('[data-g2-evidence]')?.getAttribute('data-g2-binding-id'),
+    text:document.querySelector('[data-g2-evidence]')?.innerText ?? '',
+  }))()`);
+  assert.equal(boundEvidence.bindingId, originalBindingId, 'The accepted comparison records the exact validated correspondence identity.');
+  assert.match(boundEvidence.text, /g2-browser-selected-attention-anchor/);
+  assert.match(boundEvidence.text, /not Build outputs/i, 'The G2 result remains explicitly distinct from the Build context output.');
+  assert.equal(runtimeRouteStatuses('/v1/compare').at(-1), 200, 'The explicitly accepted bound comparison uses the real local runtime successfully.');
+  report.steps.push({ id: 'selected-build-node-correspondence-is-live-stale-checked-and-never-claims-build-output', status: 'PASS', bindingId: originalBindingId });
+
   const switchedProject = await evaluate(`window.__VOLK_ML_AGENT__.open().then(async(api)=>{
     const project=await api.getProject();
     return api.loadProject({...project,name:(project.name||'Project')+' - G2 session switch'});
   })`, true);
   assert.ok(switchedProject?.name, 'The supported project-load API completed the same-hash session switch.');
+  await waitFor('Boolean(document.querySelector("[data-g2-imported-attention]")) && document.querySelector("[data-g2-binding-status]")?.getAttribute("data-g2-binding-status") === "invalid"', 'project-session replacement invalidates the captured Build binding');
   await connectG2Runner();
-  await waitFor('Boolean(document.querySelector("[data-g2-imported-attention]")) && !document.querySelector("[data-g2-evidence]") && document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status") === "available" && document.querySelector("[data-g2-run-comparison]")?.disabled === false', 'G2 state invalidation after project switch');
+  await waitFor('!document.querySelector("[data-g2-evidence]") && document.querySelector("[data-g2-runner-status]")?.getAttribute("data-g2-runner-status") === "available" && document.querySelector("[data-g2-binding-status]")?.getAttribute("data-g2-binding-status") === "invalid" && document.querySelector("[data-g2-run-comparison]")?.disabled === true', 'G2 state invalidation after project switch');
   assert.equal((await currentProject()).localModelReferences?.[0]?.sha256, modelReference.sha256, 'The project switch preserves the identical artifact reference.');
-  assert.equal(await runtimeRouteCount('/v1/compare'), 2, 'Project loading itself does not execute inference.');
+  assert.equal(await runtimeRouteCount('/v1/compare'), 3, 'Project loading itself does not execute inference.');
+  await click('[data-g2-clear-binding]');
+  await waitFor('document.querySelector("[data-g2-binding-status]")?.getAttribute("data-g2-binding-status") === "standalone" && document.querySelector("[data-g2-run-comparison]")?.disabled === false', 'learner explicitly clears a stale Build binding to continue standalone');
+  assert.equal(await runtimeRouteCount('/v1/compare'), 3, 'Clearing a stale suggestion is not an experiment execution.');
   await click('[data-g2-run-comparison]');
-  await waitForRuntimeRouteCount('/v1/compare', 3);
+  await waitForRuntimeRouteCount('/v1/compare', 4);
   await waitFor('document.querySelector("[data-g2-evidence]")?.getAttribute("data-g2-event-count") === "2"', 'explicit inference after clean project session');
+  assert.equal(await evaluate('document.querySelector("[data-g2-evidence]")?.getAttribute("data-g2-binding-id")'), '', 'After the learner clears the stale anchor, evidence is correctly standalone.');
   const freshSessionRun = await evaluate(`(() => { const node=document.querySelector('[data-g2-evidence]'); return {
     runId:node?.getAttribute('data-g2-run-id'), experimentIds:node?.getAttribute('data-g2-experiment-ids'),
     evidenceInstances:node?.getAttribute('data-g2-evidence-instance-count'),
   }; })()`);
   assert.notEqual(freshSessionRun.runId, repeatedRun.runId, 'The new project session creates new run identities only after explicit learner action.');
   assert.equal(freshSessionRun.evidenceInstances, '1', 'Evidence is rebuilt from the explicit result in the clean project session.');
-  report.steps.push({ id: 'same-hash-project-switch-clears-session-evidence-and-requires-explicit-inference', status: 'PASS' });
+  report.steps.push({ id: 'same-hash-project-switch-invalidates-old-binding-and-explicitly-continues-standalone', status: 'PASS' });
   const results = await evaluate(`(() => ({
     grids: document.querySelectorAll('[data-g2-evidence] ~ section [role="grid"]').length,
     tokens: document.querySelector('[data-g2-imported-attention]')?.innerText.includes('good') && document.querySelector('[data-g2-imported-attention]')?.innerText.includes('bad'),
@@ -560,6 +639,8 @@ try {
 
   await click('[data-g2-imported-attention] header button');
   await waitFor('!document.querySelector("[data-g2-imported-attention]")', 'G2 surface closes');
+  await clickNavigation('Explore');
+  await waitFor('Boolean(document.querySelector("[data-explore-home]"))', 'Explore Home before offline G2 re-entry');
   stopProcess(runtimeProcess);
   runtimeProcess = null;
   await sleep(250);

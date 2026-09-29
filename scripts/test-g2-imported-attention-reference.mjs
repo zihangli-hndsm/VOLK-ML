@@ -10,6 +10,7 @@ import { createLocalAttentionClient } from '../src/services/localAttention/clien
 import { G2_ATTENTION_LEGACY_SHA256S, G2_ATTENTION_PROFILE_SHA256, validateImportedAttentionCompareResponse } from '../src/core/playground/importedAttention/profile.js';
 import { commitImportedAttentionExecution, createImportedAttentionEventStore } from '../src/core/playground/importedAttention/semanticEvents.js';
 import { createG2ExecutionRequestV1, createG2ExecutionResultV1, g2CurrentExecutionIdentityV1 } from '../src/core/playground/importedAttention/executionAdapter.js';
+import { G2_ATTENTION_EXPORT_MANIFEST } from '../src/core/playground/importedAttention/profileManifest.js';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const modelPath = process.env.VOLK_G2_REFERENCE_ONNX;
@@ -45,6 +46,19 @@ try {
     if (index === 0) args.push('--validate-artifact', legacyModelPath);
     execFileSync(python, args, { cwd: path.dirname(path.dirname(path.dirname(item.script))), env: pythonEnvironment, stdio: 'inherit' });
   }
+  const manifestPaths = exportPaths.map((_, index) => path.join(exportDirectory, `manifest-${index + 1}.json`));
+  for (const [index, item] of exportPaths.entries()) {
+    execFileSync(python, [
+      path.join(root, 'tools/g2_attention/export_manifest.py'),
+      '--artifact', item.output,
+      '--model-dir', modelDirectory,
+      '--output', manifestPaths[index],
+    ], { cwd: root, env: pythonEnvironment, stdio: 'inherit' });
+  }
+  const firstManifest = JSON.parse(readFileSync(manifestPaths[0], 'utf8'));
+  const secondManifest = JSON.parse(readFileSync(manifestPaths[1], 'utf8'));
+  assert.deepEqual(firstManifest, G2_ATTENTION_EXPORT_MANIFEST, 'The exporter-authored mapping is byte-derived and matches only the statically registered manifest.');
+  assert.deepEqual(secondManifest, firstManifest, 'Separate deterministic exports produce the same operator/tensor correspondence manifest.');
   const regeneratedBytes = readFileSync(exportPaths[0].output);
   const regeneratedDigest = createHash('sha256').update(regeneratedBytes).digest('hex');
   const secondRootDigest = createHash('sha256').update(readFileSync(exportPaths[1].output)).digest('hex');
@@ -176,6 +190,8 @@ try {
   assert.throws(() => validateImportedAttentionCompareResponse(incomplete, {
     requestId: comparison.requestId,
     modelHash: binding.modelHash,
+    exporterManifestId: G2_ATTENTION_EXPORT_MANIFEST.manifestId,
+    exporterManifestSha256: G2_ATTENTION_EXPORT_MANIFEST.manifestSha256,
     providerVersion: runtimeProviderVersion,
     inputIdsA: comparison.inputIdsA,
     inputIdsB: comparison.inputIdsB,
