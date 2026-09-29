@@ -12,6 +12,12 @@ import { analyzeBrowserExecutionGraph } from './core/browserExecutionContract';
 import { graphSemanticFingerprintV1 } from './core/graph/identity.js';
 import { artifactFingerprintJsonV1 } from './core/graph/artifactFingerprint.js';
 import { acceptExecutionResultV1, createExecutionRequestV1, createExecutionResultV1 } from './core/execution/executionContract.js';
+import {
+  assessBrowserWebGpuMlpInference,
+  browserWebGpuMlpConfigIdentity,
+  BROWSER_WEBGPU_MLP_PROVIDER_VERSION,
+  runBrowserWebGpuMlpInference,
+} from './core/execution/browserWebGpuMlp.js';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
 import { PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from './core/project';
 import { safeProjectFilename } from './core/localProjects';
@@ -443,12 +449,29 @@ function PropertyControl({ property, value, onChange }) {
   return <><input className={property.type === 'slider' ? 'mt-3 w-full accent-blue-600' : inputClass} type={property.type === 'slider' ? 'range' : property.type === 'number' ? 'number' : 'text'} min={property.min} max={property.max} step={property.step} value={value} onChange={(event) => onChange(property.type === 'text' ? event.target.value : Number(event.target.value))} />{property.type === 'slider' && <span className="mt-2 block text-sm text-slate-500">{value}</span>}</>;
 }
 
-function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, model, runtime, resultBinding, runHistory, language, onSelectLumiSuggestion, onRun, onCancelRun, onValidation, onOpenData, onExport }) {
+function webGpuDiagnosticMessageKey(code) {
+  if (code === 'WEBGPU_PARITY_MISMATCH' || code === 'WEBGPU_NON_FINITE_OUTPUT') return 'runner.webgpuParityFailure';
+  if (code === 'WEBGPU_TIMEOUT') return 'runner.webgpuTimeout';
+  if (code === 'WEBGPU_CANCELLED') return 'runner.webgpuCancelled';
+  if (code === 'WEBGPU_GRAPH_UNSUPPORTED' || code === 'WEBGPU_MODEL_UNSUPPORTED') return 'runner.webgpuUnsupportedModel';
+  if (code === 'WEBGPU_OPERATION_UNSUPPORTED') return 'runner.webgpuUnsupportedOperation';
+  if (code === 'WEBGPU_INPUT_INVALID') return 'runner.webgpuInputInvalid';
+  if (code === 'WEBGPU_NON_FINITE_INPUT') return 'runner.numericFeatures';
+  if (code === 'WEBGPU_MODEL_INVALID') return 'runner.webgpuModelInvalid';
+  if (code === 'WEBGPU_MODEL_LIMIT_EXCEEDED' || code === 'WEBGPU_INPUT_OVER_BUDGET' || code === 'WEBGPU_BUDGET_INVALID') return 'runner.webgpuLimits';
+  if (code === 'RESULT_IDENTITY_STALE' || code === 'WEBGPU_RESULT_STALE') return 'runner.webgpuStale';
+  return 'runner.webgpuDeviceFailure';
+}
+
+function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, model, runtime, resultBinding, runHistory, language, onSelectLumiSuggestion, onRun, onCancelRun, onWebGpuInference, onCancelWebGpuInference, onValidation, onOpenData, onExport }) {
   const { t } = useVividTranslation();
   const [inputs, setInputs] = useState({});
   const [prediction, setPrediction] = useState(null);
+  const [webGpuExecution, setWebGpuExecution] = useState(null);
+  const [webGpuRunning, setWebGpuRunning] = useState(false);
   const [graphError, setGraphError] = useState('');
   const [planNames, setPlanNames] = useState([]);
+  const webGpuInputIdentityRef = useRef('');
   const graphSignature = useMemo(() => JSON.stringify({
     nodes: nodes.map((node) => ({ id: node.id, manifestId: node.data.manifest.id, parameters: node.data.parameters })),
     edges: edges.map((edge) => ({ source: edge.source, sourceHandle: edge.sourceHandle, target: edge.target, targetHandle: edge.targetHandle })),
@@ -456,6 +479,19 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
   // Always derive cards from current props so a Run-triggered render cannot
   // retain stale workload values.
   const executionPlan = executionPlanFor(nodes, edges, dataset);
+  const webGpuCapability = assessBrowserWebGpuMlpInference(model);
+  const webGpuGraphContract = model?.type === 'browser_mlp'
+    ? analyzeBrowserExecutionGraph({ nodes, edges, dataset }) : null;
+  const webGpuGraphSupported = Boolean(webGpuGraphContract?.valid
+    && webGpuGraphContract.root?.data?.manifest?.op === 'supervised_trainer'
+    && webGpuGraphContract.root.id === model?.sourceNodeId);
+  const webGpuSupported = webGpuCapability.supported && webGpuGraphSupported;
+  const webGpuModelIdentity = webGpuCapability.supported ? JSON.stringify(browserWebGpuMlpConfigIdentity(model)) : '';
+  const webGpuInputIdentity = JSON.stringify({
+    model: webGpuModelIdentity,
+    features: model?.featureColumns?.map((column) => inputs[column] ?? '') ?? [],
+  });
+  webGpuInputIdentityRef.current = webGpuInputIdentity;
   const needsDataset = useMemo(() => {
     const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
     return nodes.some(
@@ -465,6 +501,8 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
   useEffect(() => {
     if (open) {
       setPrediction(null);
+      setWebGpuExecution(null);
+      setWebGpuRunning(false);
       setGraphError('');
       try {
         const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
@@ -486,6 +524,10 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
       catch (error) { setPlanNames([]); setGraphError(translateError(error, t)); }
     }
   }, [open, graphSignature, dataset, onValidation, t]);
+  useEffect(() => {
+    setWebGpuExecution(null);
+    if (webGpuRunning) onCancelWebGpuInference();
+  }, [webGpuInputIdentity]);
   if (!open) return null;
   const running = runtime.status === 'running';
   const losses = runtime.status === 'idle' ? model?.lossHistory ?? [] : runtime.losses ?? [];
@@ -501,16 +543,43 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
     if (!x.every(Number.isFinite)) { setPrediction(t('runner.numericFeatures')); return; }
     setPrediction(predictWithModel(model, x));
   };
+  const tryWebGpuPrediction = async () => {
+    if (!model?.hasPredictor || !webGpuSupported) return;
+    const raw = model.featureColumns.map((column) => inputs[column]);
+    const isMissing = (value) => value === null || value === undefined || (typeof value === 'string' && value.trim() === '');
+    if (raw.some(isMissing)) { setWebGpuExecution({ localError: 'WEBGPU_INPUT_INVALID' }); return; }
+    const x = raw.map(Number);
+    if (!x.every(Number.isFinite)) { setWebGpuExecution({ localError: 'WEBGPU_NON_FINITE_INPUT' }); return; }
+    const requestInputIdentity = webGpuInputIdentityRef.current;
+    setWebGpuRunning(true);
+    setWebGpuExecution(null);
+    try {
+      const result = await onWebGpuInference({
+        model,
+        rawFeatures: x,
+        isCurrent: () => webGpuInputIdentityRef.current === requestInputIdentity,
+      });
+      setWebGpuExecution(result);
+    } catch (error) {
+      setWebGpuExecution({ localError: error?.code ?? 'WEBGPU_EXECUTION_FAILED' });
+    } finally {
+      setWebGpuRunning(false);
+    }
+  };
+  const closeRunner = () => {
+    if (webGpuRunning) onCancelWebGpuInference();
+    onClose();
+  };
 
-  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" onMouseDown={onClose}>
+  return <div className="fixed inset-0 z-50 grid place-items-center bg-slate-950/50 p-4" onMouseDown={closeRunner}>
     <section className="max-h-[92vh] w-full max-w-4xl overflow-auto rounded-3xl bg-white p-5 shadow-2xl sm:p-6" onMouseDown={(event) => event.stopPropagation()}>
-      <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-black">{t('runner.title')}</h2><p className="mt-1 text-sm text-slate-500">{t('runner.description')}</p></div><button aria-label={t('common.close')} className="rounded-full p-2 hover:bg-slate-100" onClick={onClose}>✕</button></div>
+      <div className="flex items-start justify-between gap-4"><div><h2 className="text-xl font-black">{t('runner.title')}</h2><p className="mt-1 text-sm text-slate-500">{t('runner.description')}</p></div><button aria-label={t('common.close')} className="rounded-full p-2 hover:bg-slate-100" onClick={closeRunner}>✕</button></div>
       {planNames.length > 0 && <div className="mt-4 flex flex-wrap items-center gap-1 text-xs">{planNames.map((name, index) => <React.Fragment key={`${name}-${index}`}><span className="rounded-full bg-slate-100 px-2 py-1 font-bold">{name}</span>{index < planNames.length - 1 && <span className="text-slate-300">→</span>}</React.Fragment>)}</div>}
       <TierPanel plan={executionPlan} onExport={onExport} />
       {visibleError && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">⚠ {visibleError}</div>}
       {needsDataset && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
         <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div id="runner-loss-chart" className="mt-4"><LossChart values={losses} /></div><button data-runner-execute type="button" disabled={running || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button>{running && <button data-runner-cancel type="button" onClick={onCancelRun} className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">{t('runner.cancelExecution')}</button>}</div>
-        <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="font-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
+        <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="font-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}{model.type === 'browser_mlp' && <><button data-webgpu-inference type="button" disabled={!webGpuSupported || webGpuRunning} onClick={() => tryWebGpuPrediction().catch(() => {})} className="mt-3 w-full rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 font-bold text-indigo-900 disabled:opacity-50">{webGpuRunning ? t('runner.webgpuPredicting') : t('runner.webgpuPredict')}</button>{!webGpuSupported && <p className="mt-2 text-xs text-slate-500" role="status">{webGpuCapability.reason === 'WEBGPU_UNAVAILABLE' ? t('runner.webgpuUnavailable') : t('runner.webgpuUnsupportedModel')}</p>}{webGpuRunning && <button data-webgpu-cancel type="button" onClick={onCancelWebGpuInference} className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700">{t('runner.webgpuCancel')}</button>}{webGpuExecution && <div data-webgpu-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${webGpuExecution.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{webGpuExecution.status === 'succeeded' ? <><p className="font-bold">{t('runner.webgpuPassed')}</p><p className="mt-2 text-xs">{t('runner.webgpuPrediction')}: <span className="font-mono font-bold">{typeof webGpuExecution.output.prediction === 'number' ? webGpuExecution.output.prediction.toFixed(4) : webGpuExecution.output.prediction}</span></p><p className="mt-1 text-xs">{t('runner.webgpuMaxError')}: <span className="font-mono">{webGpuExecution.output.parity.maxAbsoluteError.toExponential(2)}</span></p></> : <p className="font-bold">{t(webGpuDiagnosticMessageKey(webGpuExecution.localError ?? webGpuExecution.diagnostics?.[0] ?? 'WEBGPU_EXECUTION_FAILED'))}</p>}</div>}</>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
       </div> : <div className="mt-5 rounded-3xl border border-dashed border-slate-300 p-8 text-center text-slate-500"><p className="text-3xl">⇧</p><p className="mt-3 font-bold">{t('tier.useHigherTier', { tier: executionPlan.recommendedTier })}</p><p className="mt-1 text-sm">{t('tier.designStillAvailable')}</p></div>}
       <LumiResultReasoningPanel nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} runtime={runtime} resultBinding={resultBinding} runHistory={runHistory} language={language} onSelectSuggestion={onSelectLumiSuggestion} t={t} />
     </section>
@@ -642,6 +711,7 @@ function Workspace() {
   const exploreCapacityBridgeRef = useRef(null);
   const projectSessionIdRef = useRef(`project-session-${crypto.randomUUID()}`);
   const executionControllerRef = useRef(null);
+  const webGpuInferenceControllerRef = useRef(null);
   const agentAdapterRef = useRef(null);
   const exploreWorkspacesRef = useRef(new Map());
   const exploreForkCounterRef = useRef(0);
@@ -1645,6 +1715,155 @@ function Workspace() {
     }
   }, [setNodeStatus, setNodes, updateRunHistory, updateRuntime]);
   const cancelBrowserExecution = useCallback(() => executionControllerRef.current?.abort('user-cancelled'), []);
+  const cancelWebGpuInference = useCallback(() => webGpuInferenceControllerRef.current?.abort('user-cancelled'), []);
+  const runWebGpuInference = useCallback(async ({ model: requestedModel, rawFeatures, isCurrent = () => true }) => {
+    const state = workspaceStateRef.current;
+    const startedAt = new Date().toISOString();
+    const requestId = `webgpu-${crypto.randomUUID()}`;
+    const runId = `run-${crypto.randomUUID()}`;
+    let request = null;
+    const configProjection = browserWebGpuMlpConfigIdentity(requestedModel);
+    const configIdentity = artifactFingerprintJsonV1({
+      adapter: 'volk-browser-webgpu-mlp',
+      providerVersion: BROWSER_WEBGPU_MLP_PROVIDER_VERSION,
+      config: configProjection,
+    });
+    const inputIdentity = artifactFingerprintJsonV1({
+      featureColumns: requestedModel.featureColumns,
+      rawFeatures,
+    });
+    const graphFingerprint = graphSemanticFingerprintV1({
+      nodes: state.nodes,
+      edges: state.edges,
+      componentDefinitions: state.customComponents,
+    });
+    const graphContract = analyzeBrowserExecutionGraph({ nodes: state.nodes, edges: state.edges, dataset: state.dataset });
+    if (!graphContract.valid || graphContract.root?.data?.manifest?.op !== 'supervised_trainer'
+      || graphContract.root.id !== requestedModel.sourceNodeId) {
+      throw Object.assign(new Error('WEBGPU_GRAPH_UNSUPPORTED'), { code: 'WEBGPU_GRAPH_UNSUPPORTED' });
+    }
+    const fittedGraphFingerprint = state.runtime?.execution?.graphIdentity?.fingerprint;
+    if (fittedGraphFingerprint && fittedGraphFingerprint !== graphFingerprint) {
+      throw Object.assign(new Error('WEBGPU_RESULT_STALE'), { code: 'WEBGPU_RESULT_STALE' });
+    }
+    const boundedInputBytes = new TextEncoder().encode(JSON.stringify({ configProjection, rawFeatures })).byteLength;
+    const startedSessionId = projectSessionIdRef.current;
+    if (boundedInputBytes > 20 * 1024 * 1024) {
+      throw Object.assign(new Error('WEBGPU_INPUT_OVER_BUDGET'), { code: 'WEBGPU_INPUT_OVER_BUDGET' });
+    }
+    if (!state.model || artifactFingerprintJsonV1({
+      adapter: 'volk-browser-webgpu-mlp',
+      providerVersion: BROWSER_WEBGPU_MLP_PROVIDER_VERSION,
+      config: browserWebGpuMlpConfigIdentity(state.model),
+    }) !== configIdentity || !isCurrent()) {
+      throw Object.assign(new Error('WEBGPU_RESULT_STALE'), { code: 'WEBGPU_RESULT_STALE' });
+    }
+    request = createExecutionRequestV1({
+      requestId,
+      projectSessionId: startedSessionId,
+      graphIdentity: { kind: 'graph', fingerprint: graphFingerprint },
+      inputIdentity,
+      configIdentity,
+      providerId: 'browser-webgpu',
+      mode: 'inference',
+      budget: {
+        maxDurationMs: 30_000,
+        maxInputBytes: Math.max(1, boundedInputBytes),
+        maxOutputBytes: 16_384,
+      },
+      approvedAt: startedAt,
+    });
+    const controller = new AbortController();
+    webGpuInferenceControllerRef.current = controller;
+    try {
+      const inference = await runBrowserWebGpuMlpInference(requestedModel, rawFeatures, {
+        signal: controller.signal,
+        maxDurationMs: request.budget.maxDurationMs,
+      });
+      const stateAfterInference = workspaceStateRef.current;
+      let currentGraphFingerprint = null;
+      let currentConfigIdentity = null;
+      try {
+        currentGraphFingerprint = graphSemanticFingerprintV1({
+          nodes: stateAfterInference.nodes,
+          edges: stateAfterInference.edges,
+          componentDefinitions: stateAfterInference.customComponents,
+        });
+        currentConfigIdentity = stateAfterInference.model
+          ? artifactFingerprintJsonV1({
+            adapter: 'volk-browser-webgpu-mlp',
+            providerVersion: BROWSER_WEBGPU_MLP_PROVIDER_VERSION,
+            config: browserWebGpuMlpConfigIdentity(stateAfterInference.model),
+          }) : null;
+      } catch { /* An invalidated graph/model cannot accept a delayed result. */ }
+      const currentInputIdentity = isCurrent() ? inputIdentity : artifactFingerprintJsonV1({ stale: true, requestId });
+      const accepted = acceptExecutionResultV1(createExecutionResultV1({
+        request,
+        runId,
+        status: 'succeeded',
+        providerVersion: inference.providerVersion,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        output: {
+          task: requestedModel.task,
+          prediction: requestedModel.task === 'classification'
+            ? requestedModel.labels[inference.values.indexOf(Math.max(...inference.values))]
+            : inference.values[0],
+          parity: {
+            passed: inference.parity.passed,
+            normalizationMaxAbsError: inference.parity.normalizationMaxAbsError,
+            maxAbsoluteError: Math.max(inference.parity.normalizationMaxAbsError, ...Object.values(inference.parity.maxAbsoluteErrorByOperation)),
+          },
+        },
+        provenance: 'live-webgpu',
+      }), request, {
+        projectSessionId: projectSessionIdRef.current,
+        graphIdentity: currentGraphFingerprint,
+        inputIdentity: currentInputIdentity,
+        configIdentity: currentConfigIdentity,
+      });
+      if (accepted.accepted) return createExecutionResultV1({
+        request,
+        runId,
+        status: 'succeeded',
+        providerVersion: inference.providerVersion,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        output: accepted.output,
+        provenance: 'live-webgpu',
+      });
+      return createExecutionResultV1({
+        request,
+        runId,
+        status: 'stale',
+        providerVersion: BROWSER_WEBGPU_MLP_PROVIDER_VERSION,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        diagnostics: ['RESULT_IDENTITY_STALE'],
+        provenance: 'live-webgpu',
+      });
+    } catch (error) {
+      if (!request) throw error;
+      const code = typeof error?.code === 'string' && /^[A-Z0-9][A-Z0-9._-]{0,63}$/.test(error.code)
+        ? error.code : 'WEBGPU_EXECUTION_FAILED';
+      const status = code === 'WEBGPU_TIMEOUT' ? 'timed-out'
+        : code === 'WEBGPU_CANCELLED' ? 'cancelled'
+          : code === 'WEBGPU_RESULT_STALE' ? 'stale' : 'failed';
+      return createExecutionResultV1({
+        request,
+        runId,
+        status,
+        providerVersion: BROWSER_WEBGPU_MLP_PROVIDER_VERSION,
+        startedAt,
+        finishedAt: new Date().toISOString(),
+        diagnostics: [code],
+        cancellationDisposition: status === 'cancelled' || status === 'timed-out' ? 'client-discarded' : 'none',
+        provenance: 'live-webgpu',
+      });
+    } finally {
+      webGpuInferenceControllerRef.current = null;
+    }
+  }, []);
   useEffect(() => {
     if (previousExecutionSignature.current === executionInputSignature) return;
     previousExecutionSignature.current = executionInputSignature;
@@ -2298,7 +2517,7 @@ function Workspace() {
     {pendingDeletion && <DeletionConfirmDialog summary={deletionSummary({ nodes, edges, pendingDeletion })} onCancel={() => setPendingDeletion(null)} onConfirm={confirmDeletion} t={t} />}
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
-    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} model={model} runtime={runtime} resultBinding={resultBindingRef.current} runHistory={runHistory} language={primary} onSelectLumiSuggestion={handleLumiResultSuggestion} onRun={runBrowserGraph} onCancelRun={cancelBrowserExecution} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
+    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} model={model} runtime={runtime} resultBinding={resultBindingRef.current} runHistory={runHistory} language={primary} onSelectLumiSuggestion={handleLumiResultSuggestion} onRun={runBrowserGraph} onCancelRun={cancelBrowserExecution} onWebGpuInference={runWebGpuInference} onCancelWebGpuInference={cancelWebGpuInference} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
     <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
     <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project, { languagePolicy: 'preserve-current' }); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} model={model} runtime={runtime} resultBinding={resultBindingRef.current} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}

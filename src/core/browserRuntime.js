@@ -103,6 +103,20 @@ function forwardNeural(layers, input) {
   return { values, trace };
 }
 
+/** Returns a detached semantic trace for comparing an already-fitted MLP inference run. */
+export function traceBrowserMlpInference(model, rawFeatures) {
+  if (model?.type !== 'browser_mlp' || !Array.isArray(rawFeatures)) {
+    throw Object.assign(new TypeError('WEBGPU_MODEL_UNSUPPORTED'), { code: 'WEBGPU_MODEL_UNSUPPORTED' });
+  }
+  const normalizedInput = normalizeFeatures(rawFeatures, model.normalization);
+  const { values, trace } = forwardNeural(model.layers, normalizedInput);
+  return {
+    normalizedInput: [...normalizedInput],
+    stages: trace.slice(1).map(({ op, output }) => ({ op, values: [...output] })),
+    values: [...values],
+  };
+}
+
 function throwIfExecutionAborted(signal) {
   if (!signal?.aborted) return;
   const timedOut = signal.reason === 'deadline';
@@ -356,7 +370,7 @@ function evaluateClassification(model) {
 export function predictWithModel(model, rawFeatures) {
   if (model.type === 'knn_classifier') return predictKnn(model, rawFeatures);
   if (model.type === 'browser_mlp') {
-    const values = forwardNeural(model.layers, normalizeFeatures(rawFeatures, model.normalization)).values;
+    const values = traceBrowserMlpInference(model, rawFeatures).values;
     return model.task === 'classification'
       ? model.labels[values.indexOf(Math.max(...values))]
       : values[0];

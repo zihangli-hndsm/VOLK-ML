@@ -157,6 +157,68 @@ const artifactRequest = createExecutionRequestV1({
   budget: { maxDurationMs: 30_000, maxInputBytes: 16_000, maxOutputBytes: 32_000 },
   approvedAt: now,
 });
+const webgpuRequest = createExecutionRequestV1({
+  requestId: 'exec-webgpu-001',
+  projectSessionId: 'project-session-webgpu',
+  graphIdentity: { kind: 'graph', fingerprint: 'graph-semantic-v1-webgpu-inference' },
+  inputIdentity: digest({ features: [0.25, -0.5] }),
+  configIdentity: digest({ modelSnapshot: 'fitted-mlp-v1' }),
+  providerId: 'browser-webgpu',
+  mode: 'inference',
+  budget: { maxDurationMs: 30_000, maxInputBytes: 512_000, maxOutputBytes: 32_000 },
+  approvedAt: now,
+});
+assert.equal(assessExecutionCapabilityV1({
+  providerId: 'browser-webgpu', graphIdentity: webgpuRequest.graphIdentity, mode: 'inference',
+}).status, 'supported', 'WebGPU is registered only for explicit graph-bound inference.');
+assert.throws(() => createExecutionRequestV1({
+  ...webgpuRequest, providerId: 'browser-webgpu', mode: 'fit',
+}), /EXECUTION_APPROVAL_INVALID|EXECUTION_MODE_UNSUPPORTED/, 'WebGPU cannot claim MLP training.');
+const webgpuResult = createExecutionResultV1({
+  request: webgpuRequest,
+  runId: 'run-webgpu-001',
+  status: 'succeeded',
+  providerVersion: 'browser-webgpu-mlp-wgsl-v1',
+  startedAt: now,
+  finishedAt: '2026-09-28T00:00:01.000Z',
+  output: { prediction: 0.75, parity: { passed: true } },
+  provenance: 'live-webgpu',
+});
+assert.equal(webgpuResult.provenance, 'live-webgpu');
+assert.equal(acceptExecutionResultV1(webgpuResult, webgpuRequest, {
+  projectSessionId: webgpuRequest.projectSessionId,
+  graphIdentity: webgpuRequest.graphIdentity.fingerprint,
+  inputIdentity: webgpuRequest.inputIdentity,
+  configIdentity: webgpuRequest.configIdentity,
+}).accepted, true);
+assert.equal(acceptExecutionResultV1(webgpuResult, webgpuRequest, {
+  projectSessionId: webgpuRequest.projectSessionId,
+  graphIdentity: webgpuRequest.graphIdentity.fingerprint,
+  inputIdentity: digest({ features: [9, 9] }),
+  configIdentity: webgpuRequest.configIdentity,
+}).reason, 'stale', 'A WebGPU result for a changed inference input is discarded.');
+assert.equal(acceptExecutionResultV1(webgpuResult, webgpuRequest, {
+  projectSessionId: webgpuRequest.projectSessionId,
+  graphIdentity: 'graph-semantic-v1-webgpu-inference-changed',
+  inputIdentity: webgpuRequest.inputIdentity,
+  configIdentity: webgpuRequest.configIdentity,
+}).reason, 'stale', 'A delayed WebGPU result for a changed semantic graph is discarded.');
+assert.equal(acceptExecutionResultV1(webgpuResult, webgpuRequest, {
+  projectSessionId: webgpuRequest.projectSessionId,
+  graphIdentity: webgpuRequest.graphIdentity.fingerprint,
+  inputIdentity: webgpuRequest.inputIdentity,
+  configIdentity: digest({ modelSnapshot: 'fitted-mlp-v2' }),
+}).reason, 'stale', 'A delayed WebGPU result for a changed fitted-model/config identity is discarded.');
+assert.throws(() => createExecutionResultV1({
+  request: webgpuRequest,
+  runId: 'run-webgpu-fake',
+  status: 'succeeded',
+  providerVersion: 'browser-webgpu-mlp-wgsl-v1',
+  startedAt: now,
+  finishedAt: '2026-09-28T00:00:01.000Z',
+  output: { prediction: 0.75 },
+  provenance: 'live-local',
+}), /EXECUTION_RESULT_PROVENANCE_INVALID/, 'A WebGPU result cannot spoof local CPU provenance.');
 const artifactResult = createExecutionResultV1({
   request: artifactRequest,
   runId: 'run-g2-001',

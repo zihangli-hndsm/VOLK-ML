@@ -11,7 +11,18 @@
 | L2 | Local Python | No | Larger PyTorch/TensorFlow models on the user's machine |
 | L3 | Remote GPU | No | Large models or datasets requiring a managed accelerator |
 
-Only L0 currently executes inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines, plus a deliberately small browser-CPU MLP: tabular data, a Tensor Input, sequential Dense layers with ReLU/Sigmoid/Tanh/Softmax activations, Model Output, MSE or cross-entropy loss, SGD or Adam, and Supervised Trainer. L1–L3 expose design/export guidance.
+L0 executes fitting inside VOLK-ML. It supports connected linear-regression and KNN-classification pipelines, plus a deliberately small browser-CPU MLP: tabular data, a Tensor Input, sequential Dense layers with ReLU/Sigmoid/Tanh/Softmax activations, Model Output, MSE or cross-entropy loss, SGD or Adam, and Supervised Trainer. L1–L3 expose design/export guidance for fitting.
+
+There is one narrow exception: `browser-webgpu` can run explicit inference on
+an already-fitted Browser CPU MLP whose ordered operations are Dense, ReLU,
+Sigmoid, Tanh, and Softmax within the bounded adapter profile. It does not
+train, update weights, make arbitrary L1 graphs runnable, or set
+`executionTiers[].available` / `canRunHere` to true. The Runner offers it as a
+separate prediction action only when the current fitted snapshot is in profile
+and `navigator.gpu` exists; adapter/device availability is verified when the
+learner explicitly invokes it. CPU fit/reference and CPU prediction remain
+available independently. Numerical acceptance limits and failure behavior
+are specified in [`execution-contract.md`](./execution-contract.md).
 
 G2 adds one isolated local-CPU exception outside the generic graph executor:
 the pinned BERT-Tiny ONNX Attention v25 profile described in
@@ -100,7 +111,9 @@ and every selected component has a browser backend
 and the graph contains a complete supported execution topology
 ```
 
-WebGPU detection does not make L1 runnable today because the WebGPU executor is not implemented. It only affects explanatory guidance.
+WebGPU detection does not make generic L1 fitting runnable: there is no WebGPU
+trainer. The bounded MLP inference adapter is a request-specific exception and
+does not change the generic fit estimator.
 
 In `src/main.jsx`, tier estimation is based on nodes participating in at least one edge. This prevents an unconnected experimental component from blocking an otherwise valid L0 pipeline.
 
