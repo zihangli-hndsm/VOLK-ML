@@ -29,6 +29,14 @@ export const EXECUTION_PROVIDER_PROFILES = Object.freeze({
     identityKind: 'graph',
     modes: Object.freeze(['inference']),
   }),
+  'browser-webgpu-mlp-training': Object.freeze({
+    status: 'supported',
+    reason: null,
+    adapterId: 'volk-browser-webgpu-mlp-training',
+    provenance: 'live-webgpu',
+    identityKind: 'graph',
+    modes: Object.freeze(['fit']),
+  }),
   'local-onnxruntime-cpu': Object.freeze({
     status: 'supported',
     reason: null,

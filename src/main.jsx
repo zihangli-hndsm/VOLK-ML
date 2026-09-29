@@ -7,7 +7,7 @@ import './index.css';
 import { languages, localizedError, resolveMessage, translateError } from './i18n';
 import { componentById, defaults, expandComposite, pluginRegistry } from './core/components';
 import { describeRows, sampleDatasets } from './core/sampleDatasets';
-import { executeBrowserGraph, predictWithModel } from './core/browserRuntime';
+import { BROWSER_MLP_SEED, executeBrowserGraph, predictWithModel } from './core/browserRuntime';
 import { analyzeBrowserExecutionGraph } from './core/browserExecutionContract';
 import { graphSemanticFingerprintV1 } from './core/graph/identity.js';
 import { artifactFingerprintJsonV1 } from './core/graph/artifactFingerprint.js';
@@ -18,6 +18,11 @@ import {
   BROWSER_WEBGPU_MLP_PROVIDER_VERSION,
   runBrowserWebGpuMlpInference,
 } from './core/execution/browserWebGpuMlp.js';
+import {
+  BROWSER_WEBGPU_MLP_TRAINING_ADAPTER_ID,
+  BROWSER_WEBGPU_MLP_TRAINING_PROVIDER_VERSION,
+  BROWSER_WEBGPU_MLP_TRAINING_SEMANTICS_VERSION,
+} from './core/execution/browserWebGpuMlpTraining.js';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
 import { PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from './core/project';
 import { safeProjectFilename } from './core/localProjects';
@@ -460,15 +465,22 @@ function webGpuDiagnosticMessageKey(code) {
   if (code === 'WEBGPU_MODEL_INVALID') return 'runner.webgpuModelInvalid';
   if (code === 'WEBGPU_MODEL_LIMIT_EXCEEDED' || code === 'WEBGPU_INPUT_OVER_BUDGET' || code === 'WEBGPU_BUDGET_INVALID') return 'runner.webgpuLimits';
   if (code === 'RESULT_IDENTITY_STALE' || code === 'WEBGPU_RESULT_STALE') return 'runner.webgpuStale';
+  if (code === 'WEBGPU_UNAVAILABLE' || code === 'WEBGPU_ADAPTER_UNAVAILABLE' || code === 'WEBGPU_DEVICE_UNAVAILABLE') return 'runner.webgpuTrainingUnavailable';
+  if (code === 'WEBGPU_TRAINING_LIMIT_EXCEEDED' || code === 'WEBGPU_RESOURCE_LIMIT' || code === 'WEBGPU_INPUT_OVER_BUDGET') return 'runner.webgpuTrainingLimits';
+  if (code?.startsWith('WEBGPU_TRAINING_')) return 'runner.webgpuTrainingFailed';
+  if (code === 'EXECUTION_TIMEOUT' || code === 'WEBGPU_TIMEOUT') return 'runner.webgpuTimeout';
+  if (code === 'EXECUTION_CANCELLED' || code === 'WEBGPU_CANCELLED') return 'runner.webgpuCancelled';
   return 'runner.webgpuDeviceFailure';
 }
 
-function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, model, runtime, resultBinding, runHistory, language, onSelectLumiSuggestion, onRun, onCancelRun, onWebGpuInference, onCancelWebGpuInference, onValidation, onOpenData, onExport }) {
+function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, model, runtime, resultBinding, runHistory, language, onSelectLumiSuggestion, onRun, onRunWebGpuTraining, onCancelRun, onWebGpuInference, onCancelWebGpuInference, onValidation, onOpenData, onExport }) {
   const { t } = useVividTranslation();
   const [inputs, setInputs] = useState({});
   const [prediction, setPrediction] = useState(null);
   const [webGpuExecution, setWebGpuExecution] = useState(null);
   const [webGpuRunning, setWebGpuRunning] = useState(false);
+  const [webGpuTrainingResult, setWebGpuTrainingResult] = useState(null);
+  const [webGpuTrainingRunning, setWebGpuTrainingRunning] = useState(false);
   const [graphError, setGraphError] = useState('');
   const [planNames, setPlanNames] = useState([]);
   const webGpuInputIdentityRef = useRef('');
@@ -485,6 +497,11 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
   const webGpuGraphSupported = Boolean(webGpuGraphContract?.valid
     && webGpuGraphContract.root?.data?.manifest?.op === 'supervised_trainer'
     && webGpuGraphContract.root.id === model?.sourceNodeId);
+  const webGpuTrainingGraphContract = dataset
+    ? analyzeBrowserExecutionGraph({ nodes, edges, dataset }) : null;
+  const webGpuTrainingGraphSupported = Boolean(webGpuTrainingGraphContract?.valid
+    && webGpuTrainingGraphContract.root?.data?.manifest?.op === 'supervised_trainer');
+  const webGpuTrainingAvailable = typeof navigator !== 'undefined' && Boolean(navigator.gpu);
   const webGpuSupported = webGpuCapability.supported && webGpuGraphSupported;
   const webGpuModelIdentity = webGpuCapability.supported ? JSON.stringify(browserWebGpuMlpConfigIdentity(model)) : '';
   const webGpuInputIdentity = JSON.stringify({
@@ -503,6 +520,8 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
       setPrediction(null);
       setWebGpuExecution(null);
       setWebGpuRunning(false);
+      setWebGpuTrainingResult(null);
+      setWebGpuTrainingRunning(false);
       setGraphError('');
       try {
         const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
@@ -566,8 +585,22 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
       setWebGpuRunning(false);
     }
   };
+  const tryWebGpuTraining = async () => {
+    if (!webGpuTrainingGraphSupported || !webGpuTrainingAvailable || running || webGpuTrainingRunning) return;
+    setWebGpuTrainingRunning(true);
+    setWebGpuTrainingResult(null);
+    try {
+      await onRunWebGpuTraining();
+      setWebGpuTrainingResult({ status: 'succeeded' });
+    } catch (error) {
+      setWebGpuTrainingResult({ status: 'failed', localError: error?.code ?? 'WEBGPU_TRAINING_EXECUTION_FAILED' });
+    } finally {
+      setWebGpuTrainingRunning(false);
+    }
+  };
   const closeRunner = () => {
     if (webGpuRunning) onCancelWebGpuInference();
+    if (webGpuTrainingRunning) onCancelRun();
     onClose();
   };
 
@@ -577,8 +610,8 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
       {planNames.length > 0 && <div className="mt-4 flex flex-wrap items-center gap-1 text-xs">{planNames.map((name, index) => <React.Fragment key={`${name}-${index}`}><span className="rounded-full bg-slate-100 px-2 py-1 font-bold">{name}</span>{index < planNames.length - 1 && <span className="text-slate-300">→</span>}</React.Fragment>)}</div>}
       <TierPanel plan={executionPlan} onExport={onExport} />
       {visibleError && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">⚠ {visibleError}</div>}
-      {needsDataset && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div id="runner-loss-chart" className="mt-4"><LossChart values={losses} /></div><button data-runner-execute type="button" disabled={running || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button>{running && <button data-runner-cancel type="button" onClick={onCancelRun} className="mt-2 w-full rounded-2xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">{t('runner.cancelExecution')}</button>}</div>
+      {needsDataset && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere || webGpuTrainingGraphSupported ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div id="runner-loss-chart" className="mt-4"><LossChart values={losses} /></div>{executionPlan.canRunHere && <button data-runner-execute type="button" disabled={running || webGpuRunning || webGpuTrainingRunning || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button>}{webGpuTrainingGraphSupported && <><button data-webgpu-fit type="button" disabled={!webGpuTrainingAvailable || running || webGpuRunning || webGpuTrainingRunning || Boolean(graphError)} onClick={() => tryWebGpuTraining().catch(() => {})} className="mt-2 w-full rounded-2xl border border-indigo-300 bg-indigo-50 px-4 py-3 font-bold text-indigo-900 disabled:opacity-50">{webGpuTrainingRunning ? t('runner.webgpuFitting') : t('runner.webgpuFit')}</button><p className="mt-1 text-xs text-slate-500">{t(webGpuTrainingAvailable ? 'runner.webgpuFitNote' : 'runner.webgpuTrainingUnavailable')}</p></>}{running && <button data-runner-cancel type="button" onClick={onCancelRun} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">{webGpuTrainingRunning ? t('runner.webgpuCancel') : t('runner.cancelExecution')}</button>}{webGpuTrainingResult && <div data-webgpu-fit-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${webGpuTrainingResult.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{webGpuTrainingResult.status === 'succeeded' ? <><p className="font-bold">{t('runner.webgpuFitPassed')}</p>{runtime.execution?.providerId === 'browser-webgpu-mlp-training' && runtime.execution.output?.trainingSummary && <p className="mt-2 text-xs">{t('runner.webgpuFitSummary', { dispatches: runtime.execution.output.trainingSummary.dispatchCount, steps: runtime.execution.output.trainingSummary.optimizerSteps, finalLoss: Number(runtime.execution.output.trainingSummary.finalTrainingLoss).toFixed(5) })}</p>}</> : <p className="font-bold">{t(webGpuDiagnosticMessageKey(webGpuTrainingResult.localError))}</p>}</div>}</div>
         <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="font-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}{model.type === 'browser_mlp' && <><button data-webgpu-inference type="button" disabled={!webGpuSupported || webGpuRunning} onClick={() => tryWebGpuPrediction().catch(() => {})} className="mt-3 w-full rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 font-bold text-indigo-900 disabled:opacity-50">{webGpuRunning ? t('runner.webgpuPredicting') : t('runner.webgpuPredict')}</button>{!webGpuSupported && <p className="mt-2 text-xs text-slate-500" role="status">{webGpuCapability.reason === 'WEBGPU_UNAVAILABLE' ? t('runner.webgpuUnavailable') : t('runner.webgpuUnsupportedModel')}</p>}{webGpuRunning && <button data-webgpu-cancel type="button" onClick={onCancelWebGpuInference} className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700">{t('runner.webgpuCancel')}</button>}{webGpuExecution && <div data-webgpu-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${webGpuExecution.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{webGpuExecution.status === 'succeeded' ? <><p className="font-bold">{t('runner.webgpuPassed')}</p><p className="mt-2 text-xs">{t('runner.webgpuPrediction')}: <span className="font-mono font-bold">{typeof webGpuExecution.output.prediction === 'number' ? webGpuExecution.output.prediction.toFixed(4) : webGpuExecution.output.prediction}</span></p><p className="mt-1 text-xs">{t('runner.webgpuMaxError')}: <span className="font-mono">{webGpuExecution.output.parity.maxAbsoluteError.toExponential(2)}</span></p></> : <p className="font-bold">{t(webGpuDiagnosticMessageKey(webGpuExecution.localError ?? webGpuExecution.diagnostics?.[0] ?? 'WEBGPU_EXECUTION_FAILED'))}</p>}</div>}</>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
       </div> : <div className="mt-5 rounded-3xl border border-dashed border-slate-300 p-8 text-center text-slate-500"><p className="text-3xl">⇧</p><p className="mt-3 font-bold">{t('tier.useHigherTier', { tier: executionPlan.recommendedTier })}</p><p className="mt-1 text-sm">{t('tier.designStillAvailable')}</p></div>}
       <LumiResultReasoningPanel nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} runtime={runtime} resultBinding={resultBinding} runHistory={runHistory} language={language} onSelectSuggestion={onSelectLumiSuggestion} t={t} />
@@ -1190,6 +1223,24 @@ function Workspace() {
   }, []);
 
   useEffect(() => {
+    if (import.meta.env.DEV !== true || new URLSearchParams(window.location.search).get('h1TrainingTest') !== '1') return undefined;
+    // This isolated browser-acceptance hook is absent from production and can only invalidate an active run identity.
+    const bridge = Object.freeze({
+      invalidateProjectIdentityDuringRun: () => {
+        if (workspaceStateRef.current.runtime.status !== 'running' || !executionControllerRef.current) {
+          throw new Error('Project identity can only be invalidated during an active execution.');
+        }
+        projectSessionIdRef.current = `project-session-${crypto.randomUUID()}`;
+        return true;
+      },
+    });
+    window.__VOLK_ML_H1_TRAINING_TEST__ = bridge;
+    return () => {
+      if (window.__VOLK_ML_H1_TRAINING_TEST__ === bridge) delete window.__VOLK_ML_H1_TRAINING_TEST__;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!localReady) return undefined;
     const timeout = window.setTimeout(() => {
       platformServices.projects.save(makeProject()).then(() => {
@@ -1445,7 +1496,12 @@ function Workspace() {
     setNodes(nextNodes);
     if (ids[0]) setSelectedId(ids[0]);
   }, [setNodes]);
-  const runBrowserGraph = useCallback(async () => {
+  const runBrowserGraph = useCallback(async ({ providerId = 'browser-cpu' } = {}) => {
+    if (!['browser-cpu', 'browser-webgpu-mlp-training'].includes(providerId)) {
+      throw new CanvasAgentError('EXECUTION_PROVIDER_UNSUPPORTED', 'The requested browser provider is unsupported.');
+    }
+    const isWebGpuTraining = providerId === 'browser-webgpu-mlp-training';
+    const providerVersion = isWebGpuTraining ? BROWSER_WEBGPU_MLP_TRAINING_PROVIDER_VERSION : 'browser-runtime-v1';
     const state = workspaceStateRef.current;
     if (state.runtime.status === 'running') {
       throw new CanvasAgentError('INSTANCE_BUSY', 'Canvas execution is already running.');
@@ -1485,7 +1541,15 @@ function Workspace() {
         throw error;
       }
       const plan = executionPlanFor(state.nodes, state.edges, state.dataset);
-      if (!plan.canRunHere) throw localizedError('error.higherTierRequired', { tier: plan.recommendedTier });
+      if (isWebGpuTraining) {
+        const webGpuAvailable = typeof navigator !== 'undefined' && Boolean(navigator.gpu);
+        if (!webGpuAvailable) throw Object.assign(new Error('WEBGPU_UNAVAILABLE'), { code: 'WEBGPU_UNAVAILABLE' });
+        if (contract.root?.data?.manifest?.op !== 'supervised_trainer') {
+          throw Object.assign(new Error('WEBGPU_TRAINING_GRAPH_UNSUPPORTED'), { code: 'WEBGPU_TRAINING_GRAPH_UNSUPPORTED' });
+        }
+      } else if (!plan.canRunHere) {
+        throw localizedError('error.higherTierRequired', { tier: plan.recommendedTier });
+      }
       const graphFingerprint = graphSemanticFingerprintV1({
         nodes: state.nodes,
         edges: state.edges,
@@ -1497,7 +1561,12 @@ function Workspace() {
         targetColumn: state.dataset.targetColumn,
         rows: state.dataset.rows,
       });
-      const configIdentity = artifactFingerprintJsonV1({
+      const configIdentity = artifactFingerprintJsonV1(isWebGpuTraining ? {
+        adapter: BROWSER_WEBGPU_MLP_TRAINING_ADAPTER_ID,
+        version: providerVersion,
+        semantics: BROWSER_WEBGPU_MLP_TRAINING_SEMANTICS_VERSION,
+        seed: BROWSER_MLP_SEED,
+      } : {
         adapter: 'volk-browser-runtime',
         version: 'browser-runtime-v1',
         deterministicSeeds: 'registered-browser-adapter-defaults-v1',
@@ -1509,12 +1578,12 @@ function Workspace() {
         graphIdentity: { kind: 'graph', fingerprint: graphFingerprint },
         inputIdentity,
         configIdentity,
-        providerId: 'browser-cpu',
+        providerId,
         mode: 'fit',
         budget: {
           maxDurationMs: 120_000,
           maxInputBytes: 20 * 1024 * 1024,
-          maxOutputBytes: 32 * 1024,
+          maxOutputBytes: isWebGpuTraining ? 256 * 1024 : 32 * 1024,
         },
         approvedAt: startedAt,
       });
@@ -1543,6 +1612,7 @@ function Workspace() {
         onLoss: (losses) => updateRuntime((current) => ({ ...current, losses })),
         onYield: () => new Promise((resolve) => requestAnimationFrame(resolve)),
         signal: controller.signal,
+        trainingProvider: isWebGpuTraining ? 'browser-webgpu' : 'browser-cpu',
       });
       const currentState = workspaceStateRef.current;
       const currentGraphFingerprint = graphSemanticFingerprintV1({
@@ -1577,12 +1647,12 @@ function Workspace() {
         changedError.translationKey = 'error.workspaceChangedDuringRun';
         throw changedError;
       }
-      const { test, ...persistableModel } = finalModel;
+      const { test, trainingSummary, ...persistableModel } = finalModel;
       executionEnvelope = createExecutionResultV1({
         request: executionRequest,
         runId: runAttemptId,
         status: 'succeeded',
-        providerVersion: 'browser-runtime-v1',
+        providerVersion,
         startedAt,
         finishedAt: new Date().toISOString(),
         output: {
@@ -1592,6 +1662,7 @@ function Workspace() {
           metrics: persistableModel.metrics ?? null,
           lossCount: Array.isArray(persistableModel.lossHistory) ? persistableModel.lossHistory.length : 0,
           trainedAt: persistableModel.trainedAt ?? null,
+          ...(trainingSummary ? { trainingSummary } : {}),
         },
       });
       const acceptedExecution = acceptExecutionResultV1(executionEnvelope, executionRequest, currentRequestContext);
@@ -1600,7 +1671,7 @@ function Workspace() {
           request: executionRequest,
           runId: runAttemptId,
           status: 'stale',
-          providerVersion: 'browser-runtime-v1',
+          providerVersion,
           startedAt,
           finishedAt: new Date().toISOString(),
           diagnostics: ['RESULT_IDENTITY_STALE'],
@@ -1653,7 +1724,7 @@ function Workspace() {
             request: executionRequest,
             runId: runAttemptId,
             status,
-            providerVersion: 'browser-runtime-v1',
+          providerVersion,
             startedAt,
             finishedAt: new Date().toISOString(),
             diagnostics: [errorCode.replace(/[^A-Z0-9._-]/gi, '_').toUpperCase().slice(0, 64) || 'RUN_FAILED'],
@@ -1687,6 +1758,7 @@ function Workspace() {
           ...current,
           status: 'failed',
           activeNodeIds: [],
+          losses: isWebGpuTraining ? (state.runtime?.losses ?? []) : current.losses,
           execution: executionEnvelope,
           error: runtimeErrorInfo(error),
           finishedAt: new Date().toISOString(),
@@ -1703,6 +1775,7 @@ function Workspace() {
           ...current,
           status: 'failed',
           activeNodeIds: [],
+          losses: isWebGpuTraining ? (state.runtime?.losses ?? []) : current.losses,
           execution: executionEnvelope,
           error: runtimeErrorInfo(error),
           finishedAt: new Date().toISOString(),
@@ -2517,7 +2590,7 @@ function Workspace() {
     {pendingDeletion && <DeletionConfirmDialog summary={deletionSummary({ nodes, edges, pendingDeletion })} onCancel={() => setPendingDeletion(null)} onConfirm={confirmDeletion} t={t} />}
     <LanguageDialog open={languageOpen} onClose={() => setLanguageOpen(false)} />
     <DataDialog open={dataOpen} onClose={() => setDataOpen(false)} dataset={dataset} onDataset={(nextDataset) => { setDataset(nextDataset); setModel(null); }} />
-    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} model={model} runtime={runtime} resultBinding={resultBindingRef.current} runHistory={runHistory} language={primary} onSelectLumiSuggestion={handleLumiResultSuggestion} onRun={runBrowserGraph} onCancelRun={cancelBrowserExecution} onWebGpuInference={runWebGpuInference} onCancelWebGpuInference={cancelWebGpuInference} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
+    <RunnerDialog open={runnerOpen} onClose={() => setRunnerOpen(false)} nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} model={model} runtime={runtime} resultBinding={resultBindingRef.current} runHistory={runHistory} language={primary} onSelectLumiSuggestion={handleLumiResultSuggestion} onRun={runBrowserGraph} onRunWebGpuTraining={() => runBrowserGraph({ providerId: 'browser-webgpu-mlp-training' })} onCancelRun={cancelBrowserExecution} onWebGpuInference={runWebGpuInference} onCancelWebGpuInference={cancelWebGpuInference} onValidation={handleRunnerValidation} onOpenData={() => setDataOpen(true)} onExport={exportCode} />
     <CompositeDialog open={compositeOpen} selectedCount={selectedNodes.length} onClose={() => setCompositeOpen(false)} onCreate={createCompositeFromSelection} t={t} />
     <ExamplesDialog open={examplesOpen} onClose={() => setExamplesOpen(false)} onLoad={(project) => { applyProject(project, { languagePolicy: 'preserve-current' }); setExamplesOpen(false); setNotice(t('examples.loaded')); }} t={t} />
     {explanationOpen && <Suspense fallback={<div className="fixed inset-0 z-[75] grid place-items-center bg-slate-950/55 p-4"><div className="rounded-2xl bg-white px-5 py-4 font-bold text-slate-700 shadow-2xl">{t('agent.thinking')}</div></div>}><ExplanationDialog open nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} model={model} runtime={runtime} resultBinding={resultBindingRef.current} language={primary} onClose={() => setExplanationOpen(false)} t={t} /></Suspense>}

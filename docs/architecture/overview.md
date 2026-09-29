@@ -10,7 +10,7 @@ VOLK-ML is a mobile-friendly visual ML builder with three distinct responsibilit
 2. compile supported graphs to PyTorch or TensorFlow/Keras source;
 3. execute deliberately small regression and classification L0 pipelines directly in the browser.
 
-Source compilation does not imply browser executability. L1–L3 guide export and environment selection, with one request-specific exception: explicit WebGPU inference for an already-fitted supported tabular MLP. General L1 training and L2–L3 execution remain unavailable in-app.
+Source compilation does not imply browser executability. L1–L3 guide export and environment selection, with two request-specific WebGPU exceptions for the supported sequential tabular MLP: explicit inference on an already-fitted model and explicit H1-T fitting from the Runner. Generic L1 training and L2–L3 execution remain unavailable in-app.
 
 ## Active source map
 
@@ -28,7 +28,7 @@ Source compilation does not imply browser executability. L1–L3 guide export an
 | Existing-graph Edit Intent v1 | `src/core/graph/graphEditIntent.js`, `src/components/buildAgent/LumiGraphEditDialog.jsx` | Consent-gated bounded semantic graph projection into strict C1 patches; local construction and existing C2 review/Apply remain authoritative |
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
 | Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
-| Browser runtime | `src/core/browserRuntime.js`, `src/core/browserExecutionContract.js`, `src/core/execution/browserWebGpuMlp.js` | Browser CPU fit/evaluation/prediction and bounded explicit WebGPU inference for fitted tabular MLP snapshots |
+| Browser runtime | `src/core/browserRuntime.js`, `src/core/browserExecutionContract.js`, `src/core/execution/browserWebGpuMlp.js`, `src/core/execution/browserWebGpuMlpTraining.js` | Browser CPU fit/evaluation/prediction plus bounded, independently contracted WebGPU MLP inference and explicit WebGPU training |
 | Execution Contract v1 | `src/core/execution/executionContract.js` | Bounded execution request/result identity, CPU/WebGPU/ONNX provider provenance, explicit-action binding, budgets, and stale/failure acceptance gate |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
@@ -304,7 +304,7 @@ Generated framework code should also receive focused assertions. When a compiler
 ## Current intentional limitations
 
 - Connected tabular linear-regression, KNN-classification, and the documented small sequential MLP pipelines run in the browser.
-- General Browser WebGPU training, local Python orchestration, and remote GPU execution are not implemented. A fitted supported MLP may opt into bounded WebGPU inference; CPU fitting/reference remains authoritative.
+- General Browser WebGPU training, local Python orchestration, and remote GPU execution are not implemented. H1-T adds only an explicit, bounded fit action for the validated sequential tabular MLP profile; the generic L1 tier remains unavailable. A fitted supported MLP may also opt into bounded WebGPU inference. Browser CPU fit remains a separate explicit reference action.
 - A connected Supervised Trainer exports a complete single-input/single-output tabular training loop. Architecture-only exports still leave dataset binding and the loop to the user.
 - Shape inference is not yet a first-class IR pass; several layer dimensions remain explicit component properties.
 - Framework conversion quality is declared per component and may be `adapted`, `approximate`, or `unsupported`.

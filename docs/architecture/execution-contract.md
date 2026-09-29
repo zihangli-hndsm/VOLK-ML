@@ -67,20 +67,48 @@ SHA-256 aliases registered by `profile.js`; an arbitrary profile or artifact
 hash is rejected. These checks report capability; they do not authenticate a
 caller or sandbox an adapter.
 
-`browser-webgpu` is a narrow inference-only adapter for the already-fitted
-sequential tabular MLP subset implemented by
-`src/core/execution/browserWebGpuMlp.js`. Dense, ReLU, Sigmoid, Tanh, and
-Softmax inference runs through actual WebGPU compute pipelines for one input
-or a bounded batch of up to 128 rows (dispatched independently); fitted weights
-and normalization remain owned by the existing Browser CPU fit. Its request
-binds the current semantic graph fingerprint, project session, exact input
-digest, and full inference snapshot/configuration digest. A result is accepted
-only after fixed-tolerance comparison with the CPU reference and a freshness
-check. Unsupported models, missing/rejected devices, cancellation, device
-loss, timeout, non-finite output, parity failure, or stale identity produce
-bounded non-success results; there is no implicit CPU fallback and no
-write-back to model/project/experiment state. The UI keeps CPU prediction as a
-separate learner choice. Generic L1 fit/training availability remains false.
+The H1 WebGPU capabilities use separate, mode-specific provider profiles.
+`browser-webgpu` remains inference-only for the already-fitted registered
+sequential tabular MLP subset. Inference uses
+`src/core/execution/browserWebGpuMlp.js`: Dense, ReLU, Sigmoid, Tanh, and
+Softmax compute for one input or a bounded batch of up to 128 rows. It compares
+against the CPU reference and never writes fitted parameters. Training uses
+`browser-webgpu-mlp-training` is fit-only and invokes
+`src/core/execution/browserWebGpuMlpTraining.js` only after the learner presses
+the Runner's separate “Fit this MLP with WebGPU” action. That bounded H1-T
+profile implements forward pass, loss, backpropagation, mean mini-batch
+gradients, and SGD-with-momentum or Adam updates in actual WebGPU compute
+passes. CPU performs existing graph/data validation, deterministic split,
+train-only normalization, and seeded initialization; the GPU computes the
+training updates. CPU “Run” remains a separate action and its implementation is
+unchanged. There is no implicit fallback between providers.
+
+Both modes bind the current graph, project session, input, configuration, and
+an `explicit-user-action` approval in Execution Contract v1. A fit result also
+binds a provider-semantics version and returns bounded dispatch/step/loss
+diagnostics. It is accepted only after the usual result-identity freshness
+check, then the training diagnostics are kept in the execution envelope rather
+than the persisted model. Cancellation, device loss, timeout, non-finite
+output, resource-limit failure, or stale identity yields a non-success result
+and does not commit a partially fitted model. The profile is restricted to the
+currently validated sequential tabular MLP and bounded to 120 seconds, 64 MiB
+of WebGPU allocations, 256 features, 8,192 training rows/parameters/activation
+values, 500 epochs, and 100,000 optimizer steps. These limits are explicit
+guardrails, not throughput promises. Generic L1 availability and the tier
+estimator remain unchanged; the H1-T action is a request-specific exception,
+not a general WebGPU backend declaration.
+
+The WebGPU training arithmetic is checked independently against a scalar
+Float64 micro-batch oracle with fixed elementwise envelope
+`abs(error) <= 1e-5 + 5e-4 * abs(reference)`. This training envelope is separate
+from the inference-specific thresholds below and is never widened at runtime.
+
+Unsupported graphs, missing/rejected devices, cancellation, device loss,
+timeout, non-finite output, parity failure, or stale identity produce bounded
+non-success results; there is no implicit CPU fallback. Inference has no
+write-back to model/project/experiment state. GPU fitting updates the model
+only after the standard freshness/acceptance gate; existing project and
+experiment ownership is unchanged.
 
 The fixed parity thresholds are: normalized-input handoff absolute error
 `<= 1e-6 + 1e-6 * abs(CPU)`; Dense output `<= 1e-5 + 1e-4 * abs(CPU)`;
@@ -110,3 +138,6 @@ digest-bound approval, graph/artifact exclusivity and provider compatibility,
 registered G2 profile/hash validation, explicit capability status/reasons,
 budgets, provenance, identity/freshness, and fail-closed result acceptance.
 It runs as part of `npm run check` through `scripts/check-core.mjs`.
+The H1-T preflight and oracle regressions run through
+`scripts/check-webgpu-mlp-training.mjs`; physical-device fit checks use
+`scripts/webgpu-mlp-training-cdp-browser.mjs`.

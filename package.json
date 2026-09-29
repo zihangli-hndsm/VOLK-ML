@@ -54,6 +54,7 @@
     "test:g2-imported-model:reference": "node scripts/test-g2-imported-attention-reference.mjs",
     "test:g2-imported-model:browser": "node scripts/g2-imported-attention-cdp-browser.mjs",
     "test:webgpu-mlp:browser": "node scripts/webgpu-mlp-cdp-browser.mjs",
+    "test:webgpu-mlp:training:browser": "node scripts/webgpu-mlp-training-cdp-browser.mjs",
     "test:torch-export:extractor": "node scripts/test-torch-export-extractor.mjs",
     "test:torch-export:browser": "node scripts/torch-export-cdp-browser.mjs",
     "test:onnx:browser": "node scripts/onnx-cdp-browser.mjs",
