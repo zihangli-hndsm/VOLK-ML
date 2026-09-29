@@ -96,7 +96,7 @@ function validMetrics(value, task, path, errors) {
   const allowed = TASK_METRICS[task] ?? [];
   if (!exactKeys(value, allowed, path, errors)) return [];
   const keys = Object.keys(value);
-  if (!keys.length) errors.push(`${path}:empty`);
+  if (keys.length !== allowed.length || allowed.some((key) => !Object.hasOwn(value, key))) errors.push(`${path}:incomplete`);
   keys.forEach((key) => {
     if (!finite(value[key])) errors.push(`${path}.${key}:non-finite`);
   });
@@ -407,16 +407,20 @@ function validateProposalShape(value) {
   return { valid: errors.length === 0, errors };
 }
 
-/** Build a volatile configuration-transfer contract from a trusted session closure. */
+/** Build a volatile transfer contract from the bridge's resolved live source records. */
 export function createExploreToBuildProposalV1({
-  sessionSnapshot,
+  resolvedSource,
   sourceInspection,
   currentInspection,
   currentProjectSessionId,
 } = {}) {
+  const sessionSnapshot = resolvedSource?.sessionSnapshot;
+  const comparison = resolvedSource?.comparison;
+  const runs = resolvedSource?.runs;
   const initialErrors = [];
   if (sessionSnapshot?.type !== 'ExploreBridgeSessionV1' || sessionSnapshot.version !== 1) initialErrors.push('session:unsupported');
-  if (sessionSnapshot?.lifecycle !== 'completed' || !sessionSnapshot?.comparison) initialErrors.push('session:not-completed');
+  if (sessionSnapshot?.lifecycle !== 'completed' || !sessionSnapshot?.comparison
+    || stableJson(comparison) !== stableJson(sessionSnapshot.comparison)) initialErrors.push('session:not-completed');
   if (!sourceInspection?.supported || !currentInspection?.supported) initialErrors.push('source:unsupported');
   if (initialErrors.length) return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_SOURCE_INVALID', diagnostics: initialErrors };
 
@@ -432,11 +436,18 @@ export function createExploreToBuildProposalV1({
   if (stableJson(sourceInspection.hiddenNodeRegistryIdentity) !== stableJson(currentInspection.hiddenNodeRegistryIdentity)) initialErrors.push('identity:registry');
   if (initialErrors.length) return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_SOURCE_STALE', diagnostics: initialErrors };
 
-  const comparison = sessionSnapshot.comparison;
-  const runs = sessionSnapshot.runs;
+  const snapshotRuns = sessionSnapshot.runs;
+  const snapshotRunsById = new Map();
+  if (!Array.isArray(snapshotRuns) || snapshotRuns.length !== 2
+    || new Set(snapshotRuns.map((run) => run?.runId)).size !== snapshotRuns.length
+    || snapshotRuns.some((run) => !run?.runId)) {
+    return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_RUN_PAIR_INVALID' };
+  }
+  snapshotRuns.forEach((run) => snapshotRunsById.set(run.runId, run));
   if (!Array.isArray(runs) || runs.length !== 2
     || runs[0]?.role !== 'baseline' || runs[1]?.role !== 'variant'
     || !runs[0]?.runId || !runs[1]?.runId || runs[0].runId === runs[1].runId
+    || runs.some((run) => stableJson(snapshotRunsById.get(run.runId)) !== stableJson(run))
     || comparison.runIds?.length !== 2
     || comparison.runIds[0] !== runs[0].runId || comparison.runIds[1] !== runs[1].runId) {
     return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_RUN_PAIR_INVALID' };
@@ -453,6 +464,14 @@ export function createExploreToBuildProposalV1({
     || stableJson(comparison.metricProvenance) !== stableJson(runs.map((run) => run.metricProvenance))) {
     return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_COMPARISON_INVALID' };
   }
+  const expectedMetricNames = TASK_METRICS[sourceDataset?.task] ?? [];
+  const sortedExpectedMetricNames = [...expectedMetricNames].sort();
+  if (runs.some((run) => {
+    const metricNames = Object.keys(run.metrics ?? {}).sort();
+    return metricNames.length !== expectedMetricNames.length
+      || metricNames.some((name, index) => name !== sortedExpectedMetricNames[index])
+      || expectedMetricNames.some((name) => !finite(run.metrics?.[name]));
+  })) return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_METRICS_INCOMPLETE' };
   const hiddenNodeId = sourceInspection.hiddenNodeId;
   const outputNodeId = sourceInspection.outputNodeId;
   const from = sourceInspection.baselineWidth;
@@ -510,7 +529,7 @@ export function createExploreToBuildProposalV1({
     || run.metricProvenance?.modelNodeId !== sourceInspection.outputNodeId)) {
     return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_RUN_RECORD_INVALID' };
   }
-  const metricNames = Object.keys(outerRuns[0].metrics).filter((key) => Object.hasOwn(outerRuns[1].metrics, key));
+  const metricNames = [...expectedMetricNames];
   if (!metricNames.length) return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_METRICS_INCOMPLETE' };
   const measurements = {
     metrics: metricNames.map((metric) => ({
@@ -579,11 +598,6 @@ export function createExploreToBuildProposalV1({
   const checked = validateProposalShape(proposal);
   if (!checked.valid) return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_PROPOSAL_INVALID', diagnostics: checked.errors };
   return { ok: true, proposal };
-}
-
-/** Strictly validate a G3 proposal's closed schema and its nested C1 replay. */
-export function validateExploreToBuildProposalV1(value) {
-  return validateProposalShape(value);
 }
 
 /** Recreate from the live session closure, then compare every supplied field. */

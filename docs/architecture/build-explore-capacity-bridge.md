@@ -76,13 +76,17 @@ model.
 ## Explore → Build v1 configuration transfer (G3)
 
 After a completed, successful G2 pair, **Use this configuration in Build** may
-create a volatile `ExploreToBuildProposalV1` from that session's private source
-snapshot and its two actual `executeBrowserGraph()` run records. The proposal
-binds the comparison, both run IDs, exact metric provenance and values, project
-session, semantic graph, registered hidden-layer identity, dataset, split, and
-training settings. Positive, zero, and negative observed metric deltas are all
-valid; the exact pair is descriptive, not Evidence and not a general claim
-that the wider model is better.
+create a volatile `ExploreToBuildProposalV1` only after resolving the completed
+session's comparison run IDs back to its two actual `executeBrowserGraph()` run
+records. The resolver rejects duplicate, missing, or mismatched IDs; proposal
+summaries and fingerprints are not substitutes for those in-memory records.
+Both runs must be successful and contain the complete registered finite metric
+set. Reported measurements and deltas are derived from those actual run values.
+The proposal binds the session, comparison, both run IDs, exact metric
+provenance and values, project session, semantic graph, registered hidden-layer
+identity, dataset, split, and training settings. Positive, zero, and negative
+observed metric deltas are all valid; the exact pair is descriptive, not
+Evidence and not a general claim that the wider model is better.
 
 The only transferred changes are the selected `Dense.units` and its derived
 downstream `Dense.input_features`. The proposal is converted to the existing
@@ -90,7 +94,8 @@ detached `GraphPatchProposalV1`, then uses the existing C2 read-only preview,
 freshness checks, explicit learner Apply, and commit. Cancelling or closing
 the preview leaves Build unchanged. Preview and Apply both revalidate against
 the still-live G2 session and current source; stale, replaced, edited, failed,
-or incomplete sources cannot be applied. Duplicate staging resolves to the
+incomplete, or unresolvable sources cannot be applied. A detached proposal is
+never sufficient authority for C1 Apply. Duplicate staging resolves to the
 same deterministic proposal identity and does not create another run.
 
 Apply changes configuration only. It does not execute Build, write G2 run

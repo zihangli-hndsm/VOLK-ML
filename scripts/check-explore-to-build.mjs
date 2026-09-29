@@ -7,7 +7,6 @@ import {
 } from '../src/core/exploration/buildCapacityBridge.js';
 import {
   EXPLORE_TO_BUILD_PROPOSAL_TYPE,
-  validateExploreToBuildProposalV1,
 } from '../src/core/exploration/exploreToBuildProposal.js';
 
 const clone = (value) => structuredClone(value);
@@ -62,9 +61,13 @@ assert.equal(valid.derivedChanges[0].nodeId, 'build-head');
 assert.equal(valid.derivedChanges[0].from, 2);
 assert.equal(valid.derivedChanges[0].to, 4);
 assert.equal(Object.hasOwn(valid, 'evidence'), false);
+assert.equal(JSON.stringify(valid).toLowerCase().includes('evidence'), false, 'The paired-run handoff must not carry, borrow, or relabel detector Evidence.');
 assert.equal(JSON.stringify(valid).includes('bridge-private-row-sentinel'), false, 'The proposal must not carry source rows.');
 assert.equal(JSON.stringify(valid).includes('bert-tiny'), false, 'The capacity handoff cannot borrow imported-Attention provenance.');
-assert.equal(validateExploreToBuildProposalV1(valid).valid, true);
+assert.equal(validSession.validateExploreToBuildProposalV1(valid, {
+  currentBuild: build,
+  currentProjectSessionId: projectSessionId,
+}).valid, true, 'A proposal is valid only when the live G2 session resolves its source records.');
 assert.equal(validateGraphPatchProposal(valid.graphPatchProposal).valid, true);
 assert.deepEqual(valid.graphPatchProposal.operations.map((operation) => [operation.op, operation.nodeId]), [
   ['UPDATE_PARAMETERS', 'build-hidden'],
@@ -81,6 +84,32 @@ const liveRevalidation = validSession.validateExploreToBuildProposalV1(valid, {
   currentProjectSessionId: projectSessionId,
 });
 assert.equal(liveRevalidation.valid, true);
+
+const partialMetrics = await complete(makeSession({
+  runBrowserGraph: async () => ({ type: 'browser_mlp', metrics: { accuracy: 0.5 } }),
+}));
+assert.equal(partialMetrics.getSnapshot().lifecycle, 'completed', 'G2 comparison semantics remain unchanged for an evaluator that exposes a partial metric set.');
+assert.equal((await proposalFor(partialMetrics)).reasonCode, 'EXPLORE_TO_BUILD_METRICS_INCOMPLETE', 'G3 requires the complete registered metric record before transfer.');
+
+const nonFiniteMetrics = await complete(makeSession({
+  runBrowserGraph: async () => ({ type: 'browser_mlp', metrics: { accuracy: 0.5, macroF1: Infinity } }),
+}));
+assert.equal((await proposalFor(nonFiniteMetrics)).reasonCode, 'EXPLORE_TO_BUILD_METRICS_INCOMPLETE', 'A filtered non-finite measurement cannot be completed with a placeholder.');
+
+let generatedId = 0;
+const duplicateRunIds = createExploreBridgeSessionV1({
+  build,
+  selectedNodeId: 'build-hidden',
+  projectSessionId,
+  createId(prefix) {
+    if (prefix === 'capacity-run') return 'capacity-run-duplicate';
+    generatedId += 1;
+    return `${prefix}-fixture-${generatedId}`;
+  },
+  runBrowserGraph: async () => ({ type: 'browser_mlp', metrics: { accuracy: 0.5, macroF1: 0.5 } }),
+});
+await complete(duplicateRunIds);
+assert.equal((await proposalFor(duplicateRunIds)).reasonCode, 'EXPLORE_TO_BUILD_RUN_PAIR_INVALID', 'The resolver rejects duplicate run IDs rather than using record order as identity.');
 
 for (const [label, pair, expectedDelta] of [
   ['positive', { 2: 0.2, 4: 0.8 }, 0.6000000000000001],
@@ -103,8 +132,6 @@ assert.equal((await proposalFor(unrun)).ok, false, 'A ready session with no pair
 function tamper(candidate, mutate) {
   const changed = clone(candidate);
   mutate(changed);
-  const strict = validateExploreToBuildProposalV1(changed);
-  assert.equal(strict.valid, false, 'Tampered proposal must fail its closed contract.');
   assert.equal(validSession.validateExploreToBuildProposalV1(changed, {
     currentBuild: build,
     currentProjectSessionId: projectSessionId,
@@ -126,7 +153,16 @@ tamper(valid, (value) => { value.derivedChanges[0].parameter = 'Dense.learning_r
 tamper(valid, (value) => { value.graphPatchProposal.operations.push(clone(value.graphPatchProposal.operations[0])); });
 tamper(valid, (value) => { value.graphPatchProposal.operations[1].parameters.input_features = 99; });
 tamper(valid, (value) => { value.evidenceId = 'fake-evidence'; });
+tamper(valid, (value) => { value.evidence = { id: 'borrowed-evidence', type: 'sampling-variability' }; });
 tamper(valid, (value) => { value.source.runIds[1] = value.source.runIds[0]; });
+
+const disposedSource = await complete(makeSession());
+const disposedProposal = (await proposalFor(disposedSource)).proposal;
+disposedSource.dispose();
+assert.equal(disposedSource.validateExploreToBuildProposalV1(disposedProposal, {
+  currentBuild: build,
+  currentProjectSessionId: projectSessionId,
+}).valid, false, 'A proposal cannot substitute for a disposed/unresolvable source session.');
 
 for (const [label, mutate] of [
   ['session', (value) => { value.source.sessionId = 'other-session'; }],

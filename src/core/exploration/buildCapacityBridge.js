@@ -471,6 +471,43 @@ function detachedSnapshot(state) {
   return clone(state);
 }
 
+/** Resolve the completed comparison's IDs against this session's actual run records. */
+function resolvePairedRunSource(state) {
+  if (state?.type !== EXPLORE_BRIDGE_SESSION_TYPE || state?.version !== EXPLORE_BRIDGE_SESSION_VERSION
+    || state.lifecycle !== 'completed' || !state.comparison) {
+    return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_SOURCE_INVALID' };
+  }
+  const runIds = state.comparison.runIds;
+  const records = state.runs;
+  if (!Array.isArray(runIds) || runIds.length !== 2
+    || runIds.some((id) => typeof id !== 'string' || !id)
+    || runIds[0] === runIds[1]
+    || !Array.isArray(records) || records.length !== 2) {
+    return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_RUN_PAIR_INVALID' };
+  }
+  const recordsById = new Map();
+  for (const record of records) {
+    if (typeof record?.runId !== 'string' || !record.runId || recordsById.has(record.runId)) {
+      return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_RUN_PAIR_INVALID' };
+    }
+    recordsById.set(record.runId, record);
+  }
+  const runs = runIds.map((runId) => recordsById.get(runId));
+  if (runs.some((run) => !run)
+    || runs[0].role !== 'baseline' || runs[1].role !== 'variant'
+    || runs[0].runId === runs[1].runId) {
+    return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_RUN_PAIR_INVALID' };
+  }
+  return {
+    ok: true,
+    resolvedSource: {
+      sessionSnapshot: detachedSnapshot(state),
+      comparison: clone(state.comparison),
+      runs: runs.map(clone),
+    },
+  };
+}
+
 function metricProjection(model, task) {
   const allowed = METRICS_BY_TASK[task] ?? [];
   return Object.fromEntries(allowed
@@ -648,11 +685,13 @@ export function createExploreBridgeSessionV1({
       }
       this.reconcileSource(currentBuild, currentProjectSessionId);
       if (state.lifecycle !== 'completed') return { ok: false, reasonCode: 'EXPLORE_TO_BUILD_SOURCE_STALE' };
+      const resolved = resolvePairedRunSource(state);
+      if (!resolved.ok) return resolved;
       const current = inspectExploreCapacityBuildInternal(currentBuild, {
         selectedNodeId: inspection.hiddenNodeId ?? selectedNodeId,
       });
       return createExploreToBuildProposal({
-        sessionSnapshot: detachedSnapshot(state),
+        resolvedSource: resolved.resolvedSource,
         sourceInspection: inspection,
         currentInspection: current,
         currentProjectSessionId,
@@ -662,13 +701,15 @@ export function createExploreBridgeSessionV1({
       if (disposed || state.lifecycle !== 'completed' || !state.comparison) {
         return { valid: false, reasonCode: 'EXPLORE_TO_BUILD_SOURCE_INVALID' };
       }
+      const resolved = resolvePairedRunSource(state);
+      if (!resolved.ok) return { valid: false, reasonCode: resolved.reasonCode };
       // This path is used while deriving C2 preview eligibility during render.
       // Rebuild against current facts without publishing a G2 lifecycle update.
       const current = inspectExploreCapacityBuildInternal(currentBuild, {
         selectedNodeId: inspection.hiddenNodeId ?? selectedNodeId,
       });
       return revalidateExploreToBuildProposalV1(proposal, {
-        sessionSnapshot: detachedSnapshot(state),
+        resolvedSource: resolved.resolvedSource,
         sourceInspection: inspection,
         currentInspection: current,
         currentProjectSessionId,

@@ -172,14 +172,15 @@ try {
     runNote: document.querySelector("[data-capacity-results]")?.innerText ?? "",
     comparisonId: document.querySelector("[data-capacity-results]")?.dataset.comparisonId ?? "",
     runIds: document.querySelector("[data-capacity-results]")?.dataset.runIds?.split(",") ?? [],
-    metricRows: document.querySelectorAll("[data-capacity-results] tbody tr").length,
+    metrics: [...document.querySelectorAll("[data-capacity-results] tbody tr")].map((row) => [...row.querySelectorAll("td")].map((cell) => Number(cell.textContent.trim()))),
     lifecycle: document.querySelector("[data-explore-capacity-bridge]")?.dataset.lifecycle,
   }))()`);
   if (!rendered.comparisonId.startsWith('capacity-comparison-')
     || rendered.runIds.length !== 2
     || rendered.runIds.some((runId) => !runId.startsWith('capacity-run-'))
     || rendered.runIds[0] === rendered.runIds[1]
-    || rendered.metricRows < 1
+    || rendered.metrics.length < 1
+    || rendered.metrics.some((values) => values.length !== 3 || values.some((value) => !Number.isFinite(value)))
     || rendered.lifecycle !== 'completed') {
     throw new Error(`Browser did not render source-provenanced comparison metrics: ${JSON.stringify(rendered)}`);
   }
@@ -226,6 +227,12 @@ try {
     || preview.operations.length !== 2
     || !preview.operations.some((line) => line.includes('build-hidden') && line.includes('units'))
     || !preview.operations.some((line) => line.includes('build-head') && line.includes('input_features'))
+    || preview.metrics.length !== rendered.metrics.length
+    || preview.metrics.some((metric, index) => {
+      const runMeasurement = rendered.metrics[index];
+      return !runMeasurement || [metric.baseline, metric.variant, metric.delta]
+        .some((value, valueIndex) => Number(value.toFixed(4)) !== runMeasurement[valueIndex]);
+    })
     || preview.existingNodes !== build.nodes.length - 2
     || !preview.applyEnabled) {
     throw new Error(`G3 preview did not show the exact paired source and bounded two-node change: ${JSON.stringify(preview)}`);
