@@ -17,9 +17,18 @@ import { createExecutionResultV1 } from '../src/core/execution/executionContract
 import { validateProjectForWorkspace, PROJECT_VERSION } from '../src/core/project.js';
 import { createLocalModelReference, validateLocalModelReferences } from '../src/core/localModelReferences.js';
 import { g2LocalModelCacheKey } from '../src/core/localModelCache.js';
+import './check-g2-model-artifact-binding.mjs';
 
 const modelHash = `sha256:${G2_ATTENTION_PROFILE_SHA256}`;
 const startedAt = '2026-09-28T00:00:00.000Z';
+assert.throws(() => createG2ExecutionRequestV1({
+  projectSessionId: 'g2-project-session-001',
+  modelHash,
+  requestId: 'g2-invalid-binding-request-0001',
+  providerVersion: '1.30.0',
+  approvedAt: startedAt,
+  artifactBindingId: 'unverified-build-mapping',
+}), (error) => error?.code === 'G2_ARTIFACT_BINDING_INVALID', 'The execution contract accepts only bounded identities minted by the artifact-binding runtime.');
 function executionForComparison(comparison) {
   const request = createG2ExecutionRequestV1({
     projectSessionId: 'g2-project-session-001',
@@ -69,20 +78,27 @@ const responseFor = ({ inputIdsA = [...G2_INPUT_IDS_A], inputIdsB = [...G2_INPUT
   };
 };
 
-assert.equal(PROJECT_VERSION, 9, 'The local artifact hash reference has its own project migration.');
+assert.equal(PROJECT_VERSION, 10, 'The operator-manifest reference has its own project migration.');
 assert.deepEqual(G2_INPUT_IDS_A.map((id, index) => id === G2_INPUT_IDS_B[index]), [true, true, true, true, false, true]);
 assert.equal(validateLocalModelReferences([createLocalModelReference({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 })]), true);
 const legacyReference = createLocalModelReference({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_LEGACY_SHA256S[0] });
 assert.equal(validateLocalModelReferences([legacyReference]), true, 'Only the explicitly registered exact-byte legacy alias remains importable.');
 assert.equal(validateLocalModelReferences([{ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256, filename: 'private-name.onnx' }]), false);
 assert.equal(validateLocalModelReferences([{ profileId: G2_ATTENTION_PROFILE_ID, sha256: '0'.repeat(64) }]), false);
-assert.equal(g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 }), `${G2_ATTENTION_PROFILE_ID}:${G2_ATTENTION_PROFILE_SHA256}`, 'Local model cache is content-addressed only for the registered profile hash.');
+assert.equal(g2LocalModelCacheKey(createLocalModelReference({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 })), `${G2_ATTENTION_PROFILE_ID}:${G2_ATTENTION_PROFILE_SHA256}`, 'Local model cache is content-addressed only for the registered profile hash.');
 assert.equal(g2LocalModelCacheKey(legacyReference), `${G2_ATTENTION_PROFILE_ID}:${G2_ATTENTION_LEGACY_SHA256S[0]}`, 'Legacy cache keys retain their exact artifact identity.');
+assert.throws(() => g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 }), /g2.modelProfileMismatch/, 'The current artifact requires its registered manifest identity even for a cache reference.');
 assert.throws(() => g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: '0'.repeat(64) }), /g2.modelProfileMismatch/);
 assert.throws(() => g2LocalModelCacheKey({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256, filename: 'private.onnx' }), /g2.modelProfileMismatch/);
 
 const oldProject = validateProjectForWorkspace({ format: 'VOLK-ML', version: 8, name: 'Old project', graph: { nodes: [], edges: [] } });
 assert.deepEqual(oldProject.localModelReferences, [], 'Version 8 projects migrate with no local artifact references.');
+const v9Project = validateProjectForWorkspace({
+  format: 'VOLK-ML', version: 9, name: 'G2 v9 project', graph: { nodes: [], edges: [] },
+  localModelReferences: [{ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 }],
+});
+assert.equal(v9Project.version, 10);
+assert.deepEqual(v9Project.localModelReferences, [createLocalModelReference({ profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 })], 'Version 9 current-profile references migrate to the registered exporter manifest.');
 assert.throws(() => validateProjectForWorkspace({
   ...oldProject,
   localModelReferences: [{ profileId: G2_ATTENTION_PROFILE_ID, sha256: 'a'.repeat(64) }],
@@ -205,4 +221,4 @@ for (const key of g2Keys) {
   assert.equal(typeof messages[key].zh, 'string', `${key} has Chinese localization.`);
 }
 
-console.log(`PASS G2 contracts: ${g2Keys.length} bilingual strings; bounded profile, strict model reference, event/evidence ordering, weak evidence gating, and v8→v9 project migration.`);
+console.log(`PASS G2 contracts: ${g2Keys.length} bilingual strings; bounded profile, strict model reference, event/evidence ordering, weak evidence gating, and v8→v10 project migration.`);

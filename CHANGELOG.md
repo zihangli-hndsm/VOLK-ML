@@ -1500,3 +1500,10 @@
 - Affected areas: `src/core/exploration/buildCapacityBridge.js`, `src/core/exploration/exploreToBuildProposal.js`, G3 contract/browser checks, and `docs/architecture/build-explore-capacity-bridge.md`.
 - Acceptance: independent VOLK-Dev PASS on the frozen worktree; real classification and regression paired-run checks, mounted C1→C2 Preview/cancel/reopen/explicit Apply/separate Build Run browser flow, G2 and C1/C2 regressions, full `npm run check`, production build, and `git diff --check` passed. No Cloud request was made.
 - Limitations: the source session remains in-memory and reload-volatile; optional default-environment PyTorch and ONNX integrations were skipped because their runtimes are absent. The existing large-chunk build advisory remains.
+
+## 2026-09-29 — G2 imported-attention artifact binding
+
+- Bound the selected live Build MHA node to the pinned imported ONNX artifact's exporter-authored manifest, exact Attention operators/tensors, tokenizer, and runtime profile. Project persistence retains hash/manifest references only; local import, inference, evidence, and Cloud boundaries remain unchanged.
+- Affected areas: imported-attention Explore and Build entry, local model references/cache, project v10 migration and generated examples, artifact-binding contract, browser/runtime checks, and G2 architecture documentation.
+- Acceptance: independent VOLK-Dev PASS for the exact 29-file source fingerprint `12d3e56e1252d7be3a92cab7a29fd5ae1d1ad40aa3b60405438c52f29b87f5f3`; binding and port checks, project/example migration, mounted Chrome acceptance, pinned reference/legacy artifact parity and CPU execution, full `npm run check`, production build, and `git diff --check` passed.
+- Limitations: this is a strict local Windows ONNX Attention correspondence slice, not a claim that the full BERT classifier is represented in Build; the accepted source session is reload-volatile, optional default-system-Python PyTorch/ONNX integrations were skipped, and the existing bundle-size advisory remains.

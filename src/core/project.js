@@ -2,9 +2,9 @@ import { localizedError } from '../i18n.js';
 import { componentById } from './components.js';
 import { assessConnection } from './connections.js';
 import { flattenCustomComposites } from './customComposites.js';
-import { validateLocalModelReferences } from './localModelReferences.js';
+import { migrateLocalModelReferencesToManifestV1, validateLocalModelReferences } from './localModelReferences.js';
 
-export const PROJECT_VERSION = 9;
+export const PROJECT_VERSION = 10;
 
 const oldSamplePositions = {
   'pipeline-data': { x: 40, y: 180 },
@@ -95,6 +95,12 @@ export function migrateProject(project) {
     };
   }
   if (version < 7) migrated = migrateDefaultSampleLayout(migrated);
+  if (version < 10) {
+    migrated = {
+      ...migrated,
+      localModelReferences: migrateLocalModelReferencesToManifestV1(migrated.localModelReferences ?? []),
+    };
+  }
   return {
     ...migrated,
     name: migrated.name || 'Sample Project',

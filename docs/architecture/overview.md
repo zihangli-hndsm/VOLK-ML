@@ -185,13 +185,14 @@ flowchart TD
 - Canvas nodes retain their manifest and user parameters.
 - The mounted workspace exposes a serializable canvas snapshot and validated commands through `globalThis.__VOLK_ML_AGENT__`; it does not expose React internals or create a network listener.
 - Nodes expose direct learn/delete actions; custom deletable edges expose a midpoint delete action with a wide touch target.
-- Project JSON version 9 stores the project name, graph, custom composite definitions, workspace preferences, dataset, trained L0 model, and a bounded list of allowlisted local imported-model profile/hash references. Browser MLP persistence keeps inference layers, normalization, labels, and metrics while omitting optimizer moment state; imported models are validated against their Trainer graph and dataset before use.
-- `PROJECT_VERSION` in `src/core/project.js` is currently `9`; version 8 migrates with an empty local-model reference list.
+- Project JSON version 10 stores the project name, graph, custom composite definitions, workspace preferences, dataset, trained L0 model, and a bounded list of allowlisted local imported-model profile/hash/manifest references. Browser MLP persistence keeps inference layers, normalization, labels, and metrics while omitting optimizer moment state; imported models are validated against their Trainer graph and dataset before use.
+- `PROJECT_VERSION` in `src/core/project.js` is currently `10`; version 8 migrates with an empty local-model reference list, and version 9 gains the registered exporter-manifest identity only for the exact current G2 artifact.
 - Import first migrates legacy graph contracts, then resolves persisted manifest IDs against the current registry and fills new properties with current defaults.
 - Version 5 migrates legacy KNN `model` edges to `trained_model`; obsolete visualization-only `boundary` edges are removed because the current KNN runtime no longer produces a mesh.
 - Version 6 adds the project name and reusable custom-composite catalog.
 - Version 7 moves only the untouched built-in sample graph to wider coordinates so enlarged component cards do not overlap; user-arranged graphs keep their positions.
 - Version 9 adds validated local model profile/hash references; it never stores model bytes, selected filenames, or local filesystem paths.
+- Version 10 binds the current G2 artifact reference to its registered ONNX operator/tensor manifest; the historical exact-hash alias remains unchanged, and no attention binding or Explore session state is persisted to project JSON.
 
 ## Visual workspace
 

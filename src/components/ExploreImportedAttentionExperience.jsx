@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createImportedAttentionEventStore, commitImportedAttentionExecution } from '../core/playground/importedAttention/semanticEvents.js';
 import { createG2ExecutionRequestV1, createG2ExecutionResultV1, g2CurrentExecutionIdentityV1 } from '../core/playground/importedAttention/executionAdapter.js';
 import { createExecutionResultV1 } from '../core/execution/executionContract.js';
@@ -10,8 +10,23 @@ import {
 import { clearG2LocalModelCache, loadG2LocalModelArtifact, saveG2LocalModelArtifact } from '../core/localModelCache.js';
 import { createLocalModelReference } from '../core/localModelReferences.js';
 import { localAttentionClient } from '../services/localAttention/client.js';
+import { tryCreateModelArtifactBindingV1, validateModelArtifactBindingV1 } from '../core/playground/importedAttention/modelArtifactBinding.js';
+import { G2_ATTENTION_EXPORT_MANIFEST } from '../core/playground/importedAttention/profileManifest.js';
+import { G2_ATTENTION_PROFILE_SHA256 } from '../core/playground/importedAttention/profile.js';
 
-export default function ImportedAttentionExperience({ open, onClose, localModelReference = null, projectSessionId, onModelBound, t }) {
+export default function ImportedAttentionExperience({
+  open,
+  onClose,
+  localModelReference = null,
+  projectSessionId,
+  onModelBound,
+  onClearBinding,
+  bindingAnchorNodeId = null,
+  bindingProjectSessionId = null,
+  selectedNodeId = null,
+  buildGraph = null,
+  t,
+}) {
   const [runner, setRunner] = useState({ status: 'disconnected', modelLoaded: false, modelHash: null, providerVersion: null });
   const [connectionCode, setConnectionCode] = useState('');
   const [runnerToken, setRunnerToken] = useState('');
@@ -22,13 +37,38 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
   const [errorKey, setErrorKey] = useState(null);
   const [busy, setBusy] = useState(false);
   const [executionResult, setExecutionResult] = useState(null);
+  const [comparisonBinding, setComparisonBinding] = useState(null);
+  const [bindingLayerIndex, setBindingLayerIndex] = useState(0);
   const [cacheNoticeKey, setCacheNoticeKey] = useState(null);
   const fileInputRef = useRef(null);
   const requestControllerRef = useRef(null);
   const restoreAttemptRef = useRef(null);
   const requestGenerationRef = useRef(0);
   const eventStoreRef = useRef(null);
+  const bindingInputsRef = useRef(null);
   if (!eventStoreRef.current) eventStoreRef.current = createImportedAttentionEventStore();
+  const bindingResult = useMemo(() => {
+    if (!bindingAnchorNodeId) return { binding: null, error: null };
+    if (selectedNodeId !== bindingAnchorNodeId || projectSessionId !== bindingProjectSessionId) {
+      return { binding: null, error: 'G2_MODEL_ARTIFACT_BINDING_STALE' };
+    }
+    return tryCreateModelArtifactBindingV1({
+      projectSessionId: bindingProjectSessionId,
+      graph: buildGraph,
+      selectedNodeId: bindingAnchorNodeId,
+      layerIndex: bindingLayerIndex,
+      reference: localModelReference,
+    });
+  }, [bindingAnchorNodeId, bindingLayerIndex, bindingProjectSessionId, buildGraph, localModelReference, projectSessionId, selectedNodeId]);
+  bindingInputsRef.current = {
+    bindingAnchorNodeId,
+    bindingLayerIndex,
+    bindingProjectSessionId,
+    buildGraph,
+    localModelReference,
+    projectSessionId,
+    selectedNodeId,
+  };
 
   useEffect(() => {
     if (!open) return undefined;
@@ -121,6 +161,18 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
     requestControllerRef.current?.abort();
   }, []);
 
+  const activeBindingId = bindingResult.binding?.bindingId ?? null;
+  const bindingRevision = bindingAnchorNodeId
+    ? (activeBindingId ?? `invalid:${bindingAnchorNodeId}:${projectSessionId}:${selectedNodeId ?? 'none'}:${bindingLayerIndex}`)
+    : 'standalone';
+  useEffect(() => {
+    if (!open) return undefined;
+    requestGenerationRef.current += 1;
+    requestControllerRef.current?.abort();
+    setBusy(false);
+    return undefined;
+  }, [open, bindingRevision]);
+
   useEffect(() => {
     if (!open) {
       requestGenerationRef.current += 1;
@@ -209,6 +261,12 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
 
   async function runComparison() {
     if (!activeModelHash || !runnerToken || busy) return;
+    const selectedBinding = bindingResult.binding;
+    if (bindingAnchorNodeId && (!selectedBinding || projectSessionId !== bindingProjectSessionId)) {
+      setErrorKey('g2.binding.invalid');
+      return;
+    }
+    const bindingId = selectedBinding?.bindingId ?? null;
     const generation = ++requestGenerationRef.current;
     requestControllerRef.current?.abort();
     const controller = new AbortController();
@@ -225,6 +283,7 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
         requestId: executionRequestId,
         providerVersion: runner.providerVersion,
         approvedAt: startedAt,
+        artifactBindingId: bindingId,
       });
       const comparisonResult = await localAttentionClient.compare({
         modelHash: activeModelHash,
@@ -234,6 +293,25 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
         signal: controller.signal,
       });
       if (generation !== requestGenerationRef.current) return;
+      let committedBinding = null;
+      if (bindingAnchorNodeId) {
+        const latest = bindingInputsRef.current;
+        if (latest.bindingAnchorNodeId !== bindingAnchorNodeId
+          || latest.selectedNodeId !== bindingAnchorNodeId
+          || latest.projectSessionId !== latest.bindingProjectSessionId) {
+          throw Object.assign(new Error('The selected G2 anchor changed while the local comparison was running.'), { translationKey: 'g2.binding.stale' });
+        }
+        committedBinding = validateModelArtifactBindingV1(selectedBinding, {
+          projectSessionId: latest.bindingProjectSessionId,
+          graph: latest.buildGraph,
+          selectedNodeId: latest.selectedNodeId,
+          layerIndex: latest.bindingLayerIndex,
+          reference: latest.localModelReference,
+        });
+        if (committedBinding.bindingId !== bindingId) {
+          throw Object.assign(new Error('The G2 operator correspondence became stale during the local comparison.'), { translationKey: 'g2.binding.stale' });
+        }
+      }
       const resultEnvelope = createG2ExecutionResultV1({
         request: executionRequest,
         comparison: comparisonResult,
@@ -245,6 +323,7 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
         projectSessionId,
         modelHash: activeModelHash,
         providerVersion: comparisonResult.providerVersion,
+        artifactBindingId: bindingId,
       });
       const committed = commitImportedAttentionExecution(
         eventStoreRef.current,
@@ -268,6 +347,7 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
       }
       setExecutionResult(resultEnvelope);
       setComparison(comparisonResult);
+      setComparisonBinding(committedBinding);
       setEvidence(committed.evidence);
       setSemanticEvents(committed.semanticEvents);
     } catch (error) {
@@ -292,8 +372,12 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
   }
 
   const linkedHash = localModelReference?.sha256 ? `sha256:${localModelReference.sha256}` : null;
+  const bindingReady = !bindingAnchorNodeId || Boolean(bindingResult.binding
+    && localModelReference?.profileId === G2_ATTENTION_EXPORT_MANIFEST.artifact.profileId
+    && localModelReference?.sha256 === G2_ATTENTION_PROFILE_SHA256
+    && localModelReference?.manifestId === G2_ATTENTION_EXPORT_MANIFEST.manifestId);
   const modelReady = Boolean(activeModelHash && activeModelHash === linkedHash
-    && runner.modelLoaded && runner.modelHash === linkedHash);
+    && runner.modelLoaded && runner.modelHash === linkedHash && bindingReady);
   return <div className="fixed inset-0 z-[90] grid place-items-center bg-slate-950/65 p-2 sm:p-5" role="dialog" aria-modal="true" aria-labelledby="g2-title" data-g2-imported-attention>
     <section className="flex max-h-[96dvh] w-full max-w-6xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
       <header className="flex items-start justify-between gap-4 border-b border-slate-200 px-4 py-4 sm:px-6">
@@ -326,6 +410,22 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
             <button type="button" disabled={!modelReady || !runnerToken || busy} onClick={runComparison} className="rounded-xl bg-indigo-600 px-4 py-3 text-sm font-black text-white disabled:cursor-not-allowed disabled:opacity-50" data-g2-run-comparison data-g2-execution-status={executionResult?.status ?? 'none'}>{busy ? t('g2.working') : t('g2.compare')}</button>
           </div>
         </section>
+        <section className="rounded-2xl border border-cyan-200 bg-cyan-50/70 p-4" data-g2-artifact-binding data-g2-binding-status={bindingAnchorNodeId ? (bindingResult.binding ? 'bound' : 'invalid') : 'standalone'} data-g2-binding-id={bindingResult.binding?.bindingId ?? ''}>
+          <h3 className="font-black text-cyan-950">{t('g2.binding.heading')}</h3>
+          <p className="mt-1 text-sm leading-5 text-cyan-950">{t('g2.binding.scope')}</p>
+          <p className="mt-1 text-xs leading-5 text-cyan-900">{t('g2.binding.notMapped')}</p>
+          {bindingAnchorNodeId ? <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <p className="min-w-0 break-all text-xs font-bold text-cyan-950">{bindingResult.binding
+              ? t('g2.binding.anchorReady', { nodeId: bindingAnchorNodeId, layer: bindingLayerIndex + 1 })
+              : t('g2.binding.anchorInvalid')}</p>
+            <label className="text-xs font-bold text-cyan-950">{t('g2.binding.layerLabel')}
+              <select aria-label={t('g2.binding.layerLabel')} data-g2-binding-layer value={bindingLayerIndex} onChange={(event) => setBindingLayerIndex(Number(event.target.value))} className="ml-2 rounded-lg border border-cyan-300 bg-white px-2 py-1 text-xs">
+                {G2_ATTENTION_EXPORT_MANIFEST.outputContract.attentionTensors.map((entry) => <option key={entry.layerIndex} value={entry.layerIndex}>{t('g2.binding.layerOption', { layer: entry.layerIndex + 1, tensor: entry.tensor.name })}</option>)}
+              </select>
+            </label>
+          </div> : <p className="mt-2 text-xs font-bold text-cyan-950">{t('g2.binding.standalone')}</p>}
+          {bindingAnchorNodeId && <button type="button" data-g2-clear-binding className="mt-3 rounded-lg border border-cyan-300 bg-white px-3 py-2 text-xs font-bold text-cyan-950" onClick={onClearBinding}>{t('g2.binding.clearAnchor')}</button>}
+        </section>
         {localModelReference && !modelReady && <p className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-5 text-amber-900">{t('g2.import.relinkRequired')}</p>}
         <section className="rounded-2xl border border-slate-200 p-4">
           <h3 className="font-black text-slate-900">{t('g2.pair.heading')}</h3>
@@ -345,9 +445,13 @@ export default function ImportedAttentionExperience({ open, onClose, localModelR
           <button type="button" onClick={clearLocalCache} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700" data-g2-clear-cache>{t('g2.cache.clear')}</button>
         </section>
         {comparison && evidence && <>
-          <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4" data-g2-evidence data-g2-event-count={semanticEvents.events.length} data-g2-run-id={comparison.requestId} data-g2-experiment-ids={(semanticEvents.events.filter((event) => event.type === 'comparison.completed').at(-1)?.experimentIds ?? []).join(',')} data-g2-evidence-instance-count={semanticEvents.evidenceInstances.length}>
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50/60 p-4" data-g2-evidence data-g2-binding-id={comparisonBinding?.bindingId ?? ''} data-g2-event-count={semanticEvents.events.length} data-g2-run-id={comparison.requestId} data-g2-experiment-ids={(semanticEvents.events.filter((event) => event.type === 'comparison.completed').at(-1)?.experimentIds ?? []).join(',')} data-g2-evidence-instance-count={semanticEvents.evidenceInstances.length}>
             <h3 className="font-black text-emerald-950">{t('g2.evidence.heading')}</h3>
             <p className="mt-1 text-sm leading-5 text-emerald-900">{t(evidence.attentionChanged ? 'g2.evidence.attentionChanged' : 'g2.evidence.noAttentionChange')}</p>
+            <p className="mt-2 text-xs leading-5 text-emerald-900">{comparisonBinding
+              ? t('g2.binding.resultAnchor', { nodeId: comparisonBinding.selectedAnchor.nodeId, layer: comparisonBinding.mapping.layerIndex + 1 })
+              : t('g2.binding.resultStandalone')}</p>
+            <p className="mt-1 text-xs leading-5 text-emerald-900">{t('g2.binding.resultNotBuildOutput')}</p>
             <div className="mt-3 grid gap-2 sm:grid-cols-2">
               {evidence.layerDeltas.map((item) => <p key={item.layer} className="rounded-xl bg-white/80 p-2 text-sm font-bold text-emerald-950">{t('g2.evidence.layerDelta', { layer: item.layer + 1, value: item.maxAbsoluteDelta.toFixed(6) })}</p>)}
               {evidence.logitDeltas.map((value, index) => <p key={index} className="rounded-xl bg-white/80 p-2 text-sm text-slate-800">{t('g2.evidence.logitDelta', { classIndex: index, value: value.toFixed(6) })}</p>)}

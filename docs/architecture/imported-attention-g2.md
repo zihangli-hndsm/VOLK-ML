@@ -140,11 +140,14 @@ session, even when the same model hash remains linked; any in-flight result is
 aborted and cannot populate the new session. The learner must explicitly run
 again to create current-session comparison or Evidence.
 
-Project v9 persists only `localModelReferences: [{ profileId, sha256 }]`. It
-does not embed the ONNX file or preserve its user path; another device must
-relink the exact hash-matching local artifact before execution. The project
-migration from v8 supplies an empty reference list. G2 references are artifact
-metadata only and do not carry Explore session state into the Build graph.
+Project v10 persists only allowlisted local artifact references. The current
+artifact reference is `{ profileId, sha256, manifestId }`; the registered
+legacy alias keeps `{ profileId, sha256 }`. It does not embed the ONNX file or
+preserve its user path; another device must relink the exact hash-matching
+local artifact before execution. The v9-to-v10 migration adds the registered
+manifest identity only to the exact current artifact reference. G2 references
+are artifact metadata only and do not carry Explore session state into the
+Build graph.
 
 On the same browser origin, a separate IndexedDB database stores the verified
 artifact as a Blob under the registered `profileId:sha256` key. The cache
@@ -168,6 +171,40 @@ project store. Restoring a project hash reference or reloading a cached model
 only prepares the runner; neither action runs inference, creates comparison
 results, nor appends semantic events or Evidence. The learner must still press
 **Run and compare A / B** to execute the fixed comparison.
+
+## Build attention-node correspondence
+
+The static, versioned profile manifest in
+`src/core/playground/importedAttention/profileManifest.js` describes the exact
+exported model inputs/outputs and ONNX operator/tensor identities. The
+reproducible exporter-side generator `tools/g2_attention/export_manifest.py`
+derives that manifest from the pinned model directory and ONNX bytes; the real
+reference check requires two independent exports to produce the registered
+manifest exactly. The manifest identifies which attention-probability output
+belongs to each exported layer without treating visual layout or node labels
+as model semantics.
+
+From Build, the learner may open G2 for exactly one selected, canonical
+`multihead_attention_node` with the registered `embed_dim: 128`, `num_heads: 2`,
+and `dropout: 0` configuration, then choose one of the two manifest-declared
+layers. `ModelArtifactBindingV1` records an `operator-correspondence`: the
+selected Build node is an explicit conceptual anchor for the identified
+exported ONNX operator/tensor. It does not assert that the standalone BERT-Tiny
+is encoded by or was executed from the Build graph. In particular, the Build
+node's sole `output` port is a context tensor, not the attention-probability
+matrix shown by G2; UI copy and comparison records preserve this distinction.
+
+The binding is local, ephemeral session state, not project JSON. It is
+recomputed from the current project session, semantic graph fingerprint,
+selected node, exact registered component contract and parameters, selected
+layer, current artifact digest, and registered manifest identity. Layout-only
+changes preserve the semantic fingerprint. Semantic graph/parameter changes,
+selection changes, artifact or manifest changes, and project-session changes
+invalidate the binding and disable comparison until it is valid again or the
+learner explicitly clears it to continue in standalone Explore. A completed
+comparison and its Evidence record the binding identity that was validated
+before and after local inference; clearing or suggesting a binding never runs
+the model or creates Evidence.
 
 ## Development and acceptance
 
