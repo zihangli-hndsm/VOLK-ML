@@ -52,6 +52,7 @@ registered adapters are:
 | Provider | Adapter | Identity | Provenance |
 | --- | --- | --- | --- |
 | `browser-cpu` | `volk-browser-runtime` | Semantic graph + dataset + runtime configuration; `fit` only | `live-local` |
+| `browser-webgpu` | `volk-browser-webgpu-mlp` | Semantic graph + full fitted browser-MLP snapshot + exact input; `inference` only | `live-webgpu` |
 | `local-onnxruntime-cpu` | `onnxruntime-cpu` | Exact registered G2 Attention profile, an accepted SHA-256 alias, fixed input pair + runtime configuration; `compare` only | `live-local` |
 
 `getExecutionCapabilityV1()` reports a registered adapter's explicit
@@ -65,6 +66,28 @@ cannot claim graph execution. ONNX Runtime accepts only the profile ID and
 SHA-256 aliases registered by `profile.js`; an arbitrary profile or artifact
 hash is rejected. These checks report capability; they do not authenticate a
 caller or sandbox an adapter.
+
+`browser-webgpu` is a narrow inference-only adapter for the already-fitted
+sequential tabular MLP subset implemented by
+`src/core/execution/browserWebGpuMlp.js`. Dense, ReLU, Sigmoid, Tanh, and
+Softmax inference runs through actual WebGPU compute pipelines for one input
+or a bounded batch of up to 128 rows (dispatched independently); fitted weights
+and normalization remain owned by the existing Browser CPU fit. Its request
+binds the current semantic graph fingerprint, project session, exact input
+digest, and full inference snapshot/configuration digest. A result is accepted
+only after fixed-tolerance comparison with the CPU reference and a freshness
+check. Unsupported models, missing/rejected devices, cancellation, device
+loss, timeout, non-finite output, parity failure, or stale identity produce
+bounded non-success results; there is no implicit CPU fallback and no
+write-back to model/project/experiment state. The UI keeps CPU prediction as a
+separate learner choice. Generic L1 fit/training availability remains false.
+
+The fixed parity thresholds are: normalized-input handoff absolute error
+`<= 1e-6 + 1e-6 * abs(CPU)`; Dense output `<= 1e-5 + 1e-4 * abs(CPU)`;
+ReLU must preserve zero/positive classification and absolute error `<= 1e-6`;
+Sigmoid, Tanh, and each Softmax element have absolute error `<= 2e-6`; each
+Softmax row must sum to one with absolute error `<= 1e-5`. A failed threshold
+makes the request non-success; tolerances are not widened at runtime.
 
 For Browser CPU runs, cancellation is cooperative at training checkpoints and
 between graph nodes. The UI can request cancellation and the client discards

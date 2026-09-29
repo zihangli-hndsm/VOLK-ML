@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import './check-execution-contract.mjs';
+import './check-webgpu-mlp.mjs';
 import { spawnSync } from 'node:child_process';
 import { readFileSync, readdirSync } from 'node:fs';
 import {
