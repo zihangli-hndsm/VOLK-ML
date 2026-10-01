@@ -8,7 +8,7 @@ VOLK-ML is a mobile-friendly visual ML builder with three distinct responsibilit
 
 1. represent a model or training pipeline as a framework-neutral graph;
 2. compile supported graphs to PyTorch or TensorFlow/Keras source;
-3. execute deliberately small regression and classification L0 pipelines directly in the browser.
+3. execute deliberately small regression and classification L0 pipelines directly in the browser, with an optional, explicit local H2 PyTorch profile for supported tabular Trainer graphs.
 
 Source compilation does not imply browser executability. L1–L3 guide export and environment selection, with two request-specific WebGPU exceptions for the supported sequential tabular MLP: explicit inference on an already-fitted model and explicit H1-T fitting from the Runner. Generic L1 training and L2–L3 execution remain unavailable in-app.
 
@@ -29,7 +29,8 @@ Source compilation does not imply browser executability. L1–L3 guide export an
 | Custom composites | `src/core/customComposites.js` | User-created nested composite definitions and transparent runtime/compiler expansion |
 | Local project storage | `src/core/localProjects.js` | IndexedDB auto-save, restore, safe filenames, and local-file fallback |
 | Browser runtime | `src/core/browserRuntime.js`, `src/core/browserExecutionContract.js`, `src/core/execution/browserWebGpuMlp.js`, `src/core/execution/browserWebGpuMlpTraining.js` | Browser CPU fit/evaluation/prediction plus bounded, independently contracted WebGPU MLP inference and explicit WebGPU training |
-| Execution Contract v1 | `src/core/execution/executionContract.js` | Bounded execution request/result identity, CPU/WebGPU/ONNX provider provenance, explicit-action binding, budgets, and stale/failure acceptance gate |
+| Execution Contract v1 | `src/core/execution/executionContract.js` | Bounded execution request/result identity, Browser CPU/WebGPU, local H2 Python, and ONNX provider provenance, explicit-action binding, budgets, and stale/failure acceptance gate |
+| H2 Local Python v1 | `src/core/execution/h2LocalPython.js`, `src/services/h2LocalPythonClient.js`, `scripts/h2-local-python/` | Optional app-local pinned CPU trainer behind a strict semantic projection, canonical compiler, Windows Job Object supervisor, bounded result validation, and the existing execution freshness gate |
 | Component registry | `src/core/components.js` | Manifest schema, basic components, composite definitions, expansion |
 | Component tutorials | `src/core/tutorials.js` | Localized beginner explanations, formulas, examples, and visual type per semantic operation |
 | Tutorial UI | `src/components/TutorialDialog.jsx` | Mobile-friendly teaching dialog and simplified visual explanations |
@@ -112,6 +113,11 @@ importer.
 The shared Browser CPU/G2 local result boundary is documented in
 [`execution-contract.md`](./execution-contract.md). It rejects unbounded,
 failed, cancelled, or stale results before runtime consumers can commit them.
+
+H2's narrow local Python exception, pinned setup, supported graph profile,
+authority flow, and Job Object limitations are documented in
+[`h2-local-python.md`](./h2-local-python.md). Generic execution-tier
+availability remains unchanged.
 
 The canonical compiler's opt-in generated-source provenance contract is
 documented in [`source-export-manifest.md`](./source-export-manifest.md). It

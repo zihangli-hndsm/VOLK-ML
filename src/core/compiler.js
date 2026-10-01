@@ -447,7 +447,7 @@ function tensorflowSplitLines(trainRatio) {
   ];
 }
 
-function trainingConfiguration(ir, framework) {
+function trainingConfiguration(ir, framework, compileOptions = {}) {
   const { trainer, split, loss, optimizer } = trainerContext(ir);
   const probabilityOutput = binaryOutputUsesProbabilities(ir);
   const categoricalProbabilityOutput = categoricalOutputUsesProbabilities(ir);
@@ -480,6 +480,46 @@ function trainingConfiguration(ir, framework) {
   const trainRatio = split.parameters.train_ratio ?? 0.8;
   if (framework === 'pytorch') {
     const classification = loss?.op === 'cross_entropy_loss';
+    if (compileOptions.trainingProfile === 'h2-local-python-v1') {
+      const trainIndices = compileOptions.trainIndices;
+      if (!Array.isArray(trainIndices) || !trainIndices.length
+        || trainIndices.some((index) => !Number.isInteger(index) || index < 0)
+        || typeof trainer.parameters.shuffle !== 'boolean') {
+        throw compilerError('error.h2CompilerProfileInvalid');
+      }
+      return [
+        'from torch.utils.data import DataLoader, TensorDataset, Subset',
+        '',
+        'X, y = load_tabular_data()',
+        `model = model.to(dtype=${pytorchInputDtype})`,
+        `features_tensor = torch.tensor(X, dtype=${pytorchInputDtype})`,
+        classification
+          ? 'target_tensor = torch.tensor(y, dtype=torch.long)'
+          : `target_tensor = torch.tensor(y, dtype=${pytorchInputDtype}).reshape(-1, 1)`,
+        'dataset = TensorDataset(features_tensor, target_tensor)',
+        'train_set = Subset(dataset, H2_TRAIN_INDICES)',
+        `shuffle_generator = torch.Generator(device='cpu').manual_seed(2026)`,
+        `train_loader = DataLoader(train_set, batch_size=${batchSize}, shuffle=${pythonBoolean(trainer.parameters.shuffle)}, generator=shuffle_generator if ${pythonBoolean(trainer.parameters.shuffle)} else None, num_workers=0)`,
+        '',
+        ...pytorchLossLines(loss, probabilityOutput, categoricalProbabilityOutput),
+        `optimizer = ${optimizerExpression(optimizer, framework)}`,
+        'loss_history = []',
+        `for epoch in range(${epochs}):`,
+        '    model.train()',
+        '    weighted_loss = 0.0',
+        '    seen_rows = 0',
+        '    for features, target in train_loader:',
+        '        optimizer.zero_grad(set_to_none=True)',
+        '        prediction = model(features)',
+        '        loss = criterion(prediction, target)',
+        '        batch_rows = int(features.shape[0])',
+        '        weighted_loss += float(loss.detach()) * batch_rows',
+        '        seen_rows += batch_rows',
+        '        loss.backward()',
+        '        optimizer.step()',
+        '    loss_history.append(weighted_loss / seen_rows)',
+      ];
+    }
     return [
       'from torch.utils.data import DataLoader, TensorDataset, random_split',
       '',
@@ -531,16 +571,16 @@ function emittedSection(lines, { nodes = [], edges = [], role, compilerRole } = 
   };
 }
 
-function trainingSection(ir, framework) {
+function trainingSection(ir, framework, compileOptions = {}) {
   const context = trainerContext(ir);
   const related = [context.trainer, context.split, context.loss, context.optimizer].filter(Boolean);
-  return emittedSection(trainingConfiguration(ir, framework), {
+  return emittedSection(trainingConfiguration(ir, framework, compileOptions), {
     nodes: related,
     role: 'training-configuration',
   });
 }
 
-function compileArchitecture(ir, framework, sourceEdgeForInput = () => null) {
+function compileArchitecture(ir, framework, sourceEdgeForInput = () => null, compileOptions = {}) {
   const candidates = ir.nodes.filter((node) => architectureKinds.has(node.kind));
   if (!candidates.length) return null;
   const nodeById = new Map(candidates.map((node) => [node.id, node]));
@@ -615,7 +655,7 @@ function compileArchitecture(ir, framework, sourceEdgeForInput = () => null) {
       '',
       'model = VOLKModel()',
     ], { nodes: architecture.filter((node) => node.op === 'model_output'), role: 'model-output' }));
-    sections.push(trainingSection(ir, framework));
+    sections.push(trainingSection(ir, framework, compileOptions));
     return sections;
   }
 
@@ -658,7 +698,7 @@ function compileArchitecture(ir, framework, sourceEdgeForInput = () => null) {
   sections.push(emittedSection([
     `model = keras.Model(inputs=[${inputs.map((node) => safeName(node.id)).join(', ')}], outputs=${outputCandidates.length > 1 ? `[${outputCandidates.join(', ')}]` : outputCandidates[0] ?? fallbackOutput})`,
   ], { nodes: architecture.filter((node) => node.op === 'model_output'), role: 'model-output' }));
-  sections.push(trainingSection(ir, framework));
+  sections.push(trainingSection(ir, framework, compileOptions));
   return sections;
 }
 
@@ -733,12 +773,12 @@ function sourceConnectionKey(nodeId, connection) {
   return `${connection.source}\0${connection.sourceHandle}\0${nodeId}\0${connection.targetHandle}`;
 }
 
-function compileSections(ir, framework, sourceEdgeForInput, sourceEdgesForNode) {
-  return compileArchitecture(ir, framework, sourceEdgeForInput)
+function compileSections(ir, framework, sourceEdgeForInput, sourceEdgesForNode, compileOptions = {}) {
+  return compileArchitecture(ir, framework, sourceEdgeForInput, compileOptions)
     ?? compileTabularPipeline(ir, framework, sourceEdgesForNode);
 }
 
-function compileGraphCore(nodes, edges, framework, includeSourceMap) {
+function compileGraphCore(nodes, edges, framework, includeSourceMap, compileOptions = {}) {
   if (!['pytorch', 'tensorflow'].includes(framework)) throw new Error(`Unsupported framework: ${framework}`);
   const idFactory = stableExportIdFactory([...nodes.map((node) => node.id), ...edges.map((edge) => edge.id)]);
   const flattened = flattenCustomComposites(nodes, edges, { idFactory });
@@ -762,7 +802,11 @@ function compileGraphCore(nodes, edges, framework, includeSourceMap) {
     };
     throw error;
   }
-  const sections = compileSections(ir, framework, sourceEdgeForInput, sourceEdgesForNode);
+  if (compileOptions.trainingProfile !== undefined
+    && compileOptions.trainingProfile !== 'h2-local-python-v1') {
+    throw compilerError('error.h2CompilerProfileInvalid');
+  }
+  const sections = compileSections(ir, framework, sourceEdgeForInput, sourceEdgesForNode, compileOptions);
   let result;
   if (includeSourceMap) {
     const writer = new SourceMapWriter(ir.version);
@@ -797,8 +841,8 @@ function compileGraphCore(nodes, edges, framework, includeSourceMap) {
   };
 }
 
-export function compileGraph(nodes, edges, framework) {
-  const { code, ir, report } = compileGraphCore(nodes, edges, framework, false);
+export function compileGraph(nodes, edges, framework, compileOptions = {}) {
+  const { code, ir, report } = compileGraphCore(nodes, edges, framework, false, compileOptions);
   return { code, ir, report };
 }
 
@@ -934,6 +978,6 @@ export async function validateSourceExportManifest({ nodes, edges, framework, co
   return { valid: true, sourceSha256: expected.manifest.source.sha256 };
 }
 
-export const compilePipelineToPyTorch = (nodes, edges) => compileGraph(nodes, edges, 'pytorch');
+export const compilePipelineToPyTorch = (nodes, edges, compileOptions) => compileGraph(nodes, edges, 'pytorch', compileOptions);
 export const compilePipelineToTensorFlow = (nodes, edges) => compileGraph(nodes, edges, 'tensorflow');
 

@@ -65,6 +65,16 @@ assert.throws(() => createExecutionRequestV1({
   artifactIdentity: { kind: 'artifact', profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 },
 }), /EXECUTION_IDENTITY_EXCLUSIVE/);
 const artifactIdentity = { kind: 'artifact', profileId: G2_ATTENTION_PROFILE_ID, sha256: G2_ATTENTION_PROFILE_SHA256 };
+assert.equal(getExecutionCapabilityV1('local-python-h2').adapterId, 'volk-h2-local-python');
+assert.equal(assessExecutionCapabilityV1({
+  providerId: 'local-python-h2', graphIdentity: request.graphIdentity, mode: 'fit',
+}).status, 'supported', 'H2 is registered only as an explicit local graph-fit adapter.');
+assert.equal(assessExecutionCapabilityV1({
+  providerId: 'local-python-h2', graphIdentity: request.graphIdentity, mode: 'inference',
+}).reason, 'EXECUTION_MODE_UNSUPPORTED', 'H2 cannot claim a mode outside local fitting.');
+assert.equal(assessExecutionCapabilityV1({
+  providerId: 'local-python-h2', artifactIdentity, mode: 'fit',
+}).reason, 'EXECUTION_IDENTITY_PROVIDER_MISMATCH', 'H2 accepts validated live graphs rather than imported model artifacts.');
 const commonRequest = {
   requestId: 'exec-capability-case-001',
   projectSessionId: 'project-session-001',

@@ -350,6 +350,7 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
       )))
   );
   if (model.type === 'browser_mlp') {
+    const localPythonProfile = model.trainingSummary?.provider === 'local-python';
     if (
       sourceManifest.id !== 'supervised_trainer_node'
       || !['regression', 'classification'].includes(model.task)
@@ -384,10 +385,10 @@ function trainedModelIsValid(model, topLevelNodes, expandedNodes, expandedEdges,
         ) return false;
         width = layer.units;
         denseLayers += 1;
-      } else if (!['relu', 'sigmoid', 'tanh', 'softmax'].includes(layer.op)) return false;
+      } else if (!['relu', 'sigmoid', 'tanh', 'softmax', 'dropout'].includes(layer.op)) return false;
     }
     if (model.task === 'classification') {
-      return denseLayers > 0 && model.layers.at(-1)?.op === 'softmax'
+      return denseLayers > 0 && (localPythonProfile || model.layers.at(-1)?.op === 'softmax')
         && model.labels.length === width && model.labels.length >= 2
         && model.labels.every((label) => typeof label === 'string' && label)
         && new Set(model.labels).size === model.labels.length;

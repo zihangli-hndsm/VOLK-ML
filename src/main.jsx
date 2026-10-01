@@ -23,6 +23,13 @@ import {
   BROWSER_WEBGPU_MLP_TRAINING_PROVIDER_VERSION,
   BROWSER_WEBGPU_MLP_TRAINING_SEMANTICS_VERSION,
 } from './core/execution/browserWebGpuMlpTraining.js';
+import {
+  H2_LOCAL_PYTHON_COMPILER_VERSION,
+  h2DatasetExecutionIdentityV1,
+  h2ResultToBrowserMlpV1,
+  projectH2LocalPythonRequestV1,
+} from './core/execution/h2LocalPython.js';
+import { checkH2LocalPythonHealth, runH2LocalPythonFit } from './services/h2LocalPythonClient.js';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
 import { PROJECT_VERSION, projectContentSignature, validateProjectForWorkspace } from './core/project';
 import { safeProjectFilename } from './core/localProjects';
@@ -481,6 +488,9 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
   const [webGpuRunning, setWebGpuRunning] = useState(false);
   const [webGpuTrainingResult, setWebGpuTrainingResult] = useState(null);
   const [webGpuTrainingRunning, setWebGpuTrainingRunning] = useState(false);
+  const [h2Health, setH2Health] = useState({ available: false, reason: 'H2_COMPANION_OFFLINE' });
+  const [h2FitResult, setH2FitResult] = useState(null);
+  const [h2FitRunning, setH2FitRunning] = useState(false);
   const [graphError, setGraphError] = useState('');
   const [planNames, setPlanNames] = useState([]);
   const webGpuInputIdentityRef = useRef('');
@@ -491,6 +501,7 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
   // Always derive cards from current props so a Run-triggered render cannot
   // retain stale workload values.
   const executionPlan = executionPlanFor(nodes, edges, dataset);
+  const h2GraphCandidate = nodes.some((node) => node.data.manifest.op === 'supervised_trainer');
   const webGpuCapability = assessBrowserWebGpuMlpInference(model);
   const webGpuGraphContract = model?.type === 'browser_mlp'
     ? analyzeBrowserExecutionGraph({ nodes, edges, dataset }) : null;
@@ -522,6 +533,8 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
       setWebGpuRunning(false);
       setWebGpuTrainingResult(null);
       setWebGpuTrainingRunning(false);
+      setH2FitResult(null);
+      setH2FitRunning(false);
       setGraphError('');
       try {
         const connectedIds = new Set(edges.flatMap((edge) => [edge.source, edge.target]));
@@ -529,12 +542,14 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
         const connectedEdges = edges.filter(
           (edge) => connectedIds.has(edge.source) && connectedIds.has(edge.target),
         );
-        const contract = analyzeBrowserExecutionGraph({ nodes, edges, dataset });
-        if (!contract.valid) {
-          onValidation(contract.nodeIds ?? []);
-          const error = localizedError(contract.reason, contract.translationParams);
-          error.nodeIds = contract.nodeIds;
-          throw error;
+        if (!h2GraphCandidate) {
+          const contract = analyzeBrowserExecutionGraph({ nodes, edges, dataset });
+          if (!contract.valid) {
+            onValidation(contract.nodeIds ?? []);
+            const error = localizedError(contract.reason, contract.translationParams);
+            error.nodeIds = contract.nodeIds;
+            throw error;
+          }
         }
         const ir = graphToIR(connectedNodes, connectedEdges);
         const nodeById = new Map(connectedNodes.map((node) => [node.id, node]));
@@ -542,7 +557,16 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
       }
       catch (error) { setPlanNames([]); setGraphError(translateError(error, t)); }
     }
-  }, [open, graphSignature, dataset, onValidation, t]);
+  }, [open, graphSignature, dataset, onValidation, h2GraphCandidate, t]);
+  useEffect(() => {
+    if (!open || !h2GraphCandidate) return undefined;
+    let active = true;
+    const controller = new AbortController();
+    checkH2LocalPythonHealth({ signal: controller.signal }).then((health) => {
+      if (active) setH2Health(health);
+    });
+    return () => { active = false; controller.abort(); };
+  }, [open, h2GraphCandidate]);
   useEffect(() => {
     setWebGpuExecution(null);
     if (webGpuRunning) onCancelWebGpuInference();
@@ -598,9 +622,22 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
       setWebGpuTrainingRunning(false);
     }
   };
+  const tryH2LocalPythonFit = async () => {
+    if (!h2GraphCandidate || !dataset || !h2Health.available || running || h2FitRunning) return;
+    setH2FitRunning(true);
+    setH2FitResult(null);
+    try {
+      await onRun({ providerId: 'local-python-h2' });
+      setH2FitResult({ status: 'succeeded' });
+    } catch (error) {
+      setH2FitResult({ status: 'failed', localError: error?.code ?? 'H2_TRAINING_FAILED' });
+    } finally {
+      setH2FitRunning(false);
+    }
+  };
   const closeRunner = () => {
     if (webGpuRunning) onCancelWebGpuInference();
-    if (webGpuTrainingRunning) onCancelRun();
+    if (webGpuTrainingRunning || h2FitRunning) onCancelRun();
     onClose();
   };
 
@@ -610,8 +647,8 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
       {planNames.length > 0 && <div className="mt-4 flex flex-wrap items-center gap-1 text-xs">{planNames.map((name, index) => <React.Fragment key={`${name}-${index}`}><span className="rounded-full bg-slate-100 px-2 py-1 font-bold">{name}</span>{index < planNames.length - 1 && <span className="text-slate-300">→</span>}</React.Fragment>)}</div>}
       <TierPanel plan={executionPlan} onExport={onExport} />
       {visibleError && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">⚠ {visibleError}</div>}
-      {needsDataset && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere || webGpuTrainingGraphSupported ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div id="runner-loss-chart" className="mt-4"><LossChart values={losses} /></div>{executionPlan.canRunHere && <button data-runner-execute type="button" disabled={running || webGpuRunning || webGpuTrainingRunning || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button>}{webGpuTrainingGraphSupported && <><button data-webgpu-fit type="button" disabled={!webGpuTrainingAvailable || running || webGpuRunning || webGpuTrainingRunning || Boolean(graphError)} onClick={() => tryWebGpuTraining().catch(() => {})} className="mt-2 w-full rounded-2xl border border-indigo-300 bg-indigo-50 px-4 py-3 font-bold text-indigo-900 disabled:opacity-50">{webGpuTrainingRunning ? t('runner.webgpuFitting') : t('runner.webgpuFit')}</button><p className="mt-1 text-xs text-slate-500">{t(webGpuTrainingAvailable ? 'runner.webgpuFitNote' : 'runner.webgpuTrainingUnavailable')}</p></>}{running && <button data-runner-cancel type="button" onClick={onCancelRun} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">{webGpuTrainingRunning ? t('runner.webgpuCancel') : t('runner.cancelExecution')}</button>}{webGpuTrainingResult && <div data-webgpu-fit-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${webGpuTrainingResult.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{webGpuTrainingResult.status === 'succeeded' ? <><p className="font-bold">{t('runner.webgpuFitPassed')}</p>{runtime.execution?.providerId === 'browser-webgpu-mlp-training' && runtime.execution.output?.trainingSummary && <p className="mt-2 text-xs">{t('runner.webgpuFitSummary', { dispatches: runtime.execution.output.trainingSummary.dispatchCount, steps: runtime.execution.output.trainingSummary.optimizerSteps, finalLoss: Number(runtime.execution.output.trainingSummary.finalTrainingLoss).toFixed(5) })}</p>}</> : <p className="font-bold">{t(webGpuDiagnosticMessageKey(webGpuTrainingResult.localError))}</p>}</div>}</div>
+      {(needsDataset || h2GraphCandidate) && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere || webGpuTrainingGraphSupported || h2GraphCandidate ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
+        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div id="runner-loss-chart" className="mt-4"><LossChart values={losses} /></div>{executionPlan.canRunHere && <button data-runner-execute type="button" disabled={running || webGpuRunning || webGpuTrainingRunning || h2FitRunning || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button>}{webGpuTrainingGraphSupported && <><button data-webgpu-fit type="button" disabled={!webGpuTrainingAvailable || running || webGpuRunning || webGpuTrainingRunning || h2FitRunning || Boolean(graphError)} onClick={() => tryWebGpuTraining().catch(() => {})} className="mt-2 w-full rounded-2xl border border-indigo-300 bg-indigo-50 px-4 py-3 font-bold text-indigo-900 disabled:opacity-50">{webGpuTrainingRunning ? t('runner.webgpuFitting') : t('runner.webgpuFit')}</button><p className="mt-1 text-xs text-slate-500">{t(webGpuTrainingAvailable ? 'runner.webgpuFitNote' : 'runner.webgpuTrainingUnavailable')}</p></>}{h2GraphCandidate && <><button data-h2-fit type="button" disabled={!h2Health.available || running || webGpuRunning || webGpuTrainingRunning || h2FitRunning || !dataset} onClick={() => tryH2LocalPythonFit().catch(() => {})} className="mt-2 w-full rounded-2xl border border-violet-300 bg-violet-50 px-4 py-3 font-bold text-violet-900 disabled:opacity-50">{h2FitRunning ? t('runner.h2Fitting') : t('runner.h2Fit')}</button><p data-h2-health role="status" className="mt-1 text-xs text-slate-500">{t(h2Health.available ? 'runner.h2FitNote' : 'runner.h2Unavailable')}</p></>}{running && <button data-runner-cancel type="button" onClick={onCancelRun} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">{h2FitRunning ? t('runner.h2Cancel') : webGpuTrainingRunning ? t('runner.webgpuCancel') : t('runner.cancelExecution')}</button>}{webGpuTrainingResult && <div data-webgpu-fit-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${webGpuTrainingResult.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{webGpuTrainingResult.status === 'succeeded' ? <><p className="font-bold">{t('runner.webgpuFitPassed')}</p>{runtime.execution?.providerId === 'browser-webgpu-mlp-training' && runtime.execution.output?.trainingSummary && <p className="mt-2 text-xs">{t('runner.webgpuFitSummary', { dispatches: runtime.execution.output.trainingSummary.dispatchCount, steps: runtime.execution.output.trainingSummary.optimizerSteps, finalLoss: Number(runtime.execution.output.trainingSummary.finalTrainingLoss).toFixed(5) })}</p>}</> : <p className="font-bold">{t(webGpuDiagnosticMessageKey(webGpuTrainingResult.localError))}</p>}</div>}{h2FitResult && <div data-h2-fit-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${h2FitResult.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{h2FitResult.status === 'succeeded' ? <><p className="font-bold">{t('runner.h2FitPassed')}</p>{runtime.execution?.providerId === 'local-python-h2' && runtime.execution.output?.trainingSummary && <p className="mt-2 text-xs">{t('runner.h2FitSummary', { epochs: runtime.execution.output.lossCount, finalLoss: Number(runtime.execution.output.trainingSummary.finalTrainingLoss).toFixed(5) })}</p>}</> : <p className="font-bold">{t('runner.h2FitFailed')}</p>}</div>}</div>
         <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="font-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}{model.type === 'browser_mlp' && <><button data-webgpu-inference type="button" disabled={!webGpuSupported || webGpuRunning} onClick={() => tryWebGpuPrediction().catch(() => {})} className="mt-3 w-full rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 font-bold text-indigo-900 disabled:opacity-50">{webGpuRunning ? t('runner.webgpuPredicting') : t('runner.webgpuPredict')}</button>{!webGpuSupported && <p className="mt-2 text-xs text-slate-500" role="status">{webGpuCapability.reason === 'WEBGPU_UNAVAILABLE' ? t('runner.webgpuUnavailable') : t('runner.webgpuUnsupportedModel')}</p>}{webGpuRunning && <button data-webgpu-cancel type="button" onClick={onCancelWebGpuInference} className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700">{t('runner.webgpuCancel')}</button>}{webGpuExecution && <div data-webgpu-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${webGpuExecution.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{webGpuExecution.status === 'succeeded' ? <><p className="font-bold">{t('runner.webgpuPassed')}</p><p className="mt-2 text-xs">{t('runner.webgpuPrediction')}: <span className="font-mono font-bold">{typeof webGpuExecution.output.prediction === 'number' ? webGpuExecution.output.prediction.toFixed(4) : webGpuExecution.output.prediction}</span></p><p className="mt-1 text-xs">{t('runner.webgpuMaxError')}: <span className="font-mono">{webGpuExecution.output.parity.maxAbsoluteError.toExponential(2)}</span></p></> : <p className="font-bold">{t(webGpuDiagnosticMessageKey(webGpuExecution.localError ?? webGpuExecution.diagnostics?.[0] ?? 'WEBGPU_EXECUTION_FAILED'))}</p>}</div>}</>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
       </div> : <div className="mt-5 rounded-3xl border border-dashed border-slate-300 p-8 text-center text-slate-500"><p className="text-3xl">⇧</p><p className="mt-3 font-bold">{t('tier.useHigherTier', { tier: executionPlan.recommendedTier })}</p><p className="mt-1 text-sm">{t('tier.designStillAvailable')}</p></div>}
       <LumiResultReasoningPanel nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} runtime={runtime} resultBinding={resultBinding} runHistory={runHistory} language={language} onSelectSuggestion={onSelectLumiSuggestion} t={t} />
@@ -1497,11 +1534,13 @@ function Workspace() {
     if (ids[0]) setSelectedId(ids[0]);
   }, [setNodes]);
   const runBrowserGraph = useCallback(async ({ providerId = 'browser-cpu' } = {}) => {
-    if (!['browser-cpu', 'browser-webgpu-mlp-training'].includes(providerId)) {
+    if (!['browser-cpu', 'browser-webgpu-mlp-training', 'local-python-h2'].includes(providerId)) {
       throw new CanvasAgentError('EXECUTION_PROVIDER_UNSUPPORTED', 'The requested browser provider is unsupported.');
     }
     const isWebGpuTraining = providerId === 'browser-webgpu-mlp-training';
-    const providerVersion = isWebGpuTraining ? BROWSER_WEBGPU_MLP_TRAINING_PROVIDER_VERSION : 'browser-runtime-v1';
+    const isH2LocalPython = providerId === 'local-python-h2';
+    const providerVersion = isH2LocalPython ? H2_LOCAL_PYTHON_COMPILER_VERSION
+      : isWebGpuTraining ? BROWSER_WEBGPU_MLP_TRAINING_PROVIDER_VERSION : 'browser-runtime-v1';
     const state = workspaceStateRef.current;
     if (state.runtime.status === 'running') {
       throw new CanvasAgentError('INSTANCE_BUSY', 'Canvas execution is already running.');
@@ -1515,6 +1554,7 @@ function Workspace() {
     let executionRequest = null;
     let executionEnvelope = null;
     let executionTimeout = null;
+    let h2RequestDraft = null;
     try {
       runBinding = createAgentApplicationResultBinding({ nodes: state.nodes, edges: state.edges, customComponents: state.customComponents, dataset: state.dataset });
     } catch { /* Invalid inputs still produce a safe failed session-history entry. */ }
@@ -1533,8 +1573,9 @@ function Workspace() {
       finishedAt: null,
     });
     try {
-      const contract = analyzeBrowserExecutionGraph({ nodes: state.nodes, edges: state.edges, dataset: state.dataset });
-      if (!contract.valid) {
+      const contract = isH2LocalPython ? null
+        : analyzeBrowserExecutionGraph({ nodes: state.nodes, edges: state.edges, dataset: state.dataset });
+      if (contract && !contract.valid) {
         validationNodeIds = contract.nodeIds ?? [];
         const error = localizedError(contract.reason, contract.translationParams);
         error.nodeIds = validationNodeIds;
@@ -1547,21 +1588,36 @@ function Workspace() {
         if (contract.root?.data?.manifest?.op !== 'supervised_trainer') {
           throw Object.assign(new Error('WEBGPU_TRAINING_GRAPH_UNSUPPORTED'), { code: 'WEBGPU_TRAINING_GRAPH_UNSUPPORTED' });
         }
-      } else if (!plan.canRunHere) {
+      } else if (!isH2LocalPython && !plan.canRunHere) {
         throw localizedError('error.higherTierRequired', { tier: plan.recommendedTier });
+      }
+      if (isH2LocalPython) {
+        h2RequestDraft = await projectH2LocalPythonRequestV1({
+          sessionId: projectSessionIdRef.current,
+          nodes: state.nodes,
+          edges: state.edges,
+          dataset: state.dataset,
+        });
       }
       const graphFingerprint = graphSemanticFingerprintV1({
         nodes: state.nodes,
         edges: state.edges,
         componentDefinitions: state.customComponents,
       });
-      const inputIdentity = artifactFingerprintJsonV1({
+      const inputIdentity = isH2LocalPython
+        ? `sha256:${h2RequestDraft.identity.datasetFingerprint}`
+        : artifactFingerprintJsonV1({
         task: state.dataset.task,
         featureColumns: state.dataset.featureColumns,
         targetColumn: state.dataset.targetColumn,
         rows: state.dataset.rows,
       });
-      const configIdentity = artifactFingerprintJsonV1(isWebGpuTraining ? {
+      const configIdentity = artifactFingerprintJsonV1(isH2LocalPython ? {
+        adapter: 'volk-h2-local-python',
+        version: H2_LOCAL_PYTHON_COMPILER_VERSION,
+        profile: h2RequestDraft.profile,
+        normalizedRequestFingerprint: h2RequestDraft.identity.normalizedRequestFingerprint,
+      } : isWebGpuTraining ? {
         adapter: BROWSER_WEBGPU_MLP_TRAINING_ADAPTER_ID,
         version: providerVersion,
         semantics: BROWSER_WEBGPU_MLP_TRAINING_SEMANTICS_VERSION,
@@ -1571,7 +1627,7 @@ function Workspace() {
         version: 'browser-runtime-v1',
         deterministicSeeds: 'registered-browser-adapter-defaults-v1',
       });
-      const requestBytes = new TextEncoder().encode(startedWithSignature).byteLength;
+      const requestBytes = new TextEncoder().encode(isH2LocalPython ? JSON.stringify(h2RequestDraft) : startedWithSignature).byteLength;
       executionRequest = createExecutionRequestV1({
         requestId: executionRunId,
         projectSessionId: projectSessionIdRef.current,
@@ -1583,7 +1639,7 @@ function Workspace() {
         budget: {
           maxDurationMs: 120_000,
           maxInputBytes: 20 * 1024 * 1024,
-          maxOutputBytes: isWebGpuTraining ? 256 * 1024 : 32 * 1024,
+          maxOutputBytes: isWebGpuTraining || isH2LocalPython ? 256 * 1024 : 32 * 1024,
         },
         approvedAt: startedAt,
       });
@@ -1593,39 +1649,48 @@ function Workspace() {
       const controller = new AbortController();
       executionControllerRef.current = controller;
       executionTimeout = window.setTimeout(() => controller.abort('deadline'), executionRequest.budget.maxDurationMs);
-      const finalModel = await executeBrowserGraph({
-        nodes: state.nodes,
-        edges: state.edges,
-        dataset: state.dataset,
-        onNodeStatus: (ids, status) => {
-          currentNode = status === 'running'
-            ? state.nodes.find((node) => ids.includes(node.id)) ?? currentNode
-            : currentNode;
-          setNodeStatus(ids, status);
-          updateRuntime((current) => ({
-            ...current,
-            activeNodeIds: status === 'running'
-              ? [...new Set([...current.activeNodeIds, ...ids])]
-              : current.activeNodeIds.filter((id) => !ids.includes(id)),
-          }));
-        },
-        onLoss: (losses) => updateRuntime((current) => ({ ...current, losses })),
-        onYield: () => new Promise((resolve) => requestAnimationFrame(resolve)),
-        signal: controller.signal,
-        trainingProvider: isWebGpuTraining ? 'browser-webgpu' : 'browser-cpu',
-      });
+      const finalModel = isH2LocalPython
+        ? h2ResultToBrowserMlpV1({
+          ...await runH2LocalPythonFit(h2RequestDraft, { signal: controller.signal }),
+          dataset: state.dataset,
+        })
+        : await executeBrowserGraph({
+          nodes: state.nodes,
+          edges: state.edges,
+          dataset: state.dataset,
+          onNodeStatus: (ids, status) => {
+            currentNode = status === 'running'
+              ? state.nodes.find((node) => ids.includes(node.id)) ?? currentNode
+              : currentNode;
+            setNodeStatus(ids, status);
+            updateRuntime((current) => ({
+              ...current,
+              activeNodeIds: status === 'running'
+                ? [...new Set([...current.activeNodeIds, ...ids])]
+                : current.activeNodeIds.filter((id) => !ids.includes(id)),
+            }));
+          },
+          onLoss: (losses) => updateRuntime((current) => ({ ...current, losses })),
+          onYield: () => new Promise((resolve) => requestAnimationFrame(resolve)),
+          signal: controller.signal,
+          trainingProvider: isWebGpuTraining ? 'browser-webgpu' : 'browser-cpu',
+        });
       const currentState = workspaceStateRef.current;
       const currentGraphFingerprint = graphSemanticFingerprintV1({
         nodes: currentState.nodes,
         edges: currentState.edges,
         componentDefinitions: currentState.customComponents,
       });
-      const currentInputIdentity = currentState.dataset ? artifactFingerprintJsonV1({
-        task: currentState.dataset.task,
-        featureColumns: currentState.dataset.featureColumns,
-        targetColumn: currentState.dataset.targetColumn,
-        rows: currentState.dataset.rows,
-      }) : null;
+      const currentInputIdentity = currentState.dataset
+        ? isH2LocalPython
+          ? await h2DatasetExecutionIdentityV1(currentState.dataset)
+          : artifactFingerprintJsonV1({
+            task: currentState.dataset.task,
+            featureColumns: currentState.dataset.featureColumns,
+            targetColumn: currentState.dataset.targetColumn,
+            rows: currentState.dataset.rows,
+          })
+        : null;
       const currentRequestContext = {
         projectSessionId: projectSessionIdRef.current,
         graphIdentity: currentGraphFingerprint,
@@ -1647,7 +1712,10 @@ function Workspace() {
         changedError.translationKey = 'error.workspaceChangedDuringRun';
         throw changedError;
       }
-      const { test, trainingSummary, ...persistableModel } = finalModel;
+      const { test, trainingSummary, ...modelWithoutTest } = finalModel;
+      const persistableModel = isH2LocalPython
+        ? { ...modelWithoutTest, trainingSummary }
+        : modelWithoutTest;
       executionEnvelope = createExecutionResultV1({
         request: executionRequest,
         runId: runAttemptId,
@@ -1717,8 +1785,8 @@ function Workspace() {
     } catch (error) {
       if (executionRequest && !executionEnvelope) {
         const errorCode = typeof error?.code === 'string' ? error.code : 'RUN_FAILED';
-        const status = errorCode === 'EXECUTION_TIMEOUT' ? 'timed-out'
-          : errorCode === 'EXECUTION_CANCELLED' ? 'cancelled' : 'failed';
+        const status = ['EXECUTION_TIMEOUT', 'H2_DEADLINE_EXCEEDED'].includes(errorCode) ? 'timed-out'
+          : ['EXECUTION_CANCELLED', 'H2_CANCELLED'].includes(errorCode) ? 'cancelled' : 'failed';
         try {
           executionEnvelope = createExecutionResultV1({
             request: executionRequest,
@@ -1738,6 +1806,7 @@ function Workspace() {
         finishedAt: new Date().toISOString(),
       }));
       resultBindingRef.current = null;
+      if (isH2LocalPython && !error?.translationKey) error.translationKey = 'runner.h2FitFailed';
       if (error?.code === 'WORKSPACE_CHANGED') {
         const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
         workspaceStateRef.current = { ...workspaceStateRef.current, nodes: nextNodes, model: null };
@@ -1750,7 +1819,7 @@ function Workspace() {
           error: runtimeErrorInfo(error),
           finishedAt: new Date().toISOString(),
         });
-      } else if (error?.code === 'EXECUTION_CANCELLED' || error?.code === 'EXECUTION_TIMEOUT') {
+      } else if (['EXECUTION_CANCELLED', 'EXECUTION_TIMEOUT', 'H2_CANCELLED', 'H2_DEADLINE_EXCEEDED'].includes(error?.code)) {
         const nextNodes = invalidateAgentNodeStatuses(workspaceStateRef.current.nodes);
         workspaceStateRef.current = { ...workspaceStateRef.current, nodes: nextNodes };
         setNodes(nextNodes);
@@ -1758,7 +1827,7 @@ function Workspace() {
           ...current,
           status: 'failed',
           activeNodeIds: [],
-          losses: isWebGpuTraining ? (state.runtime?.losses ?? []) : current.losses,
+          losses: isWebGpuTraining || isH2LocalPython ? (state.runtime?.losses ?? []) : current.losses,
           execution: executionEnvelope,
           error: runtimeErrorInfo(error),
           finishedAt: new Date().toISOString(),
@@ -1775,7 +1844,7 @@ function Workspace() {
           ...current,
           status: 'failed',
           activeNodeIds: [],
-          losses: isWebGpuTraining ? (state.runtime?.losses ?? []) : current.losses,
+          losses: isWebGpuTraining || isH2LocalPython ? (state.runtime?.losses ?? []) : current.losses,
           execution: executionEnvelope,
           error: runtimeErrorInfo(error),
           finishedAt: new Date().toISOString(),
