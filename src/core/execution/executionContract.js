@@ -37,6 +37,14 @@ export const EXECUTION_PROVIDER_PROFILES = Object.freeze({
     identityKind: 'graph',
     modes: Object.freeze(['fit']),
   }),
+  'local-python-h2': Object.freeze({
+    status: 'supported',
+    reason: null,
+    adapterId: 'volk-h2-local-python',
+    provenance: 'live-local',
+    identityKind: 'graph',
+    modes: Object.freeze(['fit']),
+  }),
   'local-onnxruntime-cpu': Object.freeze({
     status: 'supported',
     reason: null,

@@ -2,7 +2,8 @@
 
 `src/core/execution/executionContract.js` defines the shared, JSON-safe
 request/result envelope for the currently supported local execution adapters:
-Browser CPU graph runs and the registered local ONNX Runtime CPU G2 profile.
+Browser CPU graph runs, the bounded H2 local Python profile, and the registered
+local ONNX Runtime CPU G2 profile.
 It is a commit boundary, not a scheduler, remote execution API, permission
 system, or replacement for either runtime.
 
@@ -53,6 +54,7 @@ registered adapters are:
 | --- | --- | --- | --- |
 | `browser-cpu` | `volk-browser-runtime` | Semantic graph + dataset + runtime configuration; `fit` only | `live-local` |
 | `browser-webgpu` | `volk-browser-webgpu-mlp` | Semantic graph + full fitted browser-MLP snapshot + exact input; `inference` only | `live-webgpu` |
+| `local-python-h2` | `volk-h2-local-python` | Semantic registered Trainer graph + dataset + pinned H2 profile; `fit` only | `live-local` |
 | `local-onnxruntime-cpu` | `onnxruntime-cpu` | Exact registered G2 Attention profile, an accepted SHA-256 alias, fixed input pair + runtime configuration; `compare` only | `live-local` |
 
 `getExecutionCapabilityV1()` reports a registered adapter's explicit
@@ -102,6 +104,18 @@ The WebGPU training arithmetic is checked independently against a scalar
 Float64 micro-batch oracle with fixed elementwise envelope
 `abs(error) <= 1e-5 + 5e-4 * abs(reference)`. This training envelope is separate
 from the inference-specific thresholds below and is never widened at runtime.
+
+H2 local Python is a separate explicit Runner action for its strict supported
+tabular Trainer subset. The browser creates a semantic request projection;
+the loopback coordinator validates it against the live registry, compiles the
+same graph through canonical VOLK IR/PyTorch generation, and returns a
+bounded tensor manifest. The fixed CPU worker runs under the Windows Job
+Object supervisor only after suspended creation and verified assignment.
+H2 results pass the same project-session, graph, input, configuration, and
+freshness gate before model commit. It does not change generic tier estimates
+or browser CPU behavior, and it has no implicit fallback. Setup, privacy
+projection, profile bounds, and the limits of Job Object containment are
+documented in [`h2-local-python.md`](./h2-local-python.md).
 
 Unsupported graphs, missing/rejected devices, cancellation, device loss,
 timeout, non-finite output, parity failure, or stale identity produce bounded

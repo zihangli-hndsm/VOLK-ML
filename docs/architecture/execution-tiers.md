@@ -30,6 +30,14 @@ the pinned BERT-Tiny ONNX Attention v25 profile described in
 availability, cannot execute arbitrary imported ONNX, and does not change the
 L0 graph executor or component tier claims.
 
+H2 adds a separate opt-in local-Python exception for the strict supported
+tabular Supervised Trainer subset. It is available only through its explicit
+Runner action when the pinned local companion is installed and healthy. H2
+does not make generic L2 available, change `executionTiers[].available` or
+`canRunHere`, or silently replace Browser CPU Run. Its profile, local setup,
+and Windows process-containment limits are in
+[`h2-local-python.md`](./h2-local-python.md).
+
 Both Browser CPU runs and this exact G2 path use the shared bounded local
 request/result acceptance gate documented in
 [`execution-contract.md`](./execution-contract.md). It does not make remote
