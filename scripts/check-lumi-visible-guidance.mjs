@@ -14,6 +14,7 @@ import {
 import { createLumiTargetRegistry, resolveLumiTargetEntries } from '../src/core/ui/lumiTargetRegistry.js';
 import { createLumiPolicyRequestIdentity, deriveEpisode1Guidance, isCurrentLumiPolicyResult } from '../src/core/ui/lumiEpisodeGuidance.js';
 import { createPlaygroundHost } from '../src/core/playgroundHost.js';
+import { normalizeLumiMode } from '../src/core/ui/lumiSemantics.js';
 
 let state = createLumiPresentationState({ sessionId: 's', contextId: 'episode-1' });
 state = beginLumiRequest(state, { source: 'ask', requestId: 'ask-1' });
@@ -45,6 +46,30 @@ assert.equal(resolveLumiTargetEntries([], 'world.sample').status, 'missing');
 assert.equal(resolveLumiTargetEntries([{ key: 'world.sample', ref, controlId: 'a' }, { key: 'world.sample', ref, controlId: 'b' }], 'world.sample').status, 'ambiguous');
 assert.equal(resolveLumiTargetEntries([{ key: 'world.sample', ref, enabled: false }], 'world.sample').status, 'unavailable');
 assert.equal(resolveLumiTargetEntries([{ key: 'world.sample', ref, reveal: { type: 'scroll', learnerInitiated: true } }], 'world.sample', { width: 20, height: 20 }).target.reveal.learnerInitiated, true);
+assert.equal(normalizeLumiMode('notice'), 'notice', 'NOTICE is a supported semantic pose');
+
+const viewportElement = {};
+const makeDomTarget = ({ rect, parent = viewportElement, obscured = false }) => {
+  const targetElement = { disabled: false, parentElement: parent, getBoundingClientRect: () => rect, contains: (node) => node === targetElement };
+  const view = {
+    getComputedStyle: (element) => element === parent && parent !== viewportElement
+      ? { overflowX: 'hidden', overflowY: 'auto', display: 'block', visibility: 'visible', opacity: '1' }
+      : { overflowX: 'visible', overflowY: 'visible', display: 'block', visibility: 'visible', opacity: '1' },
+    document: { elementFromPoint: () => obscured ? {} : targetElement },
+  };
+  targetElement.ownerDocument = { defaultView: view };
+  return targetElement;
+};
+const clippedParent = { parentElement: viewportElement, getBoundingClientRect: () => ({ left: 0, top: 0, right: 100, bottom: 100, width: 100, height: 100 }) };
+const clippedTarget = makeDomTarget({ rect: { left: 140, top: 30, right: 180, bottom: 70, width: 40, height: 40 }, parent: clippedParent });
+assert.equal(resolveLumiTargetEntries([{ key: 'world.sample', ref: { current: clippedTarget } }], 'world.sample', { width: 400, height: 300, rect: { left: 0, top: 0, right: 400, bottom: 300, width: 400, height: 300 }, element: viewportElement }).status, 'unavailable', 'clipping hides an otherwise in-window target');
+const obscuredTarget = makeDomTarget({ rect: { left: 20, top: 20, right: 80, bottom: 60, width: 60, height: 40 }, obscured: true });
+assert.equal(resolveLumiTargetEntries([{ key: 'world.sample', ref: { current: obscuredTarget } }], 'world.sample', { width: 100, height: 100 }).status, 'unavailable', 'occluded targets are not actionable');
+const belowTarget = makeDomTarget({ rect: { left: 20, top: 130, right: 80, bottom: 170, width: 60, height: 40 } });
+const below = resolveLumiTargetEntries([{ key: 'world.sample', ref: { current: belowTarget }, reveal: { type: 'scroll', learnerInitiated: true } }], 'world.sample', { width: 100, height: 100 });
+assert.equal(below.status, 'offscreen');
+assert.equal(below.target.direction, 'down');
+assert.equal(resolveLumiTargetEntries([{ key: 'world.sample', ref: { current: belowTarget }, reveal: { type: 'scroll', learnerInitiated: false } }], 'world.sample', { width: 100, height: 100 }).status, 'unavailable', 'non-learner-initiated reveal does not expose an offscreen target');
 registry.clear();
 unsubscribeRegistry();
 assert.equal(registry.resolve('world.sample', { width: 400, height: 300 }).status, 'missing', 'context cleanup revokes prior target');

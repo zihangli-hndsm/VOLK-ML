@@ -2611,6 +2611,15 @@ function Workspace() {
 
   const activeExploreHost = activeExploreWorkspace?.host ?? null;
   const activeExploreAgent = activeExploreWorkspace?.agent ?? null;
+  const canResumeExplore = (() => {
+    if (playgroundOpen || activeExploreWorkspace?.record.lifecycle !== EXPLORE_WORKSPACE_LIFECYCLES.PERSISTENT) return false;
+    try {
+      const current = activeExploreWorkspace.host.getState();
+      return Boolean(current?.playgroundId && current?.experimentWorkspace?.activeExperimentId);
+    } catch {
+      return false;
+    }
+  })();
   const handleLumiResultSuggestion = useCallback((suggestionId) => {
     if (suggestionId === 'inspect-loss') {
       document.getElementById('runner-loss-chart')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -2643,7 +2652,7 @@ function Workspace() {
       </nav>
     </header>
 
-    {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenOnboarding={openPhaseAHandoff} onRestartOnboarding={openPhaseAHandoff} onOpenImportedAttention={() => { setG2AnchorNodeId(null); setG2AnchorProjectSessionId(null); setG2AttentionOpen(true); }} t={t} /> : <>
+    {surface === UI_SURFACES.EXPLORE ? <ExploreHome onOpenBigIdea={openBigIdea} onOpenPlayground={openExplorePlayground} onOpenDirector={() => setDirectorOpen(true)} onOpenBuild={() => setSurface(UI_SURFACES.BUILD)} onResumeExplore={() => { if (canResumeExplore) setPlaygroundOpen(true); }} canResumeExplore={canResumeExplore} onOpenImportedAttention={() => { setG2AnchorNodeId(null); setG2AnchorProjectSessionId(null); setG2AttentionOpen(true); }} t={t} /> : <>
       <BuildToolbar projectName={projectName} setProjectName={setProjectName} autosavedAt={autosavedAt} onToggleLeft={toggleLeftPanel} onToggleRight={toggleRightPanel} viewMode={viewMode} setViewMode={setViewMode} setExplanationOpen={setExplanationOpen} selectedNodes={selectedNodes} setCompositeOpen={setCompositeOpen} multiSelectMode={multiSelectMode} setMultiSelectMode={setMultiSelectMode} setExamplesOpen={setExamplesOpen} dataset={dataset} setDataOpen={setDataOpen} exportProject={exportProject} importRef={importRef} importProject={importProject} importTorchExport={importTorchExportDocument} importOnnx={importOnnxDocument} onOpenExplorePlayground={openExplorePlayground} onOpenG2ForNode={(nodeId) => { setG2AnchorNodeId(nodeId); setG2AnchorProjectSessionId(projectSessionIdRef.current); setG2AttentionOpen(true); }} onExploreCurrentSetup={openExploreFromBuild} onOpenExploreCapacityBridge={(nodeId) => openExploreCapacityBridge(nodeId)} canOpenExploreCapacityBridge={canOpenExploreCapacityBridge} selectedCapacityNodeId={selectedCapacityNodeId} capacityBridgeRepair={capacityBridgeRepair} setRunnerOpen={setRunnerOpen} graphOccupied={nodes.length > 0 || edges.length > 0} onOpenBuildIntent={() => setLumiBuildIntentOpen(true)} onOpenGraphEdit={() => setLumiGraphEditOpen(true)} t={t} />
 
     <main data-build-surface className="relative grid min-h-0 flex-1 grid-cols-[0_minmax(0,1fr)_0] gap-3 p-3 lg:grid-cols-[var(--left-panel)_minmax(0,1fr)_var(--right-panel)]" style={{ '--left-panel': `${leftOpen ? leftWidth : 0}px`, '--right-panel': `${rightOpen ? rightWidth : 0}px` }}>

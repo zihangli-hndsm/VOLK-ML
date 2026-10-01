@@ -76,7 +76,7 @@ function DistributionView({ points, feature, t }) {
   </svg>;
 }
 
-export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffordances = [], variant = 'full', question, onOpenFullWorkspace }) {
+export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffordances = [], variant = 'full', question, onOpenFullWorkspace, guidedEpisode = false }) {
   const phenomenonMode = variant === 'phenomenon';
   const plot = phenomenonMode ? PHENOMENON_PLOT : PLOT;
   const { responsive } = usePresentationCapabilities();
@@ -449,20 +449,20 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
   const visibility = snapshot.viewState?.visibility ?? 'both';
   const pathPreview = previewPath;
 
-  return <section data-phenomenon-surface={phenomenonMode ? 'true' : undefined} className={`min-w-0 ${phenomenonMode ? 'rounded-2xl bg-white' : 'rounded-2xl border border-slate-200 bg-white p-3'}`} aria-label={t(phenomenonMode ? 'playground.phenomenon.ariaLabel' : 'playground.workspace.ariaLabel')}>
+  return <section data-phenomenon-surface={phenomenonMode ? 'true' : undefined} data-episode-world-surface={guidedEpisode ? 'true' : undefined} className={`min-w-0 ${phenomenonMode ? 'rounded-2xl bg-white' : 'rounded-2xl border border-slate-200 bg-white p-3'}`} aria-label={t(phenomenonMode ? 'playground.phenomenon.ariaLabel' : 'playground.workspace.ariaLabel')}>
     {phenomenonMode ? <div className="flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
         <p className="text-xl font-black leading-7 text-slate-950">{question ?? t('playground.phenomenon.question')}</p>
         <p className="mt-1 text-xs font-bold text-slate-500">{t('playground.phenomenon.hint')}</p>
       </div>
-      <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label={t('playground.phenomenon.toolsLabel')}>
+      {!guidedEpisode && <div className="flex shrink-0 flex-wrap items-center gap-2" aria-label={t('playground.phenomenon.toolsLabel')}>
         {canSampleAgain && <button data-affordance-id="world.sampleAgain" type="button" onClick={sampleAgain} className="min-h-10 rounded-xl bg-cyan-700 px-3 py-2 text-sm font-black text-white hover:bg-cyan-800 focus:outline-none focus:ring-2 focus:ring-cyan-500">{t('playground.phenomenon.sampleAgain')}</button>}
         {PHENOMENON_TOOLS.map((item) => <button data-phenomenon-tool={item === 'select' ? 'move' : item === 'point' ? 'draw' : item} key={item} type="button" aria-pressed={tool === item}
           aria-label={t(`playground.workspace.tool.${item === 'select' ? 'move' : item === 'point' ? 'draw' : item}`)} onClick={() => setTool(item)}
           className={`min-h-10 rounded-xl px-3 py-2 text-sm font-black ${tool === item ? 'bg-blue-600 text-white' : 'bg-slate-100 text-slate-700'}`}>
         {t(`playground.workspace.tool.${item === 'select' ? 'move' : item === 'point' ? 'draw' : item}`)}
         </button>)}
-      </div>
+      </div>}
     </div> : <div className="flex flex-wrap items-center justify-between gap-3">
       <div>
         <h3 className="text-sm font-black text-slate-900">{t('playground.workspace.title')}</h3>
@@ -494,7 +494,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
         {t(`playground.workspace.layer.${item}`)}
       </button>)}
     </div>}
-    {phenomenonMode && sampleComparison.available && <section data-sample-status="true" className="rounded-xl border border-cyan-200 bg-cyan-50/70 px-3 py-2">
+    {phenomenonMode && !guidedEpisode && sampleComparison.available && <section data-sample-status="true" className="rounded-xl border border-cyan-200 bg-cyan-50/70 px-3 py-2">
       <p className="text-xs font-black text-cyan-950">{t('playground.phenomenon.sampleStatus')}</p>
       <p className="mt-1 text-xs text-cyan-900">{t('playground.phenomenon.sampleQuestion')}</p>
       <button type="button" disabled={!canCompareSamples} onClick={compareSamples} className="mt-2 rounded-lg border border-cyan-300 bg-white px-3 py-2 text-xs font-black text-cyan-900 hover:bg-cyan-100 focus:outline-none focus:ring-2 focus:ring-cyan-500 disabled:cursor-not-allowed disabled:opacity-50">{canCompareSamples ? t('playground.phenomenon.compareSamples') : t('playground.phenomenon.compareSamplesUnavailable')}</button>
@@ -574,7 +574,7 @@ export default function DataWorkspace({ snapshot, onDispatch, t, highlightedAffo
     {phenomenonMode && <div className="flex flex-wrap items-center justify-between gap-2">
       <span className="text-xs font-bold text-slate-500">{t('playground.phenomenon.worldHint')}</span>
       <div className="flex flex-wrap items-center gap-2">
-        <button type="button" disabled={!snapshot.capabilities?.canUndoWorld} onClick={() => onDispatch({ type: 'UNDO_WORLD_ACTION' })} className="ui-motion-interactive rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.phenomenon.undo')}</button>
+        {!guidedEpisode && <button type="button" disabled={!snapshot.capabilities?.canUndoWorld} onClick={() => onDispatch({ type: 'UNDO_WORLD_ACTION' })} className="ui-motion-interactive rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-40">{t('playground.phenomenon.undo')}</button>}
         {onOpenFullWorkspace && <button type="button" onClick={onOpenFullWorkspace} className="ui-motion-interactive rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-black text-slate-700 hover:bg-slate-50">{t('playground.phenomenon.moreWorldTools')}</button>}
       </div>
     </div>}

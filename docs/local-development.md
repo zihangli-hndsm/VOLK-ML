@@ -168,6 +168,45 @@ shortcuts, and view changes emit none. After any meaningful learner action,
 choose **Explore this question** to promote a clean Episode 1 runtime.
 Promotion is idempotent; selecting it again does not create another runtime.
 
+### Intro and LUMI Guidance v1
+
+Start offline with `npm run dev` and open `http://localhost:5173/`. The Explore
+Home Intro can start Episode 1, be skipped and reopened, or leave the learner
+in free Explore, Build, or model import. A saved last entry is a reopen action;
+**Continue current work** appears only while the real persistent Explore host
+is still live in this window.
+
+For a direct clean Episode 1 run, choose **Start my first experiment**. The
+course should initially offer Fit A; after each learner action it should offer
+only the next legal operation. To test non-linear exploration, choose **Explore
+freely** and confirm that automatic prompts stop; **Help me find the next
+step** exposes one local, suggestion-only action. The primary step remains
+visible while Cloud is offline. The World surface hides direct edit/sample
+controls for this Episode, while **More world tools** remains an explicit
+advanced route.
+
+Check Fit A → same-World resample → Fit B → Compare A/B. Compare should show
+Changed / Held constant / Observed outcome, text labels for both fitted lines,
+and a Sampling Variability card only after deterministic evidence. The card
+offers the three continuation questions without executing them. LUMI occupies
+a reserved desktop rail or mobile dock; an offscreen reveal button scrolls
+only after learner activation.
+
+Focused checks:
+
+```text
+npm run check:intro-lumi-guidance
+npm run check:lumi-visible-guidance
+npm run check:episode-1
+```
+
+For manual presentation acceptance, check single English, single Chinese, and
+parallel Chinese/English. At minimum inspect 1280×720, 390×844, 1600px-wide,
+and 2560px-wide viewports; confirm the canvas and legal main action fit the
+first fold at compact/standard sizes, no page-width overflow, and the companion
+retains its static pose under reduced motion. No backend is needed for any of
+these checks.
+
 Useful direct URLs:
 
 ```text

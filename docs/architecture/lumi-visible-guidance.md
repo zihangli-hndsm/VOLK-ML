@@ -25,3 +25,21 @@ The companion exposes the resulting state through additive data attributes and
 uses a static outline as the reduced-motion equivalent of the normal glow or
 motion. Persistent Evidence and one-time feedback remain separate, so opening
 or rerendering Explore cannot replay a completed illumination.
+
+Episode 1 uses the same boundary in a reserved vertical rail rather than the
+floating Explore companion. The runtime-derived course step owns a single
+registered control target. Its measured bounds are intersected with the active
+Explore scrollport and clipping ancestors; hidden, disabled, clipped, or
+obscured targets are not presented as actionable. Position changes caused by
+scroll are coalesced to one animation frame and have no tracking transition;
+new target alignment uses a 550ms transition. Offscreen targets expose only a
+direction and an explicit reveal button that scrolls without activating.
+
+`InquiryEpisodePanel` delegates free-exploration and Help mode to the Explore
+host shell so policy requests can be suspended for the full lifetime of free
+mode. The explicit Help path derives one legal action locally; it does not wait
+for Cloud and the action remains a normal learner-controlled button. The
+vertical rail handles the six companion poses and bounded localized bubble.
+Desktop reserves a fixed-width right column; compact mode uses one scrollable
+content area and a safe-area-aware bottom dock. No viewport/scroll update is a
+semantic event.

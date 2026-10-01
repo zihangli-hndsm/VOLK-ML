@@ -1,0 +1,198 @@
+{
+  "schema": "lumi-context-bubble-browser-v1",
+  "browser": "Google Chrome headless via Chrome DevTools Protocol",
+  "cloud": "off",
+  "contextBubble": {
+    "result": "PASS",
+    "viewports": [
+      {
+        "requestedViewport": "1280x720",
+        "viewport": {
+          "left": 0,
+          "top": 0,
+          "width": 1265,
+          "height": 720,
+          "visualViewportWidth": 1265,
+          "visualViewportHeight": 720,
+          "scale": 1,
+          "devicePixelRatio": 1,
+          "layoutViewportWidth": 1280,
+          "layoutViewportHeight": 720,
+          "documentClientWidth": 1265,
+          "documentScrollWidth": 1265,
+          "bodyScrollWidth": 1265,
+          "scrollbarDelta": 15,
+          "overflowBeyondLayout": 0,
+          "mobileBreakpoint": false
+        },
+        "bubble": {
+          "left": 929.59375,
+          "right": 1247.3125,
+          "top": 546.046875,
+          "bottom": 610.046875,
+          "width": 317.71875,
+          "height": 64
+        },
+        "image": {
+          "left": 1163.5999755859375,
+          "right": 1247.5999755859375,
+          "top": 622.046875,
+          "bottom": 701,
+          "width": 84,
+          "height": 78.953125
+        },
+        "imageLoaded": true,
+        "visible": true,
+        "placement": "above-right",
+        "role": "status",
+        "dismissLabel": "playground.inquiry.card.dismiss",
+        "overlapsImage": false,
+        "insideVisualViewport": true
+      },
+      {
+        "requestedViewport": "390x844",
+        "viewport": {
+          "left": 0,
+          "top": 0,
+          "width": 390,
+          "height": 844,
+          "visualViewportWidth": 390,
+          "visualViewportHeight": 844,
+          "scale": 1,
+          "devicePixelRatio": 1,
+          "layoutViewportWidth": 407,
+          "layoutViewportHeight": 881,
+          "documentClientWidth": 390,
+          "documentScrollWidth": 407,
+          "bodyScrollWidth": 407,
+          "scrollbarDelta": 17,
+          "overflowBeyondLayout": 0,
+          "mobileBreakpoint": true
+        },
+        "bubble": {
+          "left": 64,
+          "right": 381.71875,
+          "top": 731.453125,
+          "bottom": 795.453125,
+          "width": 317.71875,
+          "height": 64
+        },
+        "image": {
+          "left": 331.2093811035156,
+          "right": 395.2093811035156,
+          "top": 807.453125,
+          "bottom": 867.609375,
+          "width": 64,
+          "height": 60.15625
+        },
+        "imageLoaded": true,
+        "visible": true,
+        "placement": "above-constrained",
+        "role": "status",
+        "dismissLabel": "playground.inquiry.card.dismiss",
+        "overlapsImage": false,
+        "insideVisualViewport": true
+      },
+      {
+        "requestedViewport": "1280x300",
+        "viewport": {
+          "left": 0,
+          "top": 0,
+          "width": 1265,
+          "height": 300,
+          "visualViewportWidth": 1265,
+          "visualViewportHeight": 300,
+          "scale": 1,
+          "devicePixelRatio": 1,
+          "layoutViewportWidth": 1280,
+          "layoutViewportHeight": 300,
+          "documentClientWidth": 1265,
+          "documentScrollWidth": 1265,
+          "bodyScrollWidth": 1265,
+          "scrollbarDelta": 15,
+          "overflowBeyondLayout": 0,
+          "mobileBreakpoint": false
+        },
+        "bubble": {
+          "left": 929.59375,
+          "right": 1247.3125,
+          "top": 126.046875,
+          "bottom": 190.046875,
+          "width": 317.71875,
+          "height": 64
+        },
+        "image": {
+          "left": 1163.5999755859375,
+          "right": 1247.5999755859375,
+          "top": 202.046875,
+          "bottom": 281,
+          "width": 84,
+          "height": 78.953125
+        },
+        "imageLoaded": true,
+        "visible": true,
+        "placement": "above-right",
+        "role": "status",
+        "dismissLabel": "playground.inquiry.card.dismiss",
+        "overlapsImage": false,
+        "insideVisualViewport": true
+      },
+      {
+        "requestedViewport": "320x240",
+        "viewport": {
+          "left": 0,
+          "top": 0,
+          "width": 407,
+          "height": 305.25,
+          "visualViewportWidth": 407,
+          "visualViewportHeight": 305.25,
+          "scale": 0.7862407565116882,
+          "devicePixelRatio": 1,
+          "layoutViewportWidth": 407,
+          "layoutViewportHeight": 306,
+          "documentClientWidth": 320,
+          "documentScrollWidth": 407,
+          "bodyScrollWidth": 407,
+          "scrollbarDelta": 87,
+          "overflowBeyondLayout": 0,
+          "mobileBreakpoint": true
+        },
+        "bubble": {
+          "left": 77.203125,
+          "right": 394.921875,
+          "top": 156.453125,
+          "bottom": 220.453125,
+          "width": 317.71875,
+          "height": 64
+        },
+        "image": {
+          "left": 331.2093811035156,
+          "right": 395.2093811035156,
+          "top": 232.453125,
+          "bottom": 292.609375,
+          "width": 64,
+          "height": 60.15625
+        },
+        "imageLoaded": true,
+        "visible": true,
+        "placement": "above-right",
+        "role": "status",
+        "dismissLabel": "playground.inquiry.card.dismiss",
+        "overlapsImage": false,
+        "insideVisualViewport": true
+      }
+    ],
+    "zoom": {
+      "result": "NOT_TESTED",
+      "reason": "The available CDP page-scale control emulates pinch zoom rather than browser zoom; actual CSS/visual viewport changes are covered by the viewport matrix."
+    },
+    "dismissal": "PASS",
+    "timeoutCoveredBy": "mounted lifecycle natural expiry checkpoint"
+  },
+  "artifacts": [
+    "lumi-context-bubble-1280x720.png",
+    "lumi-context-bubble-390x844.png",
+    "lumi-context-bubble-1280x300.png",
+    "lumi-context-bubble-320x240.png"
+  ]
+}

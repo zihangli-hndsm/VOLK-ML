@@ -27,6 +27,7 @@ const MODE_ASSETS = Object.freeze({
   illuminate: illuminateAsset,
   explore: guideAsset,
   think: thinkAsset,
+  notice: observeAsset,
 });
 
 export default function Lumi({ mode = 'idle', presence = 'ambient', label, onClick, className = '', expanded = undefined }) {
