@@ -10,8 +10,8 @@ import {
   H2_LOCAL_PYTHON_PROFILE_V1,
   H2_LOCAL_PYTHON_RESPONSE_V1,
   attachH2LocalPythonAuthorizationV1,
-  validateH2LocalPythonRequestV1,
-  validateH2LocalPythonResultV1,
+  validateH2LocalPythonRequestV2,
+  validateH2LocalPythonResultV2,
 } from '../../src/core/execution/h2LocalPython.js';
 
 const MODULE_DIR = path.dirname(fileURLToPath(import.meta.url));
@@ -24,6 +24,8 @@ const DEFAULT_PORT = 8766;
 const BODY_LIMIT = H2_LOCAL_PYTHON_LIMITS.requestBytes;
 const OUTPUT_LIMIT = H2_LOCAL_PYTHON_LIMITS.responseBytes;
 const AUTHORIZATION_TTL_MS = 60_000;
+const CONNECTION_TTL_MS = 8 * 60 * 60 * 1000;
+const SUPERVISOR_JOB_MEMORY_LIMIT_EXIT_CODE = 80;
 const ALLOWED_ORIGINS = new Set(['http://localhost:5173', 'http://127.0.0.1:5173']);
 const AUTHORIZATIONS = new Map();
 
@@ -77,7 +79,7 @@ function jsonResponse(response, status, value, origin = null) {
     ...(origin ? {
       'access-control-allow-origin': origin,
       'access-control-allow-methods': 'GET, POST, OPTIONS',
-      'access-control-allow-headers': 'content-type',
+      'access-control-allow-headers': 'content-type,authorization,x-volk-h2-connection-id',
       'access-control-max-age': '300',
       vary: 'Origin',
     } : {}),
@@ -117,6 +119,31 @@ function cleanupOldAuthorizations(now = Date.now()) {
     if (authorization.expiresAtMs <= now) AUTHORIZATIONS.delete(id);
   }
   while (AUTHORIZATIONS.size > 32) AUTHORIZATIONS.delete(AUTHORIZATIONS.keys().next().value);
+}
+
+function createConnectionCredential(override) {
+  const token = override?.token ?? crypto.randomBytes(32).toString('base64url');
+  const expiresAt = override?.expiresAt === undefined ? Date.now() + CONNECTION_TTL_MS : Number(override.expiresAt);
+  return { token, expiresAt, connectionId: crypto.randomUUID() };
+}
+
+function secureTokenEqual(supplied, expected) {
+  if (typeof supplied !== 'string' || typeof expected !== 'string'
+    || !/^[A-Za-z0-9_-]{43}$/.test(supplied) || !/^[A-Za-z0-9_-]{43}$/.test(expected)) return false;
+  return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
+}
+
+function connectionStatus(request, credential, { requireConnectionId = true } = {}) {
+  const authorization = request.headers.authorization;
+  const suppliedToken = typeof authorization === 'string' && authorization.startsWith('Bearer ')
+    ? authorization.slice(7) : null;
+  if (typeof suppliedToken !== 'string') return { ok: false, code: 'H2_CONNECTION_REQUIRED' };
+  if (!secureTokenEqual(suppliedToken, credential.token)) return { ok: false, code: 'H2_CONNECTION_INVALID' };
+  if (!Number.isFinite(credential.expiresAt) || credential.expiresAt <= Date.now()) return { ok: false, code: 'H2_CONNECTION_EXPIRED' };
+  if (requireConnectionId && request.headers['x-volk-h2-connection-id'] !== credential.connectionId) {
+    return { ok: false, code: 'H2_CONNECTION_STALE' };
+  }
+  return { ok: true, connectionId: credential.connectionId };
 }
 
 function processIsAlive(pid) {
@@ -162,12 +189,21 @@ function waitForProcessGone(pid, timeoutMs = 4000) {
   });
 }
 
-function parseSupervisorOutput(stdout, stderr, validated, runtime, { cancelled, timedOut, childPid, setupFailed }) {
+export function parseSupervisorOutput(stdout, stderr, validated, runtime, {
+  cancelled, timedOut, childPid, setupFailed, supervisorExitCode, jobMemoryLimitExceeded,
+}) {
   if (cancelled || timedOut) return { status: 408, value: failure(timedOut ? 'H2_DEADLINE_EXCEEDED' : 'H2_CANCELLED', {
     cancellationRequested: true,
     processTerminated: childPid === null,
     resultDiscarded: true,
   }) };
+  if (supervisorExitCode === SUPERVISOR_JOB_MEMORY_LIMIT_EXIT_CODE && jobMemoryLimitExceeded) {
+    return { status: 502, value: failure('H2_PROCESS_MEMORY_LIMIT_EXCEEDED', {
+      cancellationRequested: false,
+      processTerminated: childPid === null,
+      resultDiscarded: true,
+    }) };
+  }
   let body;
   try { body = JSON.parse(stdout.toString('utf8')); } catch {
     return { status: 502, value: failure(setupFailed ? 'H2_JOB_OBJECT_UNAVAILABLE' : 'H2_WORKER_RESPONSE_INVALID', {
@@ -194,7 +230,7 @@ function parseSupervisorOutput(stdout, stderr, validated, runtime, { cancelled, 
   }
   try {
     body.lifecycle = { cancellationRequested: false, processTerminated: childPid === null, resultDiscarded: false };
-    validateH2LocalPythonResultV1(body, validated);
+    validateH2LocalPythonResultV2(body, validated);
     return { status: 200, value: body };
   } catch (error) {
     return { status: 502, value: failure(safeCode(error, 'H2_WORKER_RESULT_INVALID'), { processTerminated: childPid === null }) };
@@ -265,6 +301,7 @@ async function runTraining(request, validated, { python, runs, signal }) {
     const endedMatch = active.stderrText.match(/H2_PROCESS_TERMINATED:(\d+)/);
     if (endedMatch && Number(endedMatch[1]) === active.childPid) active.childTerminated = true;
     if (active.stderrText.includes('H2_JOB_SETUP_FAILED') || active.stderrText.includes('H2_SUPERVISOR_UNAVAILABLE')) active.setupFailed = true;
+    if (active.stderrText.split(/\r?\n/).includes('H2_JOB_MEMORY_LIMIT_EXCEEDED')) active.jobMemoryLimitExceeded = true;
     active.stderr.push(Buffer.from(chunk));
     while (active.stderr.reduce((sum, part) => sum + part.byteLength, 0) > 4096) active.stderr.shift();
   });
@@ -298,6 +335,8 @@ async function runTraining(request, validated, { python, runs, signal }) {
       timedOut: active.timedOut,
       childPid: processGone ? null : active.childPid,
       setupFailed: active.setupFailed,
+      supervisorExitCode: ended.code,
+      jobMemoryLimitExceeded: active.jobMemoryLimitExceeded === true,
     });
   } finally {
     fs.rmSync(runDirectory, { recursive: true, force: true });
@@ -306,8 +345,9 @@ async function runTraining(request, validated, { python, runs, signal }) {
 
 let activeRun = null;
 
-export function createH2LocalPythonServer({ host = DEFAULT_HOST, port = DEFAULT_PORT } = {}) {
+export function createH2LocalPythonServer({ host = DEFAULT_HOST, port = DEFAULT_PORT, connectionCredential } = {}) {
   if (host !== DEFAULT_HOST) throw new TypeError('H2 coordinator may bind only to 127.0.0.1.');
+  const credential = createConnectionCredential(connectionCredential);
   const paths = environmentPaths();
   if (paths) reapOwnedStaleRuns(paths);
   const server = http.createServer(async (request, response) => {
@@ -324,7 +364,7 @@ export function createH2LocalPythonServer({ host = DEFAULT_HOST, port = DEFAULT_
       response.writeHead(204, {
         'access-control-allow-origin': origin,
         'access-control-allow-methods': 'GET, POST, OPTIONS',
-        'access-control-allow-headers': 'content-type',
+        'access-control-allow-headers': 'content-type,authorization,x-volk-h2-connection-id',
         'access-control-max-age': '300',
         vary: 'Origin',
       });
@@ -333,12 +373,17 @@ export function createH2LocalPythonServer({ host = DEFAULT_HOST, port = DEFAULT_
     }
     const url = new URL(request.url, `http://${DEFAULT_HOST}:${port}`);
     if (request.method === 'GET' && url.pathname === '/v1/h2/health') {
+      const connection = connectionStatus(request, credential, { requireConnectionId: false });
       jsonResponse(response, 200, {
-        schemaVersion: 'volk.h2.health.v1',
+        schemaVersion: 'volk.h2.health.v2',
         profile: H2_LOCAL_PYTHON_PROFILE_V1,
-        available: process.platform === 'win32' && runtimeAvailable(),
+        connected: connection.ok,
+        connectionId: connection.ok ? connection.connectionId : null,
+        available: connection.ok && process.platform === 'win32' && runtimeAvailable(),
         platform: process.platform === 'win32' ? 'win32' : 'unsupported',
-        reason: process.platform !== 'win32' ? 'H2_WINDOWS_RUNTIME_REQUIRED' : runtimeAvailable() ? null : 'H2_RUNTIME_UNAVAILABLE',
+        reason: !connection.ok ? connection.code
+          : process.platform !== 'win32' ? 'H2_WINDOWS_RUNTIME_REQUIRED'
+            : runtimeAvailable() ? null : 'H2_RUNTIME_UNAVAILABLE',
         limits: { ...H2_LOCAL_PYTHON_LIMITS },
       }, origin);
       return;
@@ -349,6 +394,11 @@ export function createH2LocalPythonServer({ host = DEFAULT_HOST, port = DEFAULT_
     }
     if (origin === null) {
       jsonResponse(response, 403, failure('H2_ORIGIN_REQUIRED'));
+      return;
+    }
+    const connection = connectionStatus(request, credential);
+    if (!connection.ok) {
+      jsonResponse(response, 401, failure(connection.code), origin);
       return;
     }
     let body;
@@ -362,7 +412,7 @@ export function createH2LocalPythonServer({ host = DEFAULT_HOST, port = DEFAULT_
           jsonResponse(response, 503, failure('H2_RUNTIME_UNAVAILABLE'), origin);
           return;
         }
-        const validated = await validateH2LocalPythonRequestV1(body, { requireAuthorization: false });
+        const validated = await validateH2LocalPythonRequestV2(body, { requireAuthorization: false });
         const authorizationId = `h2-auth-${crypto.randomUUID()}`;
         const nonce = quoteCode();
         const expiresAt = new Date(Date.now() + AUTHORIZATION_TTL_MS).toISOString();
@@ -379,6 +429,7 @@ export function createH2LocalPythonServer({ host = DEFAULT_HOST, port = DEFAULT_
           expiresAtMs: Date.parse(expiresAt),
           nonce,
           sessionId: validated.request.sessionId,
+          connectionId: connection.connectionId,
           consumed: false,
         });
         jsonResponse(response, 200, { schemaVersion: 'volk.h2.authorization.v1', authorization }, origin);
@@ -393,9 +444,10 @@ export function createH2LocalPythonServer({ host = DEFAULT_HOST, port = DEFAULT_
       if (!response.writableEnded) abortController.abort('disconnect');
     });
     try {
-      const validated = await validateH2LocalPythonRequestV1(body);
+      const validated = await validateH2LocalPythonRequestV2(body);
       const authorization = AUTHORIZATIONS.get(body.authorization.authorizationId);
       if (!authorization || authorization.consumed || authorization.expiresAtMs <= Date.now()
+        || authorization.connectionId !== connection.connectionId
         || authorization.sessionId !== body.sessionId
         || authorization.requestFingerprint !== body.authorization.requestFingerprint
         || authorization.nonce !== body.authorization.nonce
@@ -415,6 +467,7 @@ export function createH2LocalPythonServer({ host = DEFAULT_HOST, port = DEFAULT_
       if (!response.destroyed) jsonResponse(response, 422, failure(safeCode(error)), origin);
     }
   });
+  server.connectionCredential = credential;
   server.on('close', () => {
     if (activeRun?.supervisor) activeRun.supervisor.kill('SIGKILL');
   });
@@ -431,6 +484,7 @@ if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.me
   const port = Number(process.env.VOLK_H2_PORT ?? DEFAULT_PORT);
   createH2LocalPythonServer({ port }).then((server) => {
     const address = server.address();
+    process.stdout.write(`H2_PAIRING_TOKEN=${server.connectionCredential.token};H2_PAIRING_EXPIRES_AT=${server.connectionCredential.expiresAt}\n`);
     process.stdout.write(`VOLK_H2_LOCAL_PYTHON=http://${DEFAULT_HOST}:${address.port}\n`);
   }).catch((error) => {
     process.stderr.write(`H2_COORDINATOR_START_FAILED:${safeCode(error, 'H2_COORDINATOR_START_FAILED')}\n`);

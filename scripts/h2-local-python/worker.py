@@ -146,7 +146,7 @@ def verify_dropout_modes(model):
 
 
 def train(source_path, request, runtime):
-    if request.get("schemaVersion") != "volk.h2.request.v1" or request.get("profile") != PROFILE:
+    if request.get("schemaVersion") != "volk.h2.request.v2" or request.get("profile") != PROFILE:
         fail("H2_REQUEST_VERSION_UNSUPPORTED")
     source = expected_run_folder(source_path)
     source_bytes = source.read_bytes()
@@ -238,7 +238,7 @@ def train(source_path, request, runtime):
 
     finished_at = time.time()
     result = {
-        "schemaVersion": "volk.h2.result.v1",
+        "schemaVersion": "volk.h2.result.v2",
         "status": "succeeded",
         "runIdentity": {
             "runId": runtime["runId"],
@@ -248,6 +248,14 @@ def train(source_path, request, runtime):
             "datasetFingerprint": request["identity"]["datasetFingerprint"],
             "splitFingerprint": request["identity"]["splitFingerprint"],
             "configFingerprint": runtime["configFingerprint"],
+            "targetSemantics": {
+                "task": request_data["task"],
+                "targetName": request_data["targetName"],
+                "classMapping": [
+                    {"sourceValue": value, "classIndex": index}
+                    for index, value in enumerate(request_data["classVocabulary"])
+                ],
+            },
         },
         "parameters": package_parameters(model),
         "epochLoss": [float(value) for value in losses],

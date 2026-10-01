@@ -2,8 +2,8 @@ import {
   H2_LOCAL_PYTHON_PROFILE_V1,
   H2_LOCAL_PYTHON_RESPONSE_V1,
   attachH2LocalPythonAuthorizationV1,
-  validateH2LocalPythonResultV1,
-  validateH2LocalPythonRequestV1,
+  validateH2LocalPythonResultV2,
+  validateH2LocalPythonRequestV2,
 } from '../core/execution/h2LocalPython.js';
 
 const configuredUrl = import.meta.env.VITE_VOLK_H2_LOCAL_PYTHON_URL ?? '';
@@ -32,12 +32,20 @@ async function readJson(response) {
   try { return JSON.parse(text); } catch { throw clientError('H2_RESPONSE_MALFORMED'); }
 }
 
-async function requestJson(url, body, signal) {
+function connectionHeaders(token, connectionId = null) {
+  if (!token) return {};
+  return {
+    Authorization: `Bearer ${token}`,
+    ...(connectionId ? { 'X-Volk-H2-Connection-Id': connectionId } : {}),
+  };
+}
+
+async function requestJson(url, body, signal, token, connectionId = null) {
   let response;
   try {
     response = await fetch(url, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...connectionHeaders(token, connectionId) },
       body: JSON.stringify(body),
       signal,
       cache: 'no-store',
@@ -59,24 +67,30 @@ export function isH2LocalPythonConfigured() {
   return Boolean(configuredUrl);
 }
 
-export async function checkH2LocalPythonHealth({ signal } = {}) {
+export async function checkH2LocalPythonHealth({ signal, token = '' } = {}) {
   let url;
   try { url = new URL('/v1/h2/health', localBaseUrl()); } catch (error) { return { available: false, reason: error.code ?? 'H2_COMPANION_URL_INVALID' }; }
   try {
-    const response = await fetch(url, { signal, cache: 'no-store' });
+    const response = await fetch(url, { signal, cache: 'no-store', headers: connectionHeaders(token) });
     const body = await readJson(response);
-    if (!response.ok || body.schemaVersion !== 'volk.h2.health.v1' || body.profile !== H2_LOCAL_PYTHON_PROFILE_V1
-      || typeof body.available !== 'boolean') return { available: false, reason: 'H2_HEALTH_RESPONSE_INVALID' };
-    return { available: body.available, reason: body.reason ?? null };
+    if (!response.ok || body.schemaVersion !== 'volk.h2.health.v2' || body.profile !== H2_LOCAL_PYTHON_PROFILE_V1
+      || typeof body.connected !== 'boolean' || typeof body.available !== 'boolean'
+      || (body.connectionId !== null && typeof body.connectionId !== 'string')
+      || (body.available && (!body.connected || !body.connectionId))) return { available: false, reason: 'H2_HEALTH_RESPONSE_INVALID' };
+    return { available: body.available, connected: body.connected, connectionId: body.connectionId, reason: body.reason ?? null };
   } catch (error) {
     return { available: false, reason: error.code ?? 'H2_COMPANION_OFFLINE' };
   }
 }
 
-export async function runH2LocalPythonFit(request, { signal } = {}) {
+export async function runH2LocalPythonFit(request, { signal, connection } = {}) {
   const base = localBaseUrl();
   if (request?.identity?.normalizedRequestFingerprint === undefined) throw clientError('H2_REQUEST_IDENTITY_INVALID');
-  const authorizationEnvelope = await requestJson(new URL('/v1/h2/authorize', base), request, signal);
+  if (typeof connection?.token !== 'string' || typeof connection?.connectionId !== 'string') throw clientError('H2_CONNECTION_REQUIRED');
+  const health = await checkH2LocalPythonHealth({ signal, token: connection.token });
+  if (!health.available || !health.connectionId) throw clientError(health.reason ?? 'H2_CONNECTION_REQUIRED');
+  if (health.connectionId !== connection.connectionId) throw clientError('H2_CONNECTION_STALE');
+  const authorizationEnvelope = await requestJson(new URL('/v1/h2/authorize', base), request, signal, connection.token, connection.connectionId);
   if (authorizationEnvelope?.schemaVersion !== 'volk.h2.authorization.v1'
     || !authorizationEnvelope.authorization || Object.keys(authorizationEnvelope.authorization).sort().join(',')
       !== 'authorizationId,expiresAt,nonce,requestFingerprint'
@@ -87,11 +101,11 @@ export async function runH2LocalPythonFit(request, { signal } = {}) {
     || typeof authorizationEnvelope.authorization.nonce !== 'string'
     || authorizationEnvelope.authorization.nonce.length < 16) throw clientError('H2_AUTHORIZATION_INVALID');
   const signedRequest = attachH2LocalPythonAuthorizationV1(request, authorizationEnvelope.authorization);
-  const validatedRequest = await validateH2LocalPythonRequestV1(signedRequest, { compile: false });
-  const response = await requestJson(new URL('/v1/h2/fit', base), signedRequest, signal);
+  const validatedRequest = await validateH2LocalPythonRequestV2(signedRequest, { compile: false });
+  const response = await requestJson(new URL('/v1/h2/fit', base), signedRequest, signal, connection.token, connection.connectionId);
   if (response.schemaVersion === H2_LOCAL_PYTHON_RESPONSE_V1 && response.status === 'failed') {
     throw clientError(response.error?.code ?? 'H2_POLICY_RESPONSE_INVALID');
   }
-  try { validateH2LocalPythonResultV1(response, validatedRequest); } catch { throw clientError('H2_POLICY_RESPONSE_INVALID'); }
+  try { validateH2LocalPythonResultV2(response, validatedRequest); } catch { throw clientError('H2_POLICY_RESPONSE_INVALID'); }
   return { request: signedRequest, validated: validatedRequest, result: response };
 }

@@ -3,8 +3,9 @@ import { compilePipelineToPyTorch, graphToIR } from '../compiler.js';
 import { sha256Utf8 } from '../sourceExportManifest.js';
 
 export const H2_LOCAL_PYTHON_PROFILE_V1 = 'h2-tabular-sequential-v1';
-export const H2_LOCAL_PYTHON_REQUEST_V1 = 'volk.h2.request.v1';
+export const H2_LOCAL_PYTHON_REQUEST_V2 = 'volk.h2.request.v2';
 export const H2_LOCAL_PYTHON_RESPONSE_V1 = 'volk.h2.response.v1';
+export const H2_LOCAL_PYTHON_RESULT_V2 = 'volk.h2.result.v2';
 export const H2_LOCAL_PYTHON_COMPILER_VERSION = 'volk-ir-v2-h2-local-python-v1';
 export const H2_LOCAL_PYTHON_LIMITS = Object.freeze({
   rows: 4096,
@@ -28,7 +29,7 @@ const REQUEST_KEYS = ['schemaVersion', 'sessionId', 'authorization', 'identity',
 const REQUEST_DRAFT_KEYS = REQUEST_KEYS.filter((key) => key !== 'authorization');
 const IDENTITY_KEYS = ['projectId', 'graphFingerprint', 'datasetFingerprint', 'splitFingerprint', 'registryFingerprint', 'compilerVersion', 'normalizedRequestFingerprint'];
 const AUTHORIZATION_KEYS = ['authorizationId', 'requestFingerprint', 'expiresAt', 'nonce'];
-const DATASET_KEYS = ['featureNames', 'targetName', 'task', 'classLabels', 'rows'];
+const DATASET_KEYS = ['featureNames', 'targetName', 'task', 'classLabels', 'classVocabulary', 'rows'];
 const ROW_KEYS = ['features', 'target'];
 const SPLIT_KEYS = ['algorithm', 'seed', 'trainRatio', 'trainIndices', 'testIndices'];
 const TRAINING_KEYS = ['seed', 'epochs', 'batchSize', 'shuffle'];
@@ -248,14 +249,26 @@ function graphFacts(graph, dataset) {
   }
   const denseNodes = architecture.filter((item) => item.manifest.op === 'dense');
   if (denseNodes.length < 1 || denseNodes.length > H2_LOCAL_PYTHON_LIMITS.hiddenLayers + 1) fail('H2_GRAPH_LAYER_LIMIT');
+  const declaredInputWidth = input.projection.parameters.shape;
+  if (typeof declaredInputWidth !== 'string' || !/^[1-9][0-9]*$/.test(declaredInputWidth)
+    || Number(declaredInputWidth) !== dataset.featureNames.length) fail('H2_GRAPH_INPUT_SHAPE_INVALID');
+  let expectedInputFeatures = dataset.featureNames.length;
+  for (let denseIndex = 0; denseIndex < denseNodes.length; denseIndex += 1) {
+    const dense = denseNodes[denseIndex];
+    const { input_features: inputFeatures, units } = dense.projection.parameters;
+    const maxInputFeatures = denseIndex === 0 ? H2_LOCAL_PYTHON_LIMITS.features : H2_LOCAL_PYTHON_LIMITS.hiddenWidth;
+    if (!Number.isInteger(inputFeatures) || inputFeatures < 1 || inputFeatures > maxInputFeatures
+      || !Number.isInteger(units) || units < 1 || units > H2_LOCAL_PYTHON_LIMITS.hiddenWidth) fail('H2_GRAPH_LAYER_DIMENSION_INVALID');
+    if (inputFeatures !== expectedInputFeatures) fail('H2_GRAPH_LAYER_DIMENSION_MISMATCH');
+    expectedInputFeatures = units;
+  }
   const hiddenDense = denseNodes.slice(0, -1);
   if (hiddenDense.some((item) => item.projection.parameters.units > H2_LOCAL_PYTHON_LIMITS.hiddenWidth)) fail('H2_GRAPH_WIDTH_LIMIT');
   const actualDenseParameters = denseNodes.reduce((sum, item) => sum
     + item.projection.parameters.input_features * item.projection.parameters.units
     + (item.projection.parameters.use_bias ? item.projection.parameters.units : 0), 0);
   if (actualDenseParameters > H2_LOCAL_PYTHON_LIMITS.parameters) fail('H2_GRAPH_PARAMETER_LIMIT');
-  if (input.projection.parameters.dtype !== 'float32'
-    || Number(String(input.projection.parameters.shape).split(',')[0].trim()) !== dataset.featureNames.length) fail('H2_GRAPH_INPUT_SHAPE_INVALID');
+  if (input.projection.parameters.dtype !== 'float32') fail('H2_GRAPH_INPUT_SHAPE_INVALID');
   const expectedOps = new Set([...layers.map((item) => item.manifest.op), 'tensor_input', 'model_output', 'train_test_split', 'supervised_trainer', loss.manifest.op, optimizer.manifest.op]);
   if (graph.nodes.some(({ manifest }) => !expectedOps.has(manifest.op))) fail('H2_GRAPH_OPERATION_UNSUPPORTED');
   const splitRatio = splitNode.projection.parameters.train_ratio;
@@ -285,18 +298,58 @@ function normalizeDataset(dataset) {
     || !Array.isArray(dataset.classLabels) || dataset.classLabels.length > 32
     || dataset.classLabels.some((label) => !Number.isInteger(label) || label < 0 || label > 31)
     || new Set(dataset.classLabels).size !== dataset.classLabels.length
+    || !Array.isArray(dataset.classVocabulary) || dataset.classVocabulary.length > 32
+    || dataset.classVocabulary.some((value) => !(typeof value === 'string' && value.trim().length > 0 && value.length <= 128)
+      && !(typeof value === 'number' && Number.isFinite(value)))
+    || new Set(dataset.classVocabulary.map((value) => stableH2Json(value))).size !== dataset.classVocabulary.length
     || !Array.isArray(dataset.rows) || dataset.rows.length < 2 || dataset.rows.length > H2_LOCAL_PYTHON_LIMITS.rows) fail('H2_DATASET_SCHEMA_INVALID');
   if (dataset.task === 'classification' && (dataset.classLabels.length < 2
-    || dataset.classLabels.some((label, index) => label !== index))) fail('H2_DATASET_CLASS_LABELS_INVALID');
-  if (dataset.task === 'regression' && dataset.classLabels.length !== 0) fail('H2_DATASET_CLASS_LABELS_INVALID');
+    || dataset.classLabels.some((label, index) => label !== index)
+    || dataset.classVocabulary.length !== dataset.classLabels.length)) fail('H2_DATASET_CLASS_LABELS_INVALID');
+  if (dataset.task === 'regression' && (dataset.classLabels.length !== 0 || dataset.classVocabulary.length !== 0)) fail('H2_DATASET_CLASS_LABELS_INVALID');
   const rows = dataset.rows.map((row) => {
     assertExact(row, ROW_KEYS, 'H2_DATASET_ROW_INVALID');
-    if (!Array.isArray(row.features) || row.features.length !== dataset.featureNames.length
-      || row.features.some((value) => !Number.isFinite(value)) || !Number.isFinite(row.target)) fail('H2_DATASET_ROW_INVALID');
+    if (!Array.isArray(row.features) || row.features.length !== dataset.featureNames.length) fail('H2_DATASET_ROW_INVALID');
+    if (row.features.some((value) => typeof value !== 'number' || !Number.isFinite(value))
+      || typeof row.target !== 'number' || !Number.isFinite(row.target)) fail('H2_DATASET_NUMERIC_VALUE_INVALID');
     if (dataset.task === 'classification' && (!Number.isInteger(row.target) || row.target < 0 || row.target >= dataset.classLabels.length)) fail('H2_DATASET_TARGET_INVALID');
     return { features: row.features, target: row.target };
   });
-  return { featureNames: dataset.featureNames, targetName: dataset.targetName, task: dataset.task, classLabels: dataset.classLabels, rows };
+  return {
+    featureNames: dataset.featureNames,
+    targetName: dataset.targetName,
+    task: dataset.task,
+    classLabels: dataset.classLabels,
+    classVocabulary: dataset.classVocabulary,
+    rows,
+  };
+}
+
+function numericDatasetValue(value) {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim().length > 0) {
+    const parsed = Number(value.trim());
+    if (Number.isFinite(parsed)) return parsed;
+  }
+  fail('H2_DATASET_NUMERIC_VALUE_INVALID');
+}
+
+function categoricalDatasetValue(value) {
+  if (typeof value === 'string' && value.trim().length > 0 && value.length <= 128) return value;
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  fail('H2_DATASET_CLASS_VALUE_INVALID');
+}
+
+function categoryKey(value) {
+  return stableH2Json(value);
+}
+
+function targetSemantics(dataset) {
+  return {
+    task: dataset.task,
+    targetName: dataset.targetName,
+    classMapping: dataset.classVocabulary.map((sourceValue, classIndex) => ({ sourceValue, classIndex })),
+  };
 }
 
 function stripClaimedFingerprints(request) {
@@ -323,6 +376,7 @@ function requestConfig(request) {
   return {
     task: request.dataset.task,
     classLabels: request.dataset.classLabels,
+    classVocabulary: request.dataset.classVocabulary,
     split: request.split,
     training: request.training,
     profile: request.profile,
@@ -330,7 +384,7 @@ function requestConfig(request) {
 }
 
 function normalizedBody({ sessionId, identity, graph, dataset, split, training, profile }) {
-  return { schemaVersion: H2_LOCAL_PYTHON_REQUEST_V1, sessionId, identity, graph, dataset, split, training, profile };
+  return { schemaVersion: H2_LOCAL_PYTHON_REQUEST_V2, sessionId, identity, graph, dataset, split, training, profile };
 }
 
 async function computeIdentity(body, normalizedGraphValue) {
@@ -356,7 +410,7 @@ async function computeIdentity(body, normalizedGraphValue) {
 }
 
 /** Builds only the strict semantic request; layout, selection, and runtime UI state are excluded. */
-export async function projectH2LocalPythonRequestV1({ sessionId, nodes, edges, dataset } = {}) {
+export async function projectH2LocalPythonRequestV2({ sessionId, nodes, edges, dataset } = {}) {
   assertId(sessionId);
   if (!Array.isArray(nodes) || !Array.isArray(edges) || !dataset) fail('H2_REQUEST_INPUT_INVALID');
   const graph = {
@@ -381,7 +435,7 @@ export async function projectH2LocalPythonRequestV1({ sessionId, nodes, edges, d
   const split = makeSplit(wireDataset.rows, facts.trainRatio);
   const training = { seed: 2026, epochs: facts.training.epochs, batchSize: facts.training.batch_size, shuffle: facts.training.shuffle };
   const bare = {
-    schemaVersion: H2_LOCAL_PYTHON_REQUEST_V1,
+    schemaVersion: H2_LOCAL_PYTHON_REQUEST_V2,
     sessionId,
     identity: {},
     graph: normalized.projection,
@@ -402,20 +456,28 @@ function datasetForWire(dataset) {
   const featureNames = dataset.featureColumns;
   const rawTargetValues = dataset.rows.map((row) => row?.[dataset.targetColumn]);
   let classLabels = [];
+  let classVocabulary = [];
   let labelMap = null;
   if (dataset.task === 'classification') {
-    const labels = [...new Set(rawTargetValues.map((value) => String(value)))].sort();
-    if (labels.length < 2 || labels.length > 32) fail('H2_DATASET_CLASS_LABELS_INVALID');
-    classLabels = labels.map((_, index) => index);
-    labelMap = new Map(labels.map((value, index) => [value, index]));
+    const values = rawTargetValues.map(categoricalDatasetValue);
+    classVocabulary = [...new Map(values.map((value) => [categoryKey(value), value])).entries()]
+      .sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)
+      .map(([, value]) => value);
+    if (classVocabulary.length < 2 || classVocabulary.length > 32) fail('H2_DATASET_CLASS_LABELS_INVALID');
+    classLabels = classVocabulary.map((_, index) => index);
+    labelMap = new Map(classVocabulary.map((value, index) => [categoryKey(value), index]));
   }
-  const rows = dataset.rows.map((row) => ({
-    features: featureNames.map((column) => Number(row?.[column])),
-    target: dataset.task === 'classification'
-      ? labelMap.get(String(row?.[dataset.targetColumn]))
-      : Number(row?.[dataset.targetColumn]),
-  }));
-  return normalizeDataset({ featureNames, targetName: dataset.targetColumn, task: dataset.task, classLabels, rows });
+  const rows = dataset.rows.map((row) => {
+    const features = featureNames.map((column) => numericDatasetValue(row?.[column]));
+    const rawTarget = row?.[dataset.targetColumn];
+    return {
+      features,
+      target: dataset.task === 'classification'
+        ? labelMap.get(categoryKey(categoricalDatasetValue(rawTarget)))
+        : numericDatasetValue(rawTarget),
+    };
+  });
+  return normalizeDataset({ featureNames, targetName: dataset.targetColumn, task: dataset.task, classLabels, classVocabulary, rows });
 }
 
 export async function h2DatasetExecutionIdentityV1(dataset) {
@@ -423,13 +485,13 @@ export async function h2DatasetExecutionIdentityV1(dataset) {
 }
 
 /** Revalidates/recomputes the closed request at the companion trust boundary. */
-export async function validateH2LocalPythonRequestV1(request, { requireAuthorization = true, compile = true } = {}) {
+export async function validateH2LocalPythonRequestV2(request, { requireAuthorization = true, compile = true } = {}) {
   assertJson(request);
   const requestByteLength = new TextEncoder().encode(stableH2Json(request)).byteLength;
   if (requestByteLength > H2_LOCAL_PYTHON_LIMITS.requestBytes) fail('H2_REQUEST_TOO_LARGE');
   const keys = requireAuthorization ? REQUEST_KEYS : REQUEST_DRAFT_KEYS;
   assertExact(request, keys, 'H2_REQUEST_SCHEMA_INVALID');
-  if (request.schemaVersion !== H2_LOCAL_PYTHON_REQUEST_V1 || request.profile !== H2_LOCAL_PYTHON_PROFILE_V1) fail('H2_REQUEST_VERSION_UNSUPPORTED');
+  if (request.schemaVersion !== H2_LOCAL_PYTHON_REQUEST_V2 || request.profile !== H2_LOCAL_PYTHON_PROFILE_V1) fail('H2_REQUEST_VERSION_UNSUPPORTED');
   assertId(request.sessionId);
   if (!exactKeys(request.identity, IDENTITY_KEYS)) fail('H2_IDENTITY_SCHEMA_INVALID');
   assertId(request.identity.projectId);
@@ -487,14 +549,14 @@ function validateIsoDateTime(value) {
 }
 
 /** Strictly validates the bounded success result before it can enter Build model state. */
-export function validateH2LocalPythonResultV1(result, validated) {
+export function validateH2LocalPythonResultV2(result, validated) {
   const resultKeys = ['schemaVersion', 'status', 'runIdentity', 'parameters', 'epochLoss', 'metrics', 'provenance', 'lifecycle'];
-  const runKeys = ['runId', 'sessionId', 'requestFingerprint', 'graphFingerprint', 'datasetFingerprint', 'splitFingerprint', 'configFingerprint'];
+  const runKeys = ['runId', 'sessionId', 'requestFingerprint', 'graphFingerprint', 'datasetFingerprint', 'splitFingerprint', 'configFingerprint', 'targetSemantics'];
   const parameterKeys = ['encoding', 'byteOrder', 'payloadBase64', 'tensors'];
   const provenanceKeys = ['provider', 'pythonVersion', 'pytorchVersion', 'numpyVersion', 'device', 'compilerVersion', 'profile', 'startedAt', 'finishedAt'];
   const lifecycleKeys = ['cancellationRequested', 'processTerminated', 'resultDiscarded'];
   assertExact(result, resultKeys, 'H2_RESULT_SCHEMA_INVALID');
-  if (result.schemaVersion !== 'volk.h2.result.v1' || result.status !== 'succeeded') fail('H2_RESULT_VERSION_UNSUPPORTED');
+  if (result.schemaVersion !== H2_LOCAL_PYTHON_RESULT_V2 || result.status !== 'succeeded') fail('H2_RESULT_VERSION_UNSUPPORTED');
   assertExact(result.runIdentity, runKeys, 'H2_RESULT_IDENTITY_INVALID');
   assertId(result.runIdentity.runId);
   const identity = validated.identity;
@@ -503,7 +565,8 @@ export function validateH2LocalPythonResultV1(result, validated) {
     || result.runIdentity.graphFingerprint !== identity.graphFingerprint
     || result.runIdentity.datasetFingerprint !== identity.datasetFingerprint
     || result.runIdentity.splitFingerprint !== identity.splitFingerprint
-    || result.runIdentity.configFingerprint !== validated.configFingerprint) fail('H2_RESULT_IDENTITY_MISMATCH');
+    || result.runIdentity.configFingerprint !== validated.configFingerprint
+    || !equalH2Json(result.runIdentity.targetSemantics, targetSemantics(validated.request.dataset))) fail('H2_RESULT_IDENTITY_MISMATCH');
   assertExact(result.parameters, parameterKeys, 'H2_RESULT_PARAMETERS_INVALID');
   if (result.parameters.encoding !== 'volk.tensor-manifest.v1' || result.parameters.byteOrder !== 'little-endian'
     || typeof result.parameters.payloadBase64 !== 'string' || result.parameters.payloadBase64.length > 45_000
@@ -570,7 +633,7 @@ export function attachH2LocalPythonAuthorizationV1(request, authorization) {
 
 /** Converts a validated fitted tensor manifest to the app's existing serializable MLP model shape. */
 export function h2ResultToBrowserMlpV1({ validated, result, dataset, trainedAt = new Date().toISOString() } = {}) {
-  if (!validated || !result || result.schemaVersion !== 'volk.h2.result.v1'
+  if (!validated || !result || result.schemaVersion !== H2_LOCAL_PYTHON_RESULT_V2
     || result.status !== 'succeeded' || !dataset) fail('H2_RESULT_INVALID');
   const descriptors = result.parameters?.tensors;
   const base64 = result.parameters?.payloadBase64;
@@ -608,13 +671,11 @@ export function h2ResultToBrowserMlpV1({ validated, result, dataset, trainedAt =
     }
   }
   const trainer = validated.facts.trainer;
-  const labels = dataset.task === 'classification'
-    ? [...new Set(dataset.rows.map((row) => String(row[dataset.targetColumn])))].sort()
-    : [];
+  const labels = dataset.task === 'classification' ? [...validated.request.dataset.classVocabulary] : [];
   const test = validated.request.split.testIndices.map((index) => ({
     index,
     x: dataset.featureColumns.map((column) => Number(dataset.rows[index][column])),
-    y: dataset.task === 'classification' ? String(dataset.rows[index][dataset.targetColumn]) : dataset.rows[index][dataset.targetColumn],
+    y: dataset.rows[index][dataset.targetColumn],
   }));
   return {
     type: 'browser_mlp', sourceNodeId: trainer.projection.nodeId,

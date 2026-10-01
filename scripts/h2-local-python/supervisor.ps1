@@ -10,6 +10,7 @@ $nativeSource = @'
 using System;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 
 public static class VolkH2JobSupervisor {
     const uint CREATE_SUSPENDED = 0x00000004;
@@ -17,7 +18,14 @@ public static class VolkH2JobSupervisor {
     const uint STARTF_USESTDHANDLES = 0x00000100;
     const uint JOB_OBJECT_LIMIT_JOB_MEMORY = 0x00000200;
     const uint JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+    const uint JOB_OBJECT_MSG_JOB_MEMORY_LIMIT = 10;
+    const uint JOB_OBJECT_MSG_NOTIFICATION_LIMIT = 11;
+    const ulong JOB_MEMORY_LIMIT_BYTES = 2147483648UL;
+    const ulong JOB_MEMORY_NOTIFICATION_BYTES = JOB_MEMORY_LIMIT_BYTES;
     const int JobObjectExtendedLimitInformation = 9;
+    const int JobObjectAssociateCompletionPortInformation = 7;
+    const int JobObjectNotificationLimitInformation = 12;
+    const int JobObjectLimitViolationInformation = 13;
     const uint STD_INPUT_HANDLE = unchecked((uint)-10);
     const uint STD_OUTPUT_HANDLE = unchecked((uint)-11);
     const uint STD_ERROR_HANDLE = unchecked((uint)-12);
@@ -66,12 +74,54 @@ public static class VolkH2JobSupervisor {
         public UIntPtr ProcessMemoryLimit, JobMemoryLimit, PeakProcessMemoryUsed, PeakJobMemoryUsed;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOBOBJECT_ASSOCIATE_COMPLETION_PORT {
+        public IntPtr CompletionKey;
+        public IntPtr CompletionPort;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOBOBJECT_NOTIFICATION_LIMIT_INFORMATION {
+        public ulong IoReadBytesLimit, IoWriteBytesLimit;
+        public long PerJobUserTimeLimit;
+        public ulong JobMemoryLimit;
+        public int RateControlTolerance, RateControlToleranceInterval;
+        public uint LimitFlags;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOBOBJECT_LIMIT_VIOLATION_INFORMATION {
+        public uint LimitFlags, ViolationLimitFlags;
+        public ulong IoReadBytes, IoReadBytesLimit, IoWriteBytes, IoWriteBytesLimit;
+        public long PerJobUserTime, PerJobUserTimeLimit;
+        public ulong JobMemory, JobMemoryLimit;
+        public int RateControlTolerance, RateControlToleranceLimit;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOBOBJECT_BASIC_ACCOUNTING_INFORMATION {
+        public long TotalUserTime, TotalKernelTime, ThisPeriodTotalUserTime, ThisPeriodTotalKernelTime;
+        public uint TotalPageFaults, TotalProcesses, ActiveProcesses, TotalTerminatedProcesses;
+    }
+
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern IntPtr CreateJobObject(IntPtr lpJobAttributes, string lpName);
     [DllImport("kernel32.dll", SetLastError = true)]
+    static extern IntPtr CreateIoCompletionPort(IntPtr fileHandle, IntPtr existingCompletionPort, UIntPtr completionKey, uint numberOfConcurrentThreads);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool GetQueuedCompletionStatus(IntPtr completionPort, out uint numberOfBytes, out UIntPtr completionKey, out IntPtr overlapped, uint milliseconds);
+    [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool SetInformationJobObject(IntPtr hJob, int infoClass, ref JOBOBJECT_EXTENDED_LIMIT_INFORMATION info, uint length);
+    [DllImport("kernel32.dll", EntryPoint = "SetInformationJobObject", SetLastError = true)]
+    static extern bool SetInformationJobObject(IntPtr hJob, int infoClass, ref JOBOBJECT_ASSOCIATE_COMPLETION_PORT info, uint length);
+    [DllImport("kernel32.dll", EntryPoint = "SetInformationJobObject", SetLastError = true)]
+    static extern bool SetInformationJobObject(IntPtr hJob, int infoClass, ref JOBOBJECT_NOTIFICATION_LIMIT_INFORMATION info, uint length);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool QueryInformationJobObject(IntPtr hJob, int infoClass, out JOBOBJECT_EXTENDED_LIMIT_INFORMATION info, uint length, out uint returnLength);
+    [DllImport("kernel32.dll", EntryPoint = "QueryInformationJobObject", SetLastError = true)]
+    static extern bool QueryInformationJobObject(IntPtr hJob, int infoClass, out JOBOBJECT_LIMIT_VIOLATION_INFORMATION info, uint length, out uint returnLength);
+    [DllImport("kernel32.dll", EntryPoint = "QueryInformationJobObject", SetLastError = true)]
+    static extern bool QueryInformationJobObject(IntPtr hJob, int infoClass, out JOBOBJECT_BASIC_ACCOUNTING_INFORMATION info, uint length, out uint returnLength);
     [DllImport("kernel32.dll", SetLastError = true)]
     static extern bool AssignProcessToJobObject(IntPtr hJob, IntPtr hProcess);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -114,21 +164,63 @@ public static class VolkH2JobSupervisor {
         if (!value) throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
     }
 
+    static bool HasVerifiedJobMemoryViolation(IntPtr job) {
+        var violation = new JOBOBJECT_LIMIT_VIOLATION_INFORMATION();
+        uint returned;
+        uint informationSize = (uint)Marshal.SizeOf(typeof(JOBOBJECT_LIMIT_VIOLATION_INFORMATION));
+        Check(QueryInformationJobObject(job, JobObjectLimitViolationInformation, out violation, informationSize, out returned));
+        return (violation.LimitFlags & JOB_OBJECT_LIMIT_JOB_MEMORY) != 0
+            && (violation.ViolationLimitFlags & JOB_OBJECT_LIMIT_JOB_MEMORY) != 0
+            && violation.JobMemoryLimit == JOB_MEMORY_NOTIFICATION_BYTES
+            && violation.JobMemory >= violation.JobMemoryLimit;
+    }
+
+    static int TerminateAndReportJobMemoryLimit(IntPtr job, IntPtr process, uint processId) {
+        Check(TerminateJobObject(job, 0xE0020003));
+        Check(WaitForSingleObject(process, INFINITE) == 0);
+        uint activeProcesses = 1;
+        while (activeProcesses != 0) {
+            var accounting = new JOBOBJECT_BASIC_ACCOUNTING_INFORMATION();
+            uint returned;
+            Check(QueryInformationJobObject(job, 1, out accounting,
+                (uint)Marshal.SizeOf(typeof(JOBOBJECT_BASIC_ACCOUNTING_INFORMATION)), out returned));
+            activeProcesses = accounting.ActiveProcesses;
+            if (activeProcesses != 0) Thread.Sleep(10);
+        }
+        Console.Error.WriteLine("H2_PROCESS_TERMINATED:" + processId.ToString(System.Globalization.CultureInfo.InvariantCulture));
+        Console.Error.WriteLine("H2_JOB_MEMORY_LIMIT_EXCEEDED");
+        Console.Error.Flush();
+        return 80;
+    }
+
     public static int Run(string pythonPath, string workerPath, string sourcePath, uint coordinatorPid) {
         IntPtr job = IntPtr.Zero;
+        IntPtr completionPort = IntPtr.Zero;
         IntPtr coordinator = IntPtr.Zero;
         PROCESS_INFORMATION process = new PROCESS_INFORMATION();
         bool created = false, resumed = false;
         try {
             job = CreateJobObject(IntPtr.Zero, null);
             Check(job != IntPtr.Zero);
+            completionPort = CreateIoCompletionPort(new IntPtr(-1), IntPtr.Zero, UIntPtr.Zero, 1);
+            Check(completionPort != IntPtr.Zero);
+            var completionAssociation = new JOBOBJECT_ASSOCIATE_COMPLETION_PORT();
+            completionAssociation.CompletionKey = new IntPtr(1);
+            completionAssociation.CompletionPort = completionPort;
+            Check(SetInformationJobObject(job, JobObjectAssociateCompletionPortInformation, ref completionAssociation,
+                (uint)Marshal.SizeOf(typeof(JOBOBJECT_ASSOCIATE_COMPLETION_PORT))));
             coordinator = OpenProcess(PROCESS_SYNCHRONIZE, false, coordinatorPid);
             Check(coordinator != IntPtr.Zero);
             var limits = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
             limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_JOB_MEMORY | JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-            limits.JobMemoryLimit = new UIntPtr(2147483648UL);
+            limits.JobMemoryLimit = new UIntPtr(JOB_MEMORY_LIMIT_BYTES);
             uint informationSize = (uint)Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
             Check(SetInformationJobObject(job, JobObjectExtendedLimitInformation, ref limits, informationSize));
+            var notificationLimit = new JOBOBJECT_NOTIFICATION_LIMIT_INFORMATION();
+            notificationLimit.JobMemoryLimit = JOB_MEMORY_NOTIFICATION_BYTES;
+            notificationLimit.LimitFlags = JOB_OBJECT_LIMIT_JOB_MEMORY;
+            Check(SetInformationJobObject(job, JobObjectNotificationLimitInformation, ref notificationLimit,
+                (uint)Marshal.SizeOf(typeof(JOBOBJECT_NOTIFICATION_LIMIT_INFORMATION))));
 
             var startup = new STARTUPINFO();
             startup.cb = Marshal.SizeOf(typeof(STARTUPINFO));
@@ -149,34 +241,86 @@ public static class VolkH2JobSupervisor {
             Check(IsProcessInJob(process.hProcess, job, out inJob) && inJob);
             if ((verified.BasicLimitInformation.LimitFlags & (JOB_OBJECT_LIMIT_JOB_MEMORY | JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE))
                     != (JOB_OBJECT_LIMIT_JOB_MEMORY | JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE)
-                || verified.JobMemoryLimit.ToUInt64() != 2147483648UL) throw new InvalidOperationException();
+                || verified.JobMemoryLimit.ToUInt64() != JOB_MEMORY_LIMIT_BYTES) throw new InvalidOperationException();
+            ulong peakJobMemoryBeforeResume = verified.PeakJobMemoryUsed.ToUInt64();
             Console.Error.WriteLine("H2_JOB_READY:" + process.dwProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Console.Error.Flush();
             Check(ResumeThread(process.hThread) != 0xffffffff);
             resumed = true;
-            uint wait = WaitForMultipleObjects(2, new IntPtr[] { process.hProcess, coordinator }, false, INFINITE);
-            if (wait == 1) {
-                Check(TerminateJobObject(job, 0xE0020002));
-                Check(WaitForSingleObject(process.hProcess, INFINITE) == 0);
-                Console.Error.WriteLine("H2_COORDINATOR_EXITED");
-                Console.Error.Flush();
-                return 79;
+            bool jobMemoryLimitExceeded = false;
+            while (true) {
+                uint message;
+                UIntPtr completionKey;
+                IntPtr overlapped;
+                bool received = GetQueuedCompletionStatus(completionPort, out message, out completionKey, out overlapped, 100);
+                if (received && completionKey == new UIntPtr(1)) {
+                    if (message == JOB_OBJECT_MSG_JOB_MEMORY_LIMIT) return TerminateAndReportJobMemoryLimit(job, process.hProcess, process.dwProcessId);
+                    if (message == JOB_OBJECT_MSG_NOTIFICATION_LIMIT) {
+                        if (HasVerifiedJobMemoryViolation(job)) return TerminateAndReportJobMemoryLimit(job, process.hProcess, process.dwProcessId);
+                    }
+                } else if (!received && Marshal.GetLastWin32Error() != 258) {
+                    Check(false);
+                }
+
+                uint processWait = WaitForSingleObject(process.hProcess, 0);
+                if (processWait == 0) {
+                    // Drain packets already queued before classifying process termination.
+                    while (true) {
+                        received = GetQueuedCompletionStatus(completionPort, out message, out completionKey, out overlapped, 0);
+                        if (!received) {
+                            if (Marshal.GetLastWin32Error() != 258) Check(false);
+                            break;
+                        }
+                        if (completionKey == new UIntPtr(1)) {
+                            if (message == JOB_OBJECT_MSG_JOB_MEMORY_LIMIT) jobMemoryLimitExceeded = true;
+                            if (message == JOB_OBJECT_MSG_NOTIFICATION_LIMIT) {
+                                jobMemoryLimitExceeded = HasVerifiedJobMemoryViolation(job) || jobMemoryLimitExceeded;
+                            }
+                        }
+                    }
+                    break;
+                }
+                Check(processWait == 258);
+
+                uint coordinatorWait = WaitForSingleObject(coordinator, 0);
+                if (coordinatorWait == 0) {
+                    Check(TerminateJobObject(job, 0xE0020002));
+                    Check(WaitForSingleObject(process.hProcess, INFINITE) == 0);
+                    Console.Error.WriteLine("H2_COORDINATOR_EXITED");
+                    Console.Error.Flush();
+                    return 79;
+                }
+                Check(coordinatorWait == 258);
             }
-            Check(wait == 0);
             uint exitCode;
             Check(GetExitCodeProcess(process.hProcess, out exitCode));
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION finalAccounting;
+            uint accountingReturned;
+            Check(QueryInformationJobObject(job, JobObjectExtendedLimitInformation, out finalAccounting, informationSize, out accountingReturned));
+            bool accountingConfirmsLimit = exitCode != 0
+                && peakJobMemoryBeforeResume < JOB_MEMORY_LIMIT_BYTES
+                && finalAccounting.JobMemoryLimit.ToUInt64() == JOB_MEMORY_LIMIT_BYTES
+                && finalAccounting.PeakJobMemoryUsed.ToUInt64() >= JOB_MEMORY_LIMIT_BYTES;
+            jobMemoryLimitExceeded = jobMemoryLimitExceeded || accountingConfirmsLimit;
             Console.Error.WriteLine("H2_PROCESS_TERMINATED:" + process.dwProcessId.ToString(System.Globalization.CultureInfo.InvariantCulture));
             Console.Error.Flush();
+            if (jobMemoryLimitExceeded && exitCode != 0) {
+                return TerminateAndReportJobMemoryLimit(job, process.hProcess, process.dwProcessId);
+            }
             return unchecked((int)exitCode);
         } catch {
             Console.Error.WriteLine("H2_JOB_SETUP_FAILED");
             Console.Error.Flush();
-            if (created && !resumed && process.hProcess != IntPtr.Zero) TerminateProcess(process.hProcess, 0xE0020001);
+            if (created && process.hProcess != IntPtr.Zero) {
+                if (!resumed) TerminateProcess(process.hProcess, 0xE0020001);
+                else if (job != IntPtr.Zero) TerminateJobObject(job, 0xE0020001);
+            }
             return 77;
         } finally {
             if (process.hThread != IntPtr.Zero) CloseHandle(process.hThread);
             if (process.hProcess != IntPtr.Zero) CloseHandle(process.hProcess);
             if (coordinator != IntPtr.Zero) CloseHandle(coordinator);
+            if (completionPort != IntPtr.Zero) CloseHandle(completionPort);
             if (job != IntPtr.Zero) CloseHandle(job);
         }
     }
