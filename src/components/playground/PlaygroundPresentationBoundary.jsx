@@ -20,6 +20,8 @@ export default function PlaygroundPresentationBoundary({
   rawCapabilities,
   resolvedPresentation,
   className = '',
+  episodeFlow = false,
+  scrollportRef = null,
   onPointerDown,
   onMouseDown,
   onTouchStart,
@@ -35,11 +37,15 @@ export default function PlaygroundPresentationBoundary({
   }), [measured.rawCapabilities, presentation.responsive]);
   return <PresentationCapabilitiesProvider value={value}>
     <div
-      ref={measured.containerRef}
+      ref={(node) => {
+        measured.containerRef.current = node;
+        if (scrollportRef) scrollportRef.current = node;
+      }}
       data-ui-surface={presentation.surface}
       data-ui-depth={presentation.depth}
       data-ui-presentation-band={presentation.responsive.band}
       data-ui-pointer={presentation.responsive.pointer}
+      data-episode-flow={episodeFlow ? 'true' : undefined}
       className={className}
       onPointerDown={onPointerDown}
       onMouseDown={onMouseDown}

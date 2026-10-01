@@ -16,6 +16,7 @@ export const LUMI_MODES = Object.freeze({
   ILLUMINATE: 'illuminate',
   EXPLORE: 'explore',
   THINK: 'think',
+  NOTICE: 'notice',
 });
 
 export const CONCEPT_STATES = Object.freeze({

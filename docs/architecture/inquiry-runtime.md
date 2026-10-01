@@ -117,6 +117,37 @@ The closed art, button hit/focus target, and fixed anchor all use that same
 token, so the visible character never exceeds its interactive body. These
 rules do not alter the inline LUMI treatment elsewhere in Explore.
 
+## Intro and LUMI Guidance v1
+
+Explore Home now presents a compact, dismissible Intro with three independent
+work entries: free Explore, Build, and model import. The only remembered value
+is the versioned `volk.ml.intro-preference.v1` local preference. A saved entry
+offers a reopen action; it is not represented as a resumable workspace unless
+the real current host is still in memory.
+
+Episode 1's main action is derived from the authoritative orchestration stage
+and `deriveEpisode1NextOperation`. The course therefore offers only Fit A,
+same-World resampling, Fit B, Compare, or evidence-backed concept follow-up
+when that operation is legal. Free exploration suppresses automatic policy
+requests; its explicit Help control re-exposes one bounded local next action.
+Every operation still requires a learner click and is dispatched through the
+existing Playground host.
+
+On Episode 1, the companion occupies a reserved right-side rail on desktop and
+a bottom dock on compact screens. Its target comes only from the one currently
+registered course control. The page batches scroll/resize resolution into one
+animation frame; scroll updates align without a repeated transition. A reveal
+is offered only for a registered learner-initiated scroll target, and the
+button scrolls but never activates that target. Bubble copy is localized and
+automatically dismissed within six seconds. Existing floating companion and
+attention surfaces remain active outside the Episode layout.
+
+Episode pose precedence is hidden/pause, THINK, evidence-backed ILLUMINATE,
+GUIDE, offscreen NOTICE, recent OBSERVE, then AMBIENT. Asset body sizes are
+64/80px on compact screens, 96/112px at 768–1599px, 112/136px at 1600–2399px,
+and 128/152px at 2400px or wider (ambient/active). Reduced motion removes
+transitions while preserving the static pose and explicit suggestion.
+
 Natural-language interpretation may provide `requestedHolds`, a bounded
 semantic vocabulary used to constrain an Experiment or World proposal. The
 normalizer in `src/core/exploration/requestedHolds.js` accepts canonical IDs

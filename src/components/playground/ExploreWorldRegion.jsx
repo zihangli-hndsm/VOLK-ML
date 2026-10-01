@@ -4,13 +4,13 @@ import PlaygroundStage from './PlaygroundStage.jsx';
 import DataWorkspace from './DataWorkspace.jsx';
 import WorldBuilder from './WorldBuilder.jsx';
 
-export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTabChange, onDispatch, t, highlightedAffordances = [], fullWorldToolsOpen = false, onFullWorldToolsChange, onOpenFullWorldTools }) {
+export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTabChange, onDispatch, t, highlightedAffordances = [], fullWorldToolsOpen = false, onFullWorldToolsChange, onOpenFullWorldTools, guidedEpisode = false }) {
   const phenomenon = useMemo(() => derivePhenomenonCapabilities(snapshot), [snapshot]);
   const phenomenonQuestion = bigIdea ? t(bigIdea.questionKey) : t('playground.phenomenon.question');
 
   if (phenomenon.available && !fullWorldToolsOpen) {
     if (phenomenon.domainNative) {
-      return <section data-ui-region="world-region" data-ui-layer="play" data-phenomenon-available="true" data-phenomenon-domain={phenomenon.domain} aria-label={t('playground.phenomenon.regionLabel')} className="relative min-w-0 space-y-3">
+      return <section data-ui-region="world-region" data-ui-layer="play" data-episode-world={guidedEpisode ? 'true' : undefined} data-phenomenon-available="true" data-phenomenon-domain={phenomenon.domain} aria-label={t('playground.phenomenon.regionLabel')} className="relative min-w-0 space-y-3">
         <div className="rounded-2xl border border-slate-200 bg-white p-3 sm:p-4">
           <h2 className="text-base font-black text-slate-900 sm:text-lg">{phenomenonQuestion}</h2>
           <p className="mt-1 text-xs leading-5 text-slate-500">{t('playground.phenomenon.domainSurfaceHint')}</p>
@@ -18,12 +18,12 @@ export default function ExploreWorldRegion({ snapshot, bigIdea, activeTab, onTab
         </div>
       </section>;
     }
-    return <section data-ui-region="world-region" data-ui-layer="play" data-phenomenon-available="true" aria-label={t('playground.phenomenon.regionLabel')} className="relative min-w-0 space-y-3">
-      <DataWorkspace snapshot={snapshot} onDispatch={onDispatch} t={t} question={phenomenonQuestion} variant="phenomenon" onOpenFullWorkspace={() => openFullWorldTools()} highlightedAffordances={highlightedAffordances} />
+    return <section data-ui-region="world-region" data-ui-layer="play" data-episode-world={guidedEpisode ? 'true' : undefined} data-phenomenon-available="true" aria-label={t('playground.phenomenon.regionLabel')} className="relative min-w-0 space-y-3">
+      <DataWorkspace snapshot={snapshot} onDispatch={onDispatch} t={t} question={phenomenonQuestion} variant="phenomenon" guidedEpisode={guidedEpisode} onOpenFullWorkspace={() => openFullWorldTools()} highlightedAffordances={highlightedAffordances} />
     </section>;
   }
 
-  return <section data-ui-region="world-region" data-ui-layer="play" data-phenomenon-available={phenomenon.available ? 'true' : 'false'} aria-label={t('playground.explore.worldRegionLabel')} className="relative min-w-0 space-y-3">
+  return <section data-ui-region="world-region" data-ui-layer="play" data-episode-world={guidedEpisode ? 'true' : undefined} data-phenomenon-available={phenomenon.available ? 'true' : 'false'} aria-label={t('playground.explore.worldRegionLabel')} className="relative min-w-0 space-y-3">
     {phenomenon.available && <div className="flex items-center justify-between gap-3 rounded-2xl border border-blue-100 bg-blue-50/60 px-3 py-2">
       <span className="text-xs font-bold text-blue-800">{t('playground.phenomenon.fullToolsHint')}</span>
       <button type="button" onClick={() => onFullWorldToolsChange?.(false)} className="rounded-xl bg-white px-3 py-2 text-xs font-black text-blue-700 hover:bg-blue-100">{t('playground.phenomenon.backToPhenomenon')}</button>
