@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { resolveLumiCompanionState, LUMI_COMPANION_STATES, normalizeLumiSemanticTarget } from '../../core/ui/lumiCompanion.js';
+import { resolveLumiContextBubblePlacement } from '../../core/ui/lumiContextBubblePlacement.js';
 import Lumi from './Lumi.jsx';
 import { deriveLumiPresentationState, lumiFeedbackDuration, LUMI_PRESENTATION_STATES } from '../../core/ui/lumiPresentationRuntime.js';
 import { REDUCED_MOTION_QUERY } from './motion.js';
@@ -22,6 +23,9 @@ function contextKey(state, hasConcept, meaningfulResult) {
 export default function LumiCompanion({ snapshot, attention, compact = false, onOpenGuidance, onOpenEvidence, onOpenIdeas, onOpenSettings, onSelectContinuation, isConfigured, configureLabel = null, askBusy = false, semanticAction = null, semanticTarget = null, recentConceptEvent = null, meaningfulResult = false, presentation = null, resolvedTarget = null, guidanceDismissed = false, onDismissGuidance, onPresentationFeedbackConsumed, t }) {
   const [open, setOpen] = useState(false);
   const [contextPrompt, setContextPrompt] = useState(null);
+  const [contextPlacement, setContextPlacement] = useState(null);
+  const companionRef = useRef(null);
+  const contextBubbleRef = useRef(null);
   const suppressedPromptRef = useRef(null);
   const consumeFeedbackRef = useRef(onPresentationFeedbackConsumed);
   useEffect(() => { consumeFeedbackRef.current = onPresentationFeedbackConsumed; }, [onPresentationFeedbackConsumed]);
@@ -116,13 +120,71 @@ export default function LumiCompanion({ snapshot, attention, compact = false, on
   }, [contextualKey, promptEligible, promptIdentity]);
   const showContext = Boolean(contextPrompt?.id === promptIdentity && contextPrompt.key === contextualKey && promptEligible);
 
-  return <aside data-lumi-companion="true" data-lumi-ambient="true" data-lumi-body-state={state} data-lumi-presentation-state={presentationState} data-lumi-target-status={companionTarget?.status ?? 'none'} data-lumi-target-control={companionTarget?.target?.controlId ?? undefined} data-lumi-companion-open={open ? 'true' : 'false'} className={`lumi-companion ${compact ? 'lumi-companion-compact' : ''}${open ? ' lumi-companion-open' : ''}`} aria-label={t('playground.lumi.companion.ariaLabel')}>
+  useLayoutEffect(() => {
+    if (!showContext) {
+      setContextPlacement(null);
+      return undefined;
+    }
+    const companion = companionRef.current;
+    const bubble = contextBubbleRef.current;
+    const avatar = companion?.querySelector('.lumi-visual');
+    if (!companion || !bubble || !avatar) return undefined;
+    let frame = 0;
+    const place = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => {
+        const visual = window.visualViewport;
+        const viewport = {
+          left: visual?.offsetLeft ?? 0,
+          top: visual?.offsetTop ?? 0,
+          width: visual?.width ?? window.innerWidth,
+          height: visual?.height ?? window.innerHeight,
+        };
+        const toRect = (element) => {
+          const value = element.getBoundingClientRect();
+          return { left: value.left, top: value.top, width: value.width, height: value.height };
+        };
+        const placement = resolveLumiContextBubblePlacement({
+          viewport,
+          anchor: toRect(avatar),
+          bubble: { width: bubble.offsetWidth, height: bubble.offsetHeight },
+        });
+        setContextPlacement((current) => current?.id === promptIdentity
+          && current.layout.id === placement.id
+          && current.layout.left === placement.left
+          && current.layout.top === placement.top
+          && current.layout.width === placement.width
+          && current.layout.height === placement.height
+          ? current
+          : { id: promptIdentity, layout: placement });
+      });
+    };
+    const resizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(place);
+    resizeObserver?.observe(companion);
+    resizeObserver?.observe(bubble);
+    resizeObserver?.observe(avatar);
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    window.visualViewport?.addEventListener('resize', place);
+    window.visualViewport?.addEventListener('scroll', place);
+    place();
+    return () => {
+      cancelAnimationFrame(frame);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      window.visualViewport?.removeEventListener('resize', place);
+      window.visualViewport?.removeEventListener('scroll', place);
+    };
+  }, [showContext, promptIdentity, contextualKey]);
+
+  return <aside ref={companionRef} data-lumi-companion="true" data-lumi-ambient="true" data-lumi-body-state={state} data-lumi-presentation-state={presentationState} data-lumi-target-status={companionTarget?.status ?? 'none'} data-lumi-target-control={companionTarget?.target?.controlId ?? undefined} data-lumi-companion-open={open ? 'true' : 'false'} className={`lumi-companion ${compact ? 'lumi-companion-compact' : ''}${open ? ' lumi-companion-open' : ''}`} aria-label={t('playground.lumi.companion.ariaLabel')}>
     <div className="lumi-companion-body">
       <Lumi presence="ambient" mode={mode} onClick={() => setOpen((value) => !value)} expanded={open} label={open ? t('playground.lumi.companion.close') : t('playground.lumi.companion.open')} />
       {hasNotification && <span data-lumi-notification="true" className="lumi-notification" aria-label={t('playground.lumi.companion.notification')} />}
       <span className="sr-only">{t('playground.agentGuide.entry')}</span>
     </div>
-    {showContext && <div data-lumi-context-bubble="true" role="status" className="lumi-context-bubble"><span>{t(contextualKey)}</span><button type="button" aria-label={t('playground.inquiry.card.dismiss')} onClick={onDismissGuidance} className="ml-2 rounded px-1 text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500">×</button></div>}
+    {showContext && <div ref={contextBubbleRef} data-lumi-context-bubble="true" data-lumi-context-placement={contextPlacement?.id === promptIdentity ? contextPlacement.layout.id : 'measuring'} role="status" className="lumi-context-bubble" style={{ left: contextPlacement?.id === promptIdentity && contextPlacement.layout.visible ? `${contextPlacement.layout.left}px` : undefined, top: contextPlacement?.id === promptIdentity && contextPlacement.layout.visible ? `${contextPlacement.layout.top}px` : undefined, maxWidth: contextPlacement?.id === promptIdentity ? `${contextPlacement.layout.maxWidth}px` : undefined, maxHeight: contextPlacement?.id === promptIdentity ? `${contextPlacement.layout.maxHeight}px` : undefined, visibility: contextPlacement?.id === promptIdentity && contextPlacement.layout.visible ? 'visible' : 'hidden' }}><span>{t(contextualKey)}</span><button type="button" aria-label={t('playground.inquiry.card.dismiss')} onClick={onDismissGuidance} className="ml-2 rounded px-1 text-slate-500 focus:outline-none focus:ring-2 focus:ring-cyan-500">×</button></div>}
     {open && <div data-lumi-companion-panel="true" role="dialog" aria-label={t('playground.lumi.companion.panelLabel')} className={`lumi-companion-panel ${compact ? 'lumi-companion-panel-compact' : ''}`}>
       <div className="lumi-companion-panel-header">
         <div>

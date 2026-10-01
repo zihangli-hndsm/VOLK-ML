@@ -640,6 +640,90 @@ async function runLifecycle(cdp) {
   return { result: 'PASS', checkpoints: ['Ask success/finish', 'natural bubble expiry + rerender', 'Ask rejection/error', 'Teaching success/finish', 'Teaching stop + stale completion', 'reset arbitration', 'context-switch stale completion', 'concept consume + STAY_SILENT', 'target withdrawal', 'Ask unmount/cancel'] };
 }
 
+async function assertContextBubbleNoOcclusion(cdp, label) {
+  const state = await evaluate(cdp, `(() => {
+    const bubble = document.querySelector('[data-lumi-context-bubble]');
+    const companion = document.querySelector('[data-lumi-companion]');
+    const image = companion?.querySelector('img.lumi-visual');
+    const rect = (element) => {
+      if (!element) return null;
+      const value = element.getBoundingClientRect();
+      return { left: value.left, right: value.right, top: value.top, bottom: value.bottom, width: value.width, height: value.height };
+    };
+    const overlaps = (a, b) => Boolean(a && b && a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top);
+    const visual = window.visualViewport;
+    const clientWidth = document.documentElement.clientWidth;
+    const scrollWidth = document.documentElement.scrollWidth;
+    const viewport = { left: visual?.offsetLeft ?? 0, top: visual?.offsetTop ?? 0, width: visual?.width ?? innerWidth, height: visual?.height ?? innerHeight, visualViewportWidth: visual?.width ?? innerWidth, visualViewportHeight: visual?.height ?? innerHeight, scale: visual?.scale ?? 1, devicePixelRatio, layoutViewportWidth: innerWidth, layoutViewportHeight: innerHeight, documentClientWidth: clientWidth, documentScrollWidth: scrollWidth, bodyScrollWidth: document.body.scrollWidth, scrollbarDelta: innerWidth - clientWidth, overflowBeyondLayout: Math.max(0, scrollWidth - innerWidth), mobileBreakpoint: matchMedia('(max-width: 767px)').matches };
+    const box = rect(bubble);
+    const imageBox = rect(image);
+    const style = bubble ? getComputedStyle(bubble) : null;
+    return { viewport, bubble: box, image: imageBox, imageLoaded: Boolean(image?.complete && image.naturalWidth > 0), visible: Boolean(box && style?.visibility === 'visible' && box.width > 0 && box.height > 0), placement: bubble?.getAttribute('data-lumi-context-placement') ?? null, role: bubble?.getAttribute('role') ?? null, dismissLabel: bubble?.querySelector('button')?.getAttribute('aria-label') ?? null, overlapsImage: overlaps(box, imageBox), insideVisualViewport: Boolean(box && box.left >= viewport.left + 7 && box.top >= viewport.top + 7 && box.right <= viewport.left + viewport.width - 7 && box.bottom <= viewport.top + viewport.height - 7) };
+  })()`);
+  if (!state.visible || !state.imageLoaded || state.overlapsImage || !state.insideVisualViewport || state.placement === 'measuring') {
+    throw new Error(`LUMI context bubble is hidden, outside the visible viewport, or overlaps its avatar (${label}): ${JSON.stringify(state)}`);
+  }
+  if (state.viewport.documentScrollWidth > state.viewport.innerWidth + 1 || state.viewport.bodyScrollWidth > state.viewport.innerWidth + 1) {
+    throw new Error(`LUMI context bubble caused horizontal document overflow beyond the CSS layout viewport (${label}): ${JSON.stringify(state.viewport)}`);
+  }
+  if (state.role !== 'status' || !state.dismissLabel) throw new Error(`LUMI context bubble lost its accessible status/dismiss affordance (${label}): ${JSON.stringify(state)}`);
+  return state;
+}
+
+async function rearmContextBubble(cdp) {
+  await clickButton(cdp, 'STAY_SILENT');
+  await sleep(100);
+  await clickButton(cdp, 'Restore GUIDE');
+  await waitForBrowserSelector(cdp, '[data-lumi-context-bubble]');
+  await sleep(120);
+}
+
+async function runContextBubbleViewportMatrix(cdp) {
+  await cdp.send('Emulation.setEmulatedMedia', { features: [] });
+  await open(`${baseUrl}/r148-lifecycle-harness.html`, cdp);
+  await waitForBrowserSelector(cdp, '[data-lumi-context-bubble]');
+  const viewports = [[1280, 720], [390, 844], [1280, 300], [320, 240]];
+  const results = [];
+  for (const [width, height] of viewports) {
+    await cdp.send('Emulation.clearDeviceMetricsOverride');
+    await cdp.send('Emulation.setDeviceMetricsOverride', { width, height, deviceScaleFactor: 1, mobile: width <= 767 });
+    let actual = null;
+    for (let attempt = 0; attempt < 30; attempt += 1) {
+      actual = await evaluate(cdp, '({ innerWidth, innerHeight, visualWidth: visualViewport?.width ?? innerWidth, visualHeight: visualViewport?.height ?? innerHeight, scale: visualViewport?.scale ?? 1, dpr: devicePixelRatio })');
+      const displayedWidth = width <= 767 ? actual.visualWidth * actual.scale : actual.innerWidth;
+      const displayedHeight = width <= 767 ? actual.visualHeight * actual.scale : actual.innerHeight;
+      const widthMatches = Math.abs(displayedWidth - width) < 2;
+      const heightMatches = Math.abs(displayedHeight - height) < 2;
+      if (widthMatches && heightMatches) break;
+      await sleep(50);
+    }
+    const displayedWidth = actual && (width <= 767 ? actual.visualWidth * actual.scale : actual.innerWidth);
+    const displayedHeight = actual && (width <= 767 ? actual.visualHeight * actual.scale : actual.innerHeight);
+    const widthMatches = actual && Math.abs(displayedWidth - width) < 2;
+    const heightMatches = actual && Math.abs(displayedHeight - height) < 2;
+    if (!widthMatches || !heightMatches) throw new Error(`Browser did not adopt context-bubble viewport ${width}x${height}: ${JSON.stringify(actual)}`);
+    await rearmContextBubble(cdp);
+    const state = await assertContextBubbleNoOcclusion(cdp, `${width}x${height}`);
+    await capture(cdp, `lumi-context-bubble-${width}x${height}.png`);
+    results.push({ requestedViewport: `${width}x${height}`, ...state });
+  }
+
+  const zoom = { result: 'NOT_TESTED', reason: 'The available CDP page-scale control emulates pinch zoom rather than browser zoom; actual CSS/visual viewport changes are covered by the viewport matrix.' };
+  await cdp.send('Emulation.clearDeviceMetricsOverride');
+
+  await open(`${baseUrl}/r148-lifecycle-harness.html`, cdp);
+  await waitForBrowserSelector(cdp, '[data-lumi-context-bubble]');
+  const dismissPoint = await evaluate(cdp, `(() => { const button = document.querySelector('[data-lumi-context-bubble] button'); if (!button || getComputedStyle(button).pointerEvents === 'none') return null; const rect = button.getBoundingClientRect(); return { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 }; })()`);
+  if (!dismissPoint) throw new Error('LUMI context bubble dismiss button is not pointer-accessible.');
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: dismissPoint.x, y: dismissPoint.y });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: dismissPoint.x, y: dismissPoint.y, button: 'left', clickCount: 1 });
+  await cdp.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: dismissPoint.x, y: dismissPoint.y, button: 'left', clickCount: 1 });
+  await sleep(200);
+  const dismissed = await evaluate(cdp, 'Boolean(document.querySelector("[data-lumi-context-bubble]"))');
+  if (dismissed) throw new Error('Dismissing the LUMI context bubble did not hide it.');
+  return { result: 'PASS', viewports: results, zoom, dismissal: 'PASS', timeoutCoveredBy: 'mounted lifecycle natural expiry checkpoint' };
+}
+
 async function runAccessibility(cdp) {
   await evaluate(cdp, `localStorage.setItem('volk-ml-language-settings', JSON.stringify({ primary: 'zh', secondary: null })); localStorage.removeItem('volk.ml.intro-preference.v1');`);
   await open(`${baseUrl}/?directorDebug=1&r148=a11y`, cdp);
@@ -684,9 +768,22 @@ await startLocalServices();
 let cdp;
 try {
   cdp = await connect();
+  if (process.argv.includes('--context-bubble-only')) {
+    const contextBubble = await runContextBubbleViewportMatrix(cdp);
+    const trace = {
+      schema: 'lumi-context-bubble-browser-v1',
+      browser: 'Google Chrome headless via Chrome DevTools Protocol',
+      cloud: 'off',
+      contextBubble,
+      artifacts: ['lumi-context-bubble-1280x720.png', 'lumi-context-bubble-390x844.png', 'lumi-context-bubble-1280x300.png', 'lumi-context-bubble-320x240.png'],
+    };
+    fs.writeFileSync(path.join(assets, 'lumi-context-bubble-trace.json'), `${JSON.stringify(trace, null, 2)}\n`, 'utf8');
+    console.log(JSON.stringify(trace, null, 2));
+  } else {
   const normal = await runEpisode(cdp, { prefix: 'normal', reducedMotion: false, recordingFilename: 'episode-normal.webm' });
   const reduced = await runEpisode(cdp, { prefix: 'reduced', reducedMotion: true });
   const mountedLifecycle = await runLifecycle(cdp);
+  const contextBubble = await runContextBubbleViewportMatrix(cdp);
   const accessibility = await runAccessibility(cdp);
   writeSlideshow('normal', 'R148 normal-motion Episode 1 evidence sequence');
   writeSlideshow('reduced', 'R148 reduced-motion Episode 1 evidence sequence');
@@ -699,11 +796,13 @@ try {
     normal,
     reduced,
     mountedLifecycle,
+    contextBubble,
     accessibility,
-    artifacts: ['episode-normal.webm', 'lumi-lifecycle.webm', 'normal-slideshow.html', 'reduced-slideshow.html', 'normal-01-entry.png', 'normal-02-fit-a.png', 'normal-03-resample.png', 'normal-04-fit-b.png', 'normal-05-concept.png', 'normal-06-recovered.png', 'reduced-05-concept.png', 'reduced-06-recovered.png', 'zh-narrow.png', 'parallel-entry.png', 'mounted-lifecycle.png'],
+    artifacts: ['episode-normal.webm', 'lumi-lifecycle.webm', 'normal-slideshow.html', 'reduced-slideshow.html', 'normal-01-entry.png', 'normal-02-fit-a.png', 'normal-03-resample.png', 'normal-04-fit-b.png', 'normal-05-concept.png', 'normal-06-recovered.png', 'reduced-05-concept.png', 'reduced-06-recovered.png', 'zh-narrow.png', 'parallel-entry.png', 'mounted-lifecycle.png', 'lumi-context-bubble-1280x720.png', 'lumi-context-bubble-390x844.png', 'lumi-context-bubble-1280x300.png', 'lumi-context-bubble-320x240.png'],
   };
   fs.writeFileSync(path.join(assets, 'r148-trace.json'), `${JSON.stringify(trace, null, 2)}\n`, 'utf8');
   console.log(JSON.stringify(trace, null, 2));
+  }
 } finally {
   cdp?.close();
   stopProcess(chromeProcess);
