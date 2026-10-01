@@ -35,6 +35,14 @@ const impossible = resolveLumiContextBubblePlacement({
 });
 assert.equal(impossible.visible, false, 'an impossible viewport must hide rather than occlude the character');
 
+const shadowClearance = resolveLumiContextBubblePlacement({
+  viewport: { width: 1280, height: 720 },
+  anchor: { left: 1180, top: 320, width: 64, height: 60 },
+  bubble: { width: 240, height: 600 },
+});
+assert.equal(shadowClearance.id, 'left', 'a bubble beside LUMI uses the clear side placement');
+assert.equal(1180 - (shadowClearance.left + shadowClearance.width), 32, 'bubble border box clears LUMI by the shadow-safe gap');
+
 const component = read('src/components/playground/LumiCompanion.jsx');
 const styles = read('src/index.css');
 const harness = read('r148-lifecycle-harness.html');

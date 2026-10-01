@@ -27,7 +27,7 @@ assert.doesNotThrow(() => readIntroPreference({ getItem() { throw new Error('sto
 assert.doesNotThrow(() => writeIntroPreference({ version: 1, dismissed: true }, { setItem() { throw new Error('storage disabled'); } }));
 
 const centeredPrompt = resolveRailPromptLayout({ railTop: 100, railLeft: 200, railHeight: 600, avatarTop: 340, avatarRight: 360, avatarHeight: 112, promptHeight: 96, controlsTop: 620 });
-assert.equal(centeredPrompt.left, 172, 'prompt starts after the measured avatar image plus a 12px gap');
+assert.equal(centeredPrompt.left, 192, 'prompt starts after the measured avatar image with enough room for its shadow');
 assert.ok(centeredPrompt.top >= 8, 'prompt stays within the rail safe inset');
 assert.ok(centeredPrompt.top + 96 <= 620 - 100 - 8, 'prompt stays above the rail controls');
 assert.equal(centeredPrompt.compact, false);

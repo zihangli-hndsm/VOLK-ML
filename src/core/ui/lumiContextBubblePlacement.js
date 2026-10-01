@@ -1,5 +1,6 @@
 const DEFAULT_INSET = 8;
-const DEFAULT_GAP = 12;
+// Keep the bubble's shadow, not just its border box, clear of LUMI.
+const DEFAULT_GAP = 32;
 
 function rect(value = {}) {
   const left = Number(value.left ?? value.x ?? 0);
