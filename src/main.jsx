@@ -27,7 +27,7 @@ import {
   H2_LOCAL_PYTHON_COMPILER_VERSION,
   h2DatasetExecutionIdentityV1,
   h2ResultToBrowserMlpV1,
-  projectH2LocalPythonRequestV1,
+  projectH2LocalPythonRequestV2,
 } from './core/execution/h2LocalPython.js';
 import { checkH2LocalPythonHealth, runH2LocalPythonFit } from './services/h2LocalPythonClient.js';
 import { compilePipelineToPyTorch, compilePipelineToTensorFlow, graphToIR } from './core/compiler';
@@ -489,6 +489,8 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
   const [webGpuTrainingResult, setWebGpuTrainingResult] = useState(null);
   const [webGpuTrainingRunning, setWebGpuTrainingRunning] = useState(false);
   const [h2Health, setH2Health] = useState({ available: false, reason: 'H2_COMPANION_OFFLINE' });
+  const [h2PairingTokenInput, setH2PairingTokenInput] = useState('');
+  const [h2Connection, setH2Connection] = useState(null);
   const [h2FitResult, setH2FitResult] = useState(null);
   const [h2FitRunning, setH2FitRunning] = useState(false);
   const [graphError, setGraphError] = useState('');
@@ -562,11 +564,11 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
     if (!open || !h2GraphCandidate) return undefined;
     let active = true;
     const controller = new AbortController();
-    checkH2LocalPythonHealth({ signal: controller.signal }).then((health) => {
+    checkH2LocalPythonHealth({ signal: controller.signal, token: h2Connection?.token }).then((health) => {
       if (active) setH2Health(health);
     });
     return () => { active = false; controller.abort(); };
-  }, [open, h2GraphCandidate]);
+  }, [open, h2GraphCandidate, h2Connection]);
   useEffect(() => {
     setWebGpuExecution(null);
     if (webGpuRunning) onCancelWebGpuInference();
@@ -623,17 +625,31 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
     }
   };
   const tryH2LocalPythonFit = async () => {
-    if (!h2GraphCandidate || !dataset || !h2Health.available || running || h2FitRunning) return;
+    if (!h2GraphCandidate || !dataset || !h2Health.available || !h2Connection || running || h2FitRunning) return;
     setH2FitRunning(true);
     setH2FitResult(null);
     try {
-      await onRun({ providerId: 'local-python-h2' });
+      await onRun({ providerId: 'local-python-h2', h2Connection });
       setH2FitResult({ status: 'succeeded' });
     } catch (error) {
       setH2FitResult({ status: 'failed', localError: error?.code ?? 'H2_TRAINING_FAILED' });
     } finally {
       setH2FitRunning(false);
     }
+  };
+  const connectH2LocalPython = async () => {
+    const token = h2PairingTokenInput.trim();
+    if (!token) return;
+    const health = await checkH2LocalPythonHealth({ token });
+    setH2Health(health);
+    if (health.available && health.connectionId) {
+      setH2Connection({ token, connectionId: health.connectionId });
+      setH2PairingTokenInput('');
+    }
+  };
+  const disconnectH2LocalPython = () => {
+    setH2Connection(null);
+    setH2Health({ available: false, connected: false, connectionId: null, reason: 'H2_CONNECTION_REQUIRED' });
   };
   const closeRunner = () => {
     if (webGpuRunning) onCancelWebGpuInference();
@@ -648,7 +664,7 @@ function RunnerDialog({ open, onClose, nodes, edges, customComponents, dataset, 
       <TierPanel plan={executionPlan} onExport={onExport} />
       {visibleError && <div className="mt-4 rounded-2xl border border-red-200 bg-red-50 p-4 text-sm font-bold text-red-700">⚠ {visibleError}</div>}
       {(needsDataset || h2GraphCandidate) && !dataset ? <div className="mt-6 rounded-3xl border-2 border-dashed p-10 text-center"><p className="text-slate-500">{t('runner.datasetRequired')}</p><button onClick={() => { onClose(); onOpenData(); }} className="mt-4 rounded-xl bg-blue-600 px-4 py-2 font-bold text-white">{t('runner.openData')}</button></div> : executionPlan.canRunHere || webGpuTrainingGraphSupported || h2GraphCandidate ? <div className="mt-5 grid gap-5 lg:grid-cols-2">
-        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div id="runner-loss-chart" className="mt-4"><LossChart values={losses} /></div>{executionPlan.canRunHere && <button data-runner-execute type="button" disabled={running || webGpuRunning || webGpuTrainingRunning || h2FitRunning || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button>}{webGpuTrainingGraphSupported && <><button data-webgpu-fit type="button" disabled={!webGpuTrainingAvailable || running || webGpuRunning || webGpuTrainingRunning || h2FitRunning || Boolean(graphError)} onClick={() => tryWebGpuTraining().catch(() => {})} className="mt-2 w-full rounded-2xl border border-indigo-300 bg-indigo-50 px-4 py-3 font-bold text-indigo-900 disabled:opacity-50">{webGpuTrainingRunning ? t('runner.webgpuFitting') : t('runner.webgpuFit')}</button><p className="mt-1 text-xs text-slate-500">{t(webGpuTrainingAvailable ? 'runner.webgpuFitNote' : 'runner.webgpuTrainingUnavailable')}</p></>}{h2GraphCandidate && <><button data-h2-fit type="button" disabled={!h2Health.available || running || webGpuRunning || webGpuTrainingRunning || h2FitRunning || !dataset} onClick={() => tryH2LocalPythonFit().catch(() => {})} className="mt-2 w-full rounded-2xl border border-violet-300 bg-violet-50 px-4 py-3 font-bold text-violet-900 disabled:opacity-50">{h2FitRunning ? t('runner.h2Fitting') : t('runner.h2Fit')}</button><p data-h2-health role="status" className="mt-1 text-xs text-slate-500">{t(h2Health.available ? 'runner.h2FitNote' : 'runner.h2Unavailable')}</p></>}{running && <button data-runner-cancel type="button" onClick={onCancelRun} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">{h2FitRunning ? t('runner.h2Cancel') : webGpuTrainingRunning ? t('runner.webgpuCancel') : t('runner.cancelExecution')}</button>}{webGpuTrainingResult && <div data-webgpu-fit-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${webGpuTrainingResult.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{webGpuTrainingResult.status === 'succeeded' ? <><p className="font-bold">{t('runner.webgpuFitPassed')}</p>{runtime.execution?.providerId === 'browser-webgpu-mlp-training' && runtime.execution.output?.trainingSummary && <p className="mt-2 text-xs">{t('runner.webgpuFitSummary', { dispatches: runtime.execution.output.trainingSummary.dispatchCount, steps: runtime.execution.output.trainingSummary.optimizerSteps, finalLoss: Number(runtime.execution.output.trainingSummary.finalTrainingLoss).toFixed(5) })}</p>}</> : <p className="font-bold">{t(webGpuDiagnosticMessageKey(webGpuTrainingResult.localError))}</p>}</div>}{h2FitResult && <div data-h2-fit-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${h2FitResult.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{h2FitResult.status === 'succeeded' ? <><p className="font-bold">{t('runner.h2FitPassed')}</p>{runtime.execution?.providerId === 'local-python-h2' && runtime.execution.output?.trainingSummary && <p className="mt-2 text-xs">{t('runner.h2FitSummary', { epochs: runtime.execution.output.lossCount, finalLoss: Number(runtime.execution.output.trainingSummary.finalTrainingLoss).toFixed(5) })}</p>}</> : <p className="font-bold">{t('runner.h2FitFailed')}</p>}</div>}</div>
+        <div><div className="rounded-2xl bg-slate-50 p-4"><p className="font-black">{dataset?.name ?? t('runner.browserGraph')}</p><p className="mt-1 text-xs text-slate-500">{dataset ? `${dataset.featureColumns.join(', ')} → ${dataset.targetColumn}` : t('runner.noDatasetRequired')}</p></div><div id="runner-loss-chart" className="mt-4"><LossChart values={losses} /></div>{executionPlan.canRunHere && <button data-runner-execute type="button" disabled={running || webGpuRunning || webGpuTrainingRunning || h2FitRunning || (dataset && !dataset.featureColumns.length) || Boolean(graphError)} onClick={() => onRun().catch(() => {})} className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 font-bold text-white disabled:opacity-50">{running ? t('runner.executing') : model ? `↻ ${t('runner.executeAgain')}` : `▶ ${t('runner.execute')}`}</button>}{webGpuTrainingGraphSupported && <><button data-webgpu-fit type="button" disabled={!webGpuTrainingAvailable || running || webGpuRunning || webGpuTrainingRunning || h2FitRunning || Boolean(graphError)} onClick={() => tryWebGpuTraining().catch(() => {})} className="mt-2 w-full rounded-2xl border border-indigo-300 bg-indigo-50 px-4 py-3 font-bold text-indigo-900 disabled:opacity-50">{webGpuTrainingRunning ? t('runner.webgpuFitting') : t('runner.webgpuFit')}</button><p className="mt-1 text-xs text-slate-500">{t(webGpuTrainingAvailable ? 'runner.webgpuFitNote' : 'runner.webgpuTrainingUnavailable')}</p></>}{h2GraphCandidate && <div data-h2-connection-panel className="mt-3 rounded-2xl border border-violet-200 bg-violet-50 p-4">{h2Connection ? <div className="flex flex-wrap items-center justify-between gap-3"><p className="text-sm font-bold text-violet-900">{t('runner.h2Connected')}</p><button data-h2-disconnect type="button" onClick={disconnectH2LocalPython} className="rounded-xl border border-violet-300 bg-white px-3 py-2 text-sm font-bold text-violet-900">{t('runner.h2Disconnect')}</button></div> : <><label className="block text-xs font-bold text-violet-950" htmlFor="h2-pairing-code">{t('runner.h2PairingCode')}<input id="h2-pairing-code" data-h2-connection-token type="password" autoComplete="off" value={h2PairingTokenInput} onChange={(event) => setH2PairingTokenInput(event.target.value)} className="mt-1 w-full rounded-xl border border-violet-200 bg-white p-2 font-mono" /></label><p className="mt-2 text-xs text-violet-900">{t('runner.h2PairingPrompt')}</p><button data-h2-connect type="button" disabled={!h2PairingTokenInput.trim()} onClick={() => connectH2LocalPython().catch(() => {})} className="mt-3 rounded-xl bg-violet-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{t('runner.h2Connect')}</button></>}{!h2Health.available && <p data-h2-health role="status" className="mt-2 text-xs text-slate-600">{t('runner.h2Unavailable')}</p>}<button data-h2-fit type="button" disabled={!h2Health.available || !h2Connection || running || webGpuRunning || webGpuTrainingRunning || h2FitRunning || !dataset} onClick={() => tryH2LocalPythonFit().catch(() => {})} className="mt-3 w-full rounded-2xl border border-violet-300 bg-white px-4 py-3 font-bold text-violet-900 disabled:opacity-50">{h2FitRunning ? t('runner.h2Fitting') : t('runner.h2Fit')}</button>{h2Health.available && <p data-h2-health role="status" className="mt-1 text-xs text-slate-600">{t('runner.h2FitNote')}</p>}</div>}{running && <button data-runner-cancel type="button" onClick={onCancelRun} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">{h2FitRunning ? t('runner.h2Cancel') : webGpuTrainingRunning ? t('runner.webgpuCancel') : t('runner.cancelExecution')}</button>}{webGpuTrainingResult && <div data-webgpu-fit-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${webGpuTrainingResult.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{webGpuTrainingResult.status === 'succeeded' ? <><p className="font-bold">{t('runner.webgpuFitPassed')}</p>{runtime.execution?.providerId === 'browser-webgpu-mlp-training' && runtime.execution.output?.trainingSummary && <p className="mt-2 text-xs">{t('runner.webgpuFitSummary', { dispatches: runtime.execution.output.trainingSummary.dispatchCount, steps: runtime.execution.output.trainingSummary.optimizerSteps, finalLoss: Number(runtime.execution.output.trainingSummary.finalTrainingLoss).toFixed(5) })}</p>}</> : <p className="font-bold">{t(webGpuDiagnosticMessageKey(webGpuTrainingResult.localError))}</p>}</div>}{h2FitResult && <div data-h2-fit-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${h2FitResult.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{h2FitResult.status === 'succeeded' ? <><p className="font-bold">{t('runner.h2FitPassed')}</p>{runtime.execution?.providerId === 'local-python-h2' && runtime.execution.output?.trainingSummary && <p className="mt-2 text-xs">{t('runner.h2FitSummary', { epochs: runtime.execution.output.lossCount, finalLoss: Number(runtime.execution.output.trainingSummary.finalTrainingLoss).toFixed(5) })}</p>}</> : <p className="font-bold">{t('runner.h2FitFailed')}</p>}</div>}</div>
         <div className="space-y-4">{model ? <>{model.metrics ? <div><h3 className="font-black">{t('runner.evaluationOutput')}</h3><div className="mt-2 grid grid-cols-2 gap-2">{Object.entries(model.metrics).map(([key, value]) => <div key={key} className="rounded-2xl bg-slate-100 p-3"><p className="text-[10px] uppercase text-slate-500">{key}</p><p className="mt-1 font-mono font-bold">{typeof value === 'number' && !Number.isInteger(value) ? value.toFixed(4) : value}</p></div>)}</div></div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.evaluationMissing')}</div>}{model.hasPredictor ? <div className="rounded-2xl border p-4"><h3 className="font-black">{t('runner.predictorOutput')}</h3><div className="mt-3 grid grid-cols-2 gap-2">{model.featureColumns.map((column) => <label key={column} className="text-xs font-bold">{column}<input type="number" inputMode="decimal" value={inputs[column] ?? ''} onChange={(event) => setInputs({ ...inputs, [column]: event.target.value })} className="mt-1 w-full rounded-xl border p-2 font-mono" /></label>)}</div><button onClick={tryPrediction} className="mt-3 w-full rounded-xl bg-blue-600 px-3 py-2 font-bold text-white">{t('runner.predict', { target: model.targetColumn })}</button>{prediction !== null && <div className="mt-3 rounded-xl bg-blue-50 p-4 text-center"><p className="text-xs text-blue-600">{t('runner.prediction')}</p><p className="mt-1 text-2xl font-black">{typeof prediction === 'number' ? prediction.toFixed(4) : prediction}</p></div>}{model.type === 'browser_mlp' && <><button data-webgpu-inference type="button" disabled={!webGpuSupported || webGpuRunning} onClick={() => tryWebGpuPrediction().catch(() => {})} className="mt-3 w-full rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-2 font-bold text-indigo-900 disabled:opacity-50">{webGpuRunning ? t('runner.webgpuPredicting') : t('runner.webgpuPredict')}</button>{!webGpuSupported && <p className="mt-2 text-xs text-slate-500" role="status">{webGpuCapability.reason === 'WEBGPU_UNAVAILABLE' ? t('runner.webgpuUnavailable') : t('runner.webgpuUnsupportedModel')}</p>}{webGpuRunning && <button data-webgpu-cancel type="button" onClick={onCancelWebGpuInference} className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm font-bold text-slate-700">{t('runner.webgpuCancel')}</button>}{webGpuExecution && <div data-webgpu-result role="status" aria-live="polite" className={`mt-3 rounded-xl p-4 text-sm ${webGpuExecution.status === 'succeeded' ? 'bg-emerald-50 text-emerald-900' : 'bg-amber-50 text-amber-900'}`}>{webGpuExecution.status === 'succeeded' ? <><p className="font-bold">{t('runner.webgpuPassed')}</p><p className="mt-2 text-xs">{t('runner.webgpuPrediction')}: <span className="font-mono font-bold">{typeof webGpuExecution.output.prediction === 'number' ? webGpuExecution.output.prediction.toFixed(4) : webGpuExecution.output.prediction}</span></p><p className="mt-1 text-xs">{t('runner.webgpuMaxError')}: <span className="font-mono">{webGpuExecution.output.parity.maxAbsoluteError.toExponential(2)}</span></p></> : <p className="font-bold">{t(webGpuDiagnosticMessageKey(webGpuExecution.localError ?? webGpuExecution.diagnostics?.[0] ?? 'WEBGPU_EXECUTION_FAILED'))}</p>}</div>}</>}</div> : <div className="rounded-2xl bg-amber-50 p-4 text-sm text-amber-700">{t('runner.predictorMissing')}</div>}<p className="text-xs text-slate-400">{t('runner.weightsSaved', { nodeId: model.sourceNodeId })}</p></> : <div className="grid min-h-64 place-items-center rounded-3xl bg-slate-50 p-6 text-center text-slate-400"><div><p className="text-4xl">⌁</p><p className="mt-3">{t('runner.emptyOutput')}</p></div></div>}</div>
       </div> : <div className="mt-5 rounded-3xl border border-dashed border-slate-300 p-8 text-center text-slate-500"><p className="text-3xl">⇧</p><p className="mt-3 font-bold">{t('tier.useHigherTier', { tier: executionPlan.recommendedTier })}</p><p className="mt-1 text-sm">{t('tier.designStillAvailable')}</p></div>}
       <LumiResultReasoningPanel nodes={nodes} edges={edges} customComponents={customComponents} dataset={dataset} runtime={runtime} resultBinding={resultBinding} runHistory={runHistory} language={language} onSelectSuggestion={onSelectLumiSuggestion} t={t} />
@@ -1533,7 +1549,7 @@ function Workspace() {
     setNodes(nextNodes);
     if (ids[0]) setSelectedId(ids[0]);
   }, [setNodes]);
-  const runBrowserGraph = useCallback(async ({ providerId = 'browser-cpu' } = {}) => {
+  const runBrowserGraph = useCallback(async ({ providerId = 'browser-cpu', h2Connection = null } = {}) => {
     if (!['browser-cpu', 'browser-webgpu-mlp-training', 'local-python-h2'].includes(providerId)) {
       throw new CanvasAgentError('EXECUTION_PROVIDER_UNSUPPORTED', 'The requested browser provider is unsupported.');
     }
@@ -1592,7 +1608,7 @@ function Workspace() {
         throw localizedError('error.higherTierRequired', { tier: plan.recommendedTier });
       }
       if (isH2LocalPython) {
-        h2RequestDraft = await projectH2LocalPythonRequestV1({
+        h2RequestDraft = await projectH2LocalPythonRequestV2({
           sessionId: projectSessionIdRef.current,
           nodes: state.nodes,
           edges: state.edges,
@@ -1651,7 +1667,7 @@ function Workspace() {
       executionTimeout = window.setTimeout(() => controller.abort('deadline'), executionRequest.budget.maxDurationMs);
       const finalModel = isH2LocalPython
         ? h2ResultToBrowserMlpV1({
-          ...await runH2LocalPythonFit(h2RequestDraft, { signal: controller.signal }),
+          ...await runH2LocalPythonFit(h2RequestDraft, { signal: controller.signal, connection: h2Connection }),
           dataset: state.dataset,
         })
         : await executeBrowserGraph({

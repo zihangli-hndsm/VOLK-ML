@@ -6,7 +6,7 @@ import path from 'node:path';
 import { execFileSync, spawn, spawnSync } from 'node:child_process';
 import { once } from 'node:events';
 import { createH2LocalPythonServer } from './h2-local-python/server.mjs';
-import { projectH2LocalPythonRequestV1 } from '../src/core/execution/h2LocalPython.js';
+import { projectH2LocalPythonRequestV2 } from '../src/core/execution/h2LocalPython.js';
 import { h2RegressionFixture } from './h2-local-python/test-fixtures.mjs';
 
 if (process.platform !== 'win32') {
@@ -50,11 +50,12 @@ async function waitFor(check, label, timeoutMs = 15_000) {
   throw new Error(`Timed out waiting for ${label}.`);
 }
 
-async function waitForHealth(base) {
+async function waitForHealth(base, token) {
   return waitFor(async () => {
     try {
-      const response = await fetch(`${base}/health`);
-      return response.ok ? response : null;
+      const response = await fetch(`${base}/health`, { headers: { Authorization: `Bearer ${token}` } });
+      const body = await response.json();
+      return response.ok && body.connected && body.connectionId ? body : null;
     } catch { return null; }
   }, `coordinator ${base}`);
 }
@@ -81,32 +82,48 @@ function ownedRunDirectories() {
       && fs.readFileSync(path.join(directory, '.volk-h2-owned'), 'ascii') === 'volk-h2-owned-v1\n');
 }
 
-async function authorize(base, draft) {
+function connectionHeaders(connection, { includeConnectionId = true } = {}) {
+  return {
+    Origin: origin,
+    'Content-Type': 'application/json',
+    Authorization: `Bearer ${connection.token}`,
+    ...(includeConnectionId ? { 'X-Volk-H2-Connection-Id': connection.connectionId } : {}),
+  };
+}
+
+async function authorize(base, draft, connection) {
   const response = await fetch(`${base}/authorize`, {
-    method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
+    method: 'POST', headers: connectionHeaders(connection), body: JSON.stringify(draft),
   });
   assert.equal(response.status, 200, `the lifecycle run is authorized: ${await response.clone().text()}`);
   const envelope = await response.json();
   return { ...draft, authorization: envelope.authorization };
 }
 
-async function fit(base, request, signal) {
+async function fit(base, request, signal, connection) {
   return fetch(`${base}/fit`, {
-    method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' },
+    method: 'POST', headers: connectionHeaders(connection),
     body: JSON.stringify(request), signal,
   });
 }
 
 async function startCoordinator(port, extraEnvironment = {}) {
+  let output = '';
   const child = spawn(process.execPath, ['scripts/h2-local-python/server.mjs'], {
     cwd: process.cwd(),
-    env: { ...process.env, ...extraEnvironment, VOLK_H2_PORT: String(port) },
-    windowsHide: true, stdio: 'ignore',
+    env: {
+      ...process.env,
+      ...extraEnvironment,
+      VOLK_H2_PORT: String(port),
+    },
+    windowsHide: true, stdio: ['ignore', 'pipe', 'ignore'],
   });
   child.once('error', () => {});
+  child.stdout.on('data', (chunk) => { output += chunk.toString('utf8'); });
   const base = `http://127.0.0.1:${port}/v1/h2`;
-  await waitForHealth(base);
-  return { child, base };
+  const token = await waitFor(() => output.match(/H2_PAIRING_TOKEN=([A-Za-z0-9_-]{43});/)?.[1], 'coordinator pairing credential');
+  const health = await waitForHealth(base, token);
+  return { child, base, connection: { token, connectionId: health.connectionId } };
 }
 
 async function stopChild(child) {
@@ -125,14 +142,15 @@ async function verifyMissingRuntimeFailsClosed() {
   const port = await unusedPort();
   let child;
   try {
-    ({ child } = await startCoordinator(port, { LOCALAPPDATA: localData }));
+    const started = await startCoordinator(port, { LOCALAPPDATA: localData });
+    child = started.child;
     const base = `http://127.0.0.1:${port}/v1/h2`;
-    const health = await (await fetch(`${base}/health`)).json();
+    const health = await (await fetch(`${base}/health`, { headers: { Authorization: `Bearer ${started.connection.token}` } })).json();
     assert.equal(health.available, false);
     assert.equal(health.reason, 'H2_RUNTIME_UNAVAILABLE');
-    const draft = await projectH2LocalPythonRequestV1(longRegressionFixture());
+    const draft = await projectH2LocalPythonRequestV2(longRegressionFixture());
     const authorizeResponse = await fetch(`${base}/authorize`, {
-      method: 'POST', headers: { Origin: origin, 'Content-Type': 'application/json' }, body: JSON.stringify(draft),
+      method: 'POST', headers: connectionHeaders(started.connection), body: JSON.stringify(draft),
     });
     assert.equal(authorizeResponse.status, 503);
     assert.equal((await authorizeResponse.json()).error.code, 'H2_RUNTIME_UNAVAILABLE');
@@ -161,14 +179,14 @@ async function verifyClientCancellationAndCleanup() {
   const server = await createH2LocalPythonServer({ port: 0 });
   const base = `http://127.0.0.1:${server.address().port}/v1/h2`;
   const fixture = longRegressionFixture();
-  const draft = await projectH2LocalPythonRequestV1(fixture);
-  const request = await authorize(base, draft);
+  const draft = await projectH2LocalPythonRequestV2(fixture);
+  const request = await authorize(base, draft, server.connectionCredential);
   const oldWorkers = new Set(workerProcesses());
   const oldRunDirectories = new Set(ownedRunDirectories());
   const controller = new AbortController();
   const workerStart = waitFor(async () => workerProcesses().find((pid) => !oldWorkers.has(pid)), 'supervised worker start', 20_000);
   const runDirectoryStart = waitFor(() => ownedRunDirectories().find((folder) => !oldRunDirectories.has(folder)), 'cancelled run lease', 20_000);
-  const pending = fit(base, request, controller.signal)
+  const pending = fit(base, request, controller.signal, server.connectionCredential)
     .then((response) => ({ response }), (error) => ({ error }));
   let workerPid = null;
   try {
@@ -182,9 +200,9 @@ async function verifyClientCancellationAndCleanup() {
     await waitFor(() => !ownedRunDirectories().includes(runDirectory), 'cancelled run temp cleanup', 10_000);
 
     const shortFixture = h2RegressionFixture();
-    const shortDraft = await projectH2LocalPythonRequestV1(shortFixture);
-    const shortRequest = await authorize(base, shortDraft);
-    const response = await fit(base, shortRequest, AbortSignal.timeout(30_000));
+    const shortDraft = await projectH2LocalPythonRequestV2(shortFixture);
+    const shortRequest = await authorize(base, shortDraft, server.connectionCredential);
+    const response = await fit(base, shortRequest, AbortSignal.timeout(30_000), server.connectionCredential);
     assert.equal(response.status, 200, `the execution slot is released after cancellation: ${await response.clone().text()}`);
     const result = await response.json();
     assert.equal(result.lifecycle.processTerminated, true);
@@ -198,15 +216,15 @@ async function verifyClientCancellationAndCleanup() {
 
 async function verifyCoordinatorExitKillsWorkerAndReapsOwnedTemp() {
   const port = await unusedPort();
-  const { child, base } = await startCoordinator(port);
+  const { child, base, connection } = await startCoordinator(port);
   const fixture = longRegressionFixture();
-  const draft = await projectH2LocalPythonRequestV1(fixture);
-  const request = await authorize(base, draft);
+  const draft = await projectH2LocalPythonRequestV2(fixture);
+  const request = await authorize(base, draft, connection);
   const existingWorkers = new Set(workerProcesses());
   const existingSupervisors = new Set(supervisorProcesses());
   const existingRuns = new Set(ownedRunDirectories());
   const runDirectoryStart = waitFor(() => ownedRunDirectories().find((folder) => !existingRuns.has(folder)), 'owned run folder and lease', 20_000);
-  const pending = fit(base, request, AbortSignal.timeout(30_000)).catch((error) => error);
+  const pending = fit(base, request, AbortSignal.timeout(30_000), connection).catch((error) => error);
   let workerPid = null;
   let supervisorPid = null;
   let runDirectory = null;
@@ -258,14 +276,14 @@ async function verifyRealDeadlineIfRequested() {
       target: Math.cos(row * 0.011) + row * 0.0001,
     })),
   };
-  const draft = await projectH2LocalPythonRequestV1(fixture);
-  const request = await authorize(base, draft);
+  const draft = await projectH2LocalPythonRequestV2(fixture);
+  const request = await authorize(base, draft, server.connectionCredential);
   const startedAt = Date.now();
   const beforeWorkers = new Set(workerProcesses());
   const beforeRuns = new Set(ownedRunDirectories());
   try {
     const runDirectoryPromise = waitFor(() => ownedRunDirectories().find((folder) => !beforeRuns.has(folder)), 'deadline run temp folder', 30_000);
-    const responsePromise = fit(base, request, AbortSignal.timeout(135_000));
+    const responsePromise = fit(base, request, AbortSignal.timeout(135_000), server.connectionCredential);
     const runDirectory = await runDirectoryPromise;
     const response = await responsePromise;
     const result = await response.json();

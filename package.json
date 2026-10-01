@@ -8,7 +8,7 @@
     "dev": "vite",
     "dev:h2-local-python": "node scripts/dev-h2-local-python.mjs",
     "setup:h2-local-python": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/setup-h2-local-python.ps1",
-    "check:h2-local-python": "node scripts/check-h2-local-python.mjs && node scripts/check-h2-local-python-worker.mjs",
+    "check:h2-local-python": "node scripts/check-h2-local-python.mjs && node scripts/check-h2-local-python-worker.mjs && node scripts/test-h2-local-python-resource-limit.mjs",
     "test:h2-local-python:companion": "node scripts/test-h2-local-python-companion.mjs",
     "test:h2-local-python:browser": "node scripts/h2-local-python-browser.mjs",
     "test:h2-local-python:lifecycle": "node scripts/test-h2-local-python-lifecycle.mjs",

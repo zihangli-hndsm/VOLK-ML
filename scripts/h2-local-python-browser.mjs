@@ -16,6 +16,7 @@ let vite = null;
 let coordinator = null;
 let chrome = null;
 let cdp = null;
+let coordinatorOutput = '';
 
 function findChrome() {
   const candidates = [
@@ -164,19 +165,34 @@ async function main() {
   const chromePath = findChrome();
   assert.ok(chromePath, 'Chrome or Edge is installed for the real browser acceptance.');
 
-  const childEnvironment = { ...process.env, VITE_VOLK_H2_LOCAL_PYTHON_URL: localPolicyUrl };
+  const childEnvironment = {
+    ...process.env,
+    VITE_VOLK_H2_LOCAL_PYTHON_URL: localPolicyUrl,
+  };
   delete childEnvironment.VITE_VOLK_API_URL;
   delete childEnvironment.VITE_VOLK_CLOUD_URL;
   coordinator = spawn(process.execPath, ['scripts/h2-local-python/server.mjs'], {
-    cwd: root, env: childEnvironment, windowsHide: true, stdio: 'ignore',
+    cwd: root, env: childEnvironment, windowsHide: true, stdio: ['ignore', 'pipe', 'inherit'],
   });
+  coordinator.stdout.setEncoding('utf8');
+  coordinator.stdout.on('data', (chunk) => { coordinatorOutput += chunk; });
   vite = spawn(process.execPath, ['node_modules/vite/bin/vite.js', '--host', '127.0.0.1', '--port', '5173', '--strictPort'], {
     cwd: root, env: childEnvironment, windowsHide: true, stdio: 'ignore',
   });
   await waitForHttp(`${localPolicyUrl}/v1/h2/health`);
-  const health = await (await fetch(`${localPolicyUrl}/v1/h2/health`)).json();
-  assert.equal(health.available, true, `The pinned local runtime is available (${health.reason ?? 'ready'}).`);
+  const pairingDeadline = Date.now() + 10_000;
+  while (!/H2_PAIRING_TOKEN=([A-Za-z0-9_-]{43});/.test(coordinatorOutput) && Date.now() < pairingDeadline) {
+    await new Promise((resolve) => setTimeout(resolve, 50));
+  }
+  const connectionToken = coordinatorOutput.match(/H2_PAIRING_TOKEN=([A-Za-z0-9_-]{43});/)?.[1];
+  assert.ok(connectionToken, 'the local companion generated its pairing code outside the browser bundle.');
+  const health = await (await fetch(`${localPolicyUrl}/v1/h2/health`, { headers: { Authorization: `Bearer ${connectionToken}` } })).json();
+  assert.equal(health.schemaVersion, 'volk.h2.health.v2');
+  assert.equal(health.connected, true);
+  assert.equal(health.available, true, `The paired pinned local runtime is available (${health.reason ?? 'ready'}).`);
   await waitForHttp(baseUrl);
+  const servedEntry = await fetch(`${baseUrl}/src/main.jsx`).then((response) => response.text());
+  assert.equal(servedEntry.includes(connectionToken), false, 'the pairing credential is not embedded in the served frontend module.');
 
   chrome = spawn(chromePath, [
     '--headless=new', '--no-first-run', '--no-default-browser-check', '--disable-gpu',
@@ -203,7 +219,10 @@ async function main() {
   assert.equal(before.execution?.runtime?.status, 'idle');
   await click('[data-build-primary="run"]');
   await waitFor('Boolean(document.querySelector("[data-h2-fit]"))', 'the local Python fit action');
-  await waitFor('document.querySelector("[data-h2-fit]")?.disabled === false', 'local companion health check');
+  await waitFor('Boolean(document.querySelector("[data-h2-connection-token]"))', 'local runtime pairing control');
+  await evaluate(`(() => { const input=document.querySelector('[data-h2-connection-token]'); const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set; setter.call(input,${JSON.stringify(connectionToken)}); input.dispatchEvent(new Event('input',{bubbles:true})); input.dispatchEvent(new Event('change',{bubbles:true})); })()`);
+  await click('[data-h2-connect]');
+  await waitFor('document.querySelector("[data-h2-fit]")?.disabled === false', 'explicit local companion pairing');
   await click('[data-h2-fit]');
   await waitFor('document.querySelector("[data-h2-fit-result]")?.textContent?.includes("training completed") || document.querySelector("[data-h2-fit-result]")?.textContent?.includes("训练完成")', 'accepted local Python model result', 75_000);
 
@@ -215,8 +234,10 @@ async function main() {
   assert.equal(model?.trainingSummary?.provider, 'local-python');
   assert.ok(Array.isArray(model.lossHistory) && model.lossHistory.length === 4);
   const preflight = browserResponses.find((entry) => entry.url.includes('/v1/h2/authorize') && entry.status === 200);
+  const corsPreflight = browserResponses.find((entry) => entry.url.includes('/v1/h2/authorize') && entry.status === 204);
   const fit = browserResponses.find((entry) => entry.url.includes('/v1/h2/fit') && entry.status === 200);
   assert.ok(preflight, 'the configured browser sent the actual authorization request and received HTTP 200.');
+  assert.ok(corsPreflight, 'the browser completed the authorization CORS preflight.');
   assert.ok(fit, 'the configured browser sent the actual local fit request and received HTTP 200.');
   assert.deepEqual(browserErrors, [], `The browser reports no runtime errors: ${browserErrors.join('; ')}`);
 
